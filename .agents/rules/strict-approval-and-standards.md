@@ -4,6 +4,11 @@ trigger: always_on
 
 # 🛡️ Enterprise Workflow & Approval Rules
 
+## 0. Mandatory Branch Protection (Never Work on Master)
+- **CRITICAL**: **NEVER work, edit, or commit directly on the `master` (or `main`) branch.**
+- All development, fixes, refactoring, and documentation work must occur on dedicated `feature/*`, `fix/*`, `chore/*`, or related branch.
+- Always check the current branch before starting any task, and switch to or create the appropriate topic branch.
+
 ## 1. Explicit Approval Gate
 - **CRITICAL**: When the user is asking questions, exploring ideas, suggesting changes, or discussing architectures, **DO NOT start implementation, generate feature code, or alter project structure without explicit user confirmation and approval.**
 - Always clarify requirements, outline the plan, and wait for the user to say "Proceed" or approve before making modifications.
