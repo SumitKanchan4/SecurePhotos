@@ -35,17 +35,8 @@
       "tooltip": "SecurePhotos Engine"
     }
   },
-  "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://github.com/SumitKanchan4/SecurePhotos/releases/latest/download/latest.json"
-      ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXkKUldSYUNkMWlhS210U1Z4c3J4T3pWcFNjM2p2L2R2NmFqNmd1U3lzU1h3Y2NqQ2lXQk5BOGg4SGMK"
-    }
-  },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": true,
     "targets": ["nsis", "msi"],
     "icon": [
       "icons/32x32.png",

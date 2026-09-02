@@ -7,17 +7,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  release:
+  build-and-release:
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'windows-latest'
-            args: ''
+    runs-on: windows-latest
 
-    runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -35,16 +29,29 @@ jobs:
       - name: Install Frontend Dependencies
         run: npm install
 
-      - name: Build Tauri Desktop App & Installers
-        uses: tauri-apps/tauri-action@v0
+      - name: Build Desktop Installers (NSIS & MSI)
+        run: npm run tauri build
+
+      - name: Publish Installers to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: 'SecurePhotos ${{ github.ref_name }}'
+          body: |
+            ## 🔒 SecurePhotos ${{ github.ref_name }} — Desktop Release
+            
+            Download the installer for your Windows PC below:
+            - **`SecurePhotos_${{ github.ref_name }}_x64-setup.exe`**: 1-Click Windows Setup Installer (Recommended)
+            - **`SecurePhotos_${{ github.ref_name }}_x64_en-US.msi`**: Enterprise Windows Installer Package
+            
+            ### ✨ What's New
+            - High-Speed Offline Media Ingestion with 2-level thumbnail sharding
+            - Zero-Trust AES-256-GCM Encrypted Vault & Multi-Slot Recovery
+            - On-Device 4K AI Super-Resolution with AVIF space-saving compression
+            - Representative Medoid Face Clustering & Social Affinity Close Ones
+            - Beat-Matched Cinematic Ken-Burns Story Player
+          files: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'SecurePhotos ${{ github.ref_name }}'
-          releaseBody: 'See the release notes for assets, 4K AI updates, and installer downloads.'
-          releaseDraft: false
-          prerelease: false
-          args: ${{ matrix.args }}
