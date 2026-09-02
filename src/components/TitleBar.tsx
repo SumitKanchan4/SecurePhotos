@@ -9,36 +9,36 @@ import {
   ShieldCheck, 
   HardDrive 
 } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAppStore } from "../store/useAppStore";
 
 export const TitleBar: React.FC = () => {
   const { theme, toggleTheme, searchQuery, setSearchQuery, activeVolume, isDriveConnected } = useAppStore();
 
-  const handleMinimize = () => {
-    // Tauri window minimize hook
+  const handleMinimize = async () => {
     try {
-      // @ts-ignore
-      window.__TAURI__?.window?.getCurrentWindow()?.minimize();
-    } catch {
-      // Browser preview fallback
+      const appWindow = getCurrentWindow();
+      await appWindow.minimize();
+    } catch (err) {
+      console.warn("Minimize error / browser mode:", err);
     }
   };
 
-  const handleMaximize = () => {
+  const handleMaximize = async () => {
     try {
-      // @ts-ignore
-      window.__TAURI__?.window?.getCurrentWindow()?.toggleMaximize();
-    } catch {
-      // Browser preview fallback
+      const appWindow = getCurrentWindow();
+      await appWindow.toggleMaximize();
+    } catch (err) {
+      console.warn("Maximize error / browser mode:", err);
     }
   };
 
-  const handleClose = () => {
+  const handleClose = async () => {
     try {
-      // @ts-ignore
-      window.__TAURI__?.window?.getCurrentWindow()?.close();
-    } catch {
-      // Browser preview fallback
+      const appWindow = getCurrentWindow();
+      await appWindow.close();
+    } catch (err) {
+      console.warn("Close error / browser mode:", err);
     }
   };
 
@@ -58,7 +58,7 @@ export const TitleBar: React.FC = () => {
       }}
     >
       {/* Brand & App Title */}
-      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px" }} data-tauri-drag-region>
         <div 
           style={{
             width: "26px",
@@ -171,6 +171,7 @@ export const TitleBar: React.FC = () => {
         <button
           onClick={handleMinimize}
           className="clickable"
+          title="Minimize Window"
           style={{
             width: "32px",
             height: "28px",
@@ -187,6 +188,7 @@ export const TitleBar: React.FC = () => {
         <button
           onClick={handleMaximize}
           className="clickable"
+          title="Maximize / Restore Window"
           style={{
             width: "32px",
             height: "28px",
@@ -203,6 +205,7 @@ export const TitleBar: React.FC = () => {
         <button
           onClick={handleClose}
           className="clickable"
+          title="Close Window"
           style={{
             width: "32px",
             height: "28px",
