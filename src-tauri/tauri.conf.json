@@ -12,12 +12,14 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "SecurePhotos 2.0",
         "width": 1280,
         "height": 820,
         "minWidth": 900,
         "minHeight": 600,
         "resizable": true,
+        "maximized": true,
         "fullscreen": false,
         "decorations": false,
         "transparent": false,
@@ -25,7 +27,8 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "capabilities": ["default"]
     },
     "trayIcon": {
       "iconPath": "icons/icon.png",
