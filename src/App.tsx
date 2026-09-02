@@ -2,8 +2,9 @@ import React, { useState, useEffect } from "react";
 import { 
   Sparkles, 
   Lock, 
-  Plus,
-  FolderSync
+  Plus, 
+  FolderSync, 
+  LayoutGrid 
 } from "lucide-react";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
@@ -13,6 +14,10 @@ import { ImportModal } from "./components/ImportModal";
 import { Lightbox } from "./components/Lightbox";
 import { VaultUnlockModal } from "./components/VaultUnlockModal";
 import { VaultView } from "./components/VaultView";
+import { StoriesCarousel } from "./components/StoriesCarousel";
+import { StoryPlayerModal } from "./components/StoryPlayerModal";
+import { PeopleView } from "./components/PeopleView";
+import { CollageModal } from "./components/CollageModal";
 import { useAppStore } from "./store/useAppStore";
 import { PhotoItem } from "./types";
 
@@ -30,6 +35,8 @@ export const App: React.FC = () => {
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isVaultUnlockModalOpen, setIsVaultUnlockModalOpen] = useState(false);
+  const [isCollageModalOpen, setIsCollageModalOpen] = useState(false);
+  const [activeStoryId, setActiveStoryId] = useState<number | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   // Initialize and register global desktop keyboard shortcuts
@@ -58,7 +65,6 @@ export const App: React.FC = () => {
         e.preventDefault();
         toggleTheme();
       } else if (e.key === "l" || e.key === "L") {
-        // Toggle Vault Lock
         if (isVaultUnlocked) {
           setIsVaultUnlocked(false);
           fetch("http://127.0.0.1:8000/api/vault/lock", { method: "POST" }).catch(() => {});
@@ -108,13 +114,24 @@ export const App: React.FC = () => {
               onUnlockRequest={() => setIsVaultUnlockModalOpen(true)}
               onPhotoClick={(idx) => setLightboxIndex(idx)}
             />
+          ) : activeTab === "people" ? (
+            /* People Management & Representative Medoid Tagging View */
+            <PeopleView />
+          ) : activeTab === "stories" ? (
+            /* Stories Hub & Insights */
+            <div style={{ flex: 1, overflowY: "auto", padding: "10px" }}>
+              <StoriesCarousel onPlayStory={(id) => setActiveStoryId(id)} />
+            </div>
           ) : (
             /* Standard Photos & Media Grid View */
             <>
+              {/* Stories Highlight Bar on Home View */}
+              <StoriesCarousel onPlayStory={(id) => setActiveStoryId(id)} />
+
               {/* View Header Toolbar */}
               <div 
                 style={{
-                  padding: "16px 20px 8px 20px",
+                  padding: "12px 20px 8px 20px",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
@@ -137,6 +154,25 @@ export const App: React.FC = () => {
                       <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--accent-primary)", marginRight: "6px" }}>
                         {selectedCount} selected
                       </span>
+                      <button
+                        onClick={() => setIsCollageModalOpen(true)}
+                        className="clickable"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "6px 12px",
+                          borderRadius: "var(--radius-sm)",
+                          backgroundColor: "var(--bg-surface)",
+                          border: "1px solid var(--border-subtle)",
+                          color: "var(--text-primary)",
+                          fontSize: "12px",
+                          fontWeight: 500,
+                        }}
+                      >
+                        <LayoutGrid size={14} />
+                        4K Collage
+                      </button>
                       <button
                         className="clickable"
                         style={{
@@ -288,6 +324,20 @@ export const App: React.FC = () => {
       <VaultUnlockModal
         isOpen={isVaultUnlockModalOpen}
         onClose={() => setIsVaultUnlockModalOpen(false)}
+      />
+
+      {/* 4K Mosaic Collage Generator Modal */}
+      <CollageModal
+        isOpen={isCollageModalOpen}
+        onClose={() => setIsCollageModalOpen(false)}
+        selectedCount={selectedCount}
+      />
+
+      {/* Cinematic Story Player Modal */}
+      <StoryPlayerModal
+        storyId={activeStoryId}
+        isOpen={activeStoryId !== null}
+        onClose={() => setActiveStoryId(null)}
       />
 
       {/* Immersive Fluid Lightbox */}
