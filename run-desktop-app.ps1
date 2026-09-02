@@ -1,5 +1,5 @@
 # Helper script to launch SecurePhotos 2.0 Native Desktop App
-$env:Path = "C:\Users\sumit\.local\nodejs;C:\Users\sumit\.local\bin;C:\Users\sumit\.cargo\bin;$env:Path"
+$env:Path = "C:\Users\sumit\.local\w64devkit\bin;C:\Users\sumit\.local\nodejs;C:\Users\sumit\.local\bin;C:\Users\sumit\.cargo\bin;$env:Path"
 
 # 1. Clean up any previous orphaned Vite instances on port 1420
 $activePort = Get-NetTCPConnection -LocalPort 1420 -ErrorAction SilentlyContinue
