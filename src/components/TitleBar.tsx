@@ -74,7 +74,7 @@ export const TitleBar: React.FC = () => {
           <ShieldCheck size={16} />
         </div>
         <span style={{ fontWeight: 600, fontSize: "13px", letterSpacing: "0.2px" }}>
-          SecurePhotos <span style={{ color: "var(--accent-primary)", fontSize: "11px", fontWeight: 700 }}>2.0</span>
+          SecurePhotos <span style={{ color: "var(--accent-primary)", fontSize: "11px", fontWeight: 700 }}>0.0.1</span>
         </span>
 
         {/* Volume Status Pill */}

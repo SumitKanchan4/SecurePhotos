@@ -36,12 +36,12 @@ export const SettingsView: React.FC = () => {
         setAvailableUpdateVersion(update.version);
         setUpdateStatus(`New version v${update.version} is available!`);
       } else {
-        setUpdateStatus("You are running the latest version of SecurePhotos (v2.0.0).");
+        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.1).");
       }
     } catch {
       // Offline fallback
       setTimeout(() => {
-        setUpdateStatus("You are running the latest version of SecurePhotos (v2.0.0).");
+        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.1).");
         setIsCheckingUpdate(false);
       }, 1000);
       return;
@@ -78,7 +78,7 @@ export const SettingsView: React.FC = () => {
               <div>
                 <h3 style={{ fontSize: "14px", fontWeight: 700 }}>App Version & Updates</h3>
                 <p style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                  Current version: <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>v2.0.0</span>
+                  Current version: <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>v0.0.1</span>
                 </p>
               </div>
             </div>
