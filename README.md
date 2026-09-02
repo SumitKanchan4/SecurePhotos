@@ -1,64 +1,107 @@
-# 🔒 SecurePhotos
+# 🔒 SecurePhotos 2.0
 
-> **Privacy-first, zero-cloud desktop photo library and encrypted digital vault with local on-device AI.**
+> **Privacy-first, zero-cloud desktop photo library, 4K AI Super-Resolution engine, and encrypted digital vault with native external drive resilience and on-device AI.**
 
 ---
 
 ## 🌟 Overview
 
-**SecurePhotos** is an offline, self-hosted desktop photo management system designed for users who demand absolute privacy, high-performance library browsing, and military-grade encryption for sensitive documents and personal media.
+**SecurePhotos 2.0** is an offline, local-first desktop media library and digital vault designed for users who demand absolute privacy, instantaneous 60fps browsing across 100,000+ assets, 4K Super-Resolution AI upscaling, and military-grade encryption for intimate and sensitive media.
 
-Unlike traditional photo managers, **SecurePhotos executes 100% of its workloads locally**:
-- **Zero Cloud Reliance**: No remote telemetry, no cloud sync, no tracking.
-- **On-Device AI**: Local face detection, recognition, clustering, blur assessment, and document classification using MediaPipe and ONNX runtime.
-- **Encrypted Digital Vault**: AES-256-GCM chunked streaming encryption with Argon2id/PBKDF2 key derivation and optional TOTP two-factor authentication.
-- **High-Performance Architecture**: SQLite WAL mode, multi-tiered thumbnail sharding, streaming I/O, and asynchronous background workers.
-
----
-
-## 📑 Table of Contents
-
-- [Key Features](#-key-features)
-- [Architecture Overview](#-architecture-overview)
-- [Enterprise Clean-Slate Blueprint](#-enterprise-clean-slate-blueprint)
-- [Specialized Skills & Rules](#-specialized-skills--rules)
-- [License](#-license)
+- **Zero Cloud Reliance**: 100% offline. Zero remote telemetry, zero tracking.
+- **Lightweight 4K Media**: AI Super-Resolution (Real-ESRGAN ONNX) + visually lossless AVIF/AV1 (CRF 18) compression saving 50–70% disk space.
+- **External Drive Portability & Resilience**: Hardware volume UUID tracking, atomic 2-phase commits (`.tmp` + `fsync` + `os.replace`), and portable models (`.securephotos_library/models/`).
+- **Hierarchical Date Sharding**: Date-sharded directory structure (`originals/YYYY/MM/DD/`) (< 500 files/folder) preventing OS/filesystem hangs.
+- **Zero-Trust Hardened Vault**: Multi-slot Master Key wrapping (Argon2id password, Windows Hello biometrics, 24-word emergency recovery key), RFC 6238 TOTP 2FA, encrypted thumbnails (`.enc`), and ephemeral RAM streaming.
+- **Intelligent People & Stories**: Representative Medoid clustering ("Name Once, Tag 1,000 Photos"), Social Affinity Graph for Close Ones, and beat-matched Ken-Burns 4K video montages.
 
 ---
 
-## 🚀 Key Features
+## 🚀 Quickstart: How to Run the Application
 
-### 📸 1. High-Scale Photo Management
-- **Multi-Source Ingestion**: Watch external hard drives, SSDs, SD cards, or local directories.
-- **Managed & Non-Destructive Library Modes**: Choose between referencing original files in place or organizing them into a unified, auto-structured library folder.
-- **Resumable Imports**: Transactional import tasks with SHA-256 checksum deduplication and resume capability on crash or restart.
-- **EXIF Extraction & Metadata Search**: Fast searching by camera make/model, date ranges, geolocation coordinates, ISO, aperture, and shutter speed.
-- **Sharded Thumbnail Cache**: 2-level hash-sharded thumbnail directory (`data/thumbnails/{xx}/{hash}.jpg`) for instantaneous rendering of 100,000+ photo libraries.
+### 1. 📋 Prerequisites
 
-### 🧠 2. On-Device AI Engine
-- **Face Detection & Recognition**: MediaPipe BlazeFace for sub-millisecond face localization and InsightFace MobileFaceNet (512-dimensional vector embeddings) for facial identity clustering.
-- **Smart Albums & Events**: Automatic clustering by event timestamps and people.
-- **Quality & Blur Detection**: Laplacian variance and perceptual sharpness scoring to identify blurry or low-quality photos.
-- **Perceptual Duplicate Detection**: pHash (Perceptual Hash) + exact byte hash matching with configurable Hamming distance thresholds.
-- **Document & Receipt Classifier**: Automatically segregates scans, IDs, receipts, and documents from family photos.
-
-### 🔐 3. Encrypted Vault (Dual Private / Documents)
-- **AES-256-GCM Cryptography**: PBKDF2 / Argon2id key derivation with unique per-file salts and chunked authenticated streaming.
-- **Dual Vault Partitions**: Segregated spaces for sensitive private media vs. identity/financial documents.
-- **In-Memory Decryption**: Zero-disk leakage during playback and browsing; encrypted payloads are streamed directly to memory.
-- **Two-Factor Authentication**: Optional TOTP (Google Authenticator, Bitwarden, etc.) layer for vault access.
-- **Auto-Lock & Session Invalidation**: Automatic timeout lockouts and short-lived in-memory token expiration.
+* **Node.js**: v20.x or v22.x LTS (`node -v` & `npm -v`)
+* **Python**: v3.11+ or v3.12+ (`python --version` or `uv python`)
+* **OS**: Windows 10/11 (DirectML supported), macOS, or Linux
 
 ---
 
-## 🏗️ Architecture Overview
+### 2. ⚡ Starting the Application
 
-For complete flowcharts, security lifecycles, and database ER diagrams, refer to [ARCHITECTURE.md](file:///c:/Sumit%20Code/SecurePhotos/ARCHITECTURE.md).
+#### Step A: Start the Python Backend Sidecar Engine (Port 8000)
+Open a terminal in the project root:
 
-For the clean-slate greenfield technical roadmap, refer to [GREENFIELD_ENTERPRISE_BLUEPRINT.md](file:///c:/Sumit%20Code/SecurePhotos/GREENFIELD_ENTERPRISE_BLUEPRINT.md).
+```powershell
+# 1. Activate Python virtual environment
+.venv\Scripts\activate
+
+# 2. Run the FastAPI engine sidecar
+python -m uvicorn engine.main:app --port 8000 --reload
+```
+> 📍 **API Documentation**: Open **[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)** to inspect the Swagger UI.
+
+---
+
+#### Step B: Start the Modern Frontend UI (Port 1420)
+Open a second terminal in the project root:
+
+```powershell
+# 1. Install dependencies (if first time)
+npm install
+
+# 2. Start the Vite dev server
+npm run dev
+```
+> 📍 **Interactive Desktop UI**: Open **[http://localhost:1420](http://localhost:1420)** in your browser or run inside Tauri.
+
+---
+
+### 3. 🧪 Running Automated Tests
+
+Run the full backend test suite covering SQLite WAL pragmas, volume tracking, high-speed ingestion, zero-trust cryptography, and stories:
+
+```powershell
+.venv\Scripts\python.exe -m pytest engine/tests -v
+```
+
+---
+
+### 4. 📦 Building for Production
+
+Compile the optimized frontend bundle:
+
+```powershell
+npm run build
+```
+
+---
+
+## ⌨️ Desktop Keyboard Shortcuts
+
+| Shortcut | Action | Scope |
+|---|---|---|
+| `T` | Toggle Theme (Dark Obsidian 🌙 / Light Titanium ☀️) | Global |
+| `Ctrl + K` / `Cmd + K` | Focus Global Hybrid Search Box | Global |
+| `J` / `ArrowRight` | Next Photo / Next Story Slide | Grid / Lightbox / Stories |
+| `K` / `ArrowLeft` | Previous Photo / Previous Story Slide | Grid / Lightbox / Stories |
+| `Space` | Quick Look / Play & Pause Story | Grid / Stories |
+| `E` | Toggle 4K AI Before/After Comparison Split Slider | Lightbox |
+| `Ctrl + I` | Toggle EXIF Metadata Info Drawer | Lightbox |
+| `F` | Toggle Favorite Star | Grid / Lightbox |
+| `L` | Lock Selected Photo/Album to Encrypted Vault | Grid / Lightbox / Albums |
+| `Escape` | Close Lightbox / Clear Selection / Close Modal | Global |
+
+---
+
+## 📑 Architecture & Specifications
+
+For comprehensive engineering specifications, refer to:
+* **[docs/end_to_end_implementation_plan.md](file:///c:/Sumit%20Code/SecurePhotos/docs/end_to_end_implementation_plan.md)**: Roadmap, 4K pipeline, external drive resilience, and zero-trust vault.
+* **[docs/database_schema_and_indexing.md](file:///c:/Sumit%20Code/SecurePhotos/docs/database_schema_and_indexing.md)**: SQLite WAL schema, FTS5 triggers, and covering indexes.
+* **[docs/ui_ux_design_specification.md](file:///c:/Sumit%20Code/SecurePhotos/docs/ui_ux_design_specification.md)**: Design token system, 60fps virtualization, and UX flows.
 
 ---
 
 ## 📄 License
-
 Proprietary and Confidential. All rights reserved.
