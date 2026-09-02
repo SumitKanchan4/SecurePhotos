@@ -17,6 +17,10 @@ import { VaultView } from "./components/VaultView";
 import { StoriesCarousel } from "./components/StoriesCarousel";
 import { StoryPlayerModal } from "./components/StoryPlayerModal";
 import { PeopleView } from "./components/PeopleView";
+import { AlbumsView } from "./components/AlbumsView";
+import { DocumentsView } from "./components/DocumentsView";
+import { TrashView } from "./components/TrashView";
+import { SettingsView } from "./components/SettingsView";
 import { CollageModal } from "./components/CollageModal";
 import { useAppStore } from "./store/useAppStore";
 import { PhotoItem } from "./types";
@@ -114,9 +118,23 @@ export const App: React.FC = () => {
               onUnlockRequest={() => setIsVaultUnlockModalOpen(true)}
               onPhotoClick={(idx) => setLightboxIndex(idx)}
             />
+          ) : activeTab === "albums" ? (
+            /* Albums Grid & Management */
+            <AlbumsView 
+              onLockAlbumToVault={() => setIsVaultUnlockModalOpen(true)}
+            />
           ) : activeTab === "people" ? (
             /* People Management & Representative Medoid Tagging View */
             <PeopleView />
+          ) : activeTab === "documents" ? (
+            /* OCR Scanned Documents & Invoices */
+            <DocumentsView />
+          ) : activeTab === "trash" ? (
+            /* 30-Day Trash & Soft-Delete Safe */
+            <TrashView />
+          ) : activeTab === "settings" ? (
+            /* Settings & Preferences */
+            <SettingsView />
           ) : activeTab === "stories" ? (
             /* Stories Hub & Insights */
             <div style={{ flex: 1, overflowY: "auto", padding: "10px" }}>
@@ -140,7 +158,7 @@ export const App: React.FC = () => {
               >
                 <div>
                   <h1 style={{ fontSize: "18px", fontWeight: 700, textTransform: "capitalize", letterSpacing: "-0.3px" }}>
-                    {activeTab === "photos" ? "All Photos & Videos" : activeTab}
+                    All Photos & Videos
                   </h1>
                   <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
                     12,482 media items • 4K Space-Saver Mode Active (-62% disk space saved)
