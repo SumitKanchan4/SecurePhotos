@@ -1,4 +1,7 @@
-# Helper script to launch SecurePhotos 2.0 Native Desktop App
+# Helper script to launch SecurePhotos Native Desktop App
+$projectRoot = Split-Path -Parent $PSScriptRoot
+Set-Location $projectRoot
+
 $env:Path = "C:\Users\sumit\.local\w64devkit\bin;C:\Users\sumit\.local\nodejs;C:\Users\sumit\.local\bin;C:\Users\sumit\.cargo\bin;$env:Path"
 
 # Point Cargo build artifacts to a space-free target directory
@@ -17,5 +20,5 @@ if ($activePort) {
     Start-Sleep -Milliseconds 500
 }
 
-Write-Host "Launching SecurePhotos 2.0 Native Desktop Application..." -ForegroundColor Magenta
+Write-Host "Launching SecurePhotos Native Desktop Application..." -ForegroundColor Magenta
 npm run tauri dev

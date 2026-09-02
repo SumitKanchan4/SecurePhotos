@@ -27,33 +27,24 @@
 
 ---
 
-### 2. ⚡ Starting the Application
+### 2. ⚡ Starting the Application (1-Click Scripts)
 
-#### Step A: Start the Python Backend Sidecar Engine (Port 8000)
-Open a terminal in the project root:
-
+#### 🖥️ Launch the Native Desktop App Window (Tauri 2.0)
 ```powershell
-# 1. Activate Python virtual environment
-.venv\Scripts\activate
-
-# 2. Run the FastAPI engine sidecar
-python -m uvicorn engine.main:app --port 8000 --reload
+.\scripts\run-desktop-app.ps1
 ```
-> 📍 **API Documentation**: Open **[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)** to inspect the Swagger UI.
 
----
-
-#### Step B: Start the Modern Frontend UI (Port 1420)
-Open a second terminal in the project root:
-
+#### 🌐 Launch the Frontend UI (Port 1420)
 ```powershell
-# 1. Install dependencies (if first time)
-npm install
-
-# 2. Start the Vite dev server
-npm run dev
+.\scripts\run-frontend.ps1
 ```
-> 📍 **Interactive Desktop UI**: Open **[http://localhost:1420](http://localhost:1420)** in your browser or run inside Tauri.
+> 📍 **Interactive UI**: Open **[http://localhost:1420](http://localhost:1420)** in your browser.
+
+#### 🐍 Launch the Python Engine Sidecar (Port 8000)
+```powershell
+.\scripts\run-backend.ps1
+```
+> 📍 **API Documentation**: Open **[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)** for interactive Swagger UI.
 
 ---
 
@@ -96,10 +87,12 @@ npm run build
 
 ## 📑 Architecture & Specifications
 
-For comprehensive engineering specifications, refer to:
+All detailed design documents and specifications are located in the **[`docs/`](file:///c:/Sumit%20Code/SecurePhotos/docs)** directory:
+* **[docs/architecture.md](file:///c:/Sumit%20Code/SecurePhotos/docs/architecture.md)**: Flowcharts, lifecycle diagrams, and SQLite WAL database structure.
 * **[docs/end_to_end_implementation_plan.md](file:///c:/Sumit%20Code/SecurePhotos/docs/end_to_end_implementation_plan.md)**: Roadmap, 4K pipeline, external drive resilience, and zero-trust vault.
-* **[docs/database_schema_and_indexing.md](file:///c:/Sumit%20Code/SecurePhotos/docs/database_schema_and_indexing.md)**: SQLite WAL schema, FTS5 triggers, and covering indexes.
+* **[docs/database_schema_and_indexing.md](file:///c:/Sumit%20Code/SecurePhotos/docs/database_schema_and_indexing.md)**: SQLite schema, FTS5 triggers, and covering indexes.
 * **[docs/ui_ux_design_specification.md](file:///c:/Sumit%20Code/SecurePhotos/docs/ui_ux_design_specification.md)**: Design token system, 60fps virtualization, and UX flows.
+* **[docs/greenfield_enterprise_blueprint.md](file:///c:/Sumit%20Code/SecurePhotos/docs/greenfield_enterprise_blueprint.md)**: Enterprise architectural blueprint.
 
 ---
 

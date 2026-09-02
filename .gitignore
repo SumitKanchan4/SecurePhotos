@@ -17,6 +17,7 @@ dist/
 # Rust / Tauri
 target/
 src-tauri/target/
+src-tauri/gen/
 
 # OS
 .DS_Store
