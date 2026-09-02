@@ -6,10 +6,11 @@ import { PhotoItem } from "../types";
 
 interface PhotoGridProps {
   photos?: PhotoItem[];
+  onPhotoClick?: (index: number) => void;
 }
 
 // Mock dataset generator for initial testing & rendering benchmarks
-const generateMockPhotos = (count: number): PhotoItem[] => {
+export const generateMockPhotos = (count: number): PhotoItem[] => {
   return Array.from({ length: count }, (_, i) => ({
     id: i + 1,
     filename: `IMG_2026_${(i + 1).toString().padStart(5, "0")}.avif`,
@@ -27,7 +28,7 @@ const generateMockPhotos = (count: number): PhotoItem[] => {
   }));
 };
 
-export const PhotoGrid: React.FC<PhotoGridProps> = ({ photos }) => {
+export const PhotoGrid: React.FC<PhotoGridProps> = ({ photos, onPhotoClick }) => {
   const parentRef = useRef<HTMLDivElement>(null);
   const { selectedPhotoIds, togglePhotoSelection } = useAppStore();
   
@@ -80,13 +81,20 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ photos }) => {
                 paddingBottom: "10px",
               }}
             >
-              {rowPhotos.map((photo) => {
+              {rowPhotos.map((photo, itemIdx) => {
+                const globalIndex = startIndex + itemIdx;
                 const isSelected = selectedPhotoIds.has(photo.id);
 
                 return (
                   <div
                     key={photo.id}
-                    onClick={() => togglePhotoSelection(photo.id)}
+                    onClick={(e) => {
+                      if (e.shiftKey || e.ctrlKey) {
+                        togglePhotoSelection(photo.id);
+                      } else {
+                        onPhotoClick?.(globalIndex);
+                      }
+                    }}
                     className="clickable"
                     style={{
                       position: "relative",
@@ -166,6 +174,10 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ photos }) => {
 
                     {/* Selection Checkbox */}
                     <div 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        togglePhotoSelection(photo.id);
+                      }}
                       style={{
                         position: "absolute",
                         top: "6px",

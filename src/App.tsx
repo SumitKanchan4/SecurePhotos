@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Sparkles, 
   Lock, 
@@ -7,9 +7,12 @@ import {
 } from "lucide-react";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
-import { PhotoGrid } from "./components/PhotoGrid";
+import { PhotoGrid, generateMockPhotos } from "./components/PhotoGrid";
 import { DriveStatusBanner } from "./components/DriveStatusBanner";
+import { ImportModal } from "./components/ImportModal";
+import { Lightbox } from "./components/Lightbox";
 import { useAppStore } from "./store/useAppStore";
+import { PhotoItem } from "./types";
 
 export const App: React.FC = () => {
   const { 
@@ -20,9 +23,16 @@ export const App: React.FC = () => {
     setActiveVolume
   } = useAppStore();
 
+  const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
   // Initialize and register global desktop keyboard shortcuts
   useEffect(() => {
-    // Set initial mock volume
+    // Generate initial media dataset
+    setPhotos(generateMockPhotos(1200));
+
+    // Set active volume info
     setActiveVolume({
       drive_letter: "E:\\",
       volume_name: "Samsung_T7",
@@ -179,6 +189,7 @@ export const App: React.FC = () => {
                     Sync Folder
                   </button>
                   <button
+                    onClick={() => setIsImportModalOpen(true)}
                     className="clickable"
                     style={{
                       display: "flex",
@@ -234,12 +245,30 @@ export const App: React.FC = () => {
           </div>
 
           {/* 60 FPS Virtualized Grid */}
-          <PhotoGrid />
+          <PhotoGrid 
+            photos={photos} 
+            onPhotoClick={(idx) => setLightboxIndex(idx)} 
+          />
         </main>
       </div>
 
       {/* Floating External Drive Status Banner */}
       <DriveStatusBanner />
+
+      {/* Interactive Import Modal */}
+      <ImportModal 
+        isOpen={isImportModalOpen} 
+        onClose={() => setIsImportModalOpen(false)} 
+      />
+
+      {/* Immersive Fluid Lightbox */}
+      <Lightbox
+        photos={photos}
+        currentIndex={lightboxIndex ?? 0}
+        isOpen={lightboxIndex !== null}
+        onClose={() => setLightboxIndex(null)}
+        onNavigate={(idx) => setLightboxIndex(idx)}
+      />
     </div>
   );
 };
