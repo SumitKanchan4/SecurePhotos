@@ -1,6 +1,6 @@
 # 🎨 SecurePhotos 2.0 — UI/UX Design System & Performance Specification
 
-> **Enterprise-grade, crisp, and high-performance design system supporting dual Dark & Light themes, fluid lightboxes, and 60fps virtualized scrolling across 100,000+ media assets.**
+> **Enterprise-grade, crisp, and high-performance design system supporting dual Dark & Light themes, fluid lightboxes with 4K AI split-sliders, Stories & Ken-Burns beat-synced player, 4K Collage Maker, Multi-Slot Zero-Trust Vault unlock, Full Album Vault migration, Frosted Privacy Shields, external drive status indicators, and 60fps virtualized scrolling across 100,000+ media assets.**
 
 ---
 
@@ -11,6 +11,10 @@ SecurePhotos 2.0 is built around **visual clarity, immediate responsiveness, and
 - **Crisp Typography**: High-legibility modern sans-serif typography (`Inter` for UI, `JetBrains Mono` for metadata/hashes).
 - **Subtle Glassmorphism & Depth**: Multi-tier elevation using subtle semi-transparent surfaces and borders rather than heavy, muddy drop-shadows.
 - **Zero Layout Shifts (CLS = 0)**: Pre-calculated aspect ratio skeletons prevent jarring page jumps during thumbnail streaming.
+- **Zero-Trust Intimacy & Privacy**: Total isolation of Vault photos with biometrics (Windows Hello), Authenticator 2FA, Full Album Lock/Unlock, and Frosted Privacy Shields.
+- **Nostalgia & Delight**: Automatic Stories with vibe-matched audio, 4K Collages, and Ken-Burns cinematic playback.
+- **Intelligent People Management**: Representative Medoid face cards that eliminate tagging fatigue ("Name Once, Tag 1,000 Photos").
+- **Drive Resilience & Transparency**: Clear, non-intrusive status indicators for external USB drives, hierarchical sharding status, and background 4K optimization queues.
 - **Keyboard-First Ergonomics**: Native desktop productivity with full keyboard navigation across all views.
 
 ---
@@ -127,19 +131,19 @@ The design system uses CSS custom properties (`var(--token)`), ensuring instant,
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │ [TitleBar] 🔒 SecurePhotos  |  🔍 Search photos, docs, tags... (Ctrl+K)   |  [—] [□] [✕] │
 ├──────────────┬─────────────────────────────────────────────────────────────────────────┤
-│ [Sidebar]    │ [Page Header] Photos  •  12,482 items  •  Sort: Date Taken (Desc)       │
+│ [Sidebar]    │ [Page Header] Photos  •  12,482 items  •  💾 External Drive (E:) [Online]│
 │              ├─────────────────────────────────────────────────────────────────────────┤
-│ 📸 Photos    │ [Timeline Filter Bar] 2026 | 2025 | 2024 | 2023 | All                    │
+│ 📸 Photos    │ [Stories Carousel Bar] ✨ Alice Through the Years | 🎂 On This Day...   │
 │ 📁 Albums    ├─────────────────────────────────────────────────────────────────────────┤
-│ 👥 People    │ [Virtualized Media Grid (60 FPS)]                                       │
-│ 📄 Documents │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐│
-│ 🔍 Insights  │  │ Photo 1 │ │ Photo 2 │ │ Photo 3 │ │ Photo 4 │ │ Photo 5 │ │ Photo 6 ││
-│ 🔐 Vault     │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘│
-│ 🗑️ Trash    │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐│
-│ ⚙️ Settings  │  │ Photo 7 │ │ Photo 8 │ │ Photo 9 │ │Photo 10 │ │Photo 11 │ │Photo 12 ││
+│ 👥 People    │ [Timeline Filter Bar] 2026 | 2025 | 2024 | 2023 | All                    │
+│ 📄 Documents ├─────────────────────────────────────────────────────────────────────────┤
+│ 🔍 Insights  │ [Virtualized Media Grid (60 FPS)]                                       │
+│ 🔐 Vault     │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐│
+│ 🗑️ Trash    │  │ Photo 1 │ │ Photo 2 │ │ Photo 3 │ │ Photo 4 │ │ Photo 5 │ │ Photo 6 ││
+│ ⚙️ Settings  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘│
+│ ───────────  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐│
+│ ⚡ 4K AI Ready│  │ Photo 7 │ │ Photo 8 │ │ Photo 9 │ │Photo 10 │ │Photo 11 │ │Photo 12 ││
 │              │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘│
-│ ───────────  │  ... (Only ~30 active DOM nodes mounted at any time via virtualizer)     │
-│ ⚡ AI Ready │                                                                         │
 └──────────────┴─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -154,36 +158,135 @@ To ensure rendering **100,000+ photos** never degrades frame rates:
    - Only cards currently in the viewport (+ an overscan buffer of 2 rows above and below) are instantiated in the React virtual DOM.
 2. **Progressive Thumbnail Blur-Up**:
    - Step 1: Render an aspect-ratio container with a neutral shimmering skeleton (`--bg-surface-elevated`).
-   - Step 2: Request low-resolution 256px thumbnail.
+   - Step 2: Request low-resolution 256px WebP thumbnail (~15 KB).
    - Step 3: Fade in smoothly via CSS opacity transition (`opacity: 0 -> 1` over `150ms`).
 3. **Decoupled Selection & State**:
    - Multi-selection state (range select with `Shift + Click`, individual toggle with `Ctrl + Click`) is managed via a high-speed `Set<number>` in a localized Zustand store to prevent global grid re-renders.
 
 ---
 
-## 5. Fluid Lightbox & Visual Inspection
+## 5. Multi-Slot Zero-Trust Vault & Privacy Screens
 
-- **Transitions**: Lightbox opens with a spring scale animation (`scale(0.92) -> scale(1.0)` with `backdrop-filter: blur(16px)`).
-- **Deep Zoom & Pan**: Smooth mouse-wheel zooming up to 400% with CSS `transform: translate3d(...)` and double-click to reset.
-- **EXIF Inspector Sidebar**: Collapsible slide-over drawer (`Ctrl + I`) showing:
-  - Histogram & color profile
-  - Camera make, model, lens, focal length, aperture ($f$), ISO, shutter speed
-  - Geolocation mini-map (if GPS coordinates are present)
-  - Face tags & detected AI objects/text
-  - Cryptographic file hash & storage location
+### 5.1 Multi-Option Vault Unlock Modal
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ 🔐 Unlock Private Vault                                                │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                        │
+│       [ 👆 Touch Fingerprint Sensor or use Windows Hello ]             │
+│                                                                        │
+│                      ─── OR ENTER PIN / PASSWORD ───                   │
+│                                                                        │
+│ PIN / Password: [ ••••••••••••              ]                          │
+│ Authenticator 2FA (TOTP): [ 482 910 ]                                  │
+│                                                                        │
+│      [ Unlock Vault ]         [ 🔑 Forgot Password? Use Recovery Key ] │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### 5.2 Full Album Vault Migration & Decryption (`Move In / Move Out`)
+- **Move Full Album to Vault**: In public album context menu `(...)` ➔ click **"🔒 Move Album to Vault"**. Encrypts all photos, removes album from public view, and places it inside the Vault.
+- **Restore Album from Vault**: Inside the Vault ➔ click **"🔓 Decrypt & Restore to Public Library"** to return all photos and album metadata to the public timeline.
+
+### 5.3 Batch Vault Optimizer & Frosted Privacy Shield
+- During active batch vault 4K enhancement, the lock timer is extended until completion.
+- If the user switches windows or steps away, the app displays a **Frosted Glass Privacy Shield**:
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ 🔒 Vault Active: Optimizing to 4K in RAM...                            │
+│ [████████████████░░░░░░░░░░░░] 240 / 500 items (48%)                   │
+│                                                                        │
+│ [ 🛑 Stop & Lock Now ]         (Auto-locks immediately on completion)  │
+└────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## 6. Comprehensive Keyboard Shortcuts
+## 6. Automatic Stories, Beat-Matched Player & 4K Collage Maker
+
+### 6.1 Stories Hub Carousel (Home / Insights)
+- Displays top curated stories filtered to **Close Ones (Affinity Score > 65)**:
+  * *🌟 Alice: Through the Years (2012 — 2026)*
+  * *🎂 On This Day: 5 Years Ago*
+  * *✈️ Paris Summer Trip with Alice & Bob*
+
+### 6.2 Cinematic Beat-Matched Story Player Modal
+- **Vibe-Matched Music**: Plays loopable ambient tracks matching the emotional mood of the scene, with cuts synchronized to music downbeats.
+- **1-Click Video Export**: Renders a lightweight, visually lossless 4K 60fps MP4 file in seconds.
+
+### 6.3 Smart 4K Mosaic Collage Generator
+- Selected photos in the grid can trigger **"🎨 Create 4K Collage"**.
+- Offers Treemap layout options (2x2, Hero-Grid, Polaroid Mosaic) with face-aware cropping to avoid cutting heads.
+- Exports to high-res printable 4K AVIF/PNG.
+
+---
+
+## 7. People & Face Management (Representative Medoid System)
+
+### 7.1 "Name Once, Tag 1,000 Photos" Representative Medoid Card
+In the **👥 People** view, unsupervised clusters are surfaced using 3–4 diverse anchor medoids (portrait, side-profile, outdoor, sunglasses):
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ 👥 Who is this person?                                                 │
+├────────────────────────────────────────────────────────────────────────┤
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐                │
+│  │ [Face 1] │  │ [Face 2] │  │ [Face 3] │  │ [Face 4] │  (+996 others) │
+│  │ Portrait │  │ Profile  │  │ Outdoor  │  │ Glasses  │                │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘                │
+│                                                                        │
+│ Name: [ Alice                   ]   [✓ Confirm & Tag 1,000 Photos]     │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### 7.2 Social Affinity Badge & Relationship Customizer
+- On Alice's profile: `⭐ Close One (Affinity: 94/100)` | `Relationship: [ Daughter ▼ ]`.
+- Toggle: `[x] Generate Automatic Stories & Milestones for Alice`.
+
+---
+
+## 8. Ingestion Modals, External Drive & Settings UI
+
+### 8.1 Interactive Import Confirmation Modal (Mode A: Managed Import)
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ 📥 Import Media to External Vault                                      │
+├────────────────────────────────────────────────────────────────────────┤
+│ Found 1,420 files (42.6 GB) • Estimated 4K Space: ~14.8 GB (-65%)     │
+│ Target Path: E:\.securephotos_library\originals\YYYY\MM\DD\           │
+│                                                                        │
+│ 🧹 Source File Cleanup Option:                                         │
+│ ( ) Keep Source Files (Copy only — originals remain untouched)        │
+│ (●) Move & Free Source (Deletes from SD Card/Phone after SHA-256 verify)│
+│                                                                        │
+│ ⚙️ Optimization & Deduplication:                                       │
+│ [x] Skip duplicate files already present in library                    │
+│ [x] Convert to visually lossless 4K AVIF/AV1 in background             │
+│                                                                        │
+│                    [ Cancel ]        [ Start Import ]                  │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### 8.2 Disconnection / Reconnection Banners
+- **Active / Online**: Clean subtle pill in header: `💾 Samsung T7 (E:) • 420 GB free`.
+- **Sudden Disconnection**: Non-blocking toast + floating frosted glass banner:
+  > `⚠️ External Storage Disconnected (Volume: MediaVault-2026). Processing queues paused safely without data loss. Reconnect drive to resume.`
+- **Auto-Reconnection**: Banner clears automatically and resumes pending import/optimization tasks within 500ms of drive detection.
+
+---
+
+## 9. Comprehensive Keyboard Shortcuts
 
 | Shortcut | Action | Scope |
 |---|---|---|
 | `Ctrl + K` / `Cmd + K` | Focus Global Hybrid Search Box | Global |
-| `J` / `ArrowRight` | Next Photo | Grid / Lightbox |
-| `K` / `ArrowLeft` | Previous Photo | Grid / Lightbox |
-| `Space` | Toggle Quick Look / Lightbox | Grid |
+| `J` / `ArrowRight` | Next Photo / Next Story Slide | Grid / Lightbox / Stories |
+| `K` / `ArrowLeft` | Previous Photo / Previous Story Slide | Grid / Lightbox / Stories |
+| `Space` | Toggle Quick Look / Play & Pause Story | Grid / Stories |
+| `E` | Trigger 4K AI Enhancement / Split-Slider | Lightbox |
 | `F` | Toggle Favorite | Grid / Lightbox |
-| `L` | Move Selected to Encrypted Vault | Grid / Lightbox |
+| `L` | Move Selected Photo/Album to Vault | Grid / Lightbox / Albums |
+| `U` | Move Selected Photo/Album Out of Vault | Vault |
 | `Delete` / `Backspace` | Move to Trash (Soft Delete) | Grid / Lightbox |
 | `Ctrl + A` | Select All Visible Photos in Section | Grid |
 | `Ctrl + I` | Toggle EXIF Info Drawer | Lightbox |
