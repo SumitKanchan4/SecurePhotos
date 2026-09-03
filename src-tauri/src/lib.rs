@@ -120,19 +120,13 @@ fn check_system_prerequisites() -> SystemPrerequisites {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_engine_status,
             check_system_prerequisites,
             relaunch_app
         ])
         .setup(|app| {
-            // Register updater plugin safely inside setup
-            #[cfg(desktop)]
-            {
-                if let Err(err) = app.handle().plugin(tauri_plugin_updater::Builder::new().build()) {
-                    eprintln!("Warning: Failed to initialize updater plugin: {err}");
-                }
-            }
 
             let quit_i = MenuItem::with_id(app, "quit", "Quit SecurePhotos", true, None::<&str>)?;
             let show_i = MenuItem::with_id(app, "show", "Open Library", true, None::<&str>)?;

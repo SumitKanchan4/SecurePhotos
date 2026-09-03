@@ -79,6 +79,7 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.zip
             src-tauri/target/release/bundle/nsis/*.sig
             src-tauri/target/release/bundle/**/latest.json
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
