@@ -15,29 +15,10 @@ interface VaultViewProps {
   onPhotoClick?: (index: number) => void;
 }
 
-const generateVaultMockPhotos = (count: number): PhotoItem[] => {
-  return Array.from({ length: count }, (_, i) => ({
-    id: 10000 + i + 1,
-    filename: `PRIVATE_VAULT_${(i + 1).toString().padStart(4, "0")}.enc`,
-    filepath: `vault/private/PRIVATE_VAULT_${(i + 1).toString().padStart(4, "0")}.enc`,
-    file_size: 1024 * 1024 * 2.4,
-    mime_type: "image/jpeg",
-    width: 3840,
-    height: 2160,
-    taken_at: new Date(Date.now() - i * 3600 * 1000 * 24).toISOString(),
-    is_favorite: i % 3 === 0,
-    is_encrypted: true,
-    vault_type: "private",
-    is_optimized: true,
-    is_enhanced: true,
-    caption: `Zero-Trust Encrypted Intimate Asset #${i + 1}`,
-  }));
-};
-
 export const VaultView: React.FC<VaultViewProps> = ({ onUnlockRequest, onPhotoClick }) => {
   const { isVaultUnlocked, setIsVaultUnlocked } = useAppStore();
   const [isPrivacyShieldActive, setIsPrivacyShieldActive] = useState(false);
-  const [vaultPhotos] = useState<PhotoItem[]>(generateVaultMockPhotos(48));
+  const [vaultPhotos] = useState<PhotoItem[]>([]);
 
   if (!isVaultUnlocked) {
     return (
@@ -222,8 +203,28 @@ export const VaultView: React.FC<VaultViewProps> = ({ onUnlockRequest, onPhotoCl
         </div>
       )}
 
-      {/* Decrypted Vault Photos Grid */}
-      <PhotoGrid photos={vaultPhotos} onPhotoClick={onPhotoClick} />
+      {/* Decrypted Vault Content */}
+      {vaultPhotos.length === 0 ? (
+        <div 
+          style={{
+            marginTop: "80px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--text-muted)",
+            textAlign: "center",
+          }}
+        >
+          <Lock size={48} style={{ opacity: 0.3, marginBottom: "12px", color: "var(--accent-vault)" }} />
+          <p style={{ fontSize: "14px", fontWeight: 600 }}>Your Vault is Empty</p>
+          <p style={{ fontSize: "12px", marginTop: "4px", maxWidth: "380px" }}>
+            Select any photo from your library and press <strong>"Move to Vault (L)"</strong> to encrypt it with AES-256-GCM.
+          </p>
+        </div>
+      ) : (
+        <PhotoGrid photos={vaultPhotos} onPhotoClick={onPhotoClick} />
+      )}
     </div>
   );
 };

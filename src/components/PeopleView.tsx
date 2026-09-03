@@ -18,25 +18,8 @@ interface UnlabeledCluster {
 }
 
 export const PeopleView: React.FC = () => {
-  const [people, setPeople] = useState<PersonItem[]>([
-    { id: 1, name: "Alice", affinity_score: 94.2, relationship_type: "Daughter", is_close_one: true, confirmed_count: 1420 },
-    { id: 2, name: "Bob", affinity_score: 88.5, relationship_type: "Partner", is_close_one: true, confirmed_count: 980 },
-    { id: 3, name: "Grandma Evelyn", affinity_score: 72.0, relationship_type: "Family", is_close_one: true, confirmed_count: 340 },
-    { id: 4, name: "David", affinity_score: 42.1, relationship_type: "Friend", is_close_one: false, confirmed_count: 85 },
-  ]);
-
-  const [unlabeledClusters, setUnlabeledClusters] = useState<UnlabeledCluster[]>([
-    {
-      clusterId: "cluster_904",
-      photoCount: 412,
-      anchorFaces: [
-        { label: "Portrait", icon: <Smile size={18} /> },
-        { label: "Side Profile", icon: <Camera size={18} /> },
-        { label: "Outdoor", icon: <Sun size={18} /> },
-        { label: "Glasses", icon: <Glasses size={18} /> },
-      ],
-    },
-  ]);
+  const [people, setPeople] = useState<PersonItem[]>([]);
+  const [unlabeledClusters, setUnlabeledClusters] = useState<UnlabeledCluster[]>([]);
 
   const [newTagNames, setNewTagNames] = useState<{ [key: string]: string }>({});
 
@@ -59,9 +42,29 @@ export const PeopleView: React.FC = () => {
 
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
-      {/* Section 1: Unsupervised Face Clusters ("Name Once, Tag 1,000 Photos") */}
-      {unlabeledClusters.length > 0 && (
-        <div style={{ marginBottom: "32px" }}>
+      {people.length === 0 && unlabeledClusters.length === 0 ? (
+        <div 
+          style={{
+            marginTop: "60px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--text-muted)",
+            textAlign: "center",
+          }}
+        >
+          <Users size={48} style={{ opacity: 0.3, marginBottom: "12px" }} />
+          <p style={{ fontSize: "14px", fontWeight: 600 }}>No People Identified Yet</p>
+          <p style={{ fontSize: "12px", marginTop: "4px", maxWidth: "380px" }}>
+            As you import photos containing people, on-device facial recognition will automatically cluster and present them here for naming.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Section 1: Unsupervised Face Clusters ("Name Once, Tag 1,000 Photos") */}
+          {unlabeledClusters.length > 0 && (
+            <div style={{ marginBottom: "32px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
             <Sparkles size={18} style={{ color: "var(--accent-primary)" }} />
             <h2 style={{ fontSize: "16px", fontWeight: 700 }}>Unlabeled Face Clusters Found</h2>
@@ -250,6 +253,8 @@ export const PeopleView: React.FC = () => {
           ))}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 };

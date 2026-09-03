@@ -17,11 +17,7 @@ interface TrashedItem {
 }
 
 export const TrashView: React.FC = () => {
-  const [trashedItems, setTrashedItems] = useState<TrashedItem[]>([
-    { id: 1, filename: "IMG_20260714_BURST_01.jpg", deletedAt: "2026-08-28", daysRemaining: 26, fileSize: "4.2 MB" },
-    { id: 2, filename: "DSC_9021_BLURRY.jpg", deletedAt: "2026-08-24", daysRemaining: 22, fileSize: "8.1 MB" },
-    { id: 3, filename: "SCREENSHOT_TEMP_04.png", deletedAt: "2026-08-10", daysRemaining: 8, fileSize: "1.2 MB" },
-  ]);
+  const [trashedItems, setTrashedItems] = useState<TrashedItem[]>([]);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 

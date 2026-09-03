@@ -23,44 +23,7 @@ export const DocumentsView: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const [documents] = useState<DocumentItem[]>([
-    {
-      id: 1,
-      title: "Apple Store MacBook Pro Invoice",
-      category: "receipt",
-      date: "2026-08-14",
-      extractedText: "Apple Inc. Order #W984210. Total: $2,499.00 USD. Payment Method: Apple Card.",
-      fileSize: "1.4 MB",
-      isEncrypted: false,
-    },
-    {
-      id: 2,
-      title: "International Passport Scan (Sumit)",
-      category: "identity",
-      date: "2025-11-20",
-      extractedText: "REPUBLIC OF INDIA PASSPORT. Document No: Z9104821. Expiry: 2035.",
-      fileSize: "3.2 MB",
-      isEncrypted: true,
-    },
-    {
-      id: 3,
-      title: "Annual Federal Tax Return Form 1040",
-      category: "tax",
-      date: "2026-04-12",
-      extractedText: "Department of the Treasury Internal Revenue Service. 1040 U.S. Individual Income Tax Return.",
-      fileSize: "4.8 MB",
-      isEncrypted: true,
-    },
-    {
-      id: 4,
-      title: "Health & Dental Insurance Policy Card",
-      category: "medical",
-      date: "2026-01-05",
-      extractedText: "BlueCross Health Network. Policy #BC-4901928-A. Group #88391.",
-      fileSize: "2.1 MB",
-      isEncrypted: false,
-    },
-  ]);
+  const [documents] = useState<DocumentItem[]>([]);
 
   const filteredDocs = documents.filter((doc) => {
     const matchesCat = activeCategory === "all" || doc.category === activeCategory;
@@ -162,109 +125,129 @@ export const DocumentsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Documents List / Card View */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: "16px" }}>
-        {filteredDocs.map((doc) => (
-          <div
-            key={doc.id}
-            className="glass-panel"
-            style={{
-              borderRadius: "var(--radius-md)",
-              backgroundColor: "var(--bg-surface)",
-              border: "1px solid var(--border-subtle)",
-              padding: "16px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "10px",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div 
-                  style={{
-                    width: "36px",
-                    height: "36px",
-                    borderRadius: "var(--radius-sm)",
-                    backgroundColor: doc.isEncrypted ? "rgba(139, 92, 246, 0.15)" : "var(--bg-surface-elevated)",
-                    color: doc.isEncrypted ? "var(--accent-vault)" : "var(--accent-primary)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {doc.category === "receipt" ? <Receipt size={18} /> : 
-                   doc.category === "identity" ? <CreditCard size={18} /> : 
-                   doc.category === "tax" ? <FileCheck2 size={18} /> : <FileText size={18} />}
-                </div>
-
-                <div>
-                  <h3 style={{ fontSize: "14px", fontWeight: 700 }}>{doc.title}</h3>
-                  <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                    {doc.date} • {doc.fileSize}
-                  </span>
-                </div>
-              </div>
-
-              {doc.isEncrypted && (
-                <span 
-                  title="Encrypted in Zero-Trust Vault"
-                  style={{
-                    backgroundColor: "var(--accent-vault)",
-                    color: "#ffffff",
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    padding: "2px 6px",
-                    borderRadius: "var(--radius-xs)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "3px",
-                  }}
-                >
-                  <Lock size={10} /> ENCRYPTED
-                </span>
-              )}
-            </div>
-
-            {/* OCR Extracted Text Snippet */}
-            <div 
+      {filteredDocs.length === 0 ? (
+        <div 
+          style={{
+            marginTop: "60px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--text-muted)",
+            textAlign: "center",
+          }}
+        >
+          <FileText size={48} style={{ opacity: 0.3, marginBottom: "12px" }} />
+          <p style={{ fontSize: "14px", fontWeight: 600 }}>No Documents Detected</p>
+          <p style={{ fontSize: "12px", marginTop: "4px", maxWidth: "380px" }}>
+            Images containing receipts, invoices, passports, or forms will be automatically detected and full-text indexed via on-device OCR.
+          </p>
+        </div>
+      ) : (
+        /* Documents List / Card View */
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: "16px" }}>
+          {filteredDocs.map((doc) => (
+            <div
+              key={doc.id}
+              className="glass-panel"
               style={{
-                backgroundColor: "var(--bg-sidebar)",
-                padding: "10px",
-                borderRadius: "var(--radius-sm)",
+                borderRadius: "var(--radius-md)",
+                backgroundColor: "var(--bg-surface)",
                 border: "1px solid var(--border-subtle)",
-                fontSize: "11px",
-                fontFamily: "var(--font-mono)",
-                color: "var(--text-secondary)",
-                lineHeight: "1.4",
+                padding: "16px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
               }}
             >
-              <span style={{ color: "var(--accent-primary)", fontWeight: 600 }}>OCR Extracted: </span>
-              {doc.extractedText}
-            </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div 
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "var(--radius-sm)",
+                      backgroundColor: doc.isEncrypted ? "rgba(139, 92, 246, 0.15)" : "var(--bg-surface-elevated)",
+                      color: doc.isEncrypted ? "var(--accent-vault)" : "var(--accent-primary)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {doc.category === "receipt" ? <Receipt size={18} /> : 
+                     doc.category === "identity" ? <CreditCard size={18} /> : 
+                     doc.category === "tax" ? <FileCheck2 size={18} /> : <FileText size={18} />}
+                  </div>
 
-            {/* Document Actions */}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "4px" }}>
-              <button
-                className="clickable"
+                  <div>
+                    <h3 style={{ fontSize: "14px", fontWeight: 700 }}>{doc.title}</h3>
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                      {doc.date} • {doc.fileSize}
+                    </span>
+                  </div>
+                </div>
+
+                {doc.isEncrypted && (
+                  <span 
+                    title="Encrypted in Zero-Trust Vault"
+                    style={{
+                      backgroundColor: "var(--accent-vault)",
+                      color: "#ffffff",
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      padding: "2px 6px",
+                      borderRadius: "var(--radius-xs)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "3px",
+                    }}
+                  >
+                    <Lock size={10} /> ENCRYPTED
+                  </span>
+                )}
+              </div>
+
+              {/* OCR Extracted Text Snippet */}
+              <div 
                 style={{
-                  padding: "5px 12px",
+                  backgroundColor: "var(--bg-sidebar)",
+                  padding: "10px",
                   borderRadius: "var(--radius-sm)",
-                  backgroundColor: "var(--bg-surface-elevated)",
                   border: "1px solid var(--border-subtle)",
-                  color: "var(--text-primary)",
                   fontSize: "11px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
+                  fontFamily: "var(--font-mono)",
+                  color: "var(--text-secondary)",
+                  lineHeight: "1.4",
                 }}
               >
-                <ExternalLink size={12} />
-                Open Scan
-              </button>
+                <span style={{ color: "var(--accent-primary)", fontWeight: 600 }}>OCR Extracted: </span>
+                {doc.extractedText}
+              </div>
+
+              {/* Document Actions */}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "4px" }}>
+                <button
+                  className="clickable"
+                  style={{
+                    padding: "5px 12px",
+                    borderRadius: "var(--radius-sm)",
+                    backgroundColor: "var(--bg-surface-elevated)",
+                    border: "1px solid var(--border-subtle)",
+                    color: "var(--text-primary)",
+                    fontSize: "11px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <ExternalLink size={12} />
+                  Open Scan
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
