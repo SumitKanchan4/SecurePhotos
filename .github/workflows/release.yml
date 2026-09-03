@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag Name (e.g. v0.0.1)'
+        required: false
+        default: 'v0.0.1'
 
 jobs:
   build-and-release:
@@ -16,15 +21,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Extract Version Metadata
+        id: version_meta
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag_name || github.ref_name }}"
+          CLEAN_VER="${TAG#v}"
+          echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+          echo "clean_version=${CLEAN_VER}" >> $GITHUB_OUTPUT
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: 'npm'
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
+
+      - name: Setup Rust & Cargo Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri -> target'
 
       - name: Install Frontend Dependencies
         run: npm install
@@ -35,16 +55,16 @@ jobs:
       - name: Publish Installers to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: 'SecurePhotos ${{ github.ref_name }}'
+          tag_name: ${{ steps.version_meta.outputs.tag_name }}
+          name: 'SecurePhotos ${{ steps.version_meta.outputs.tag_name }}'
           body: |
-            ## 🔒 SecurePhotos ${{ github.ref_name }} — Desktop Release
+            ## 🔒 SecurePhotos ${{ steps.version_meta.outputs.tag_name }} — Desktop Release
             
             Download the installer for your Windows PC below:
-            - **`SecurePhotos_${{ github.ref_name }}_x64-setup.exe`**: 1-Click Windows Setup Installer (Recommended)
-            - **`SecurePhotos_${{ github.ref_name }}_x64_en-US.msi`**: Enterprise Windows Installer Package
+            - **`SecurePhotos_${{ steps.version_meta.outputs.clean_version }}_x64-setup.exe`**: 1-Click Windows Setup Installer (Recommended)
+            - **`SecurePhotos_${{ steps.version_meta.outputs.clean_version }}_x64_en-US.msi`**: Enterprise Windows Installer Package
             
-            ### ✨ What's New
+            ### ✨ Features & Capabilities
             - High-Speed Offline Media Ingestion with 2-level thumbnail sharding
             - Zero-Trust AES-256-GCM Encrypted Vault & Multi-Slot Recovery
             - On-Device 4K AI Super-Resolution with AVIF space-saving compression
@@ -55,3 +75,4 @@ jobs:
             src-tauri/target/release/bundle/msi/*.msi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

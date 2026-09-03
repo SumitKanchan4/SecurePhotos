@@ -1,0 +1,52 @@
+name: CI Quality Gate & Build Verification
+
+on:
+  push:
+    branches:
+      - master
+      - main
+      - 'feature/**'
+      - 'fix/**'
+      - 'chore/**'
+  pull_request:
+    branches:
+      - master
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Typecheck, Lint & Cargo Check
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup Rust & Cargo Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri -> target'
+
+      - name: Install Frontend Dependencies
+        run: npm install
+
+      - name: Frontend Build & TypeScript Typecheck
+        run: npm run build
+
+      - name: Rust Backend Type & Dependency Check
+        run: cargo check --manifest-path src-tauri/Cargo.toml
