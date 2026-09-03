@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
-import { PhotoGrid, generateMockPhotos } from "./components/PhotoGrid";
+import { PhotoGrid } from "./components/PhotoGrid";
 import { DriveStatusBanner } from "./components/DriveStatusBanner";
 import { ImportModal } from "./components/ImportModal";
 import { Lightbox } from "./components/Lightbox";

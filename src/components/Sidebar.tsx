@@ -22,7 +22,7 @@ interface NavItem {
 }
 
 export const Sidebar: React.FC = () => {
-  const { activeTab, setActiveTab, totalPhotosCount } = useAppStore();
+  const { activeTab, setActiveTab, totalPhotosCount, isDriveConnected } = useAppStore();
 
   const navItems: NavItem[] = [
     { 
