@@ -22,7 +22,7 @@ interface NavItem {
 }
 
 export const Sidebar: React.FC = () => {
-  const { activeTab, setActiveTab, totalPhotosCount, isDriveConnected } = useAppStore();
+  const { activeTab, setActiveTab, totalPhotosCount, isDriveConnected, activeVolume, prerequisites } = useAppStore();
 
   const navItems: NavItem[] = [
     { 
@@ -120,14 +120,14 @@ export const Sidebar: React.FC = () => {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "var(--text-secondary)" }}>
             <HardDrive size={13} style={{ color: isDriveConnected ? "var(--accent-success)" : "var(--accent-danger)" }} />
-            <span>External SSD</span>
+            <span>{activeVolume?.volume_name || "Local Storage"}</span>
           </div>
-          <span style={{ fontSize: "10px", color: "var(--accent-success)", fontWeight: 600 }}>ONLINE</span>
+          <span style={{ fontSize: "10px", color: "var(--accent-success)", fontWeight: 600 }}>READY</span>
         </div>
         
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "var(--accent-primary)" }}>
-          <Zap size={13} />
-          <span>4K AI Pipeline Ready</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: prerequisites?.backend.running ? "var(--accent-success)" : "var(--text-muted)" }}>
+          <Zap size={13} style={{ color: prerequisites?.backend.running ? "var(--accent-success)" : "var(--accent-primary)" }} />
+          <span>{prerequisites?.backend.running ? "AI Engine Active" : "Standalone Mode (Ready)"}</span>
         </div>
       </div>
     </aside>

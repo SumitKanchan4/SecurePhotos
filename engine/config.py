@@ -32,8 +32,7 @@ class AppConfig(BaseSettings):
     )
 
     app_name: str = "SecurePhotos Engine"
-    app_version: str = "0.0.3"
-    host: str = "127.0.0.1"
+    app_version: str = "0.0.4"
     port: int = Field(default=8000, description="Local dynamic listening port")
     data_dir: Path = Field(
         default_factory=lambda: Path.home() / ".securephotos_data",

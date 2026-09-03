@@ -23,7 +23,6 @@ import { TrashView } from "./components/TrashView";
 import { SettingsView } from "./components/SettingsView";
 import { CollageModal } from "./components/CollageModal";
 import { UpdateModal } from "./components/UpdateModal";
-import { PrerequisitesBanner } from "./components/PrerequisitesBanner";
 import { useAppStore } from "./store/useAppStore";
 import { PhotoItem, SystemPrerequisites } from "./types";
 import { invoke } from "@tauri-apps/api/core";
@@ -53,11 +52,9 @@ export const App: React.FC = () => {
   // Updater and diagnostics state
   const [activeUpdate, setActiveUpdate] = useState<Update | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
-  const [isLoadingPrereqs, setIsLoadingPrereqs] = useState(false);
 
   // Fetch prerequisites helper with silent background engine auto-start
   const fetchPrerequisites = async () => {
-    setIsLoadingPrereqs(true);
     try {
       const prereqs = await invoke<SystemPrerequisites>("check_system_prerequisites");
       setPrerequisites(prereqs);
@@ -68,21 +65,6 @@ export const App: React.FC = () => {
       }
     } catch (err) {
       console.warn("System prerequisites check warning:", err);
-    } finally {
-      setIsLoadingPrereqs(false);
-    }
-  };
-
-  const handleStartEngine = async () => {
-    setIsLoadingPrereqs(true);
-    try {
-      await invoke("start_backend_engine");
-      setTimeout(() => {
-        fetchPrerequisites();
-      }, 1500);
-    } catch (err) {
-      console.warn("Start engine error:", err);
-      setIsLoadingPrereqs(false);
     }
   };
 
@@ -176,14 +158,6 @@ export const App: React.FC = () => {
     >
       {/* Frameless Window Custom Title Bar */}
       <TitleBar />
-
-      {/* System Runtime & Environment Diagnostics Banner */}
-      <PrerequisitesBanner 
-        prerequisites={prerequisites}
-        isLoading={isLoadingPrereqs}
-        onRecheck={fetchPrerequisites}
-        onStartEngine={handleStartEngine}
-      />
 
       {/* Main Content Layout */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>

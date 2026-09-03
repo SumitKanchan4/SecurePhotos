@@ -12,7 +12,8 @@ import {
   CheckCircle2,
   Download,
   Terminal,
-  ExternalLink
+  ExternalLink,
+  Info
 } from "lucide-react";
 import { check, Update } from "@tauri-apps/plugin-updater";
 import { invoke } from "@tauri-apps/api/core";
@@ -48,12 +49,12 @@ export const SettingsView: React.FC = () => {
         setUpdateStatus(`New release v${update.version} is available!`);
         setIsUpdateModalOpen(true);
       } else {
-        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.3).");
+        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.4).");
       }
     } catch (err) {
       console.warn("Update check notice:", err);
       setTimeout(() => {
-        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.3).");
+        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.4).");
         setIsCheckingUpdate(false);
       }, 1000);
       return;
@@ -226,6 +227,45 @@ export const SettingsView: React.FC = () => {
                 </p>
               </div>
             </div>
+
+            {/* User Guidance Callout */}
+            <div
+              style={{
+                padding: "14px",
+                borderRadius: "var(--radius-sm)",
+                backgroundColor: "rgba(59, 130, 246, 0.08)",
+                border: "1px solid rgba(59, 130, 246, 0.25)",
+                fontSize: "12px",
+                lineHeight: "1.5",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <Info size={15} style={{ color: "var(--accent-primary)" }} />
+                  <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>
+                    Do I need to take any action?
+                  </strong>
+                </div>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    padding: "2px 8px",
+                    borderRadius: "4px",
+                    backgroundColor: "rgba(16, 185, 129, 0.15)",
+                    color: "#10b981",
+                  }}
+                >
+                  ✓ No Action Needed
+                </span>
+              </div>
+              <p style={{ color: "var(--text-secondary)", margin: 0 }}>
+                SecurePhotos is fully operational in <strong>Standalone Mode</strong>. You can browse photos, import folders, create albums, and use the encrypted vault immediately without installing or running any additional software.
+              </p>
+              <p style={{ color: "var(--text-muted)", fontSize: "11px", marginTop: "6px", marginBottom: 0 }}>
+                <em>Optional:</em> The secondary Python engine is a background service for developers and power users who wish to run on-device 4K AI neural super-resolution and local face clustering.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -245,7 +285,7 @@ export const SettingsView: React.FC = () => {
               <div>
                 <h3 style={{ fontSize: "14px", fontWeight: 700 }}>App Version & Updates</h3>
                 <p style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                  Current version: <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>v0.0.3</span> • Signed GitHub Releases
+                  Current version: <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>v0.0.4</span> • Signed GitHub Releases
                 </p>
               </div>
             </div>
