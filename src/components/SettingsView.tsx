@@ -48,12 +48,12 @@ export const SettingsView: React.FC = () => {
         setUpdateStatus(`New release v${update.version} is available!`);
         setIsUpdateModalOpen(true);
       } else {
-        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.2).");
+        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.3).");
       }
     } catch (err) {
       console.warn("Update check notice:", err);
       setTimeout(() => {
-        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.2).");
+        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.3).");
         setIsCheckingUpdate(false);
       }, 1000);
       return;
@@ -245,7 +245,7 @@ export const SettingsView: React.FC = () => {
               <div>
                 <h3 style={{ fontSize: "14px", fontWeight: 700 }}>App Version & Updates</h3>
                 <p style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                  Current version: <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>v0.0.2</span> • Signed GitHub Releases
+                  Current version: <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>v0.0.3</span> • Signed GitHub Releases
                 </p>
               </div>
             </div>

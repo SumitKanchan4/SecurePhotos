@@ -22,12 +22,17 @@ interface NavItem {
 }
 
 export const Sidebar: React.FC = () => {
-  const { activeTab, setActiveTab, isDriveConnected } = useAppStore();
+  const { activeTab, setActiveTab, totalPhotosCount } = useAppStore();
 
   const navItems: NavItem[] = [
-    { id: "photos", label: "Photos", icon: <Images size={17} />, badge: "12,482" },
-    { id: "albums", label: "Albums", icon: <FolderHeart size={17} />, badge: "18" },
-    { id: "people", label: "People", icon: <Users size={17} />, badge: "34" },
+    { 
+      id: "photos", 
+      label: "Photos", 
+      icon: <Images size={17} />, 
+      badge: totalPhotosCount > 0 ? totalPhotosCount.toLocaleString() : undefined 
+    },
+    { id: "albums", label: "Albums", icon: <FolderHeart size={17} /> },
+    { id: "people", label: "People", icon: <Users size={17} /> },
     { id: "documents", label: "Documents", icon: <FileText size={17} /> },
     { id: "stories", label: "Stories & Insights", icon: <Sparkles size={17} /> },
     { id: "vault", label: "Encrypted Vault", icon: <Lock size={17} />, isVault: true },

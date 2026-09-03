@@ -4,12 +4,16 @@ import { Check, Sparkles, Heart } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { PhotoItem } from "../types";
 
+import { EmptyLibraryState } from "./EmptyLibraryState";
+
 interface PhotoGridProps {
   photos?: PhotoItem[];
   onPhotoClick?: (index: number) => void;
+  onImportClick?: () => void;
+  onDropFiles?: (files: FileList) => void;
 }
 
-// Mock dataset generator for initial testing & rendering benchmarks
+// Mock dataset generator for benchmark testing
 export const generateMockPhotos = (count: number): PhotoItem[] => {
   return Array.from({ length: count }, (_, i) => ({
     id: i + 1,
@@ -24,15 +28,21 @@ export const generateMockPhotos = (count: number): PhotoItem[] => {
     is_encrypted: false,
     is_optimized: true,
     is_enhanced: i % 5 === 0,
-    caption: `Captivating scene #${i + 1} captured in 4K high fidelity`,
+    caption: `Scene #${i + 1}`,
   }));
 };
 
-export const PhotoGrid: React.FC<PhotoGridProps> = ({ photos, onPhotoClick }) => {
+export const PhotoGrid: React.FC<PhotoGridProps> = ({ 
+  photos, 
+  onPhotoClick,
+  onImportClick,
+  onDropFiles
+}) => {
   const parentRef = useRef<HTMLDivElement>(null);
   const { selectedPhotoIds, togglePhotoSelection } = useAppStore();
   
-  const allPhotos = photos || generateMockPhotos(1000);
+  const allPhotos = photos ?? [];
+
   const COLUMNS = 5;
   const rowCount = Math.ceil(allPhotos.length / COLUMNS);
 
@@ -42,6 +52,15 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({ photos, onPhotoClick }) =>
     estimateSize: () => 180,
     overscan: 2,
   });
+
+  if (allPhotos.length === 0) {
+    return (
+      <EmptyLibraryState 
+        onSelectFolder={onImportClick || (() => {})} 
+        onDropFiles={onDropFiles}
+      />
+    );
+  }
 
   return (
     <div 

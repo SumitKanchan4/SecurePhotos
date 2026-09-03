@@ -12,35 +12,13 @@ interface StoryCardItem {
 
 interface StoriesCarouselProps {
   onPlayStory: (storyId: number) => void;
+  stories?: StoryCardItem[];
 }
 
-export const StoriesCarousel: React.FC<StoriesCarouselProps> = ({ onPlayStory }) => {
-  const stories: StoryCardItem[] = [
-    {
-      id: 1,
-      title: "Alice: Through the Years",
-      subtitle: "2012 — 2026 • 14 Milestones",
-      vibe: "Warm Nostalgic Piano",
-      photoCount: 14,
-      coverGradient: "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)",
-    },
-    {
-      id: 2,
-      title: "On This Day: 5 Years Ago",
-      subtitle: "Summer Holiday in Kyoto",
-      vibe: "Serene Acoustic Guitar",
-      photoCount: 8,
-      coverGradient: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-    },
-    {
-      id: 3,
-      title: "Paris Summer Duo Moments",
-      subtitle: "Alice & Bob Highlights",
-      vibe: "Summer Sunshine Lo-Fi",
-      photoCount: 12,
-      coverGradient: "linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)",
-    },
-  ];
+export const StoriesCarousel: React.FC<StoriesCarouselProps> = ({ onPlayStory, stories = [] }) => {
+  if (stories.length === 0) {
+    return null;
+  }
 
   return (
     <div style={{ padding: "16px 20px 8px 20px" }}>

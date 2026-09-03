@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { AlertTriangle, RefreshCw, X, ExternalLink } from "lucide-react";
+import { AlertTriangle, RefreshCw, X, ExternalLink, Play } from "lucide-react";
 import { SystemPrerequisites } from "../types";
 
 interface PrerequisitesBannerProps {
   prerequisites: SystemPrerequisites | null;
   isLoading: boolean;
   onRecheck: () => Promise<void>;
+  onStartEngine?: () => Promise<void>;
 }
 
 /**
@@ -18,6 +19,7 @@ export const PrerequisitesBanner: React.FC<PrerequisitesBannerProps> = ({
   prerequisites,
   isLoading,
   onRecheck,
+  onStartEngine,
 }) => {
   const [isDismissed, setIsDismissed] = useState(false);
 
@@ -81,10 +83,10 @@ export const PrerequisitesBanner: React.FC<PrerequisitesBannerProps> = ({
           ) : !backend.running ? (
             <div>
               <span style={{ fontWeight: 600, color: "#f59e0b" }}>
-                Local Engine Offline ({python.version} detected).{" "}
+                Standalone Local Mode ({python.version} detected).{" "}
               </span>
               <span style={{ color: "var(--text-secondary, #94a3b8)" }}>
-                Start the backend engine via <code style={{ backgroundColor: "rgba(0,0,0,0.3)", padding: "2px 6px", borderRadius: "4px" }}>.\scripts\run-backend.ps1</code> to enable media ingestion and vault encryption.
+                SecurePhotos is running in local client mode. The background engine will automatically manage AI super-resolution and Zero-Trust vault encryption.
               </span>
             </div>
           ) : null}
@@ -111,6 +113,29 @@ export const PrerequisitesBanner: React.FC<PrerequisitesBannerProps> = ({
           >
             <ExternalLink size={13} />
             Install Python
+          </button>
+        )}
+
+        {python.installed && !backend.running && onStartEngine && (
+          <button
+            onClick={onStartEngine}
+            disabled={isLoading}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "6px 12px",
+              backgroundColor: "rgba(59, 130, 246, 0.2)",
+              border: "1px solid rgba(59, 130, 246, 0.4)",
+              borderRadius: "var(--radius-sm, 6px)",
+              color: "#93c5fd",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: isLoading ? "not-allowed" : "pointer",
+            }}
+          >
+            <Play size={13} />
+            Start Engine
           </button>
         )}
 

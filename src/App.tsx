@@ -40,6 +40,7 @@ export const App: React.FC = () => {
     setIsVaultUnlocked,
     prerequisites,
     setPrerequisites,
+    setTotalPhotosCount,
   } = useAppStore();
 
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
@@ -54,15 +55,33 @@ export const App: React.FC = () => {
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [isLoadingPrereqs, setIsLoadingPrereqs] = useState(false);
 
-  // Fetch prerequisites helper
+  // Fetch prerequisites helper with silent background engine auto-start
   const fetchPrerequisites = async () => {
     setIsLoadingPrereqs(true);
     try {
       const prereqs = await invoke<SystemPrerequisites>("check_system_prerequisites");
       setPrerequisites(prereqs);
+      
+      // If Python is available and engine not yet running, auto-trigger background start
+      if (prereqs && prereqs.python.installed && !prereqs.backend.running) {
+        invoke("start_backend_engine").catch(() => {});
+      }
     } catch (err) {
       console.warn("System prerequisites check warning:", err);
     } finally {
+      setIsLoadingPrereqs(false);
+    }
+  };
+
+  const handleStartEngine = async () => {
+    setIsLoadingPrereqs(true);
+    try {
+      await invoke("start_backend_engine");
+      setTimeout(() => {
+        fetchPrerequisites();
+      }, 1500);
+    } catch (err) {
+      console.warn("Start engine error:", err);
       setIsLoadingPrereqs(false);
     }
   };
@@ -89,19 +108,36 @@ export const App: React.FC = () => {
 
   // Initialize and register global desktop keyboard shortcuts
   useEffect(() => {
-    // Generate initial media dataset
-    setPhotos(generateMockPhotos(1200));
+    // 1. Initial photos is empty for fresh install (0 dummy items)
+    setPhotos([]);
+    setTotalPhotosCount(0);
 
-    // Set active volume info
-    setActiveVolume({
-      drive_letter: "E:\\",
-      volume_name: "Samsung_T7",
-      volume_serial: "7F2A-91C4",
-      file_system: "NTFS",
-      is_ready: true,
-      free_bytes: 420 * 1024 * 1024 * 1024,
-      total_bytes: 1000 * 1024 * 1024 * 1024,
-    });
+    // 2. Query real system storage volume
+    invoke<any[]>("get_system_drives")
+      .then((drives) => {
+        if (drives && drives.length > 0) {
+          setActiveVolume({
+            drive_letter: drives[0].drive_letter,
+            volume_name: drives[0].volume_name,
+            volume_serial: "SYS-DRV",
+            file_system: "NTFS",
+            is_ready: drives[0].is_ready,
+            free_bytes: drives[0].free_bytes,
+            total_bytes: drives[0].total_bytes,
+          });
+        }
+      })
+      .catch(() => {
+        setActiveVolume({
+          drive_letter: "C:\\",
+          volume_name: "Local Storage",
+          volume_serial: "SYS-DRV",
+          file_system: "NTFS",
+          is_ready: true,
+          free_bytes: 120 * 1024 * 1024 * 1024,
+          total_bytes: 512 * 1024 * 1024 * 1024,
+        });
+      });
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger if user is typing in an input
@@ -146,6 +182,7 @@ export const App: React.FC = () => {
         prerequisites={prerequisites}
         isLoading={isLoadingPrereqs}
         onRecheck={fetchPrerequisites}
+        onStartEngine={handleStartEngine}
       />
 
       {/* Main Content Layout */}
@@ -189,13 +226,19 @@ export const App: React.FC = () => {
           ) : activeTab === "stories" ? (
             /* Stories Hub & Insights */
             <div style={{ flex: 1, overflowY: "auto", padding: "10px" }}>
-              <StoriesCarousel onPlayStory={(id) => setActiveStoryId(id)} />
+              {photos.length > 0 ? (
+                <StoriesCarousel onPlayStory={(id) => setActiveStoryId(id)} />
+              ) : (
+                <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+                  <p>Import photos into your library to generate AI-curated stories and milestone moments.</p>
+                </div>
+              )}
             </div>
           ) : (
             /* Standard Photos & Media Grid View */
             <>
               {/* Stories Highlight Bar on Home View */}
-              <StoriesCarousel onPlayStory={(id) => setActiveStoryId(id)} />
+              {photos.length > 0 && <StoriesCarousel onPlayStory={(id) => setActiveStoryId(id)} />}
 
               {/* View Header Toolbar */}
               <div 
@@ -212,7 +255,9 @@ export const App: React.FC = () => {
                     All Photos & Videos
                   </h1>
                   <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-                    12,482 media items • 4K Space-Saver Mode Active (-62% disk space saved)
+                    {photos.length === 0 
+                      ? "No photos yet • Import a folder to begin"
+                      : `${photos.length.toLocaleString()} media items • 4K Space-Saver Mode Active`}
                   </p>
                 </div>
 
@@ -370,10 +415,11 @@ export const App: React.FC = () => {
                 ))}
               </div>
 
-              {/* 60 FPS Virtualized Grid */}
+              {/* 60 FPS Virtualized Grid / Empty State */}
               <PhotoGrid 
                 photos={photos} 
                 onPhotoClick={(idx) => setLightboxIndex(idx)} 
+                onImportClick={() => setIsImportModalOpen(true)}
               />
             </>
           )}

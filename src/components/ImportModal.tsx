@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { 
   FolderDown, 
+  FolderOpen,
   CheckCircle2, 
   X,
   Loader2
 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/useAppStore";
 
 interface ImportModalProps {
@@ -15,7 +17,7 @@ interface ImportModalProps {
 
 export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImportComplete }) => {
   const { activeVolume } = useAppStore();
-  const [sourcePath] = useState("D:\\DCIM\\100MEDIA");
+  const [sourcePath, setSourcePath] = useState("C:\\Users\\Public\\Pictures");
   const [cleanupMode, setCleanupMode] = useState<"copy" | "move">("move");
   const [skipDuplicates, setSkipDuplicates] = useState(true);
   const [optimize4K, setOptimize4K] = useState(true);
@@ -129,14 +131,44 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
               gap: "8px",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12px" }}>
               <span style={{ color: "var(--text-muted)" }}>Source Folder:</span>
-              <span style={{ fontFamily: "var(--font-mono)", fontWeight: 500 }}>{sourcePath}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 500, maxWidth: "260px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {sourcePath}
+                </span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const selected = await invoke<string | null>("select_import_folder");
+                      if (selected) setSourcePath(selected);
+                    } catch {}
+                  }}
+                  className="clickable"
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: "4px",
+                    backgroundColor: "var(--bg-surface-elevated)",
+                    border: "1px solid var(--border-subtle)",
+                    color: "var(--accent-primary)",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px"
+                  }}
+                >
+                  <FolderOpen size={12} />
+                  Browse...
+                </button>
+              </div>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px" }}>
               <span style={{ color: "var(--text-muted)" }}>Destination Drive:</span>
               <span style={{ color: "var(--accent-success)", fontWeight: 500 }}>
-                {activeVolume ? `${activeVolume.volume_name} (${activeVolume.drive_letter})` : "External Drive (E:)"}
+                {activeVolume ? `${activeVolume.volume_name} (${activeVolume.drive_letter})` : "Local Storage (C:\\)"}
               </span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px" }}>
