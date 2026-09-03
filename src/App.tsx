@@ -37,7 +37,6 @@ export const App: React.FC = () => {
     setActiveVolume,
     isVaultUnlocked,
     setIsVaultUnlocked,
-    prerequisites,
     setPrerequisites,
     setTotalPhotosCount,
   } = useAppStore();
