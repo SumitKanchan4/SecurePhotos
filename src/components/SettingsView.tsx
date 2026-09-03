@@ -10,13 +10,19 @@ import {
   BatteryMedium,
   RefreshCw,
   CheckCircle2,
-  Download
+  Download,
+  Terminal,
+  AlertTriangle,
+  ExternalLink
 } from "lucide-react";
-import { check } from "@tauri-apps/plugin-updater";
+import { check, Update } from "@tauri-apps/plugin-updater";
+import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/useAppStore";
+import { UpdateModal } from "./UpdateModal";
+import { SystemPrerequisites } from "../types";
 
 export const SettingsView: React.FC = () => {
-  const { theme, toggleTheme, activeVolume } = useAppStore();
+  const { theme, toggleTheme, activeVolume, prerequisites, setPrerequisites } = useAppStore();
   const [autoLockDuration, setAutoLockDuration] = useState("30");
   const [enableSpaceSaver, setEnableSpaceSaver] = useState(true);
   const [pauseOnBattery, setPauseOnBattery] = useState(true);
@@ -26,22 +32,29 @@ export const SettingsView: React.FC = () => {
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
   const [availableUpdateVersion, setAvailableUpdateVersion] = useState<string | null>(null);
+  const [activeUpdate, setActiveUpdate] = useState<Update | null>(null);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+
+  // Prerequisites state
+  const [isRecheckingPrereqs, setIsRecheckingPrereqs] = useState(false);
 
   const handleCheckForUpdates = async () => {
     setIsCheckingUpdate(true);
-    setUpdateStatus("Checking GitHub releases for new version...");
+    setUpdateStatus("Checking GitHub releases for latest version...");
     try {
       const update = await check();
       if (update?.available) {
+        setActiveUpdate(update);
         setAvailableUpdateVersion(update.version);
-        setUpdateStatus(`New version v${update.version} is available!`);
+        setUpdateStatus(`New release v${update.version} is available!`);
+        setIsUpdateModalOpen(true);
       } else {
-        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.1).");
+        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.2).");
       }
-    } catch {
-      // Offline fallback
+    } catch (err) {
+      console.warn("Update check notice:", err);
       setTimeout(() => {
-        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.1).");
+        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.2).");
         setIsCheckingUpdate(false);
       }, 1000);
       return;
@@ -49,20 +62,175 @@ export const SettingsView: React.FC = () => {
     setIsCheckingUpdate(false);
   };
 
+  const handleRecheckPrereqs = async () => {
+    setIsRecheckingPrereqs(true);
+    try {
+      const res = await invoke<SystemPrerequisites>("check_system_prerequisites");
+      setPrerequisites(res);
+    } catch (err) {
+      console.error("Failed to check prerequisites:", err);
+    } finally {
+      setIsRecheckingPrereqs(false);
+    }
+  };
+
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "24px", maxWidth: "800px" }}>
+      {/* Active Update Modal */}
+      {activeUpdate && (
+        <UpdateModal
+          update={activeUpdate}
+          isOpen={isUpdateModalOpen}
+          onClose={() => setIsUpdateModalOpen(false)}
+        />
+      )}
+
       <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "24px" }}>
         <Settings size={22} style={{ color: "var(--accent-primary)" }} />
         <div>
           <h2 style={{ fontSize: "20px", fontWeight: 700 }}>Settings & Preferences</h2>
           <p style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-            Configure storage paths, 4K AI processing, and Zero-Trust Vault security
+            Configure storage paths, 4K AI processing, runtime dependencies, and Zero-Trust Vault security
           </p>
         </div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-        {/* Section 0: App Updates & Release Channels */}
+        {/* Section 0: System Prerequisites & Runtime Health */}
+        <div 
+          className="glass-panel"
+          style={{
+            borderRadius: "var(--radius-md)",
+            backgroundColor: "var(--bg-surface)",
+            border: "1px solid var(--border-subtle)",
+            padding: "20px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <Terminal size={18} style={{ color: "var(--accent-primary)" }} />
+              <div>
+                <h3 style={{ fontSize: "14px", fontWeight: 700 }}>System Runtime & Prerequisites</h3>
+                <p style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                  Core local runtime dependencies for AI Super-Resolution and Cryptographic Engine
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleRecheckPrereqs}
+              disabled={isRecheckingPrereqs}
+              className="clickable"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "7px 14px",
+                borderRadius: "var(--radius-sm)",
+                backgroundColor: "var(--bg-surface-elevated)",
+                border: "1px solid var(--border-subtle)",
+                color: "var(--text-primary)",
+                fontSize: "12px",
+                fontWeight: 600,
+              }}
+            >
+              <RefreshCw size={13} className={isRecheckingPrereqs ? "spin" : ""} />
+              {isRecheckingPrereqs ? "Checking..." : "Recheck Environment"}
+            </button>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {/* Python Status */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px 14px",
+                backgroundColor: "var(--bg-surface-elevated)",
+                borderRadius: "var(--radius-sm)",
+                border: "1px solid var(--border-subtle)",
+              }}
+            >
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "13px", fontWeight: 600 }}>Python Runtime (>= 3.10)</span>
+                  {prerequisites?.python.installed ? (
+                    <span style={{ fontSize: "11px", color: "#10b981", backgroundColor: "rgba(16, 185, 129, 0.12)", padding: "2px 8px", borderRadius: "4px", fontWeight: 600 }}>
+                      Installed
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: "11px", color: "#ef4444", backgroundColor: "rgba(239, 68, 68, 0.12)", padding: "2px 8px", borderRadius: "4px", fontWeight: 600 }}>
+                      Not Found
+                    </span>
+                  )}
+                </div>
+                <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "3px" }}>
+                  {prerequisites?.python.installed
+                    ? `${prerequisites.python.version || "Python 3"} detected at ${prerequisites.python.executable || "PATH"}`
+                    : "Required for on-device 4K AI models, EXIF extraction, and digital vault operations."}
+                </p>
+              </div>
+
+              {!prerequisites?.python.installed && (
+                <button
+                  onClick={() => window.open("https://www.python.org/downloads/", "_blank")}
+                  className="clickable"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "6px 12px",
+                    borderRadius: "var(--radius-xs)",
+                    backgroundColor: "rgba(239, 68, 68, 0.2)",
+                    border: "1px solid rgba(239, 68, 68, 0.4)",
+                    color: "#fca5a5",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                  }}
+                >
+                  <ExternalLink size={12} />
+                  Download Python
+                </button>
+              )}
+            </div>
+
+            {/* Backend Engine Status */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px 14px",
+                backgroundColor: "var(--bg-surface-elevated)",
+                borderRadius: "var(--radius-sm)",
+                border: "1px solid var(--border-subtle)",
+              }}
+            >
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "13px", fontWeight: 600 }}>Engine Sidecar (Port 8000)</span>
+                  {prerequisites?.backend.running ? (
+                    <span style={{ fontSize: "11px", color: "#10b981", backgroundColor: "rgba(16, 185, 129, 0.12)", padding: "2px 8px", borderRadius: "4px", fontWeight: 600 }}>
+                      Active
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: "11px", color: "#f59e0b", backgroundColor: "rgba(245, 158, 11, 0.12)", padding: "2px 8px", borderRadius: "4px", fontWeight: 600 }}>
+                      Offline
+                    </span>
+                  )}
+                </div>
+                <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "3px" }}>
+                  {prerequisites?.backend.running
+                    ? "Connected to FastAPI SQLite WAL backend at http://127.0.0.1:8000"
+                    : "Client UI is currently running in standalone mode with client-side caching."}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 0.5: App Updates & Release Channels */}
         <div 
           className="glass-panel"
           style={{
@@ -78,7 +246,7 @@ export const SettingsView: React.FC = () => {
               <div>
                 <h3 style={{ fontSize: "14px", fontWeight: 700 }}>App Version & Updates</h3>
                 <p style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                  Current version: <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>v0.0.1</span>
+                  Current version: <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>v0.0.2</span> • Signed GitHub Releases
                 </p>
               </div>
             </div>
@@ -130,7 +298,7 @@ export const SettingsView: React.FC = () => {
 
               {availableUpdateVersion && (
                 <button
-                  onClick={() => alert("Downloading update in background. Will prompt to restart when ready.")}
+                  onClick={() => setIsUpdateModalOpen(true)}
                   className="clickable"
                   style={{
                     display: "flex",
@@ -146,14 +314,14 @@ export const SettingsView: React.FC = () => {
                   }}
                 >
                   <Download size={12} />
-                  Download & Restart
+                  Review & Update
                 </button>
               )}
             </div>
           )}
 
           <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "10px" }}>
-            🔒 <strong>Zero-Wipe Guarantee:</strong> All SQLite databases, encryption keys, and configurations are stored in your persistent user directory (<code style={{ fontFamily: "var(--font-mono)" }}>%APPDATA%/SecurePhotos</code>). Updating the app binary will never delete or overwrite your settings.
+            🔒 <strong>Zero-Wipe Guarantee:</strong> All SQLite databases, encryption keys, and configurations are stored in your persistent user directory (<code style={{ fontFamily: "var(--font-mono)" }}>%APPDATA%/SecurePhotos</code>). Updating the app binary will never delete or overwrite your media library.
           </p>
         </div>
 

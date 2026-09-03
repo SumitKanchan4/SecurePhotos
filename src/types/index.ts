@@ -63,3 +63,24 @@ export interface PersonItem {
   confirmed_count: number;
   cover_face_id?: number;
 }
+
+export interface PythonPrerequisite {
+  installed: boolean;
+  version: string | null;
+  executable: string | null;
+  meets_minimum_version: boolean;
+  minimum_required: string;
+}
+
+export interface BackendPrerequisite {
+  running: boolean;
+  port: number;
+  url: string;
+}
+
+export interface SystemPrerequisites {
+  python: PythonPrerequisite;
+  backend: BackendPrerequisite;
+  all_ready: boolean;
+}
+

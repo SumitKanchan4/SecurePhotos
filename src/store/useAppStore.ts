@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { VolumeInfo, SystemHealth } from "../types";
+import { VolumeInfo, SystemHealth, SystemPrerequisites } from "../types";
 
 export type NavTab = 
   | "photos" 
@@ -20,6 +20,7 @@ interface AppState {
   isDriveConnected: boolean;
   systemHealth: SystemHealth | null;
   isVaultUnlocked: boolean;
+  prerequisites: SystemPrerequisites | null;
   
   // Actions
   setTheme: (theme: "dark" | "light") => void;
@@ -32,6 +33,7 @@ interface AppState {
   setIsDriveConnected: (connected: boolean) => void;
   setSystemHealth: (health: SystemHealth | null) => void;
   setIsVaultUnlocked: (unlocked: boolean) => void;
+  setPrerequisites: (prerequisites: SystemPrerequisites | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -43,6 +45,7 @@ export const useAppStore = create<AppState>((set) => ({
   isDriveConnected: true,
   systemHealth: null,
   isVaultUnlocked: false,
+  prerequisites: null,
 
   setTheme: (theme) => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -75,4 +78,5 @@ export const useAppStore = create<AppState>((set) => ({
   setIsDriveConnected: (isDriveConnected) => set({ isDriveConnected }),
   setSystemHealth: (systemHealth) => set({ systemHealth }),
   setIsVaultUnlocked: (isVaultUnlocked) => set({ isVaultUnlocked }),
+  setPrerequisites: (prerequisites) => set({ prerequisites }),
 }));

@@ -22,8 +22,12 @@ import { DocumentsView } from "./components/DocumentsView";
 import { TrashView } from "./components/TrashView";
 import { SettingsView } from "./components/SettingsView";
 import { CollageModal } from "./components/CollageModal";
+import { UpdateModal } from "./components/UpdateModal";
+import { PrerequisitesBanner } from "./components/PrerequisitesBanner";
 import { useAppStore } from "./store/useAppStore";
-import { PhotoItem } from "./types";
+import { PhotoItem, SystemPrerequisites } from "./types";
+import { invoke } from "@tauri-apps/api/core";
+import { check, Update } from "@tauri-apps/plugin-updater";
 
 export const App: React.FC = () => {
   const { 
@@ -34,6 +38,8 @@ export const App: React.FC = () => {
     setActiveVolume,
     isVaultUnlocked,
     setIsVaultUnlocked,
+    prerequisites,
+    setPrerequisites,
   } = useAppStore();
 
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
@@ -42,6 +48,44 @@ export const App: React.FC = () => {
   const [isCollageModalOpen, setIsCollageModalOpen] = useState(false);
   const [activeStoryId, setActiveStoryId] = useState<number | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+  // Updater and diagnostics state
+  const [activeUpdate, setActiveUpdate] = useState<Update | null>(null);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [isLoadingPrereqs, setIsLoadingPrereqs] = useState(false);
+
+  // Fetch prerequisites helper
+  const fetchPrerequisites = async () => {
+    setIsLoadingPrereqs(true);
+    try {
+      const prereqs = await invoke<SystemPrerequisites>("check_system_prerequisites");
+      setPrerequisites(prereqs);
+    } catch (err) {
+      console.warn("System prerequisites check warning:", err);
+    } finally {
+      setIsLoadingPrereqs(false);
+    }
+  };
+
+  // Run diagnostics and check for updates on application mount
+  useEffect(() => {
+    fetchPrerequisites();
+
+    // Check for updates in background with safe fallback
+    const checkUpdates = async () => {
+      try {
+        const update = await check();
+        if (update?.available) {
+          setActiveUpdate(update);
+          setIsUpdateModalOpen(true);
+        }
+      } catch (err) {
+        console.info("Update check notice (running offline or latest version):", err);
+      }
+    };
+
+    checkUpdates();
+  }, [setPrerequisites]);
 
   // Initialize and register global desktop keyboard shortcuts
   useEffect(() => {
@@ -96,6 +140,13 @@ export const App: React.FC = () => {
     >
       {/* Frameless Window Custom Title Bar */}
       <TitleBar />
+
+      {/* System Runtime & Environment Diagnostics Banner */}
+      <PrerequisitesBanner 
+        prerequisites={prerequisites}
+        isLoading={isLoadingPrereqs}
+        onRecheck={fetchPrerequisites}
+      />
 
       {/* Main Content Layout */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -366,6 +417,15 @@ export const App: React.FC = () => {
         onClose={() => setLightboxIndex(null)}
         onNavigate={(idx) => setLightboxIndex(idx)}
       />
+
+      {/* Confirmed Update Interactive Modal */}
+      {activeUpdate && (
+        <UpdateModal
+          update={activeUpdate}
+          isOpen={isUpdateModalOpen}
+          onClose={() => setIsUpdateModalOpen(false)}
+        />
+      )}
     </div>
   );
 };
