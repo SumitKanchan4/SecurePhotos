@@ -1,13 +1,7 @@
 import React, { useState } from "react";
 import { 
   Users, 
-  Sparkles, 
-  Star, 
-  Check, 
-  Smile, 
-  Sun, 
-  Glasses, 
-  Camera 
+  Sparkles 
 } from "lucide-react";
 import { PersonItem } from "../types";
 
