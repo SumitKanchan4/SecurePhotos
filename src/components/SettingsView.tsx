@@ -12,7 +12,6 @@ import {
   CheckCircle2,
   Download,
   Terminal,
-  AlertTriangle,
   ExternalLink
 } from "lucide-react";
 import { check, Update } from "@tauri-apps/plugin-updater";
@@ -154,7 +153,7 @@ export const SettingsView: React.FC = () => {
             >
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontSize: "13px", fontWeight: 600 }}>Python Runtime (>= 3.10)</span>
+                  <span style={{ fontSize: "13px", fontWeight: 600 }}>Python Runtime (v3.10+)</span>
                   {prerequisites?.python.installed ? (
                     <span style={{ fontSize: "11px", color: "#10b981", backgroundColor: "rgba(16, 185, 129, 0.12)", padding: "2px 8px", borderRadius: "4px", fontWeight: 600 }}>
                       Installed

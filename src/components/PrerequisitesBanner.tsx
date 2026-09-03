@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { AlertTriangle, Terminal, RefreshCw, X, ExternalLink, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, RefreshCw, X, ExternalLink } from "lucide-react";
 import { SystemPrerequisites } from "../types";
 
 interface PrerequisitesBannerProps {
