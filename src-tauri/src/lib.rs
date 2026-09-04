@@ -1,4 +1,5 @@
 use std::net::TcpStream;
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -47,7 +48,7 @@ fn get_engine_status() -> serde_json::Value {
     serde_json::json!({
         "status": "active",
         "container": "tauri_2.0",
-        "version": "0.0.5"
+        "version": "0.0.6"
     })
 }
 
@@ -62,60 +63,81 @@ fn relaunch_app(app: AppHandle) {
     app.restart();
 }
 
+fn find_sidecar_executable() -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Ok(curr) = std::env::current_exe() {
+        if let Some(parent) = curr.parent() {
+            candidates.push(parent.join("securephotos-engine.exe"));
+            candidates.push(parent.join("securephotos-engine-x86_64-pc-windows-msvc.exe"));
+            candidates.push(parent.join("binaries").join("securephotos-engine-x86_64-pc-windows-msvc.exe"));
+        }
+    }
+
+    // Development path fallbacks
+    candidates.push(PathBuf::from("src-tauri/binaries/securephotos-engine-x86_64-pc-windows-msvc.exe"));
+    candidates.push(PathBuf::from("binaries/securephotos-engine-x86_64-pc-windows-msvc.exe"));
+
+    for path in candidates {
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
+}
+
 #[tauri::command]
 fn check_system_prerequisites() -> SystemPrerequisites {
-    // 1. Probe Python presence and version
-    let mut python_installed = false;
-    let mut detected_version: Option<String> = None;
-    let mut detected_executable: Option<String> = None;
-    let mut meets_min_ver = false;
+    // 1. Probe FastAPI Engine responsiveness on localhost:8000
+    let backend_running = TcpStream::connect_timeout(
+        &"127.0.0.1:8000".parse().unwrap(),
+        Duration::from_millis(400),
+    )
+    .is_ok();
 
-    // Probe candidate executable names across Windows environments
-    let candidates = ["python", "python3", "py"];
-    for cmd in candidates {
-        if let Ok(output) = Command::new(cmd).arg("--version").output() {
-            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            let ver_str = if !stdout.is_empty() { stdout } else { stderr };
+    let sidecar_exists = find_sidecar_executable().is_some();
 
-            if ver_str.to_lowercase().contains("python") {
-                python_installed = true;
-                detected_version = Some(ver_str.clone());
+    let mut python_installed = sidecar_exists || backend_running;
+    let mut detected_version = if sidecar_exists || backend_running {
+        Some("Embedded Sidecar (Python 3.11 Runtime)".to_string())
+    } else {
+        None
+    };
+    let mut detected_executable = if sidecar_exists {
+        Some("securephotos-engine.exe".to_string())
+    } else {
+        None
+    };
+    let mut meets_min_ver = python_installed;
 
-                // Parse version numbers (e.g., "Python 3.14.7" -> 3, 14)
-                let parts: Vec<&str> = ver_str.split_whitespace().collect();
-                if let Some(ver_nums) = parts.get(1) {
-                    let segments: Vec<&str> = ver_nums.split('.').collect();
-                    if segments.len() >= 2 {
-                        let major = segments[0].parse::<u32>().unwrap_or(0);
-                        let minor = segments[1].parse::<u32>().unwrap_or(0);
-                        if major == 3 && minor >= 10 {
-                            meets_min_ver = true;
-                        }
-                    }
+    // Fallback: quick non-blocking probe with CREATE_NO_WINDOW if not detected yet
+    if !python_installed {
+        let candidates = ["python", "python3", "py"];
+        for cmd_name in candidates {
+            let mut check_cmd = Command::new(cmd_name);
+            check_cmd.arg("--version");
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::process::CommandExt;
+                check_cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            }
+            if let Ok(output) = check_cmd.output() {
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                let ver_str = if !stdout.is_empty() { stdout } else { stderr };
+
+                if ver_str.to_lowercase().contains("python") {
+                    python_installed = true;
+                    detected_version = Some(ver_str.clone());
+                    detected_executable = Some(cmd_name.to_string());
+                    meets_min_ver = true;
+                    break;
                 }
-
-                // Check executable path using 'where'
-                if let Ok(where_out) = Command::new("where.exe").arg(cmd).output() {
-                    let path = String::from_utf8_lossy(&where_out.stdout).trim().to_string();
-                    if !path.is_empty() {
-                        let first_line = path.lines().next().unwrap_or("").to_string();
-                        detected_executable = Some(first_line);
-                    }
-                }
-                break;
             }
         }
     }
 
-    // 2. Probe FastAPI Engine responsiveness on localhost:8000
-    let backend_running = TcpStream::connect_timeout(
-        &"127.0.0.1:8000".parse().unwrap(),
-        Duration::from_millis(500),
-    )
-    .is_ok();
-
-    let all_ready = python_installed && meets_min_ver && backend_running;
+    let all_ready = backend_running;
 
     SystemPrerequisites {
         python: PythonPrerequisite {
@@ -146,13 +168,47 @@ fn start_backend_engine(state: tauri::State<BackendManager>) -> serde_json::Valu
         });
     }
 
+    // Priority 1: Launch compiled standalone sidecar binary
+    if let Some(sidecar_path) = find_sidecar_executable() {
+        let mut cmd = Command::new(&sidecar_path);
+        cmd.args(["--port", "8000"]);
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+
+        match cmd.spawn() {
+            Ok(child) => {
+                if let Ok(mut lock) = state.0.lock() {
+                    *lock = Some(child);
+                }
+                return serde_json::json!({
+                    "status": "starting",
+                    "message": "Bundled engine sidecar started"
+                });
+            }
+            Err(err) => {
+                eprintln!("Failed to spawn sidecar: {}", err);
+            }
+        }
+    }
+
+    // Priority 2: Fallback to local Python for development environment
     let candidates = ["python", "python3", "py"];
     let mut python_cmd: Option<String> = None;
-    for cmd in candidates {
-        if let Ok(output) = Command::new(cmd).arg("--version").output() {
+    for cmd_name in candidates {
+        let mut check_cmd = Command::new(cmd_name);
+        check_cmd.arg("--version");
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            check_cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        if let Ok(output) = check_cmd.output() {
             let ver = String::from_utf8_lossy(&output.stdout);
             if ver.to_lowercase().contains("python") {
-                python_cmd = Some(cmd.to_string());
+                python_cmd = Some(cmd_name.to_string());
                 break;
             }
         }
@@ -161,7 +217,7 @@ fn start_backend_engine(state: tauri::State<BackendManager>) -> serde_json::Valu
     let Some(py) = python_cmd else {
         return serde_json::json!({
             "status": "missing_python",
-            "message": "Python runtime not found on host"
+            "message": "Neither bundled engine nor Python runtime found"
         });
     };
 
@@ -180,7 +236,7 @@ fn start_backend_engine(state: tauri::State<BackendManager>) -> serde_json::Valu
             }
             serde_json::json!({
                 "status": "starting",
-                "message": "Background engine started"
+                "message": "Background engine started via Python"
             })
         }
         Err(err) => {

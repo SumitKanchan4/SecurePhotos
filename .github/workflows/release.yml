@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release Tag Name (e.g. v0.0.5)'
-        default: 'v0.0.5'
+        description: 'Release Tag Name (e.g. v0.0.6)'
+        default: 'v0.0.6'
 
 jobs:
   build-and-release:
@@ -47,6 +47,19 @@ jobs:
 
       - name: Install Frontend Dependencies
         run: npm install
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Compile Backend Engine Sidecar
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r engine/requirements.txt pyinstaller
+          python scripts/build-engine.py
 
       - name: Build Desktop Installers (NSIS & MSI)
         run: npm run tauri build

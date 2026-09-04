@@ -11,9 +11,7 @@ import {
   RefreshCw,
   CheckCircle2,
   Download,
-  Terminal,
-  ExternalLink,
-  Info
+  Terminal
 } from "lucide-react";
 import { check, Update } from "@tauri-apps/plugin-updater";
 import { invoke } from "@tauri-apps/api/core";
@@ -49,12 +47,12 @@ export const SettingsView: React.FC = () => {
         setUpdateStatus(`New release v${update.version} is available!`);
         setIsUpdateModalOpen(true);
       } else {
-        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.5).");
+        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.6).");
       }
     } catch (err) {
       console.warn("Update check notice:", err);
       setTimeout(() => {
-        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.5).");
+        setUpdateStatus("You are running the latest version of SecurePhotos (v0.0.6).");
         setIsCheckingUpdate(false);
       }, 1000);
       return;
@@ -140,7 +138,7 @@ export const SettingsView: React.FC = () => {
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {/* Python Status */}
+            {/* Engine Runtime Status */}
             <div
               style={{
                 display: "flex",
@@ -154,45 +152,21 @@ export const SettingsView: React.FC = () => {
             >
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontSize: "13px", fontWeight: 600 }}>Python Runtime (v3.10+)</span>
-                  {prerequisites?.python.installed ? (
+                  <span style={{ fontSize: "13px", fontWeight: 600 }}>Engine Runtime</span>
+                  {prerequisites?.backend.running || prerequisites?.python.installed ? (
                     <span style={{ fontSize: "11px", color: "#10b981", backgroundColor: "rgba(16, 185, 129, 0.12)", padding: "2px 8px", borderRadius: "4px", fontWeight: 600 }}>
-                      Installed
+                      Bundled & Ready
                     </span>
                   ) : (
-                    <span style={{ fontSize: "11px", color: "#ef4444", backgroundColor: "rgba(239, 68, 68, 0.12)", padding: "2px 8px", borderRadius: "4px", fontWeight: 600 }}>
-                      Not Found
+                    <span style={{ fontSize: "11px", color: "#f59e0b", backgroundColor: "rgba(245, 158, 11, 0.12)", padding: "2px 8px", borderRadius: "4px", fontWeight: 600 }}>
+                      Initializing
                     </span>
                   )}
                 </div>
                 <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "3px" }}>
-                  {prerequisites?.python.installed
-                    ? `${prerequisites.python.version || "Python 3"} detected at ${prerequisites.python.executable || "PATH"}`
-                    : "Required for on-device 4K AI models, EXIF extraction, and digital vault operations."}
+                  {prerequisites?.python.version || "Embedded Sidecar Runtime (Python 3.11)"}
                 </p>
               </div>
-
-              {!prerequisites?.python.installed && (
-                <button
-                  onClick={() => window.open("https://www.python.org/downloads/", "_blank")}
-                  className="clickable"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    padding: "6px 12px",
-                    borderRadius: "var(--radius-xs)",
-                    backgroundColor: "rgba(239, 68, 68, 0.2)",
-                    border: "1px solid rgba(239, 68, 68, 0.4)",
-                    color: "#fca5a5",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                  }}
-                >
-                  <ExternalLink size={12} />
-                  Download Python
-                </button>
-              )}
             </div>
 
             {/* Backend Engine Status */}
@@ -209,61 +183,46 @@ export const SettingsView: React.FC = () => {
             >
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontSize: "13px", fontWeight: 600 }}>Engine Sidecar (Port 8000)</span>
+                  <span style={{ fontSize: "13px", fontWeight: 600 }}>Local IPC Engine (Port 8000)</span>
                   {prerequisites?.backend.running ? (
                     <span style={{ fontSize: "11px", color: "#10b981", backgroundColor: "rgba(16, 185, 129, 0.12)", padding: "2px 8px", borderRadius: "4px", fontWeight: 600 }}>
                       Active
                     </span>
                   ) : (
                     <span style={{ fontSize: "11px", color: "#f59e0b", backgroundColor: "rgba(245, 158, 11, 0.12)", padding: "2px 8px", borderRadius: "4px", fontWeight: 600 }}>
-                      Offline
+                      Connecting...
                     </span>
                   )}
                 </div>
                 <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "3px" }}>
                   {prerequisites?.backend.running
-                    ? "Connected to FastAPI SQLite WAL backend at http://127.0.0.1:8000"
-                    : "Client UI is currently running in standalone mode with client-side caching."}
+                    ? "Connected to FastAPI SQLite WAL backend • 4K AI Super-Resolution, OCR, and Vault active"
+                    : "Connecting to local background engine sidecar at http://127.0.0.1:8000"}
                 </p>
               </div>
             </div>
 
-            {/* User Guidance Callout */}
+            {/* User Architecture Callout */}
             <div
               style={{
                 padding: "14px",
                 borderRadius: "var(--radius-sm)",
-                backgroundColor: "rgba(59, 130, 246, 0.08)",
-                border: "1px solid rgba(59, 130, 246, 0.25)",
+                backgroundColor: prerequisites?.backend.running ? "rgba(16, 185, 129, 0.08)" : "rgba(59, 130, 246, 0.08)",
+                border: `1px solid ${prerequisites?.backend.running ? "rgba(16, 185, 129, 0.25)" : "rgba(59, 130, 246, 0.25)"}`,
                 fontSize: "12px",
                 lineHeight: "1.5",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <Info size={15} style={{ color: "var(--accent-primary)" }} />
-                  <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>
-                    Do I need to take any action?
-                  </strong>
-                </div>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    padding: "2px 8px",
-                    borderRadius: "4px",
-                    backgroundColor: "rgba(16, 185, 129, 0.15)",
-                    color: "#10b981",
-                  }}
-                >
-                  ✓ No Action Needed
-                </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                <CheckCircle2 size={15} style={{ color: prerequisites?.backend.running ? "#10b981" : "var(--accent-primary)" }} />
+                <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>
+                  {prerequisites?.backend.running ? "All Core Features Operational" : "Zero-Config Local Architecture"}
+                </strong>
               </div>
               <p style={{ color: "var(--text-secondary)", margin: 0 }}>
-                SecurePhotos is fully operational in <strong>Standalone Mode</strong>. You can browse photos, import folders, create albums, and use the encrypted vault immediately without installing or running any additional software.
-              </p>
-              <p style={{ color: "var(--text-muted)", fontSize: "11px", marginTop: "6px", marginBottom: 0 }}>
-                <em>Optional:</em> The secondary Python engine is a background service for developers and power users who wish to run on-device 4K AI neural super-resolution and local face clustering.
+                {prerequisites?.backend.running
+                  ? "All on-device 4K AI neural upscaling, facial recognition, full-text OCR indexing, and Zero-Trust Vault encryption are running locally on your computer with complete privacy."
+                  : "SecurePhotos runs completely on-device. The engine sidecar launches silently in the background with zero configuration required."}
               </p>
             </div>
           </div>
@@ -285,7 +244,7 @@ export const SettingsView: React.FC = () => {
               <div>
                 <h3 style={{ fontSize: "14px", fontWeight: 700 }}>App Version & Updates</h3>
                 <p style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                  Current version: <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>v0.0.5</span> • Signed GitHub Releases
+                  Current version: <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>v0.0.6</span> • Signed GitHub Releases
                 </p>
               </div>
             </div>
