@@ -141,7 +141,7 @@ jobs:
           pip install -r engine/requirements.txt pyinstaller
           python scripts/build-engine.py
 
-      - name: Build Desktop Installers (NSIS & MSI)
+      - name: Build Desktop Installer (NSIS)
         run: npm run tauri build
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -156,10 +156,15 @@ jobs:
             ## 🔒 SecurePhotos ${{ steps.version_meta.outputs.tag_name }} — Desktop Release
             
             Download the installer for your Windows PC below:
-            - **`SecurePhotos_${{ steps.version_meta.outputs.clean_version }}_x64-setup.exe`**: 1-Click Windows Setup Installer (Recommended)
-            - **`SecurePhotos_${{ steps.version_meta.outputs.clean_version }}_x64_en-US.msi`**: Enterprise Windows Installer Package
+            - **`SecurePhotos_${{ steps.version_meta.outputs.clean_version }}_x64-setup.exe`**: 1-Click Windows Setup Installer (Recommended, in-place upgrades)
+            
+            ### 🛡️ SmartScreen / First-Time Installation Notice
+            - If Windows Defender SmartScreen displays *"Windows protected your PC"*, click **"More info"** &rarr; **"Run anyway"**.
+            - This is standard for newly published releases before worldwide telemetry reputation is established.
             
             ### ✨ Features & Capabilities
+            - In-place seamless upgrades (replaces app without requiring uninstall)
+            - Clean single desktop icon idempotency (no duplicate shortcuts)
             - Bundled Standalone Python Backend Engine Sidecar (`securephotos-engine.exe`)
             - Instant zero-console launch (No console popups, 0ms startup delay)
             - High-Speed Offline Media Ingestion with 2-level thumbnail sharding
@@ -168,7 +173,6 @@ jobs:
             - Representative Medoid Face Clustering & Social Affinity Close Ones
           files: |
             src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/nsis/*.zip
             src-tauri/target/release/bundle/nsis/*.sig
             src-tauri/target/release/bundle/**/latest.json
