@@ -1,6 +1,6 @@
 [package]
 name = "securephotos"
-version = "0.0.8"
+version = "0.0.9"
 description = "Local-first SLM-powered desktop photo library & digital vault"
 authors = ["SecurePhotos Team"]
 edition = "2021"

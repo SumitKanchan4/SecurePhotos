@@ -22,3 +22,4 @@
   Delete "$DESKTOP\SecurePhotos.lnk"
   Delete "$COMMONDESKTOP\SecurePhotos.lnk"
 !macroend
+

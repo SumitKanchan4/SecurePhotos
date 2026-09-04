@@ -17,9 +17,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release Tag Name (e.g. v0.0.8)'
+        description: 'Release Tag Name (e.g. v0.0.9)'
         required: false
-        default: 'v0.0.8'
+        default: 'v0.0.9'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
