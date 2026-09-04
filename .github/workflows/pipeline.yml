@@ -74,6 +74,12 @@ jobs:
       - name: Frontend Build & TypeScript Typecheck
         run: npm run build
 
+      - name: Compile Backend Engine Sidecar
+        shell: bash
+        run: |
+          pip install pyinstaller
+          python scripts/build-engine.py
+
       - name: Rust Backend Type & Dependency Check
         run: cargo check --manifest-path src-tauri/Cargo.toml
 
@@ -169,3 +175,4 @@ jobs:
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
