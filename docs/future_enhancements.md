@@ -51,3 +51,35 @@ Proactive data preservation and disaster-recovery tooling built directly into th
    - Periodic interactive check prompting the user to re-verify their 24-word BIP-39 recovery phrase to ensure they have physically documented it.
 2. **Database Integrity & WAL Snapshot Exports**:
    - Automated scheduled snapshots of `securephotos.db` with SQLite integrity checks (`PRAGMA integrity_check;`) before major updates.
+
+---
+
+## 4. Zero-Trust Mobile Companion App (Secure Remote Viewing & Ingestion)
+
+### Overview
+A companion mobile application (iOS & Android) that enables users to securely browse, search, and view photos served from their home desktop application over the internet with zero threat of external intruder access or network sniffing.
+
+### Threat Model & Defense Principles
+* **Threat 1: Public Internet Port Scanning & Exploitation**:
+  - *Defense*: **Zero Inbound Open Ports**. The desktop never opens listening ports or uses router UPnP. Connections are established via outbound-only encrypted peer-to-peer tunnels (Noise Protocol / WireGuard or WebRTC DataChannels with STUN/TURN).
+  - *Result*: The desktop remains completely invisible to automated port scanners (Shodan, Censys) and botnet attacks.
+* **Threat 2: Man-in-the-Middle (MitM) & Network Interception**:
+  - *Defense*: **Physical QR-Code Pairing Ceremony**. Pairing requires physically scanning an ephemeral QR code displayed on the desktop screen. Keys are exchanged via Mutual TLS (mTLS) with per-device Ed25519 cryptographic identity. No untrusted device can negotiate a connection.
+* **Threat 3: Cloud Relay Breach / Compromise**:
+  - *Defense*: **End-to-End Encryption (E2EE)**. Any intermediary relay or signaling server only sees opaque, authenticated ciphertext (ChaCha20-Poly1305 / AES-256-GCM). Zero photo data or metadata is ever readable in transit.
+* **Threat 4: Vault Media Exposure**:
+  - *Defense*: **Client-Side Zero-Knowledge Decryption**. Encrypted vault photos are streamed over the wire in their raw encrypted `.enc` chunk format. Decryption occurs strictly inside volatile RAM on the phone after local FaceID / Biometric authentication.
+* **Threat 5: Stolen or Lost Mobile Device**:
+  - *Defense*: **Instant Desktop Session Revocation**. The desktop application features a 1-click *"Revoke Mobile Device"* kill-switch that rotates session keys and terminates all remote access immediately.
+
+### Additional Key Mobile Architectural Capabilities
+1. **Local LAN Auto-Discovery**:
+   - Automatically detects when the phone is on the same home Wi-Fi via mDNS, bypassing internet relays for maximum gigabit LAN transfer speeds.
+2. **Adaptive Bandwidth & Cellular Data Guard**:
+   - On cellular networks, streams lightweight on-the-fly WebP/AVIF proxies (100–300 KB). Full-resolution 4K/RAW originals stream only on explicit demand or over Wi-Fi.
+3. **Screen Capture & Recording Shield**:
+   - Mobile client enables OS-level privacy protections (`FLAG_SECURE` on Android, `isCaptured` shielding on iOS) to prevent other malicious mobile apps from taking screenshots of unlocked vault photos.
+4. **Technology Stack**:
+   - **Tauri 2.0 Mobile (React + Rust)**: Enables 90% code reuse of existing UI design tokens, virtualized photo grids (`@tanstack/react-virtual`), and cryptographic Rust primitives.
+
+
