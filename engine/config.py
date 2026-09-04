@@ -32,7 +32,8 @@ class AppConfig(BaseSettings):
     )
 
     app_name: str = "SecurePhotos Engine"
-    app_version: str = "0.0.6"
+    app_version: str = "0.0.7"
+    data_dir: Path = Field(
         default_factory=lambda: Path.home() / ".securephotos_data",
         description="Path to active data and database directory",
     )
