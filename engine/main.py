@@ -67,6 +67,7 @@ def create_app() -> FastAPI:
 
     # Mount API routers
     app.include_router(health.router)
+    app.include_router(health.router, prefix="/api")
     app.include_router(system.router)
     app.include_router(photos.router)
     app.include_router(vault.router)
