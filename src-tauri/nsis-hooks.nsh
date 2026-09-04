@@ -14,7 +14,17 @@
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
-  ; Pre-uninstall cleanup
+  MessageBox MB_ICONINFORMATION|MB_OKCANCEL \
+    "SecurePhotos Uninstallation Notice:$\r$\n$\r$\n\
+1. Your photo library, database, and encrypted Vault are NOT deleted.$\r$\n\
+   They remain safely preserved in:$\r$\n\
+   $INSTDIR\data (and $PROFILE\.securephotos_data)$\r$\n$\r$\n\
+2. If you have locked photos in your Vault that you want restored to regular unencrypted files, \
+please click CANCEL, open SecurePhotos, and unlock your vault first.$\r$\n$\r$\n\
+Click OK to proceed with removing the SecurePhotos application files." \
+    IDOK proceed_uninstall
+  Abort
+  proceed_uninstall:
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL

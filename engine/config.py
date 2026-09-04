@@ -5,10 +5,31 @@ supporting command-line arguments, environment variables, and default configurat
 for both in-place indexing and external drive vault operation.
 """
 
+import logging
+import sys
 from pathlib import Path
 from typing import List, Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger("securephotos.config")
+
+
+def resolve_default_data_dir() -> Path:
+    """Resolves the default storage directory for database, cache, and models.
+
+    If running as a frozen PyInstaller binary (e.g. on an external drive like
+    E:\\SecurePhotos), returns <install_dir>/data for 100% portable operation.
+    In local development, uses project data/ directory or ~/.securephotos_data.
+    """
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        return exe_dir / "data"
+
+    dev_data = Path(__file__).resolve().parent.parent / "data"
+    if dev_data.exists():
+        return dev_data
+    return Path.home() / ".securephotos_data"
 
 
 class AppConfig(BaseSettings):
@@ -34,7 +55,7 @@ class AppConfig(BaseSettings):
     app_name: str = "SecurePhotos Engine"
     app_version: str = "0.0.9"
     data_dir: Path = Field(
-        default_factory=lambda: Path.home() / ".securephotos_data",
+        default_factory=resolve_default_data_dir,
         description="Path to active data and database directory",
     )
     cors_origins: List[str] = Field(
@@ -77,12 +98,29 @@ class AppConfig(BaseSettings):
         return self.data_dir / "originals"
 
     def ensure_directories(self) -> None:
-        """Creates all required directory structures idempotently."""
+        """Creates all required directory structures idempotently, migrating legacy data if present."""
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self.thumbnails_dir.mkdir(parents=True, exist_ok=True)
         self.previews_dir.mkdir(parents=True, exist_ok=True)
         self.models_dir.mkdir(parents=True, exist_ok=True)
         self.originals_dir.mkdir(parents=True, exist_ok=True)
+
+        # Automatic legacy migration from ~/.securephotos_data if current database is brand new
+        try:
+            legacy_data = Path.home() / ".securephotos_data"
+            legacy_db = legacy_data / "database" / "securephotos.db"
+            if legacy_db.exists() and not self.database_path.exists() and legacy_data.resolve() != self.data_dir.resolve():
+                import shutil
+                logger.info(f"Migrating legacy database from {legacy_db} to {self.database_path}")
+                shutil.copy2(legacy_db, self.database_path)
+                for folder in ("thumbnails", "previews", "models", "originals"):
+                    legacy_folder = legacy_data / folder
+                    target_folder = self.data_dir / folder
+                    if legacy_folder.exists() and not any(target_folder.iterdir()):
+                        shutil.copytree(legacy_folder, target_folder, dirs_exist_ok=True)
+                logger.info("Legacy data migration completed successfully.")
+        except Exception as e:
+            logger.warning(f"Legacy data migration notice: {e}")
 
 
 # Global settings singleton initialized at startup

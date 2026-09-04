@@ -46,6 +46,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "licenseFile": "EULA.txt",
     "externalBin": [
       "binaries/securephotos-engine"
     ],

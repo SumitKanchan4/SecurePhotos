@@ -1,0 +1,31 @@
+END USER LICENSE AGREEMENT (EULA) FOR SECUREPHOTOS
+Last Updated: September 2026
+
+PLEASE READ THIS END USER LICENSE AGREEMENT ("AGREEMENT") CAREFULLY BEFORE INSTALLING OR USING SECUREPHOTOS ("SOFTWARE"). BY CLICKING "I AGREE", DOWNLOADING, INSTALLING, OR USING THE SOFTWARE, YOU AGREE TO BE BOUND BY THE TERMS AND CONDITIONS OF THIS AGREEMENT. IF YOU DO NOT AGREE, DO NOT INSTALL OR USE THE SOFTWARE.
+
+1. GRANT OF LICENSE
+Subject to the terms of this Agreement, the developers ("Licensor") grant you a personal, non-exclusive, non-transferable, revocable license to install and use SecurePhotos solely for your personal or internal media management and digital vault purposes.
+
+2. OWNERSHIP & INTELLECTUAL PROPERTY
+SecurePhotos, including its source code, architecture, design tokens, visual assets, and zero-trust cryptographic implementations, is protected by copyright and intellectual property laws. All rights not expressly granted herein are reserved.
+
+3. ZERO-TRUST ENCRYPTION & DATA RECOVERY RESPONSIBILITY
+SecurePhotos incorporates zero-trust, client-side authenticated encryption (AES-256-GCM) with Argon2id key derivation. You acknowledge and agree that:
+(a) Licensor does not hold, manage, or store your passwords, PINs, biometrics, master encryption keys, or recovery phrases.
+(b) IF YOU FORGET OR LOSE YOUR PASSWORD, PIN, OR 24-WORD RECOVERY PHRASE, YOUR ENCRYPTED DATA IS MATHEMATICALLY IRRECOVERABLE. LICENSOR CANNOT RESET, RECOVER, OR DECRYPT YOUR ENCRYPTED MEDIA UNDER ANY CIRCUMSTANCES.
+(c) You bear sole and absolute responsibility for securing, recording, and maintaining backups of all credentials, recovery phrases, and original files.
+
+4. DISCLAIMER OF WARRANTIES ("AS IS")
+THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITH ALL FAULTS AND WITHOUT WARRANTY OF ANY KIND. TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, LICENSOR EXPRESSLY DISCLAIMS ALL WARRANTIES, WHETHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. LICENSOR DOES NOT WARRANT THAT THE OPERATION OF THE SOFTWARE WILL BE UNINTERRUPTED, ERROR-FREE, SECURE, OR COMPATIBLE WITH ALL HARDWARE OR EXTERNAL STORAGE MEDIA.
+
+5. LIMITATION OF LIABILITY & ZERO LIABILITY FOR DATA LOSS
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL THE AUTHORS, DEVELOPERS, CONTRIBUTORS, OR COPYRIGHT HOLDERS OF SECUREPHOTOS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, PUNITIVE, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, LOSS OF DATA, IMAGE CORRUPTION, LOSS OF RECOVERY KEYS, MEDIA INTEGRITY LOSS, HARDWARE FAILURE, SYSTEM CRASHES, UNAUTHORIZED DATA ACCESS, OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE INSTALLATION, USE, OR INABILITY TO USE THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+6. USER BACKUP OBLIGATION
+You explicitly acknowledge that digital media organization, super-resolution enhancement, and on-disk cryptographic manipulation involve inherent technical risks. You agree that it is your sole duty and obligation to maintain independent, regular, and verified backups of all original photos and critical files before performing ingestion, batch operations, or vault migrations.
+
+7. TERMINATION & UNINSTALLATION
+This Agreement remains effective until terminated. You may terminate it at any time by uninstalling the Software. Upon uninstallation, your photo library and encrypted vault data remain preserved on your storage media. If you wish to restore encrypted media to unencrypted files, you must decrypt your vault within the Software prior to uninstallation.
+
+8. GOVERNING LAW
+This Agreement shall be governed by and construed in accordance with the applicable laws of the jurisdiction in which the software is utilized, without giving effect to any principles of conflicts of law.

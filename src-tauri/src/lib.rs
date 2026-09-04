@@ -171,7 +171,8 @@ fn start_backend_engine(state: tauri::State<BackendManager>) -> serde_json::Valu
     // Priority 1: Launch compiled standalone sidecar binary
     if let Some(sidecar_path) = find_sidecar_executable() {
         let mut cmd = Command::new(&sidecar_path);
-        cmd.args(["--port", "8000"]);
+        let data_dir = sidecar_path.parent().map(|p| p.join("data")).unwrap_or_else(|| std::path::PathBuf::from("data"));
+        cmd.args(["--port", "8000", "--data-dir", data_dir.to_str().unwrap_or("data")]);
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
