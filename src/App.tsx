@@ -42,11 +42,36 @@ export const App: React.FC = () => {
   } = useAppStore();
 
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [activeYear, setActiveYear] = useState<string>("All Years");
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isVaultUnlockModalOpen, setIsVaultUnlockModalOpen] = useState(false);
   const [isCollageModalOpen, setIsCollageModalOpen] = useState(false);
   const [activeStoryId, setActiveStoryId] = useState<number | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+  // Load photos from engine with optional Year or Undated filtering
+  const loadPhotos = async (selectedYear: string = activeYear) => {
+    try {
+      let url = "http://127.0.0.1:8000/api/photos?limit=500";
+      if (selectedYear === "Undated") {
+        url += "&year=Undated";
+      } else if (selectedYear && selectedYear !== "All Years") {
+        url += `&year=${selectedYear}`;
+      }
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setPhotos(data);
+        setTotalPhotosCount(data.length);
+      }
+    } catch {
+      // Backend may be starting or offline
+    }
+  };
+
+  useEffect(() => {
+    loadPhotos(activeYear);
+  }, [activeYear]);
 
   // Updater and diagnostics state
   const [activeUpdate, setActiveUpdate] = useState<Update | null>(null);
@@ -369,23 +394,27 @@ export const App: React.FC = () => {
                 }}
               >
                 <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>Timeline:</span>
-                {["2026", "2025", "2024", "2023", "2022", "All Years"].map((year, idx) => (
-                  <button
-                    key={year}
-                    className="clickable"
-                    style={{
-                      background: idx === 0 ? "var(--accent-primary)" : "transparent",
-                      color: idx === 0 ? "#ffffff" : "var(--text-secondary)",
-                      border: "none",
-                      padding: "3px 10px",
-                      borderRadius: "var(--radius-full)",
-                      fontSize: "11px",
-                      fontWeight: idx === 0 ? 600 : 400,
-                    }}
-                  >
-                    {year}
-                  </button>
-                ))}
+                {["All Years", "2026", "2025", "2024", "2023", "2022", "Undated"].map((year) => {
+                  const isActive = activeYear === year;
+                  return (
+                    <button
+                      key={year}
+                      className="clickable"
+                      onClick={() => setActiveYear(year)}
+                      style={{
+                        background: isActive ? "var(--accent-primary)" : "transparent",
+                        color: isActive ? "#ffffff" : "var(--text-secondary)",
+                        border: "none",
+                        padding: "3px 10px",
+                        borderRadius: "var(--radius-full)",
+                        fontSize: "11px",
+                        fontWeight: isActive ? 600 : 400,
+                      }}
+                    >
+                      {year}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* 60 FPS Virtualized Grid / Empty State */}
@@ -406,6 +435,7 @@ export const App: React.FC = () => {
       <ImportModal 
         isOpen={isImportModalOpen} 
         onClose={() => setIsImportModalOpen(false)} 
+        onImportComplete={() => loadPhotos(activeYear)}
       />
 
       {/* Vault Unlock Modal */}

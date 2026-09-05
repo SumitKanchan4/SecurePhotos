@@ -11,6 +11,7 @@ This module delivers high-speed ingestion (sub-10ms per photo) with:
 import datetime
 import logging
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -34,9 +35,131 @@ SUPPORTED_EXTENSIONS = {
     ".mp4", ".mov", ".mkv", ".avi", ".webm",
 }
 
+# Compiled regex patterns for filename timestamp extraction (WhatsApp, Telegram, Cameras, Screenshots)
+FILENAME_DATE_PATTERNS = [
+    # 1. WhatsApp Android Images & Videos: IMG-20230815-WA0004 or VID-20220412-WA0001
+    (
+        re.compile(r"^(?:IMG|VID)-(\d{4})(\d{2})(\d{2})-WA\d+", re.IGNORECASE),
+        lambda m: datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    ),
+    # 2. WhatsApp iOS / Web: "WhatsApp Image 2023-11-20 at 14.30.15" or "WhatsApp Video 2023-11-20 at 14.30.15"
+    (
+        re.compile(r"^WhatsApp (?:Image|Video) (\d{4})-(\d{2})-(\d{2}) at (\d{2})\.(\d{2})\.(\d{2})", re.IGNORECASE),
+        lambda m: datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5)), int(m.group(6)))
+    ),
+    # 3. WhatsApp iOS / Web date-only: "WhatsApp Image 2023-11-20"
+    (
+        re.compile(r"^WhatsApp (?:Image|Video) (\d{4})-(\d{2})-(\d{2})", re.IGNORECASE),
+        lambda m: datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    ),
+    # 4. Telegram: photo_2021-04-10_12-00-00 or video_2021-04-10_12-00-00
+    (
+        re.compile(r"^(?:photo|video)_(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})", re.IGNORECASE),
+        lambda m: datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5)), int(m.group(6)))
+    ),
+    # 5. Pixel / Android / Generic timestamp: IMG_20230514_143022 or PXL_20230514_143022 or 20230514_143022
+    (
+        re.compile(r"^(?:IMG|PXL|VID)?[_-]?(\d{4})(\d{2})(\d{2})[_-](\d{2})(\d{2})(\d{2})", re.IGNORECASE),
+        lambda m: datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5)), int(m.group(6)))
+    ),
+    # 6. Screenshots: Screenshot_20230514-143022 or Screenshot_2023-05-14-14-30-22
+    (
+        re.compile(r"^Screenshot_(\d{4})(\d{2})(\d{2})[-_](\d{2})(\d{2})(\d{2})", re.IGNORECASE),
+        lambda m: datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5)), int(m.group(6)))
+    ),
+    (
+        re.compile(r"^Screenshot_(\d{4})-(\d{2})-(\d{2})[-_](\d{2})-(\d{2})-(\d{2})", re.IGNORECASE),
+        lambda m: datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5)), int(m.group(6)))
+    ),
+    # 7. Standard ISO-like embedded format: 2023-05-14 or 2023_05_14
+    (
+        re.compile(r"(?:^|[^\d])(\d{4})[-_](\d{2})[-_](\d{2})(?:[^\d]|$)", re.IGNORECASE),
+        lambda m: datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    ),
+]
+
+
+def parse_date_from_filename(filename: str) -> Optional[datetime.datetime]:
+    """Extracts date/time from common messenger, camera, and screenshot filename patterns.
+
+    Args:
+        filename: Original media filename string.
+
+    Returns:
+        datetime object if parsed and valid, None otherwise.
+    """
+    stem = Path(filename).stem
+    current_year = datetime.datetime.now().year
+
+    for pattern, builder in FILENAME_DATE_PATTERNS:
+        match = pattern.search(stem)
+        if match:
+            try:
+                dt = builder(match)
+                # Validation: year must be reasonable (1970 <= year <= current_year + 1)
+                if 1970 <= dt.year <= current_year + 1 and 1 <= dt.month <= 12 and 1 <= dt.day <= 31:
+                    return dt
+            except (ValueError, OverflowError):
+                continue
+    return None
+
+
+def parse_date_from_directory(parent_path: Path) -> Optional[datetime.datetime]:
+    """Infers date from parent folder names (e.g. '2023-08-Vacation' or 'Trip_2022').
+
+    Args:
+        parent_path: Path instance of the parent directory.
+
+    Returns:
+        datetime object if inferred, None otherwise.
+    """
+    if not parent_path or not parent_path.name:
+        return None
+
+    folder_name = parent_path.name
+    current_year = datetime.datetime.now().year
+
+    # Check for YYYY-MM-DD or YYYY_MM_DD
+    match_ymd = re.search(r"(?:^|[^\d])(\d{4})[-_](\d{2})[-_](\d{2})(?:[^\d]|$)", folder_name)
+    if match_ymd:
+        try:
+            y, m, d = int(match_ymd.group(1)), int(match_ymd.group(2)), int(match_ymd.group(3))
+            if 1970 <= y <= current_year + 1 and 1 <= m <= 12 and 1 <= d <= 31:
+                return datetime.datetime(y, m, d)
+        except ValueError:
+            pass
+
+    # Check for YYYY-MM
+    match_ym = re.search(r"(?:^|[^\d])(\d{4})[-_](\d{2})(?:[^\d]|$)", folder_name)
+    if match_ym:
+        try:
+            y, m = int(match_ym.group(1)), int(match_ym.group(2))
+            if 1970 <= y <= current_year + 1 and 1 <= m <= 12:
+                return datetime.datetime(y, m, 1)
+        except ValueError:
+            pass
+
+    # Check for standalone YYYY (e.g. '2022_Photos' or 'Trip 2021')
+    match_y = re.search(r"(?:^|[^\d])(\d{4})(?:[^\d]|$)", folder_name)
+    if match_y:
+        try:
+            y = int(match_y.group(1))
+            if 1970 <= y <= current_year + 1:
+                return datetime.datetime(y, 1, 1)
+        except ValueError:
+            pass
+
+    return None
+
 
 def extract_exif_metadata(filepath: Path) -> Dict[str, any]:
-    """Extracts camera metadata, timestamps, and GPS from EXIF tags.
+    """Extracts camera metadata, timestamps, and GPS from EXIF tags with fallback heuristics.
+
+    Resolution hierarchy:
+    1. EXIF DateTimeOriginal or DateTime tags.
+    2. Intelligent regex parsing from filename (WhatsApp, Telegram, Screenshots, Android/iOS).
+    3. Parent directory date heuristics (e.g., '2023-08-Vacation').
+    4. Undated (None) - avoids artificially assigning misleading import timestamps.
 
     Args:
         filepath: Absolute path to image file.
@@ -62,62 +185,76 @@ def extract_exif_metadata(filepath: Path) -> Dict[str, any]:
             metadata["height"] = img.height
             
             exif_raw = img.getexif()
-            if not exif_raw:
-                # Fallback to filesystem mtime
-                mtime = os.path.getmtime(filepath)
-                metadata["taken_at"] = datetime.datetime.fromtimestamp(mtime).isoformat()
-                return metadata
+            if exif_raw:
+                exif = {ExifTags.TAGS.get(k, k): v for k, v in exif_raw.items()}
 
-            exif = {ExifTags.TAGS.get(k, k): v for k, v in exif_raw.items()}
+                # Extract DateTimeOriginal or DateTime
+                dt_str = exif.get("DateTimeOriginal") or exif.get("DateTime")
+                if dt_str:
+                    try:
+                        # Standard EXIF format: "YYYY:MM:DD HH:MM:SS"
+                        dt = datetime.datetime.strptime(str(dt_str), "%Y:%m:%d %H:%M:%S")
+                        metadata["taken_at"] = dt.isoformat()
+                    except ValueError:
+                        pass
 
-            # Extract DateTimeOriginal or DateTime
-            dt_str = exif.get("DateTimeOriginal") or exif.get("DateTime")
-            if dt_str:
-                try:
-                    # Standard EXIF format: "YYYY:MM:DD HH:MM:SS"
-                    dt = datetime.datetime.strptime(str(dt_str), "%Y:%m:%d %H:%M:%S")
-                    metadata["taken_at"] = dt.isoformat()
-                except ValueError:
-                    pass
-
-            metadata["camera_make"] = str(exif.get("Make", "")).strip() or None
-            metadata["camera_model"] = str(exif.get("Model", "")).strip() or None
-
-            # Fallback if no EXIF date found
-            if not metadata["taken_at"]:
-                mtime = os.path.getmtime(filepath)
-                metadata["taken_at"] = datetime.datetime.fromtimestamp(mtime).isoformat()
+                metadata["camera_make"] = str(exif.get("Make", "")).strip() or None
+                metadata["camera_model"] = str(exif.get("Model", "")).strip() or None
 
     except Exception as e:
         logger.debug(f"Could not parse EXIF for {filepath}: {e}")
-        mtime = os.path.getmtime(filepath)
-        metadata["taken_at"] = datetime.datetime.fromtimestamp(mtime).isoformat()
 
+    # Tier 2: If no EXIF date found, attempt regex extraction from filename
+    if not metadata["taken_at"]:
+        filename_dt = parse_date_from_filename(filepath.name)
+        if filename_dt:
+            metadata["taken_at"] = filename_dt.isoformat()
+
+    # Tier 3: If still no date found, attempt inference from parent directory name
+    if not metadata["taken_at"]:
+        dir_dt = parse_date_from_directory(filepath.parent)
+        if dir_dt:
+            metadata["taken_at"] = dir_dt.isoformat()
+
+    # Tier 4: Remains None (genuinely undated, avoids false today's timestamp)
     return metadata
 
 
-def get_hierarchical_destination_path(taken_at_iso: Optional[str], filename: str) -> Path:
-    """Calculates hierarchical date-sharded destination path (originals/YYYY/MM/DD/filename.ext).
+def get_hierarchical_destination_path(
+    taken_at_iso: Optional[str],
+    filename: str,
+    file_hash: Optional[str] = None
+) -> Path:
+    """Calculates hierarchical date-sharded or hash-sharded destination path.
+
+    - Dated media (taken_at_iso present): 'originals/YYYY/MM/DD/filename.ext'
+    - Undated media (taken_at_iso is None): 'originals/undated/{prefix}/filename.ext'
+      where prefix is the 2-character hex hash prefix (e.g. 'originals/undated/a4/').
+      This guarantees zero Windows NTFS directory performance degradation.
 
     Args:
-        taken_at_iso: ISO timestamp string (e.g. '2026-08-15T14:30:00').
+        taken_at_iso: ISO timestamp string (e.g. '2026-08-15T14:30:00') or None.
         filename: Original media filename.
+        file_hash: SHA-256 hash string for undated prefix sharding.
 
     Returns:
-        Path instance pointing to the managed date-sharded location.
+        Path instance pointing to the managed destination location.
     """
-    dt = datetime.datetime.now()
     if taken_at_iso:
         try:
             dt = datetime.datetime.fromisoformat(taken_at_iso)
+            year = f"{dt.year:04d}"
+            month = f"{dt.month:02d}"
+            day = f"{dt.day:02d}"
+            sharded_folder = settings.originals_dir / year / month / day
+            sharded_folder.mkdir(parents=True, exist_ok=True)
+            return sharded_folder / filename
         except ValueError:
             pass
 
-    year = f"{dt.year:04d}"
-    month = f"{dt.month:02d}"
-    day = f"{dt.day:02d}"
-
-    sharded_folder = settings.originals_dir / year / month / day
+    # Undated Hash-Prefix Sharding (256 subdirectories: '00' to 'ff')
+    prefix = (file_hash[:2].lower()) if file_hash and len(file_hash) >= 2 else "00"
+    sharded_folder = settings.originals_dir / "undated" / prefix
     sharded_folder.mkdir(parents=True, exist_ok=True)
     return sharded_folder / filename
 
@@ -160,7 +297,7 @@ async def ingest_single_photo(
 
     # Determine final storage path
     if mode == "managed":
-        dest_path = get_hierarchical_destination_path(metadata["taken_at"], source_path.name)
+        dest_path = get_hierarchical_destination_path(metadata["taken_at"], source_path.name, file_hash=file_hash)
         
         # Avoid filename collisions in same day folder
         if dest_path.exists() and dest_path != source_path:

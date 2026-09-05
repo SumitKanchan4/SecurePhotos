@@ -70,11 +70,13 @@ async def list_photos(
     if favorite_only:
         query += " AND is_favorite = 1"
 
-    if year and year != "All Years":
+    if year == "Undated":
+        query += " AND taken_at IS NULL"
+    elif year and year != "All Years":
         query += " AND strftime('%Y', taken_at) = ?"
         params.append(year)
 
-    query += " ORDER BY taken_at DESC LIMIT ? OFFSET ?;"
+    query += " ORDER BY taken_at DESC, id DESC LIMIT ? OFFSET ?;"
     params.extend([limit, offset])
 
     async with conn.execute(query, params) as cursor:
