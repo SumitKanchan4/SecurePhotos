@@ -15,6 +15,25 @@ from pathlib import Path
 
 def get_target_triple() -> str:
     """Returns the target triple expected by Tauri for the current host architecture."""
+    # 1. Query active rustc host target if available
+    rustc_cmd = shutil.which("rustc")
+    if not rustc_cmd:
+        cargo_rustc = Path.home() / ".cargo" / "bin" / ("rustc.exe" if sys.platform == "win32" else "rustc")
+        if cargo_rustc.exists():
+            rustc_cmd = str(cargo_rustc)
+
+    if rustc_cmd:
+        try:
+            res = subprocess.run([rustc_cmd, "-vV"], capture_output=True, text=True, check=True)
+            for line in res.stdout.splitlines():
+                if line.startswith("host:"):
+                    host = line.split(":", 1)[1].strip()
+                    if host:
+                        return host
+        except Exception:
+            pass
+
+    # 2. Fall back to OS/architecture heuristics
     system = platform.system().lower()
     machine = platform.machine().lower()
 
@@ -101,6 +120,25 @@ def build_engine():
     size_mb = target_exe.stat().st_size / (1024 * 1024)
     print(f"[+] Engine Sidecar compiled successfully!")
     print(f"[+] File: {target_exe} ({size_mb:.2f} MB)")
+
+    # On Windows, mirror to both gnu and msvc triples for seamless cross-PC compatibility
+    if platform.system().lower() == "windows":
+        if "gnu" in triple:
+            alt_name = binary_name.replace("gnu", "msvc")
+            alt_exe = binaries_dir / f"{alt_name}{ext}"
+            try:
+                shutil.copy2(target_exe, alt_exe)
+                print(f"[+] Mirrored sidecar for MSVC target: {alt_exe.name}")
+            except Exception as e:
+                print(f"[*] Note: Could not mirror MSVC binary: {e}")
+        elif "msvc" in triple:
+            alt_name = binary_name.replace("msvc", "gnu")
+            alt_exe = binaries_dir / f"{alt_name}{ext}"
+            try:
+                shutil.copy2(target_exe, alt_exe)
+                print(f"[+] Mirrored sidecar for GNU target: {alt_exe.name}")
+            except Exception as e:
+                print(f"[*] Note: Could not mirror GNU binary: {e}")
 
 
 if __name__ == "__main__":

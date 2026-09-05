@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -179,17 +180,49 @@ def update_all_manifests(current_ver: str, new_ver: str, dry_run: bool = False) 
     return success
 
 
+def get_python_runner() -> str:
+    """Finds the project .venv Python or active Python with pytest."""
+    venv_python = ROOT_DIR / ".venv" / "Scripts" / "python.exe"
+    if venv_python.exists():
+        return str(venv_python)
+    posix_venv = ROOT_DIR / ".venv" / "bin" / "python"
+    if posix_venv.exists():
+        return str(posix_venv)
+    if "VIRTUAL_ENV" in os.environ:
+        cand = Path(os.environ["VIRTUAL_ENV"]) / ("Scripts" if sys.platform == "win32" else "bin") / ("python.exe" if sys.platform == "win32" else "python")
+        if cand.exists():
+            return str(cand)
+    return sys.executable
+
+
+def get_node_env() -> dict:
+    """Enriches PATH with user and system Node.js locations if npm is not readily in PATH."""
+    env = os.environ.copy()
+    current_path = env.get("PATH", "")
+    if shutil.which("npm", path=current_path) is None:
+        candidates = [
+            Path.home() / ".local" / "nodejs",
+            Path("C:/Program Files/nodejs"),
+            Path("C:/Program Files (x86)/nodejs"),
+            Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "nodejs",
+            Path(os.environ.get("NVM_SYMLINK", "")) if os.environ.get("NVM_SYMLINK") else None,
+        ]
+        for cand in candidates:
+            if cand and cand.exists():
+                if (cand / "npm.cmd").exists() or (cand / "npm").exists():
+                    env["PATH"] = f"{cand};{current_path}"
+                    break
+    return env
+
+
 def run_preflight_checks() -> bool:
     """Runs frontend TypeScript build and Python unit tests."""
     print("\n[*] Running pre-flight verification checks...")
 
     # Frontend build
     print("  -> Testing frontend build (tsc && vite build)...")
+    env = get_node_env()
     npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
-    # Ensure Program Files nodejs is available
-    env = os.environ.copy()
-    if sys.platform == "win32" and r"C:\Program Files\nodejs" not in env.get("PATH", ""):
-        env["PATH"] = r"C:\Program Files\nodejs;" + env.get("PATH", "")
 
     build_res = subprocess.run(
         [npm_cmd, "run", "build"],
@@ -206,8 +239,9 @@ def run_preflight_checks() -> bool:
 
     # Python unit tests
     print("  -> Running Python unit tests (pytest engine/tests)...")
+    python_runner = get_python_runner()
     test_res = subprocess.run(
-        [sys.executable, "-m", "pytest", "engine/tests"],
+        [python_runner, "-m", "pytest", "engine/tests"],
         cwd=str(ROOT_DIR),
         capture_output=True,
         text=True,

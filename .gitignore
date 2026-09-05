@@ -14,10 +14,12 @@ __pycache__/
 node_modules/
 dist/
 
-# Rust / Tauri
+# Rust / Tauri / PyInstaller
 target/
 src-tauri/target/
 src-tauri/gen/
+src-tauri/binaries/*.exe
+build/
 
 # OS
 .DS_Store
