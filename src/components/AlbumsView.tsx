@@ -543,20 +543,25 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                         }}
                         title={photo.is_favorite ? "Remove from Favorites" : "Add to Favorites"}
                         style={{
-                          background: photo.is_favorite ? "rgba(239, 68, 68, 0.9)" : "rgba(0, 0, 0, 0.65)",
-                          border: "1px solid rgba(255, 255, 255, 0.3)",
-                          borderRadius: "var(--radius-xs)",
-                          color: "#ffffff",
+                          background: "transparent",
+                          border: "none",
+                          cursor: "pointer",
                           width: "24px",
                           height: "24px",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          cursor: "pointer",
-                          backdropFilter: "blur(4px)",
+                          padding: 0,
+                          filter: "drop-shadow(0 1px 3px rgba(0, 0, 0, 0.75))",
+                          transition: "transform 0.15s ease",
                         }}
                       >
-                        <Heart size={12} fill={photo.is_favorite ? "#ffffff" : "none"} stroke="#ffffff" />
+                        <Heart 
+                          size={18} 
+                          fill={photo.is_favorite ? "#ef4444" : "none"} 
+                          stroke={photo.is_favorite ? "#ef4444" : "#ffffff"} 
+                          strokeWidth={2}
+                        />
                       </button>
 
                       {/* Remove from Album Button (Only for user albums) */}

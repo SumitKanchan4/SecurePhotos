@@ -322,27 +322,25 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
             onToggleFavorite?.(photo.id);
           }}
           style={{
-            background: photo.is_favorite ? "rgba(239, 68, 68, 0.9)" : "rgba(0, 0, 0, 0.45)",
-            border: "1px solid rgba(255, 255, 255, 0.3)",
-            borderRadius: "var(--radius-xs)",
+            background: "transparent",
+            border: "none",
             cursor: "pointer",
-            width: "22px",
-            height: "22px",
+            width: "24px",
+            height: "24px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            color: "#ffffff",
             opacity: photo.is_favorite || isHovered ? 1 : 0,
-            transform: isHovered ? "scale(1.05)" : "scale(1)",
-            transition: "opacity 0.15s ease, transform 0.15s ease, background-color 0.15s ease",
+            transform: isHovered ? "scale(1.15)" : "scale(1)",
+            transition: "opacity 0.15s ease, transform 0.15s ease",
             padding: 0,
-            backdropFilter: "blur(4px)",
+            filter: "drop-shadow(0 1px 3px rgba(0, 0, 0, 0.75))",
           }}
         >
           <Heart 
-            size={12} 
-            fill={photo.is_favorite ? "#ffffff" : "none"} 
-            stroke="#ffffff"
+            size={18} 
+            fill={photo.is_favorite ? "#ef4444" : "none"} 
+            stroke={photo.is_favorite ? "#ef4444" : "#ffffff"}
             strokeWidth={2}
           />
         </button>
