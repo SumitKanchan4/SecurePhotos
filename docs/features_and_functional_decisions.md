@@ -329,21 +329,24 @@ Delivers transparent download feedback, clears up ambiguous album deletion label
 Delivers a 100% private, on-device facial recognition and clustering subsystem designed for high-accuracy identity grouping across large photo collections. Operates as an asynchronous background worker that scans unindexed photos, detects facial bounding boxes and 5 keypoints via YOLOv8-Face, computes 5-point affine-aligned 512-D ArcFace (ResNet-50) identity vectors, caches 200x200 WebP face avatar crops, and runs unsupervised vector clustering.
 
 The frontend `PeopleView.tsx` presents:
-1. **Unlabeled Face Clusters**: Displays identity groups with up to 4 diverse anchor face crops for instant visual identification, enabling 1-click tagging ("Name Once, Tag 1,000 Photos") with granular relationship categorization (`Wife`, `Husband`, `Son`, `Daughter`, `Mother`, `Father`, `Brother`, `Sister`, `Grandmother`, `Grandfather`, `Aunt`, `Uncle`, `Cousin`, `Best Friend`, `Friend`, `Colleague`, `Acquaintance`, or `Custom...`) and "Close One" (VIP) toggle.
+1. **Unlabeled Face Clusters**: Displays identity groups with up to 4 diverse anchor face crops for instant visual identification, enabling 1-click tagging ("Name Once, Tag 1,000 Photos") with singular, human-centric relationship options (`Spouse`, `Child`, `Parent`, `Sibling`, `Extended Family`, `Relative`, `Friend`, `Colleague`, `Acquaintance`) and "Close One" (VIP) toggle.
 2. **Recognized People Gallery**: Ranks recognized individuals by Social Affinity score and photo count, featuring real cover face avatar crops and specific relationship badges.
 3. **Person Photos Drill-Down & Inline Customizer**: Clicking any recognized person opens all photos they appear in, with an interactive header allowing users to customize their relationship type or toggle VIP status on-the-fly via `PATCH /api/people/{person_id}`.
 4. **Live Scan Progress & Manual Trigger**: A "Scan Photos for Faces" action button and an animated progress banner displaying real-time scanned photo count, total photos, and detected faces.
 
 ### Functional Decision Points & Rationale
-- **Granular Human-Centric Relationships & VIP Auto-Promotion**:
-  - *Problem*: Generic tags like "Family" or "Friend" fail to capture authentic real-world relationships, reducing the emotional resonance of identity tagging and making social affinity scoring less expressive.
-  - *Decision*: Introduced structured, human-centric relationship categories:
-    - **Spouse & Partner**: `Wife`, `Husband`, `Partner`, `Spouse`, `Fiancé`, `Fiancée`.
-    - **Immediate Family**: `Son`, `Daughter`, `Child`, `Mother`, `Father`, `Parent`, `Brother`, `Sister`, `Sibling`.
-    - **Extended Family**: `Grandmother`, `Grandfather`, `Grandchild`, `Aunt`, `Uncle`, `Cousin`, `Nephew`, `Niece`, `In-Law`, `Family`.
-    - **Friends & Social**: `Best Friend`, `Friend`, `Acquaintance`, `Roommate`, `Neighbor`.
-    - **Work & Community**: `Colleague`, `Mentor`, `Client`, `Other`, plus a free-form `Custom...` input.
-  - *Automatic VIP / Close One Promotion*: When tagging or updating someone as an immediate family member or spouse (`Wife`, `Husband`, `Son`, `Daughter`, `Mother`, `Father`, etc.), the system automatically promotes them to "Close One" (VIP status), elevating their priority in Social Affinity calculations, Stories generation, and UI gallery sorting.
+- **Singular Family-Centric Relationship Taxonomy**:
+  - *Context & Structure*: Aligned with authentic family dynamics (tailored for close-knit and Indian family structures):
+    1. **`Spouse`**: Partner, husband, or wife.
+    2. **`Child`**: Son or daughter.
+    3. **`Parent`**: Mother or father.
+    4. **`Sibling`**: Brother or sister.
+    5. **`Extended Family`**: Grandparents, grandchildren, first cousins, paternal/maternal first family.
+    6. **`Relative`**: Wider family members where relation is not immediate (paternal/maternal extended branches).
+    7. **`Friend`**: Close personal friends.
+    8. **`Colleague`**: Workplace, office, and professional connections.
+    9. **`Acquaintance`**: People known through formal introductions, neighbors, friends-of-friends, or casual social ties.
+  - *Automatic VIP / Close One Promotion*: When tagging or updating someone as an immediate family member or spouse (`Spouse`, `Child`, `Parent`, `Sibling`, `Extended Family`), the system automatically promotes them to "Close One" (VIP status), elevating their priority in Social Affinity calculations, Stories generation, and UI gallery sorting.
 - **On-the-Fly Relationship & VIP Editing (`PATCH /api/people/{person_id}`)**:
   - *Decision*: Enabled users to adjust any person's name, granular relationship, or VIP status directly from the individual person drill-down screen without having to delete and retag their cluster.
 - **Model Architecture Selection: YOLOv8-Face + ArcFace (ResNet-50) over BlazeFace / MobileNet**:
@@ -362,7 +365,7 @@ The frontend `PeopleView.tsx` presents:
 
 ### Technical Touchpoints
 - **Backend Services & API**:
-  - `engine/services/social_affinity_service.py`: Updated `calculate_affinity_score` with expanded `close_relationships` set.
+  - `engine/services/social_affinity_service.py`: Updated `calculate_affinity_score` with expanded `close_relationships` set (`Spouse`, `Child`, `Parent`, `Sibling`, `Extended Family`).
   - `engine/services/face_recognition_service.py`: YOLOv8-Face detector, 5-point affine landmark estimation (`_estimate_affine_matrix`), Laplacian variance sharpness calculation (`calculate_face_quality`), and 512-D ArcFace identity embedding extraction.
   - `engine/services/face_clustering_service.py`: Vectorized NumPy clustering (`cluster_embeddings`), medoid selection (`select_cluster_medoid`), and database synchronization (`recluster_all_faces`).
   - `engine/services/face_scan_worker.py`: Background worker with progress state tracking (`face_scan_state`), asynchronous thread execution, and avatar persistence in `data/thumbnails/faces/{face_id}.webp`.
@@ -371,7 +374,7 @@ The frontend `PeopleView.tsx` presents:
   - `engine/tests/test_people.py`: Comprehensive pytest suite covering affine mathematics, quality scores, synthetic 512-D cosine clustering, cluster tagging, and PATCH updating workflows.
 - **Frontend**:
   - `src/types/index.ts`: Added `UnlabeledClusterItem` and `FaceScanStatus` interfaces.
-  - `src/components/PeopleView.tsx`: Full rewrite featuring categorized relationship options (`RELATIONSHIP_CATEGORIES`), custom relationship text entry, automatic VIP star linking, inline relationship editing in drill-down view, live scan progress bar, manual scan trigger button, 4-avatar anchor preview cards with 1-click tagging, recognized people gallery with real cover avatars, and photo drill-down grid.
+  - `src/components/PeopleView.tsx`: Full rewrite featuring clean singular relationship options (`RELATIONSHIP_OPTIONS`), automatic VIP star linking, inline relationship editing in drill-down view, live scan progress bar, manual scan trigger button, 4-avatar anchor preview cards with 1-click tagging, recognized people gallery with real cover avatars, and photo drill-down grid.
 
 ### State & Lifecycle Impact
 - **Database Schema**:

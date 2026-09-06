@@ -111,12 +111,9 @@ async def refresh_all_social_affinities() -> int:
                 intimate_cnt = int_row[0] if int_row else 0
 
             close_relationships = {
-                "Wife", "Husband", "Partner", "Spouse",
-                "Son", "Daughter", "Child",
-                "Mother", "Father", "Parent",
-                "Brother", "Sister", "Sibling",
-                "Grandmother", "Grandfather",
-                "Family", "Best Friend",
+                "Spouse", "Child", "Parent", "Sibling", "Extended Family",
+                # Backwards-compatible aliases
+                "Wife", "Husband", "Partner", "Son", "Daughter", "Mother", "Father", "Brother", "Sister",
             }
             is_close_rel = person["relationship_type"] in close_relationships
             score = calculate_affinity_score(

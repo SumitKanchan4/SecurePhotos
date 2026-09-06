@@ -16,48 +16,27 @@ import { PersonItem, UnlabeledClusterItem, FaceScanStatus, PhotoItem } from "../
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
-export const RELATIONSHIP_CATEGORIES = [
-  {
-    category: "Spouse & Partner",
-    options: ["Wife", "Husband", "Partner", "Spouse", "Fiancé", "Fiancée"],
-  },
-  {
-    category: "Immediate Family",
-    options: ["Son", "Daughter", "Child", "Mother", "Father", "Parent", "Brother", "Sister", "Sibling"],
-  },
-  {
-    category: "Extended Family",
-    options: [
-      "Grandmother",
-      "Grandfather",
-      "Grandchild",
-      "Aunt",
-      "Uncle",
-      "Cousin",
-      "Nephew",
-      "Niece",
-      "In-Law",
-      "Family",
-    ],
-  },
-  {
-    category: "Friends & Social",
-    options: ["Best Friend", "Friend", "Acquaintance", "Roommate", "Neighbor"],
-  },
-  {
-    category: "Work & Community",
-    options: ["Colleague", "Mentor", "Client", "Other"],
-  },
+export const RELATIONSHIP_OPTIONS = [
+  "Spouse",
+  "Child",
+  "Parent",
+  "Sibling",
+  "Extended Family",
+  "Relative",
+  "Friend",
+  "Colleague",
+  "Acquaintance",
 ];
 
-// Relationships that represent immediate family or partners (VIP / Close One by default)
+// Relationships that represent immediate family or spouse (VIP / Close One by default)
 const CLOSE_RELATIONSHIPS = new Set([
-  "Wife", "Husband", "Partner", "Spouse", "Fiancé", "Fiancée",
-  "Son", "Daughter", "Child",
-  "Mother", "Father", "Parent",
-  "Brother", "Sister", "Sibling",
-  "Grandmother", "Grandfather",
-  "Family", "Best Friend",
+  "Spouse",
+  "Child",
+  "Parent",
+  "Sibling",
+  "Extended Family",
+  // Backwards-compatible aliases
+  "Wife", "Husband", "Partner", "Son", "Daughter", "Mother", "Father", "Brother", "Sister",
 ]);
 
 export const PeopleView: React.FC = () => {
@@ -77,7 +56,6 @@ export const PeopleView: React.FC = () => {
   // Tagging form state per cluster
   const [tagNames, setTagNames] = useState<{ [clusterId: string]: string }>({});
   const [tagRelationships, setTagRelationships] = useState<{ [clusterId: string]: string }>({});
-  const [tagCustomRels, setTagCustomRels] = useState<{ [clusterId: string]: string }>({});
   const [tagCloseOnes, setTagCloseOnes] = useState<{ [clusterId: string]: boolean }>({});
   const [submittingCluster, setSubmittingCluster] = useState<string | null>(null);
 
@@ -180,10 +158,7 @@ export const PeopleView: React.FC = () => {
     const name = (tagNames[cluster.cluster_id] || "").trim();
     if (!name) return;
 
-    const selectedRel = tagRelationships[cluster.cluster_id] || "Friend";
-    const finalRel = selectedRel === "Custom" 
-      ? (tagCustomRels[cluster.cluster_id]?.trim() || "Friend")
-      : selectedRel;
+    const finalRel = tagRelationships[cluster.cluster_id] || "Friend";
 
     setSubmittingCluster(cluster.cluster_id);
     try {
@@ -365,12 +340,8 @@ export const PeopleView: React.FC = () => {
                   cursor: "pointer",
                 }}
               >
-                {RELATIONSHIP_CATEGORIES.map((group) => (
-                  <optgroup key={group.category} label={group.category}>
-                    {group.options.map((rel) => (
-                      <option key={rel} value={rel}>{rel}</option>
-                    ))}
-                  </optgroup>
+                {RELATIONSHIP_OPTIONS.map((rel) => (
+                  <option key={rel} value={rel}>{rel}</option>
                 ))}
               </select>
 
@@ -605,7 +576,6 @@ export const PeopleView: React.FC = () => {
                   const isSubmitting = submittingCluster === cluster.cluster_id;
                   const currentName = tagNames[cluster.cluster_id] || "";
                   const currentRel = tagRelationships[cluster.cluster_id] || "Friend";
-                  const isCustom = currentRel === "Custom";
                   const isClose = !!tagCloseOnes[cluster.cluster_id];
 
                   return (
@@ -707,7 +677,7 @@ export const PeopleView: React.FC = () => {
                             }}
                           />
 
-                          {/* Grouped Relationship Selector */}
+                          {/* Relationship Selector */}
                           <select
                             value={currentRel}
                             onChange={(e) => handleClusterRelChange(cluster.cluster_id, e.target.value)}
@@ -719,17 +689,12 @@ export const PeopleView: React.FC = () => {
                               color: "var(--text-primary)",
                               fontSize: "12px",
                               outline: "none",
-                              maxWidth: "140px",
+                              minWidth: "135px",
                             }}
                           >
-                            {RELATIONSHIP_CATEGORIES.map((group) => (
-                              <optgroup key={group.category} label={group.category}>
-                                {group.options.map((rel) => (
-                                  <option key={rel} value={rel}>{rel}</option>
-                                ))}
-                              </optgroup>
+                            {RELATIONSHIP_OPTIONS.map((rel) => (
+                              <option key={rel} value={rel}>{rel}</option>
                             ))}
-                            <option value="Custom">Custom...</option>
                           </select>
 
                           {/* Close One Star Toggle */}
@@ -751,25 +716,6 @@ export const PeopleView: React.FC = () => {
                             <Star size={16} fill={isClose ? "var(--accent-warning)" : "none"} />
                           </button>
                         </div>
-
-                        {/* Custom relationship input if selected */}
-                        {isCustom && (
-                          <input
-                            type="text"
-                            placeholder="Type custom relationship (e.g. Godmother, Coach)..."
-                            value={tagCustomRels[cluster.cluster_id] || ""}
-                            onChange={(e) => setTagCustomRels({ ...tagCustomRels, [cluster.cluster_id]: e.target.value })}
-                            style={{
-                              padding: "8px 12px",
-                              borderRadius: "var(--radius-sm)",
-                              backgroundColor: "var(--bg-sidebar)",
-                              border: "1px solid var(--accent-primary)",
-                              color: "var(--text-primary)",
-                              fontSize: "12px",
-                              outline: "none",
-                            }}
-                          />
-                        )}
 
                         {/* 1-Click Action Button */}
                         <button
@@ -797,7 +743,7 @@ export const PeopleView: React.FC = () => {
                           ) : (
                             <Check size={14} />
                           )}
-                          Tag All {cluster.photo_count} Photos as "{currentName.trim() || "..."}" ({isCustom ? (tagCustomRels[cluster.cluster_id] || "Custom") : currentRel})
+                          Tag All {cluster.photo_count} Photos as "{currentName.trim() || "..."}" ({currentRel})
                         </button>
                       </div>
                     </div>

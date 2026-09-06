@@ -372,14 +372,11 @@ async def update_person(person_id: int, payload: UpdatePersonRequest) -> PersonR
         new_rel = payload.relationship_type.strip() if payload.relationship_type is not None else row["relationship_type"]
         new_close = payload.is_close_one if payload.is_close_one is not None else bool(row["is_close_one"])
 
-        # Auto-promote close family and partners to Close One (VIP)
+        # Auto-promote close family and spouse to Close One (VIP)
         close_relationships = {
-            "Wife", "Husband", "Partner", "Spouse",
-            "Son", "Daughter", "Child",
-            "Mother", "Father", "Parent",
-            "Brother", "Sister", "Sibling",
-            "Grandmother", "Grandfather",
-            "Family", "Best Friend",
+            "Spouse", "Child", "Parent", "Sibling", "Extended Family",
+            # Backwards-compatible aliases
+            "Wife", "Husband", "Partner", "Son", "Daughter", "Mother", "Father", "Brother", "Sister",
         }
         if new_rel in close_relationships:
             new_close = True
