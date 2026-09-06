@@ -125,11 +125,19 @@ async def run_background_optimization():
                     target_file = Path(filepath)
                     dest_file = Path(preview_path) if preview_path else None
                     if target_file.exists():
-                        upscale_and_optimize_to_8k(target_file, destination_path=dest_file)
-                    
+                        opt_path, _, _, _ = upscale_and_optimize_to_8k(target_file, destination_path=dest_file)
+                        optimization_state["item_progress"] = 65
+
+                        # Automatically apply Google Photos-style face unblur (YOLOv8-Face + CodeFormer w=0.85)
+                        try:
+                            from engine.services.face_restore_service import restore_faces_in_image
+                            restore_faces_in_image(opt_path, opt_path, fidelity_weight=0.85)
+                        except Exception as face_err:
+                            logger.debug(f"Face unblur skipped or no faces in {filename}: {face_err}")
+
                     optimization_state["item_progress"] = 90
                     
-                    # Update database entry to mark optimized
+                    # Update database entry to mark optimized & enhanced
                     conn = await get_db_connection()
                     try:
                         await conn.execute(
@@ -277,6 +285,35 @@ async def get_photo_preview(photo_id: int):
         media_type="image/webp",
         headers={"Cache-Control": "public, max-age=86400"}
     )
+
+
+@router.get("/{photo_id}/original")
+async def get_photo_original(photo_id: int):
+    """Streams the pristine, unenhanced original photo for Before/After comparison."""
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT filepath, mime_type, is_encrypted FROM photos WHERE id = ?;", (photo_id,)) as cursor:
+            row = await cursor.fetchone()
+    finally:
+        await conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    if row["is_encrypted"]:
+        raise HTTPException(status_code=403, detail="Encrypted photo requires vault authentication")
+
+    src_file = Path(row["filepath"])
+    if not src_file.exists():
+        raise HTTPException(status_code=404, detail="Original photo file missing on disk")
+
+    mime = row["mime_type"] or "image/jpeg"
+    return FileResponse(
+        str(src_file),
+        media_type=mime,
+        headers={"Cache-Control": "public, max-age=86400"}
+    )
+
 
 
 @router.post("/{photo_id}/neural-enhance", status_code=status.HTTP_200_OK)

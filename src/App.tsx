@@ -548,6 +548,7 @@ export const App: React.FC = () => {
         photos={photos}
         currentIndex={lightboxIndex ?? 0}
         isOpen={lightboxIndex !== null}
+        optimizationProgress={optimizationProgress}
         onClose={() => setLightboxIndex(null)}
         onNavigate={(idx) => setLightboxIndex(idx)}
       />

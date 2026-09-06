@@ -129,10 +129,29 @@ async def test_face_restore_endpoint_success():
 
 
 @pytest.mark.asyncio
+async def test_get_photo_original_endpoint():
+    """Verifies that GET /api/photos/{id}/original streams the unmodified original media file."""
+    await run_migrations()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        photo_id = await create_test_photo(tmp_path)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            res = await client.get(f"/api/photos/{photo_id}/original")
+            assert res.status_code == 200
+            assert res.headers["content-type"] == "image/jpeg"
+            assert len(res.content) > 0
+
+
+@pytest.mark.asyncio
 async def test_enhancements_nonexistent_photo():
     """Verifies 404 responses for non-existent photo IDs."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res_orig = await client.get("/api/photos/999999/original")
+        assert res_orig.status_code == 404
+
         res_neural = await client.post("/api/photos/999999/neural-enhance")
         assert res_neural.status_code == 404
 
@@ -144,3 +163,4 @@ async def test_enhancements_nonexistent_photo():
 
         res_face_prev = await client.get("/api/photos/999999/face-restore-preview")
         assert res_face_prev.status_code == 404
+

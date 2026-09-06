@@ -15,14 +15,15 @@ import {
   MapPin,
   Aperture,
   ExternalLink,
-  Zap
+  Clock,
 } from "lucide-react";
-import { PhotoItem } from "../types";
+import { PhotoItem, OptimizationProgress } from "../types";
 
 interface LightboxProps {
   photos: PhotoItem[];
   currentIndex: number;
   isOpen: boolean;
+  optimizationProgress?: OptimizationProgress | null;
   onClose: () => void;
   onNavigate: (index: number) => void;
 }
@@ -31,6 +32,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
   photos,
   currentIndex,
   isOpen,
+  optimizationProgress,
   onClose,
   onNavigate,
 }) => {
@@ -42,11 +44,18 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const [isPreviewLoaded, setIsPreviewLoaded] = useState(false);
   const [previewHasError, setPreviewHasError] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
-  const [isNeuralGenerating, setIsNeuralGenerating] = useState(false);
-  const [neuralPreviewUrl, setNeuralPreviewUrl] = useState<string | null>(null);
-  const [neuralStatusText, setNeuralStatusText] = useState<string | null>(null);
 
   const currentPhoto = photos[currentIndex];
+
+  const isCompleted = Boolean(currentPhoto?.is_optimized || currentPhoto?.is_enhanced);
+  const isOptimizingThis = Boolean(optimizationProgress?.is_active && optimizationProgress.active_photo_id === currentPhoto?.id);
+
+  const previewUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/preview`;
+  const originalUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/original`;
+  const thumbnailUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/thumbnail`;
+
+  // Display the enhanced proxy if completed; otherwise display the unprocessed original
+  const primaryImageUrl = isCompleted ? previewUrl : originalUrl;
 
   useEffect(() => {
     if (currentPhoto) {
@@ -56,47 +65,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
       setIsPreviewLoaded(false);
       setPreviewHasError(false);
       setIsCopied(false);
-      setIsNeuralGenerating(false);
-      setNeuralStatusText(null);
-
-      // Check if pre-computed neural preview exists
-      fetch(`http://127.0.0.1:8000/api/photos/${currentPhoto.id}/neural-preview`, { method: "HEAD" })
-        .then((r) => {
-          if (r.ok) {
-            setNeuralPreviewUrl(`http://127.0.0.1:8000/api/photos/${currentPhoto.id}/neural-preview`);
-          } else {
-            setNeuralPreviewUrl(null);
-          }
-        })
-        .catch(() => setNeuralPreviewUrl(null));
     }
-  }, [currentIndex, currentPhoto]);
-
-  const handleRunNeuralEnhance = async () => {
-    if (!currentPhoto || isNeuralGenerating) return;
-    setIsNeuralGenerating(true);
-    setNeuralStatusText("Synthesizing deep neural micro-textures (Real-ESRGAN)...");
-    try {
-      const res = await fetch(`http://127.0.0.1:8000/api/photos/${currentPhoto.id}/neural-enhance`, {
-        method: "POST",
-      });
-      if (res.ok) {
-        setNeuralPreviewUrl(`http://127.0.0.1:8000/api/photos/${currentPhoto.id}/neural-preview?t=${Date.now()}`);
-        setShowSplitSlider(true);
-        setNeuralStatusText("Neural texture synthesis complete! Drag the slider to compare.");
-        setTimeout(() => setNeuralStatusText(null), 4000);
-      } else {
-        const err = await res.json().catch(() => ({ detail: "Request failed" }));
-        setNeuralStatusText(`Error: ${err.detail || "Failed to synthesize textures"}`);
-        setTimeout(() => setNeuralStatusText(null), 5000);
-      }
-    } catch (e: any) {
-      setNeuralStatusText(`Network error: ${e.message}`);
-      setTimeout(() => setNeuralStatusText(null), 5000);
-    } finally {
-      setIsNeuralGenerating(false);
-    }
-  };
+  }, [currentIndex, currentPhoto?.id]);
 
   // Keyboard navigation shortcuts
   useEffect(() => {
@@ -110,7 +80,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
       } else if (e.key === "ArrowLeft" || e.key === "k" || e.key === "K") {
         if (currentIndex > 0) onNavigate(currentIndex - 1);
       } else if (e.key === "e" || e.key === "E") {
-        setShowSplitSlider((prev) => !prev);
+        if (isCompleted) {
+          setShowSplitSlider((prev) => !prev);
+        }
       } else if (e.key === "f" || e.key === "F") {
         setIsFavorite((prev) => !prev);
       } else if (e.key === "i" && (e.ctrlKey || e.metaKey)) {
@@ -127,9 +99,6 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
   const handleZoomIn = () => setZoom((z) => Math.min(z + 0.5, 4));
   const handleZoomOut = () => setZoom((z) => Math.max(z - 0.5, 1));
-
-  const previewUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto.id}/preview`;
-  const thumbnailUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto.id}/thumbnail`;
 
   const copyStoragePath = () => {
     navigator.clipboard.writeText(currentPhoto.filepath);
@@ -191,63 +160,29 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
         {/* Action Controls */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          {/* 8K Split Slider Toggle Button */}
-          <button
-            onClick={() => setShowSplitSlider(!showSplitSlider)}
-            className="clickable"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "5px 10px",
-              borderRadius: "var(--radius-sm)",
-              backgroundColor: showSplitSlider ? "var(--accent-primary)" : "var(--bg-surface)",
-              border: "1px solid var(--border-subtle)",
-              color: showSplitSlider ? "#ffffff" : "var(--text-primary)",
-              fontSize: "11px",
-              fontWeight: 600,
-            }}
-          >
-            <Sparkles size={13} />
-            {showSplitSlider ? "Hide 8K Comparison" : "8K AI Comparison (E)"}
-          </button>
-
-          {/* Deep Texture Neural AI Button */}
-          <button
-            onClick={handleRunNeuralEnhance}
-            disabled={isNeuralGenerating}
-            className="clickable"
-            title="Reconstruct realistic high-frequency micro-textures (hair, skin, fabric) via local Real-ESRGAN AI"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "5px 10px",
-              borderRadius: "var(--radius-sm)",
-              backgroundColor: neuralPreviewUrl ? "rgba(16, 185, 129, 0.2)" : "var(--bg-surface)",
-              border: `1px solid ${neuralPreviewUrl ? "var(--accent-success)" : "var(--border-subtle)"}`,
-              color: neuralPreviewUrl ? "var(--accent-success)" : "var(--text-primary)",
-              fontSize: "11px",
-              fontWeight: 600,
-            }}
-          >
-            {isNeuralGenerating ? (
-              <>
-                <Loader2 size={13} className="spin" style={{ color: "var(--accent-primary)" }} />
-                Synthesizing Textures...
-              </>
-            ) : neuralPreviewUrl ? (
-              <>
-                <Zap size={13} style={{ color: "var(--accent-success)" }} />
-                Neural AI Active
-              </>
-            ) : (
-              <>
-                <Zap size={13} style={{ color: "var(--accent-primary)" }} />
-                Deep Texture AI
-              </>
-            )}
-          </button>
+          {/* Before / After Split Slider Toggle Button (only when enhancement is complete) */}
+          {isCompleted && (
+            <button
+              onClick={() => setShowSplitSlider(!showSplitSlider)}
+              className="clickable"
+              title="Compare Original (Before) vs. AI Enhanced (After) (E)"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "5px 12px",
+                borderRadius: "var(--radius-sm)",
+                backgroundColor: showSplitSlider ? "var(--accent-primary)" : "var(--bg-surface)",
+                border: "1px solid var(--border-subtle)",
+                color: showSplitSlider ? "#ffffff" : "var(--text-primary)",
+                fontSize: "11px",
+                fontWeight: 600,
+              }}
+            >
+              <Sparkles size={13} />
+              {showSplitSlider ? "Hide Comparison" : "Before / After (E)"}
+            </button>
+          )}
 
           {/* Zoom Controls */}
           <button 
@@ -318,17 +253,17 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
       {/* Main Viewport Container */}
       <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden" }}>
-        {/* Floating Neural AI Status Pill */}
-        {neuralStatusText && (
+        {/* Floating In-Progress / Queued Status Pill */}
+        {!isCompleted && (
           <div
             style={{
               position: "absolute",
               top: "16px",
               left: "50%",
               transform: "translateX(-50%)",
-              backgroundColor: "rgba(14, 16, 23, 0.95)",
+              backgroundColor: "rgba(14, 16, 23, 0.94)",
               backdropFilter: "blur(12px)",
-              border: "1px solid var(--accent-primary)",
+              border: isOptimizingThis ? "1px solid var(--accent-primary)" : "1px solid var(--border-subtle)",
               padding: "8px 18px",
               borderRadius: "var(--radius-full)",
               color: "#ffffff",
@@ -341,12 +276,19 @@ export const Lightbox: React.FC<LightboxProps> = ({
               boxShadow: "0 4px 24px rgba(0,0,0,0.7)",
             }}
           >
-            {isNeuralGenerating ? (
-              <Loader2 size={14} className="spin" style={{ color: "var(--accent-primary)" }} />
+            {isOptimizingThis ? (
+              <>
+                <Loader2 size={14} className="spin" style={{ color: "var(--accent-primary)" }} />
+                <span>
+                  AI Enhancement in progress ({optimizationProgress?.item_progress || 0}%) — Showing original photo
+                </span>
+              </>
             ) : (
-              <Zap size={14} style={{ color: "var(--accent-success)" }} />
+              <>
+                <Clock size={14} style={{ color: "var(--text-muted)" }} />
+                <span>Queued for AI Enhancement (4K Acutance & Face Unblur) — Showing original photo</span>
+              </>
             )}
-            <span>{neuralStatusText}</span>
           </div>
         )}
 
@@ -433,9 +375,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 setSplitPosition(Math.max(5, Math.min(95, pos)));
               }}
             >
-              {/* Left Side: Standard Image */}
+              {/* Left Side: Original Image (Before) */}
               <img
-                src={previewHasError ? thumbnailUrl : previewUrl}
+                src={previewHasError ? thumbnailUrl : originalUrl}
                 alt={currentPhoto.filename}
                 style={{
                   position: "absolute",
@@ -443,7 +385,6 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   width: "100%",
                   height: "100%",
                   objectFit: "contain",
-                  filter: "brightness(0.95) contrast(0.95)",
                 }}
               />
               <div 
@@ -456,14 +397,15 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   backgroundColor: "rgba(0, 0, 0, 0.75)",
                   color: "#ffffff",
                   fontSize: "11px",
-                  fontWeight: 600,
+                  fontWeight: 700,
                   zIndex: 2,
+                  letterSpacing: "0.5px",
                 }}
               >
-                Standard Preview
+                BEFORE (ORIGINAL)
               </div>
 
-              {/* Right Side: Enhanced 4K Clipped Layer */}
+              {/* Right Side: Enhanced AI Clipped Layer (After) */}
               <div 
                 style={{
                   position: "absolute",
@@ -473,7 +415,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 }}
               >
                 <img
-                  src={neuralPreviewUrl || (previewHasError ? thumbnailUrl : previewUrl)}
+                  src={previewHasError ? thumbnailUrl : previewUrl}
                   alt={currentPhoto.filename}
                   style={{
                     position: "absolute",
@@ -481,7 +423,6 @@ export const Lightbox: React.FC<LightboxProps> = ({
                     width: "100%",
                     height: "100%",
                     objectFit: "contain",
-                    filter: neuralPreviewUrl ? "none" : "contrast(1.08) saturate(1.05)",
                   }}
                 />
                 <div 
@@ -491,26 +432,19 @@ export const Lightbox: React.FC<LightboxProps> = ({
                     right: "16px",
                     padding: "4px 10px",
                     borderRadius: "var(--radius-xs)",
-                    backgroundColor: neuralPreviewUrl ? "rgba(16, 185, 129, 0.9)" : "rgba(59, 130, 246, 0.85)",
+                    backgroundColor: "rgba(59, 130, 246, 0.9)",
                     color: "#ffffff",
                     fontSize: "11px",
                     fontWeight: 700,
                     zIndex: 2,
                     display: "flex",
                     alignItems: "center",
-                    gap: "4px",
+                    gap: "5px",
                     boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
+                    letterSpacing: "0.5px",
                   }}
                 >
-                  {neuralPreviewUrl ? (
-                    <>
-                      <Zap size={12} /> Neural Texture AI (Real-ESRGAN)
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={12} /> 8K AI Enhanced
-                    </>
-                  )}
+                  <Sparkles size={12} /> AFTER (AI ENHANCED)
                 </div>
               </div>
 
@@ -580,9 +514,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 />
               )}
 
-              {/* High-Resolution Preview Image */}
+              {/* High-Resolution Media Image (Enhanced if completed, Original if in progress) */}
               <img
-                src={previewHasError ? thumbnailUrl : previewUrl}
+                src={previewHasError ? thumbnailUrl : primaryImageUrl}
                 alt={currentPhoto.filename}
                 onLoad={() => setIsPreviewLoaded(true)}
                 onError={() => {
@@ -619,7 +553,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   }}
                 >
                   <Loader2 size={16} className="spin" style={{ color: "var(--accent-primary)" }} />
-                  Loading 8K Preview...
+                  {isCompleted ? "Loading Enhanced Preview..." : "Loading Original Photo..."}
                 </div>
               )}
             </div>
