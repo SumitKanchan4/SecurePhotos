@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { 
-  Sparkles, 
   Lock, 
   Plus, 
   FolderSync, 
   LayoutGrid,
   Loader2,
   Trash2,
-  Calendar
+  Calendar,
+  FolderPlus
 } from "lucide-react";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
@@ -25,6 +25,7 @@ import { DocumentsView } from "./components/DocumentsView";
 import { TrashView } from "./components/TrashView";
 import { SettingsView } from "./components/SettingsView";
 import { CollageModal } from "./components/CollageModal";
+import { AddToAlbumModal } from "./components/AddToAlbumModal";
 import { UpdateModal } from "./components/UpdateModal";
 import { useAppStore } from "./store/useAppStore";
 import { PhotoItem, SystemPrerequisites, OptimizationProgress, TimelineYearsData } from "./types";
@@ -49,6 +50,7 @@ export const App: React.FC = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isVaultUnlockModalOpen, setIsVaultUnlockModalOpen] = useState(false);
   const [isCollageModalOpen, setIsCollageModalOpen] = useState(false);
+  const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
   const [activeStoryId, setActiveStoryId] = useState<number | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [optimizationProgress, setOptimizationProgress] = useState<OptimizationProgress | null>(null);
@@ -300,6 +302,10 @@ export const App: React.FC = () => {
             /* Albums Grid & Management */
             <AlbumsView 
               onLockAlbumToVault={() => setIsVaultUnlockModalOpen(true)}
+              onPhotoClick={(idx, albumPhotos) => {
+                setPhotos(albumPhotos);
+                setLightboxIndex(idx);
+              }}
             />
           ) : activeTab === "people" ? (
             /* People Management & Representative Medoid Tagging View */
@@ -412,9 +418,10 @@ export const App: React.FC = () => {
                         }}
                       >
                         <LayoutGrid size={14} />
-                        8K Collage
+                        Create Collage
                       </button>
                       <button
+                        onClick={() => setIsAddToAlbumModalOpen(true)}
                         className="clickable"
                         style={{
                           display: "flex",
@@ -422,15 +429,15 @@ export const App: React.FC = () => {
                           gap: "6px",
                           padding: "6px 12px",
                           borderRadius: "var(--radius-sm)",
-                          backgroundColor: "var(--accent-primary)",
-                          border: "none",
-                          color: "#ffffff",
+                          backgroundColor: "var(--bg-surface)",
+                          border: "1px solid var(--border-subtle)",
+                          color: "var(--text-primary)",
                           fontSize: "12px",
-                          fontWeight: 600,
+                          fontWeight: 500,
                         }}
                       >
-                        <Sparkles size={14} />
-                        Enhance to 8K ULTRA
+                        <FolderPlus size={14} />
+                        Add to Album
                       </button>
                       <button
                         onClick={() => setIsVaultUnlockModalOpen(true)}
@@ -656,11 +663,23 @@ export const App: React.FC = () => {
         onClose={() => setIsVaultUnlockModalOpen(false)}
       />
 
-      {/* 4K Mosaic Collage Generator Modal */}
+      {/* Mosaic Collage Generator Modal */}
       <CollageModal
         isOpen={isCollageModalOpen}
         onClose={() => setIsCollageModalOpen(false)}
         selectedCount={selectedCount}
+      />
+
+      {/* Add Selected Photos to Album Modal */}
+      <AddToAlbumModal
+        isOpen={isAddToAlbumModalOpen}
+        selectedPhotoIds={Array.from(selectedPhotoIds)}
+        onClose={() => setIsAddToAlbumModalOpen(false)}
+        onSuccess={() => {
+          clearSelection();
+          loadPhotos(activeYear);
+          loadTimelineYears();
+        }}
       />
 
       {/* Cinematic Story Player Modal */}

@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from engine.config import settings
 from engine.database import run_migrations
-from engine.api import health, system, photos, vault, stories, people
+from engine.api import health, system, photos, vault, stories, people, albums
 
 # Configure enterprise structured logging
 logging.basicConfig(
@@ -79,6 +79,7 @@ def create_app() -> FastAPI:
     app.include_router(vault.router)
     app.include_router(stories.router)
     app.include_router(people.router)
+    app.include_router(albums.router)
 
     return app
 

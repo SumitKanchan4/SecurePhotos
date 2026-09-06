@@ -27,7 +27,7 @@ export const CollageModal: React.FC<CollageModalProps> = ({
     setIsExporting(true);
     setTimeout(() => {
       setIsExporting(false);
-      alert("4K UHD Mosaic Collage generated and saved: creatives/collages/2026/Summer_4K_Mosaic.avif");
+      alert("Mosaic Collage generated and saved: creatives/collages/Summer_Mosaic.avif");
       onClose();
     }, 1000);
   };
@@ -70,7 +70,7 @@ export const CollageModal: React.FC<CollageModalProps> = ({
         >
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <Sparkles size={18} style={{ color: "var(--accent-primary)" }} />
-            <h2 style={{ fontSize: "15px", fontWeight: 700 }}>Create 4K Mosaic Collage</h2>
+            <h2 style={{ fontSize: "15px", fontWeight: 700 }}>Create Mosaic Collage</h2>
           </div>
           <button onClick={onClose} className="clickable" style={{ background: "transparent", border: "none", color: "var(--text-muted)" }}>
             <X size={16} />
@@ -79,8 +79,8 @@ export const CollageModal: React.FC<CollageModalProps> = ({
 
         {/* Body */}
         <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
-          <p style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-            Combining {selectedCount || 6} selected media items into a high-res 4K printable canvas with face-aware cropping.
+          <p style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: "1.5" }}>
+            Combining {selectedCount || 6} selected media items into a high-res printable canvas with face-aware cropping.
           </p>
 
           {/* Layout Options */}
@@ -182,7 +182,7 @@ export const CollageModal: React.FC<CollageModalProps> = ({
             }}
           >
             <Download size={14} />
-            {isExporting ? "Rendering 4K Canvas..." : "Render 4K Collage"}
+            {isExporting ? "Rendering Canvas..." : "Render Collage"}
           </button>
         </div>
       </div>

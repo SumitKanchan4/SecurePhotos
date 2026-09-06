@@ -54,10 +54,12 @@ export interface AlbumItem {
   name: string;
   description?: string;
   cover_photo_id?: number;
+  cover_thumbnail_path?: string;
   is_vault: boolean;
   vault_type?: string;
   is_favorite: boolean;
   photo_count?: number;
+  created_at?: string;
 }
 
 export interface PersonItem {
