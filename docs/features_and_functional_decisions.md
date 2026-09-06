@@ -500,3 +500,50 @@ To streamline the user experience, optimize vertical space, and eliminate cognit
 - `src/components/TitleBar.tsx`: Added `activeTab` from `useAppStore` and `getSearchPlaceholder()` helper.
 - `src/components/PeopleView.tsx`: Subscribed to `useAppStore.searchQuery`; removed redundant inner search input and `Search` icon; relocated `Reset Faces` and `Scan Photos for Faces` buttons to the header row; removed `"Scan Library Now"` from empty state.
 
+---
+
+## 9. Single-Row Circular Avatar Shelf with Relationship Prioritization & Management Modal
+
+### Functionality Overview
+To maximize viewport room for unlabeled face cluster tagging while providing an intuitive, personal feel for recognized individuals, the Recognized People section in `PeopleView.tsx` was redesigned as a single horizontal avatar shelf:
+1. **Single-Line Circular Avatar Shelf**:
+   - Displays recognized people in a single horizontal row (`overflowX: auto` with hidden scrollbars).
+   - Consumes only ~100px of vertical height (down from 300px+ in the previous multi-row grid), leaving immediate room for the primary tagging workflow (Unlabeled Clusters).
+   - Each avatar tile features:
+     - 60px circular avatar (`borderRadius: 50%`) with smooth hover ring and scale transition (`scale(1.08)`).
+     - Close One (VIP) gold star badge overlay if `is_close_one`.
+     - Name centered in 12px semi-bold, truncated cleanly with ellipsis.
+     - Relationship type centered as subtext in 11px muted font (e.g. `Spouse`, `Extended Family`, `Friend`).
+2. **Relationship Hierarchy Prioritization**:
+   - Recognized people are sorted by explicit relationship priority weight:
+     - `Spouse` (10)
+     - `Child` (9)
+     - `Parent` (8)
+     - `Sibling` (7)
+     - `Extended Family` (6)
+     - `Friend` (5)
+     - `Relative` (4)
+     - `Colleague` (3)
+     - `Acquaintance` (2)
+   - Ties are broken by `confirmed_count` (descending), then alphabetically by name.
+   - Ensures immediate family and close friends are positioned at the start of the shelf.
+3. **"See All" Management Modal**:
+   - A stylized circular "See All" tile is placed at the end of the shelf, along with a `"See All (N) →"` header button.
+   - Clicking opens a dedicated management modal overlay with:
+     - Live search filter across all recognized people.
+     - Full card grid with in-place name editing, inline relationship dropdown, and VIP star toggle.
+     - Quick link to browse all photos of any person.
+
+### Functional Decision Points & Rationale
+- **Single Shelf vs. Multi-Row Grid**:
+  - *Problem*: Multi-row grid pushed unlabeled clusters below the fold, forcing users to scroll past recognized faces to reach their primary task (tagging new faces).
+  - *Solution*: Replaced the grid with a single-line horizontal shelf taking only ~100px.
+- **Priority Weights (Friends=5, Relatives=4)**:
+  - *Rationale*: Close family comes first, followed by extended family, then close friends, followed by more distant relatives, colleagues, and acquaintances.
+- **Dedicated Management Modal**:
+  - *Rationale*: Gives users a focused, distraction-free environment to review all recognized faces and fix names or relationships in bulk.
+
+### Technical Touchpoints
+- `src/components/PeopleView.tsx`: Added `RELATION_PRIORITY`, updated sorting logic, rendered horizontal avatar shelf with "See All" button, and created the full management modal.
+
+

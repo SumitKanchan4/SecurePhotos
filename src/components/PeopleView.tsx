@@ -6,12 +6,15 @@ import {
   Star,
   RefreshCw,
   ArrowLeft,
+  ArrowRight,
   Image as ImageIcon,
   Heart,
   Loader2,
   Tag,
   UserX,
-  RotateCcw
+  RotateCcw,
+  Search,
+  X
 } from "lucide-react";
 import { PersonItem, UnlabeledClusterItem, FaceScanStatus, PhotoItem } from "../types";
 import { useAppStore } from "../store/useAppStore";
@@ -24,11 +27,24 @@ export const RELATIONSHIP_OPTIONS = [
   "Parent",
   "Sibling",
   "Extended Family",
-  "Relative",
   "Friend",
+  "Relative",
   "Colleague",
   "Acquaintance",
 ];
+
+// Priority hierarchy for organizing and surfacing recognized people (Friends=5, Relatives=4)
+export const RELATION_PRIORITY: Record<string, number> = {
+  "Spouse": 10,
+  "Child": 9,
+  "Parent": 8,
+  "Sibling": 7,
+  "Extended Family": 6,
+  "Friend": 5,
+  "Relative": 4,
+  "Colleague": 3,
+  "Acquaintance": 2,
+};
 
 // Relationships that represent immediate family or spouse (VIP / Close One by default)
 const CLOSE_RELATIONSHIPS = new Set([
@@ -63,6 +79,8 @@ export const PeopleView: React.FC = () => {
   const [dismissingCluster, setDismissingCluster] = useState<string | null>(null);
   const [editingNames, setEditingNames] = useState<{ [personId: number]: string }>({});
   const [isResetting, setIsResetting] = useState<boolean>(false);
+  const [showAllPeopleModal, setShowAllPeopleModal] = useState<boolean>(false);
+  const [modalSearch, setModalSearch] = useState<string>("");
 
   // Selected person detail view (viewing photos of a person)
   const [selectedPerson, setSelectedPerson] = useState<PersonItem | null>(null);
@@ -304,9 +322,23 @@ export const PeopleView: React.FC = () => {
     }
   };
 
-  const filteredPeople = people.filter((p) =>
+  // Sort recognized people by relationship priority (Friends=5, Relatives=4), then photo count, then name
+  const sortedPeople = [...people].sort((a, b) => {
+    const prioA = RELATION_PRIORITY[a.relationship_type || ""] || (a.is_close_one ? 5.5 : 1);
+    const prioB = RELATION_PRIORITY[b.relationship_type || ""] || (b.is_close_one ? 5.5 : 1);
+    if (prioB !== prioA) return prioB - prioA;
+    if (b.confirmed_count !== a.confirmed_count) return b.confirmed_count - a.confirmed_count;
+    return a.name.localeCompare(b.name);
+  });
+
+  const filteredPeople = sortedPeople.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (p.relationship_type && p.relationship_type.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  const modalFilteredPeople = sortedPeople.filter((p) =>
+    p.name.toLowerCase().includes(modalSearch.toLowerCase()) ||
+    (p.relationship_type && p.relationship_type.toLowerCase().includes(modalSearch.toLowerCase()))
   );
 
   if (isLoading) {
@@ -653,20 +685,38 @@ export const PeopleView: React.FC = () => {
             ))}
           </datalist>
 
-          {/* Section 1: Recognized People Gallery (Prominent Top Section) */}
+          {/* Section 1: Recognized People (Compact Single Horizontal Shelf) */}
           <div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <Users size={18} style={{ color: "var(--accent-primary)" }} />
-                <h2 style={{ fontSize: "16px", fontWeight: 700 }}>
+                <h2 style={{ fontSize: "15px", fontWeight: 700 }}>
                   Recognized People ({filteredPeople.length})
                 </h2>
-                {people.length > 0 && (
-                  <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                    (Click person to browse photos • Edit name & relationship directly on card)
-                  </span>
-                )}
               </div>
+              {people.length > 0 && (
+                <button
+                  onClick={() => setShowAllPeopleModal(true)}
+                  className="clickable"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--accent-primary)",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    cursor: "pointer",
+                    padding: "4px 8px",
+                    borderRadius: "var(--radius-sm)",
+                  }}
+                  title="View and manage all recognized people"
+                >
+                  <span>See All ({people.length})</span>
+                  <ArrowRight size={14} />
+                </button>
+              )}
             </div>
 
             {filteredPeople.length === 0 ? (
@@ -674,7 +724,7 @@ export const PeopleView: React.FC = () => {
                 unlabeledClusters.length === 0 && !scanStatus.is_scanning ? (
                   <div
                     style={{
-                      padding: "60px 20px",
+                      padding: "50px 20px",
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
@@ -686,23 +736,23 @@ export const PeopleView: React.FC = () => {
                       border: "1px dashed var(--border-subtle)",
                     }}
                   >
-                    <Users size={48} style={{ opacity: 0.3, marginBottom: "12px" }} />
-                    <p style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-primary)" }}>
+                    <Users size={44} style={{ opacity: 0.3, marginBottom: "10px" }} />
+                    <p style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-primary)" }}>
                       No People Identified Yet
                     </p>
-                    <p style={{ fontSize: "12px", marginTop: "6px", maxWidth: "420px", lineHeight: "1.5" }}>
+                    <p style={{ fontSize: "12px", marginTop: "4px", maxWidth: "420px", lineHeight: "1.5" }}>
                       Click "Scan Photos for Faces" above to run on-device facial detection across your media library.
                     </p>
                   </div>
                 ) : (
                   <div
                     style={{
-                      padding: "16px 20px",
+                      padding: "14px 18px",
                       backgroundColor: "var(--bg-surface)",
                       borderRadius: "var(--radius-md)",
                       border: "1px dashed var(--border-subtle)",
                       color: "var(--text-muted)",
-                      fontSize: "13px",
+                      fontSize: "12px",
                       display: "flex",
                       alignItems: "center",
                       gap: "8px",
@@ -713,89 +763,62 @@ export const PeopleView: React.FC = () => {
                   </div>
                 )
               ) : (
-                <div style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                <div style={{ textAlign: "center", padding: "24px", color: "var(--text-muted)" }}>
                   <p style={{ fontSize: "13px" }}>No recognized people match "{searchQuery}"</p>
                 </div>
               )
             ) : (
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
-                  gap: "14px",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "18px",
+                  overflowX: "auto",
+                  paddingBottom: "8px",
+                  paddingTop: "2px",
+                  scrollbarWidth: "none",
                 }}
               >
                 {filteredPeople.map((person) => (
                   <div
                     key={person.id}
                     onClick={() => handleSelectPerson(person)}
-                    className="clickable glass-panel"
+                    className="clickable"
                     style={{
-                      borderRadius: "var(--radius-md)",
-                      padding: "12px 12px 14px",
-                      backgroundColor: "var(--bg-surface)",
-                      border: "1px solid var(--border-subtle)",
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
                       textAlign: "center",
+                      width: "74px",
+                      flexShrink: 0,
+                      cursor: "pointer",
                       position: "relative",
-                      transition: "transform 0.15s ease, border-color 0.15s ease",
                     }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = "translateY(-2px)";
-                      e.currentTarget.style.borderColor = "var(--border-highlight)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = "translateY(0)";
-                      e.currentTarget.style.borderColor = "var(--border-subtle)";
-                    }}
+                    title={`${person.name} (${person.relationship_type || "Friend"}) • ${person.confirmed_count} photos`}
                   >
-                    {/* Close One Star Toggle */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleUpdatePerson(person.id, { is_close_one: !person.is_close_one });
-                      }}
-                      title={person.is_close_one ? "Close One (VIP) - Click to unstar" : "Mark as Close One (VIP)"}
-                      className="clickable"
-                      style={{
-                        position: "absolute",
-                        top: "8px",
-                        right: "8px",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        padding: "4px",
-                        color: person.is_close_one ? "var(--accent-warning)" : "var(--text-muted)",
-                        opacity: person.is_close_one ? 1 : 0.4,
-                        transition: "opacity 0.15s ease, transform 0.15s ease",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.opacity = "1";
-                        e.currentTarget.style.transform = "scale(1.15)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.opacity = person.is_close_one ? "1" : "0.4";
-                        e.currentTarget.style.transform = "scale(1)";
-                      }}
-                    >
-                      <Star size={15} fill={person.is_close_one ? "var(--accent-warning)" : "none"} />
-                    </button>
-
-                    {/* Avatar Circle */}
+                    {/* Rounded Circular Avatar */}
                     <div
                       style={{
-                        width: "56px",
-                        height: "56px",
-                        borderRadius: "var(--radius-full)",
-                        backgroundColor: "var(--bg-surface-elevated)",
-                        border: "2px solid var(--accent-primary)",
+                        position: "relative",
+                        width: "60px",
+                        height: "60px",
+                        borderRadius: "50%",
                         overflow: "hidden",
+                        border: "2px solid var(--accent-primary)",
+                        backgroundColor: "var(--bg-surface-elevated)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        marginBottom: "8px",
+                        transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.18)",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = "scale(1.08)";
+                        e.currentTarget.style.boxShadow = "0 4px 12px rgba(59, 130, 246, 0.35)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = "scale(1)";
+                        e.currentTarget.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.18)";
                       }}
                     >
                       {person.cover_face_id ? (
@@ -810,102 +833,124 @@ export const PeopleView: React.FC = () => {
                       )}
                     </div>
 
-                    {/* In-Card Editable Name */}
-                    <div onClick={(e) => e.stopPropagation()} style={{ width: "100%" }}>
-                      <input
-                        type="text"
-                        value={editingNames[person.id] !== undefined ? editingNames[person.id] : person.name}
-                        onChange={(e) => handleCardNameChange(person.id, e.target.value)}
-                        onBlur={() => handleCardNameBlurOrEnter(person)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.currentTarget.blur();
-                          }
-                        }}
-                        title="Click to edit name (press Enter or click outside to save)"
-                        placeholder="Person name..."
+                    {/* VIP Close One Star Indicator */}
+                    {person.is_close_one && (
+                      <div
                         style={{
-                          width: "100%",
-                          fontSize: "13px",
-                          fontWeight: 700,
-                          color: "var(--text-primary)",
-                          backgroundColor: "transparent",
-                          border: "1px solid transparent",
-                          borderRadius: "var(--radius-sm)",
-                          textAlign: "center",
-                          padding: "2px 4px",
-                          outline: "none",
-                          transition: "all 0.15s ease",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = "var(--border-subtle)";
-                          e.currentTarget.style.backgroundColor = "var(--bg-surface-elevated)";
-                        }}
-                        onMouseLeave={(e) => {
-                          if (document.activeElement !== e.currentTarget) {
-                            e.currentTarget.style.borderColor = "transparent";
-                            e.currentTarget.style.backgroundColor = "transparent";
-                          }
-                        }}
-                        onFocus={(e) => {
-                          e.currentTarget.style.borderColor = "var(--accent-primary)";
-                          e.currentTarget.style.backgroundColor = "var(--bg-surface-elevated)";
-                        }}
-                      />
-                    </div>
-
-                    {/* Interactive Inline Relationship Selector */}
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      style={{ marginTop: "4px", width: "100%" }}
-                    >
-                      <select
-                        value={person.relationship_type || "Friend"}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          handleUpdatePerson(person.id, { relationship_type: e.target.value });
-                        }}
-                        style={{
-                          width: "100%",
-                          padding: "3px 6px",
-                          borderRadius: "var(--radius-sm)",
+                          position: "absolute",
+                          top: "40px",
+                          right: "6px",
                           backgroundColor: "var(--bg-sidebar)",
-                          border: "1px solid var(--border-subtle)",
-                          color: "var(--text-primary)",
-                          fontSize: "11px",
-                          fontWeight: 600,
-                          textAlign: "center",
-                          cursor: "pointer",
-                          outline: "none",
+                          borderRadius: "50%",
+                          width: "18px",
+                          height: "18px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
                         }}
-                        title="Change relationship"
+                        title="Close One (VIP)"
                       >
-                        {RELATIONSHIP_OPTIONS.map((rel) => (
-                          <option key={rel} value={rel}>{rel}</option>
-                        ))}
-                      </select>
-                    </div>
+                        <Star size={11} fill="var(--accent-warning)" color="var(--accent-warning)" />
+                      </div>
+                    )}
 
-                    <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
-                      {person.confirmed_count} {person.confirmed_count === 1 ? "photo" : "photos"}
-                    </p>
-
-                    {/* Affinity Score Pill */}
+                    {/* Name */}
                     <div
                       style={{
                         marginTop: "6px",
-                        padding: "2px 8px",
-                        borderRadius: "var(--radius-full)",
-                        backgroundColor: person.is_close_one ? "rgba(16, 185, 129, 0.12)" : "var(--bg-sidebar)",
-                        color: person.is_close_one ? "var(--accent-success)" : "var(--text-muted)",
-                        fontSize: "10px",
+                        fontSize: "12px",
                         fontWeight: 600,
+                        color: "var(--text-primary)",
+                        width: "100%",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
                       }}
                     >
-                      Affinity: {Math.round(person.affinity_score)}/100
+                      {person.name}
+                    </div>
+
+                    {/* Relationship Subtext */}
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "var(--text-muted)",
+                        width: "100%",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        marginTop: "1px",
+                      }}
+                    >
+                      {person.relationship_type || "Friend"}
                     </div>
                   </div>
                 ))}
+
+                {/* "See All" Circular Tile at End of Shelf */}
+                <div
+                  onClick={() => setShowAllPeopleModal(true)}
+                  className="clickable"
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    textAlign: "center",
+                    width: "74px",
+                    flexShrink: 0,
+                    cursor: "pointer",
+                  }}
+                  title="View and manage all recognized people"
+                >
+                  <div
+                    style={{
+                      width: "60px",
+                      height: "60px",
+                      borderRadius: "50%",
+                      border: "2px dashed var(--border-highlight)",
+                      backgroundColor: "var(--bg-surface-elevated)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "var(--text-primary)",
+                      transition: "all 0.2s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = "var(--accent-primary)";
+                      e.currentTarget.style.color = "var(--accent-primary)";
+                      e.currentTarget.style.transform = "scale(1.08)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = "var(--border-highlight)";
+                      e.currentTarget.style.color = "var(--text-primary)";
+                      e.currentTarget.style.transform = "scale(1)";
+                    }}
+                  >
+                    <ArrowRight size={20} />
+                  </div>
+                  <div
+                    style={{
+                      marginTop: "6px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color: "var(--text-primary)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    See All
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--text-muted)",
+                      marginTop: "1px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {people.length} total
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -1198,6 +1243,339 @@ export const PeopleView: React.FC = () => {
             </div>
           )}
         </>
+      )}
+
+      {/* "See All" Full People Management Modal */}
+      {showAllPeopleModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.75)",
+            backdropFilter: "blur(6px)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px",
+          }}
+          onClick={() => setShowAllPeopleModal(false)}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              backgroundColor: "var(--bg-surface)",
+              borderRadius: "var(--radius-lg)",
+              border: "1px solid var(--border-highlight)",
+              width: "100%",
+              maxWidth: "960px",
+              maxHeight: "85vh",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 20px 50px rgba(0, 0, 0, 0.5)",
+              overflow: "hidden",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: "16px 24px",
+                borderBottom: "1px solid var(--border-subtle)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                backgroundColor: "var(--bg-surface-elevated)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <Users size={20} style={{ color: "var(--accent-primary)" }} />
+                <div>
+                  <h2 style={{ fontSize: "16px", fontWeight: 700, margin: 0 }}>
+                    All Recognized People ({people.length})
+                  </h2>
+                  <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: "2px 0 0" }}>
+                    Review, edit names, update relationships, or fix tags
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                {/* Modal Search Input */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "6px 12px",
+                    backgroundColor: "var(--bg-sidebar)",
+                    borderRadius: "var(--radius-sm)",
+                    border: "1px solid var(--border-subtle)",
+                    width: "220px",
+                  }}
+                >
+                  <Search size={14} style={{ color: "var(--text-muted)" }} />
+                  <input
+                    type="text"
+                    placeholder="Search people..."
+                    value={modalSearch}
+                    onChange={(e) => setModalSearch(e.target.value)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      outline: "none",
+                      color: "var(--text-primary)",
+                      fontSize: "12px",
+                      width: "100%",
+                    }}
+                  />
+                  {modalSearch && (
+                    <button
+                      onClick={() => setModalSearch("")}
+                      style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--text-muted)" }}
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setShowAllPeopleModal(false)}
+                  className="clickable"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                    padding: "6px",
+                    borderRadius: "var(--radius-sm)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  title="Close"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content: Full Management Grid */}
+            <div style={{ padding: "24px", overflowY: "auto", flex: 1 }}>
+              {modalFilteredPeople.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
+                  <Users size={36} style={{ opacity: 0.3, marginBottom: "10px" }} />
+                  <p style={{ fontSize: "14px" }}>No recognized people match "{modalSearch}"</p>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))",
+                    gap: "16px",
+                  }}
+                >
+                  {modalFilteredPeople.map((person) => (
+                    <div
+                      key={person.id}
+                      className="glass-panel"
+                      style={{
+                        borderRadius: "var(--radius-md)",
+                        padding: "14px",
+                        backgroundColor: "var(--bg-surface)",
+                        border: "1px solid var(--border-subtle)",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        textAlign: "center",
+                        position: "relative",
+                        transition: "transform 0.15s ease, border-color 0.15s ease",
+                      }}
+                    >
+                      {/* Close One VIP Star Toggle */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUpdatePerson(person.id, { is_close_one: !person.is_close_one });
+                        }}
+                        title={person.is_close_one ? "Close One (VIP) - Click to unstar" : "Mark as Close One (VIP)"}
+                        className="clickable"
+                        style={{
+                          position: "absolute",
+                          top: "8px",
+                          right: "8px",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          padding: "4px",
+                          color: person.is_close_one ? "var(--accent-warning)" : "var(--text-muted)",
+                          opacity: person.is_close_one ? 1 : 0.4,
+                        }}
+                      >
+                        <Star size={15} fill={person.is_close_one ? "var(--accent-warning)" : "none"} />
+                      </button>
+
+                      {/* Avatar with click to browse */}
+                      <div
+                        onClick={() => {
+                          setShowAllPeopleModal(false);
+                          handleSelectPerson(person);
+                        }}
+                        className="clickable"
+                        title="Click to view all photos of this person"
+                        style={{
+                          width: "56px",
+                          height: "56px",
+                          borderRadius: "50%",
+                          backgroundColor: "var(--bg-surface-elevated)",
+                          border: "2px solid var(--accent-primary)",
+                          overflow: "hidden",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginBottom: "10px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {person.cover_face_id ? (
+                          <img
+                            src={`${API_BASE}/people/faces/${person.cover_face_id}/crop`}
+                            alt={person.name}
+                            loading="lazy"
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                        ) : (
+                          <Users size={24} style={{ color: "var(--accent-primary)" }} />
+                        )}
+                      </div>
+
+                      {/* In-Card Editable Name */}
+                      <div style={{ width: "100%" }}>
+                        <input
+                          type="text"
+                          value={editingNames[person.id] !== undefined ? editingNames[person.id] : person.name}
+                          onChange={(e) => handleCardNameChange(person.id, e.target.value)}
+                          onBlur={() => handleCardNameBlurOrEnter(person)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.currentTarget.blur();
+                            }
+                          }}
+                          title="Click to edit name (press Enter or click outside to save)"
+                          placeholder="Person name..."
+                          style={{
+                            width: "100%",
+                            fontSize: "13px",
+                            fontWeight: 700,
+                            color: "var(--text-primary)",
+                            backgroundColor: "transparent",
+                            border: "1px solid transparent",
+                            borderRadius: "var(--radius-sm)",
+                            textAlign: "center",
+                            padding: "2px 4px",
+                            outline: "none",
+                            transition: "all 0.15s ease",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = "var(--border-subtle)";
+                            e.currentTarget.style.backgroundColor = "var(--bg-surface-elevated)";
+                          }}
+                          onMouseLeave={(e) => {
+                            if (document.activeElement !== e.currentTarget) {
+                              e.currentTarget.style.borderColor = "transparent";
+                              e.currentTarget.style.backgroundColor = "transparent";
+                            }
+                          }}
+                          onFocus={(e) => {
+                            e.currentTarget.style.borderColor = "var(--accent-primary)";
+                            e.currentTarget.style.backgroundColor = "var(--bg-surface-elevated)";
+                          }}
+                        />
+                      </div>
+
+                      {/* In-Card Editable Relationship Dropdown */}
+                      <div style={{ marginTop: "6px", width: "100%" }}>
+                        <select
+                          value={person.relationship_type || "Friend"}
+                          onChange={(e) => {
+                            handleUpdatePerson(person.id, { relationship_type: e.target.value });
+                          }}
+                          style={{
+                            width: "100%",
+                            padding: "4px 8px",
+                            borderRadius: "var(--radius-sm)",
+                            backgroundColor: "var(--bg-sidebar)",
+                            border: "1px solid var(--border-subtle)",
+                            color: "var(--text-primary)",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            textAlign: "center",
+                            cursor: "pointer",
+                            outline: "none",
+                          }}
+                          title="Change relationship"
+                        >
+                          {RELATIONSHIP_OPTIONS.map((rel) => (
+                            <option key={rel} value={rel}>{rel}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Photo count & browse link */}
+                      <button
+                        onClick={() => {
+                          setShowAllPeopleModal(false);
+                          handleSelectPerson(person);
+                        }}
+                        className="clickable"
+                        style={{
+                          marginTop: "8px",
+                          background: "none",
+                          border: "none",
+                          fontSize: "11px",
+                          color: "var(--accent-primary)",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          padding: "2px 6px",
+                        }}
+                      >
+                        Browse {person.confirmed_count} {person.confirmed_count === 1 ? "photo" : "photos"} →
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div
+              style={{
+                padding: "12px 24px",
+                borderTop: "1px solid var(--border-subtle)",
+                display: "flex",
+                justifyContent: "flex-end",
+                backgroundColor: "var(--bg-surface-elevated)",
+              }}
+            >
+              <button
+                onClick={() => setShowAllPeopleModal(false)}
+                className="clickable"
+                style={{
+                  padding: "6px 18px",
+                  borderRadius: "var(--radius-sm)",
+                  backgroundColor: "var(--accent-primary)",
+                  border: "none",
+                  color: "#ffffff",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
