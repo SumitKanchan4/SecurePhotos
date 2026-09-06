@@ -30,33 +30,58 @@ class AmbientSoundscapeGenerator {
   private masterGain: GainNode | null = null;
   private timer: number | null = null;
 
-  // Soothing pentatonic chord progressions (frequencies in Hz)
+  // Soothing warm chord progressions in the clearly audible 175Hz - 550Hz range
   private chords = [
-    [130.81, 196.00, 261.63, 329.63], // C3, G3, C4, E4
-    [110.00, 164.81, 220.00, 261.63], // A2, E3, A3, C4
-    [146.83, 220.00, 293.66, 369.99], // D3, A3, D4, F#4
-    [174.61, 261.63, 329.63, 392.00], // F3, C4, E4, G4
+    [261.63, 329.63, 392.00, 523.25], // C4, E4, G4, C5 (C Major)
+    [220.00, 261.63, 329.63, 440.00], // A3, C4, E4, A4 (A minor)
+    [293.66, 369.99, 440.00, 587.33], // D4, F#4, A4, D5 (D Major)
+    [174.61, 261.63, 349.23, 392.00], // F3, C4, F4, G4 (F sus2)
   ];
   private chordIndex = 0;
 
-  public start() {
+  public async start() {
     if (this.isPlaying) return;
     try {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
       this.ctx = new AudioCtx();
+      this.isPlaying = true;
+
       this.masterGain = this.ctx.createGain();
       this.masterGain.gain.setValueAtTime(0.001, this.ctx.currentTime);
-      this.masterGain.gain.exponentialRampToValueAtTime(0.18, this.ctx.currentTime + 3.0);
+      this.masterGain.gain.exponentialRampToValueAtTime(0.35, this.ctx.currentTime + 1.5);
       this.masterGain.connect(this.ctx.destination);
-      this.isPlaying = true;
-      this.playNextPad();
+
+      if (this.ctx.state === "suspended") {
+        await this.ctx.resume().catch(() => {});
+      }
+
+      this.scheduleNextPad();
     } catch (err) {
       console.warn("Web Audio API not allowed or supported:", err);
     }
   }
 
-  private playNextPad() {
+  public resume() {
+    if (this.ctx && this.ctx.state === "suspended") {
+      this.ctx.resume().then(() => {
+        if (this.isPlaying && !this.timer) {
+          this.scheduleNextPad();
+        }
+      }).catch(() => {});
+    }
+  }
+
+  private scheduleNextPad() {
     if (!this.ctx || !this.isPlaying || !this.masterGain) return;
+
+    // If context is suspended by the browser, wait for unlock
+    if (this.ctx.state === "suspended") {
+      this.ctx.resume().then(() => {
+        if (this.isPlaying) this.scheduleNextPad();
+      }).catch(() => {});
+      return;
+    }
 
     const chord = this.chords[this.chordIndex % this.chords.length];
     this.chordIndex++;
@@ -64,10 +89,11 @@ class AmbientSoundscapeGenerator {
     const now = this.ctx.currentTime;
     const duration = 6.0; // 6 seconds per chord pad
 
-    // Create a soft low-pass filter for a warm, dreamy sound
+    // Create a soft low-pass filter (950Hz provides rich warmth without muffling sound)
     const filter = this.ctx.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.setValueAtTime(450, now);
+    filter.frequency.setValueAtTime(950, now);
+    filter.Q.setValueAtTime(1.0, now);
     filter.connect(this.masterGain);
 
     chord.forEach((freq, i) => {
@@ -80,11 +106,12 @@ class AmbientSoundscapeGenerator {
       osc.frequency.setValueAtTime(freq, now);
 
       // Subtle detune for rich celestial chorus
-      osc.detune.setValueAtTime((i - 1.5) * 5, now);
+      osc.detune.setValueAtTime((i - 1.5) * 6, now);
 
-      // Gentle attack and release envelope
+      // Clear, gentle attack and release envelope
+      const peakGain = 0.14;
       oscGain.gain.setValueAtTime(0.001, now);
-      oscGain.gain.exponentialRampToValueAtTime(0.07 / chord.length, now + 2.0);
+      oscGain.gain.exponentialRampToValueAtTime(peakGain, now + 1.8);
       oscGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
       osc.connect(oscGain);
@@ -95,7 +122,7 @@ class AmbientSoundscapeGenerator {
     });
 
     this.timer = window.setTimeout(() => {
-      if (this.isPlaying) this.playNextPad();
+      if (this.isPlaying) this.scheduleNextPad();
     }, 4800); // 4.8s overlap creates smooth cross-dissolve chords
   }
 
@@ -103,9 +130,14 @@ class AmbientSoundscapeGenerator {
     if (!this.masterGain || !this.ctx) return;
     const now = this.ctx.currentTime;
     if (muted) {
-      this.masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+      this.masterGain.gain.cancelScheduledValues(now);
+      this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+      this.masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
     } else {
-      this.masterGain.gain.exponentialRampToValueAtTime(0.18, now + 0.5);
+      this.resume();
+      this.masterGain.gain.cancelScheduledValues(now);
+      this.masterGain.gain.setValueAtTime(this.masterGain.gain.value || 0.001, now);
+      this.masterGain.gain.exponentialRampToValueAtTime(0.35, now + 0.5);
     }
   }
 
@@ -149,6 +181,23 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
     return () => {
       soundscapeRef.current?.stop();
       soundscapeRef.current = null;
+    };
+  }, [isOpen]);
+
+  // Unlock audio on any user gesture (click anywhere, touch, or keydown)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const unlockAudio = () => {
+      soundscapeRef.current?.resume();
+    };
+
+    window.addEventListener("pointerdown", unlockAudio);
+    window.addEventListener("keydown", unlockAudio);
+
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
     };
   }, [isOpen]);
 
@@ -341,7 +390,10 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
       {photos.length > 1 && (
         <>
           <button
-            onClick={handlePrev}
+            onClick={() => {
+              soundscapeRef.current?.resume();
+              handlePrev();
+            }}
             style={{
               position: "absolute",
               left: "20px",
@@ -367,7 +419,10 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
             <ChevronLeft size={22} />
           </button>
           <button
-            onClick={handleNext}
+            onClick={() => {
+              soundscapeRef.current?.resume();
+              handleNext();
+            }}
             style={{
               position: "absolute",
               right: "20px",
@@ -416,7 +471,10 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
       >
         {/* Play / Pause Toggle */}
         <button
-          onClick={() => setIsPlaying((p) => !p)}
+          onClick={() => {
+            soundscapeRef.current?.resume();
+            setIsPlaying((p) => !p);
+          }}
           className="clickable"
           title={isPlaying ? "Pause (Space)" : "Play (Space)"}
           style={{
@@ -437,7 +495,10 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
 
         {/* Ambient Music Toggle */}
         <button
-          onClick={() => setIsMuted((m) => !m)}
+          onClick={() => {
+            soundscapeRef.current?.resume();
+            setIsMuted((m) => !m);
+          }}
           className="clickable"
           title={isMuted ? "Unmute Ambient Music (M)" : "Mute Ambient Music (M)"}
           style={{
