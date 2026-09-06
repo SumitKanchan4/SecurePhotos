@@ -17,16 +17,22 @@ import { AlbumItem, PhotoItem } from "../types";
 interface AlbumsViewProps {
   onLockAlbumToVault?: (albumId: number) => void;
   onPhotoClick?: (idx: number, albumPhotos: PhotoItem[]) => void;
+  onToggleFavorite?: (photoId: number) => void;
 }
 
 export const AlbumsView: React.FC<AlbumsViewProps> = ({
   onLockAlbumToVault,
   onPhotoClick,
+  onToggleFavorite,
 }) => {
   const [albums, setAlbums] = useState<AlbumItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCreatingAlbum, setIsCreatingAlbum] = useState(false);
   const [newAlbumName, setNewAlbumName] = useState("");
+
+  // Favorites Smart Album State
+  const [favoriteCount, setFavoriteCount] = useState<number>(0);
+  const [favoriteCoverId, setFavoriteCoverId] = useState<number | null>(null);
 
   // Album Detail View State
   const [activeAlbumId, setActiveAlbumId] = useState<number | null>(null);
@@ -47,13 +53,21 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   const loadAlbums = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/albums");
-      if (res.ok) {
-        const data: AlbumItem[] = await res.json();
+      const [albumsRes, favsRes] = await Promise.all([
+        fetch("http://127.0.0.1:8000/api/albums"),
+        fetch("http://127.0.0.1:8000/api/photos?favorite_only=true"),
+      ]);
+      if (albumsRes.ok) {
+        const data: AlbumItem[] = await albumsRes.json();
         setAlbums(data);
       }
+      if (favsRes.ok) {
+        const favs: PhotoItem[] = await favsRes.json();
+        setFavoriteCount(favs.length);
+        setFavoriteCoverId(favs.length > 0 ? favs[0].id : null);
+      }
     } catch (err) {
-      console.error("Failed to fetch albums:", err);
+      console.error("Failed to fetch albums or favorites:", err);
     } finally {
       setIsLoading(false);
     }
@@ -153,6 +167,66 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     }
   };
 
+  const openFavoritesAlbum = async () => {
+    setActiveAlbumId(-1);
+    setActiveAlbumMeta({
+      id: -1,
+      name: "Favorites",
+      description: "All your starred and favorite photos",
+      cover_photo_id: favoriteCoverId ?? undefined,
+      is_vault: false,
+      is_favorite: true,
+      photo_count: favoriteCount,
+      created_at: new Date().toISOString(),
+    });
+    setIsDetailLoading(true);
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/photos?favorite_only=true");
+      if (res.ok) {
+        const data: PhotoItem[] = await res.json();
+        setAlbumPhotos(data);
+        setFavoriteCount(data.length);
+        setFavoriteCoverId(data.length > 0 ? data[0].id : null);
+      }
+    } catch (err) {
+      console.error("Failed to load favorite photos:", err);
+    } finally {
+      setIsDetailLoading(false);
+    }
+  };
+
+  const handleSetAlbumCover = async (photoId: number) => {
+    if (!activeAlbumId || activeAlbumId === -1) return;
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/albums/${activeAlbumId}/cover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo_id: photoId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setActiveAlbumMeta((prev) => (prev ? { ...prev, cover_photo_id: data.cover_photo_id } : null));
+        setAlbums((prev) =>
+          prev.map((a) => (a.id === activeAlbumId ? { ...a, cover_photo_id: data.cover_photo_id } : a))
+        );
+      }
+    } catch (err) {
+      console.error("Failed to set album cover:", err);
+    }
+  };
+
+  const handleTogglePhotoFavorite = async (photoId: number) => {
+    onToggleFavorite?.(photoId);
+
+    setAlbumPhotos((prev) =>
+      prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p))
+    );
+
+    if (activeAlbumId === -1) {
+      setFavoriteCount((prev) => Math.max(0, prev - 1));
+    }
+  };
+
   const openPhotoPicker = async () => {
     setPickerSelectedIds(new Set());
     setIsPhotoPickerOpen(true);
@@ -247,19 +321,24 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
             </button>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <h2 style={{ fontSize: "17px", fontWeight: 700, margin: 0 }}>{activeAlbumMeta.name}</h2>
-                <button
-                  onClick={() => handleToggleFavorite(activeAlbumMeta.id)}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: activeAlbumMeta.is_favorite ? "var(--accent-danger, #ef4444)" : "var(--text-muted)",
-                    cursor: "pointer",
-                    padding: "2px",
-                  }}
-                >
-                  <Heart size={16} fill={activeAlbumMeta.is_favorite ? "currentColor" : "none"} />
-                </button>
+                <h2 style={{ fontSize: "17px", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "6px" }}>
+                  {activeAlbumId === -1 && <Heart size={18} fill="#ef4444" stroke="#ef4444" />}
+                  {activeAlbumMeta.name}
+                </h2>
+                {activeAlbumId !== -1 && (
+                  <button
+                    onClick={() => handleToggleFavorite(activeAlbumMeta.id)}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: activeAlbumMeta.is_favorite ? "var(--accent-danger, #ef4444)" : "var(--text-muted)",
+                      cursor: "pointer",
+                      padding: "2px",
+                    }}
+                  >
+                    <Heart size={16} fill={activeAlbumMeta.is_favorite ? "currentColor" : "none"} />
+                  </button>
+                )}
               </div>
               <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: "2px 0 0" }}>
                 {albumPhotos.length} {albumPhotos.length === 1 ? "photo" : "photos"}
@@ -267,48 +346,50 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <button
-              onClick={openPhotoPicker}
-              className="clickable"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "7px 16px",
-                borderRadius: "var(--radius-sm)",
-                backgroundColor: "var(--accent-primary)",
-                border: "none",
-                color: "#ffffff",
-                fontSize: "12px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              <Plus size={14} />
-              Add Photos
-            </button>
-            <button
-              onClick={() => handleDeleteAlbum(activeAlbumMeta.id)}
-              className="clickable"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "7px 12px",
-                borderRadius: "var(--radius-sm)",
-                backgroundColor: "var(--bg-surface)",
-                border: "1px solid var(--border-subtle)",
-                color: "var(--accent-danger, #ef4444)",
-                fontSize: "12px",
-                cursor: "pointer",
-              }}
-              title="Delete this album"
-            >
-              <Trash2 size={14} />
-              Delete
-            </button>
-          </div>
+          {activeAlbumId !== -1 && (
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <button
+                onClick={openPhotoPicker}
+                className="clickable"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "7px 16px",
+                  borderRadius: "var(--radius-sm)",
+                  backgroundColor: "var(--accent-primary)",
+                  border: "none",
+                  color: "#ffffff",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <Plus size={14} />
+                Add Photos
+              </button>
+              <button
+                onClick={() => handleDeleteAlbum(activeAlbumMeta.id)}
+                className="clickable"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "7px 12px",
+                  borderRadius: "var(--radius-sm)",
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-subtle)",
+                  color: "var(--accent-danger, #ef4444)",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                }}
+                title="Delete this album"
+              >
+                <Trash2 size={14} />
+                Delete
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Photos Grid or Empty State */}
@@ -330,32 +411,44 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                 textAlign: "center",
               }}
             >
-              <ImageIcon size={48} style={{ opacity: 0.3, marginBottom: "12px" }} />
-              <p style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-primary)" }}>This Album is Empty</p>
-              <p style={{ fontSize: "12px", marginTop: "4px", maxWidth: "340px" }}>
-                Add photos from your collection to organize them in this album.
-              </p>
-              <button
-                onClick={openPhotoPicker}
-                className="clickable"
-                style={{
-                  marginTop: "16px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "9px 20px",
-                  borderRadius: "var(--radius-sm)",
-                  backgroundColor: "var(--accent-primary)",
-                  border: "none",
-                  color: "#ffffff",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                <Plus size={15} />
-                Add Photos to Album
-              </button>
+              {activeAlbumId === -1 ? (
+                <>
+                  <Heart size={48} style={{ color: "var(--accent-danger)", opacity: 0.5, marginBottom: "12px" }} />
+                  <p style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-primary)" }}>No Favorites Yet</p>
+                  <p style={{ fontSize: "12px", marginTop: "4px", maxWidth: "340px" }}>
+                    Click the heart icon on any photo in your gallery or albums to save it to your Favorites.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <ImageIcon size={48} style={{ opacity: 0.3, marginBottom: "12px" }} />
+                  <p style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-primary)" }}>This Album is Empty</p>
+                  <p style={{ fontSize: "12px", marginTop: "4px", maxWidth: "340px" }}>
+                    Add photos from your collection to organize them in this album.
+                  </p>
+                  <button
+                    onClick={openPhotoPicker}
+                    className="clickable"
+                    style={{
+                      marginTop: "16px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "9px 20px",
+                      borderRadius: "var(--radius-sm)",
+                      backgroundColor: "var(--accent-primary)",
+                      border: "none",
+                      color: "#ffffff",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <Plus size={15} />
+                    Add Photos to Album
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             <div
@@ -365,72 +458,156 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                 gap: "12px",
               }}
             >
-              {albumPhotos.map((photo, idx) => (
-                <div
-                  key={photo.id}
-                  className="clickable glass-panel"
-                  style={{
-                    position: "relative",
-                    aspectRatio: "1",
-                    borderRadius: "var(--radius-sm)",
-                    overflow: "hidden",
-                    backgroundColor: "var(--bg-surface-elevated)",
-                    border: "1px solid var(--border-subtle)",
-                    cursor: "pointer",
-                  }}
-                  onClick={() => onPhotoClick?.(idx, albumPhotos)}
-                >
-                  <img
-                    src={`http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail`}
-                    alt={photo.filename}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    loading="lazy"
-                  />
-                  {/* Remove from Album Button (Top Right) */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemovePhotoFromAlbum(photo.id);
-                    }}
-                    title="Remove from album"
+              {albumPhotos.map((photo, idx) => {
+                const isCover = activeAlbumMeta.cover_photo_id === photo.id;
+                return (
+                  <div
+                    key={photo.id}
+                    className="clickable glass-panel"
                     style={{
-                      position: "absolute",
-                      top: "6px",
-                      right: "6px",
-                      background: "rgba(0, 0, 0, 0.65)",
-                      border: "1px solid rgba(255, 255, 255, 0.2)",
-                      borderRadius: "var(--radius-xs, 4px)",
-                      color: "#ffffff",
-                      width: "24px",
-                      height: "24px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      position: "relative",
+                      aspectRatio: "1",
+                      borderRadius: "var(--radius-sm)",
+                      overflow: "hidden",
+                      backgroundColor: "var(--bg-surface-elevated)",
+                      border: isCover ? "2px solid var(--accent-primary)" : "1px solid var(--border-subtle)",
                       cursor: "pointer",
                     }}
+                    onClick={() => onPhotoClick?.(idx, albumPhotos)}
                   >
-                    <X size={13} />
-                  </button>
-                  {/* Bottom Filename */}
-                  <div
-                    style={{
-                      position: "absolute",
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      padding: "6px 8px",
-                      background: "linear-gradient(to top, rgba(0,0,0,0.8), transparent)",
-                      fontSize: "10px",
-                      color: "#ffffff",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {photo.filename}
+                    <img
+                      src={`http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail`}
+                      alt={photo.filename}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      loading="lazy"
+                    />
+
+                    {/* Top Left: Cover Status / Set as Cover Button (Only for user albums) */}
+                    {activeAlbumId !== -1 && (
+                      <div style={{ position: "absolute", top: "6px", left: "6px", zIndex: 3 }}>
+                        {isCover ? (
+                          <span
+                            title="Current Album Cover"
+                            style={{
+                              backgroundColor: "var(--accent-primary)",
+                              color: "#ffffff",
+                              padding: "2px 7px",
+                              borderRadius: "var(--radius-xs)",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "3px",
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.5)",
+                            }}
+                          >
+                            <Check size={10} strokeWidth={3} /> Cover
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSetAlbumCover(photo.id);
+                            }}
+                            title="Set as Album Cover"
+                            style={{
+                              backgroundColor: "rgba(0, 0, 0, 0.65)",
+                              border: "1px solid rgba(255, 255, 255, 0.3)",
+                              borderRadius: "var(--radius-xs)",
+                              color: "#ffffff",
+                              padding: "2px 6px",
+                              fontSize: "10px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "3px",
+                              backdropFilter: "blur(4px)",
+                            }}
+                          >
+                            <ImageIcon size={10} /> Set Cover
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Top Right: Like Heart & Remove Buttons */}
+                    <div style={{ position: "absolute", top: "6px", right: "6px", display: "flex", gap: "4px", zIndex: 3 }}>
+                      {/* Heart Like Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleTogglePhotoFavorite(photo.id);
+                        }}
+                        title={photo.is_favorite ? "Remove from Favorites" : "Add to Favorites"}
+                        style={{
+                          background: photo.is_favorite ? "rgba(239, 68, 68, 0.9)" : "rgba(0, 0, 0, 0.65)",
+                          border: "1px solid rgba(255, 255, 255, 0.3)",
+                          borderRadius: "var(--radius-xs)",
+                          color: "#ffffff",
+                          width: "24px",
+                          height: "24px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                          backdropFilter: "blur(4px)",
+                        }}
+                      >
+                        <Heart size={12} fill={photo.is_favorite ? "#ffffff" : "none"} stroke="#ffffff" />
+                      </button>
+
+                      {/* Remove from Album Button (Only for user albums) */}
+                      {activeAlbumId !== -1 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemovePhotoFromAlbum(photo.id);
+                          }}
+                          title="Remove from album"
+                          style={{
+                            background: "rgba(0, 0, 0, 0.65)",
+                            border: "1px solid rgba(255, 255, 255, 0.3)",
+                            borderRadius: "var(--radius-xs)",
+                            color: "#ffffff",
+                            width: "24px",
+                            height: "24px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                            backdropFilter: "blur(4px)",
+                          }}
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Bottom Filename */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        padding: "6px 8px",
+                        background: "linear-gradient(to top, rgba(0,0,0,0.8), transparent)",
+                        fontSize: "10px",
+                        color: "#ffffff",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {photo.filename}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -730,45 +907,6 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
           <Loader2 size={28} className="spin" style={{ margin: "0 auto 12px" }} />
           Loading albums...
         </div>
-      ) : albums.length === 0 ? (
-        <div 
-          style={{
-            marginTop: "60px",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--text-muted)",
-            textAlign: "center",
-          }}
-        >
-          <FolderHeart size={48} style={{ opacity: 0.3, marginBottom: "12px" }} />
-          <p style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-primary)" }}>No Albums Yet</p>
-          <p style={{ fontSize: "12px", marginTop: "4px", maxWidth: "360px" }}>
-            Create an album to organize your favorite moments, trips, or milestones.
-          </p>
-          <button
-            onClick={() => setIsCreatingAlbum(true)}
-            className="clickable"
-            style={{
-              marginTop: "16px",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "8px 16px",
-              borderRadius: "var(--radius-sm)",
-              backgroundColor: "var(--accent-primary)",
-              border: "none",
-              color: "#ffffff",
-              fontSize: "12px",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            <Plus size={15} />
-            Create First Album
-          </button>
-        </div>
       ) : (
         /* Album Grid Cards */
         <div 
@@ -778,6 +916,106 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
             gap: "18px",
           }}
         >
+          {/* Pinned Default "Favorites" / "Likes" Smart Album Card */}
+          <div
+            onClick={openFavoritesAlbum}
+            className="clickable glass-panel"
+            style={{
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid rgba(239, 68, 68, 0.4)",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              cursor: "pointer",
+              transition: "transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.borderColor = "#ef4444";
+              e.currentTarget.style.boxShadow = "0 8px 24px rgba(239, 68, 68, 0.25)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.4)";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          >
+            {/* Cover Art */}
+            <div
+              style={{
+                height: "160px",
+                background: favoriteCoverId
+                  ? "var(--bg-surface-elevated)"
+                  : "linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(168, 85, 247, 0.2) 100%)",
+                position: "relative",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+              }}
+            >
+              {favoriteCoverId ? (
+                <img
+                  src={`http://127.0.0.1:8000/api/photos/${favoriteCoverId}/thumbnail`}
+                  alt="Favorites"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  loading="lazy"
+                />
+              ) : (
+                <Heart size={44} fill="rgba(239, 68, 68, 0.4)" stroke="rgba(239, 68, 68, 0.7)" />
+              )}
+
+              {/* Likes Badge */}
+              <div style={{ position: "absolute", top: "10px", right: "10px" }}>
+                <span
+                  style={{
+                    backgroundColor: "rgba(239, 68, 68, 0.95)",
+                    color: "#ffffff",
+                    padding: "3px 8px",
+                    borderRadius: "var(--radius-xs)",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    boxShadow: "0 2px 8px rgba(239, 68, 68, 0.4)",
+                  }}
+                >
+                  <Heart size={10} fill="#ffffff" /> LIKES
+                </span>
+              </div>
+            </div>
+
+            {/* Meta Content */}
+            <div style={{ padding: "14px", display: "flex", flexDirection: "column", gap: "6px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <h3 style={{ fontSize: "14px", fontWeight: 700, margin: 0, color: "#ffffff", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <Heart size={14} fill="#ef4444" stroke="#ef4444" /> Favorites
+                </h3>
+              </div>
+
+              <div
+                style={{
+                  marginTop: "6px",
+                  paddingTop: "8px",
+                  borderTop: "1px solid var(--border-subtle)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
+                  {favoriteCount} {favoriteCount === 1 ? "photo" : "photos"}
+                </span>
+                <span style={{ fontSize: "10px", color: "var(--accent-danger)", fontWeight: 600 }}>
+                  Smart Album
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* User Custom Albums */}
           {albums.map((album) => (
             <div
               key={album.id}

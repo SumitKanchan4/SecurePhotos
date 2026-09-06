@@ -93,7 +93,16 @@ async def test_albums_crud_lifecycle():
             active_ids = [p["id"] for p in photo_res.json()]
             assert p1 in active_ids
 
-            # 6. Delete the album
+            # 6. Set album cover photo
+            cover_res = await client.post(f"/api/albums/{album_id}/cover", json={"photo_id": p2})
+            assert cover_res.status_code == 200
+            assert cover_res.json()["cover_photo_id"] == p2
+
+            # Test setting non-member photo as cover fails with 400
+            invalid_cover_res = await client.post(f"/api/albums/{album_id}/cover", json={"photo_id": p1})
+            assert invalid_cover_res.status_code == 400
+
+            # 7. Delete the album
             del_res = await client.delete(f"/api/albums/{album_id}")
             assert del_res.status_code == 200
             assert del_res.json()["deleted_album_id"] == album_id
@@ -101,3 +110,34 @@ async def test_albums_crud_lifecycle():
             # Verify 404 after deletion
             get_deleted = await client.get(f"/api/albums/{album_id}")
             assert get_deleted.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_photo_favorite_toggle():
+    """Validates toggling photo favorite status and filtering by favorites."""
+    await run_migrations()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        p = await create_album_test_photo(tmp_path, "fav_test.jpg")
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # 1. Toggle favorite ON
+            toggle_1 = await client.post(f"/api/photos/{p}/toggle-favorite")
+            assert toggle_1.status_code == 200
+            assert toggle_1.json()["is_favorite"] is True
+
+            # 2. Check in favorite_only list
+            fav_list = await client.get("/api/photos?favorite_only=true")
+            assert fav_list.status_code == 200
+            assert any(item["id"] == p for item in fav_list.json())
+
+            # 3. Toggle favorite OFF
+            toggle_2 = await client.post(f"/api/photos/{p}/toggle-favorite")
+            assert toggle_2.status_code == 200
+            assert toggle_2.json()["is_favorite"] is False
+
+            # 4. Check not in favorite_only list
+            fav_list_2 = await client.get("/api/photos?favorite_only=true")
+            assert not any(item["id"] == p for item in fav_list_2.json())
+

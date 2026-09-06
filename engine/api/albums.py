@@ -39,6 +39,11 @@ class AddPhotosToAlbumRequest(BaseModel):
     photo_ids: List[int]
 
 
+class SetAlbumCoverRequest(BaseModel):
+    """Payload to designate an album cover photo."""
+    photo_id: int
+
+
 class AlbumDetailResponse(BaseModel):
     """Complete album view including member photos."""
     id: int
@@ -325,3 +330,31 @@ async def toggle_album_favorite(album_id: int) -> dict:
         return {"status": "ok", "album_id": album_id, "is_favorite": bool(row["is_favorite"])}
     finally:
         await conn.close()
+
+
+@router.post("/{album_id}/cover", status_code=status.HTTP_200_OK)
+async def set_album_cover(album_id: int, payload: SetAlbumCoverRequest) -> dict:
+    """Sets a specific photo as the album cover image."""
+    conn = await get_db_connection()
+    try:
+        # Verify photo is associated with this album
+        async with conn.execute(
+            "SELECT photo_id FROM photo_album WHERE album_id = ? AND photo_id = ?;",
+            (album_id, payload.photo_id),
+        ) as cursor:
+            assoc = await cursor.fetchone()
+        if not assoc:
+            raise HTTPException(status_code=400, detail="Photo is not a member of this album")
+
+        cursor = await conn.execute(
+            "UPDATE albums SET cover_photo_id = ? WHERE id = ?;",
+            (payload.photo_id, album_id),
+        )
+        await conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Album not found")
+
+        return {"status": "ok", "album_id": album_id, "cover_photo_id": payload.photo_id}
+    finally:
+        await conn.close()
+

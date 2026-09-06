@@ -12,6 +12,7 @@ interface PhotoGridProps {
   onPhotoClick?: (index: number) => void;
   onImportClick?: () => void;
   onDropFiles?: (files: FileList) => void;
+  onToggleFavorite?: (photoId: number) => void;
 }
 
 // Mock dataset generator for benchmark testing
@@ -40,6 +41,7 @@ interface PhotoCardProps {
   optimizationProgress?: OptimizationProgress | null;
   onPhotoClick?: (index: number) => void;
   togglePhotoSelection: (id: number) => void;
+  onToggleFavorite?: (photoId: number) => void;
 }
 
 const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
@@ -49,6 +51,7 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
   optimizationProgress,
   onPhotoClick,
   togglePhotoSelection,
+  onToggleFavorite,
 }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -311,18 +314,38 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
 
           return null;
         })()}
-        {photo.is_favorite && (
-          <span 
-            style={{
-              backgroundColor: "rgba(239, 68, 68, 0.85)",
-              color: "#ffffff",
-              padding: "2px 4px",
-              borderRadius: "var(--radius-xs)",
-            }}
-          >
-            <Heart size={9} fill="#ffffff" />
-          </span>
-        )}
+        <button
+          type="button"
+          title={photo.is_favorite ? "Remove from Favorites" : "Add to Favorites"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFavorite?.(photo.id);
+          }}
+          style={{
+            background: photo.is_favorite ? "rgba(239, 68, 68, 0.9)" : "rgba(0, 0, 0, 0.45)",
+            border: "1px solid rgba(255, 255, 255, 0.3)",
+            borderRadius: "var(--radius-xs)",
+            cursor: "pointer",
+            width: "22px",
+            height: "22px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#ffffff",
+            opacity: photo.is_favorite || isHovered ? 1 : 0,
+            transform: isHovered ? "scale(1.05)" : "scale(1)",
+            transition: "opacity 0.15s ease, transform 0.15s ease, background-color 0.15s ease",
+            padding: 0,
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <Heart 
+            size={12} 
+            fill={photo.is_favorite ? "#ffffff" : "none"} 
+            stroke="#ffffff"
+            strokeWidth={2}
+          />
+        </button>
       </div>
 
       {/* 7. Selection Checkbox (Top Left) */}
@@ -360,7 +383,8 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   optimizationProgress,
   onPhotoClick,
   onImportClick,
-  onDropFiles
+  onDropFiles,
+  onToggleFavorite,
 }) => {
   const parentRef = useRef<HTMLDivElement>(null);
   const { selectedPhotoIds, togglePhotoSelection } = useAppStore();
@@ -437,6 +461,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                     optimizationProgress={optimizationProgress}
                     onPhotoClick={onPhotoClick}
                     togglePhotoSelection={togglePhotoSelection}
+                    onToggleFavorite={onToggleFavorite}
                   />
                 );
               })}

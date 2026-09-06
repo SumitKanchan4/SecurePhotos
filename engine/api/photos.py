@@ -505,6 +505,24 @@ async def get_face_restore_preview(photo_id: int):
     )
 
 
+@router.post("/{photo_id}/toggle-favorite", status_code=status.HTTP_200_OK)
+async def toggle_photo_favorite(photo_id: int) -> dict:
+    """Toggles the favorite (liked) state of a photo."""
+    conn = await get_db_connection()
+    try:
+        cursor = await conn.execute(
+            "UPDATE photos SET is_favorite = NOT is_favorite WHERE id = ? RETURNING is_favorite;",
+            (photo_id,),
+        )
+        row = await cursor.fetchone()
+        await conn.commit()
+        if not row:
+            raise HTTPException(status_code=404, detail="Photo not found")
+        return {"status": "ok", "photo_id": photo_id, "is_favorite": bool(row["is_favorite"])}
+    finally:
+        await conn.close()
+
+
 @router.delete("/{photo_id}", status_code=status.HTTP_200_OK)
 async def delete_photo(photo_id: int) -> dict:
     """Soft-deletes a photo by moving it to the trash."""

@@ -28,6 +28,7 @@ interface LightboxProps {
   onClose: () => void;
   onNavigate: (index: number) => void;
   onDelete?: (photoId: number) => void;
+  onToggleFavorite?: (photoId: number) => void;
 }
 
 export const Lightbox: React.FC<LightboxProps> = ({
@@ -38,6 +39,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
   onClose,
   onNavigate,
   onDelete,
+  onToggleFavorite,
 }) => {
   const [zoom, setZoom] = useState(1);
   const [showInfo, setShowInfo] = useState(false);
@@ -88,7 +90,10 @@ export const Lightbox: React.FC<LightboxProps> = ({
           setShowSplitSlider((prev) => !prev);
         }
       } else if (e.key === "f" || e.key === "F") {
-        setIsFavorite((prev) => !prev);
+        if (currentPhoto) {
+          setIsFavorite((prev) => !prev);
+          onToggleFavorite?.(currentPhoto.id);
+        }
       } else if (e.key === "Delete" || e.key === "Backspace") {
         handleDelete();
       } else if (e.key === "i" && (e.ctrlKey || e.metaKey)) {
@@ -230,17 +235,28 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
           {/* Favorite Toggle */}
           <button
-            onClick={() => setIsFavorite(!isFavorite)}
+            onClick={() => {
+              if (currentPhoto) {
+                setIsFavorite(!isFavorite);
+                onToggleFavorite?.(currentPhoto.id);
+              }
+            }}
             className="clickable"
-            title={isFavorite ? "Remove from Favorites" : "Add to Favorites"}
+            title={isFavorite ? "Remove from Favorites (F)" : "Add to Favorites (F)"}
             style={{
-              background: "transparent",
-              border: "none",
+              background: isFavorite ? "rgba(239, 68, 68, 0.15)" : "transparent",
+              borderRadius: "var(--radius-xs)",
+              border: isFavorite ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid transparent",
               color: isFavorite ? "var(--accent-danger)" : "var(--text-secondary)",
-              padding: "4px",
+              padding: "4px 8px",
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              cursor: "pointer",
             }}
           >
             <Heart size={16} fill={isFavorite ? "var(--accent-danger)" : "none"} />
+            <span style={{ fontSize: "11px", fontWeight: 600 }}>{isFavorite ? "Liked" : "Like"}</span>
           </button>
 
           {/* Delete / Move to Trash */}

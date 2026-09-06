@@ -246,6 +246,36 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleToggleFavorite = async (photoId: number) => {
+    // Optimistically update photos in library
+    setPhotos((prev) =>
+      prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p))
+    );
+    // Optimistically update photos in active lightbox if present
+    if (lightboxPhotos) {
+      setLightboxPhotos((prev) =>
+        prev ? prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p)) : null
+      );
+    }
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/photos/${photoId}/toggle-favorite`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        // Rollback on non-200
+        setPhotos((prev) =>
+          prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p))
+        );
+      }
+    } catch (err) {
+      console.error("Failed to toggle favorite:", err);
+      // Rollback on network failure
+      setPhotos((prev) =>
+        prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p))
+      );
+    }
+  };
+
   const handleBatchDelete = async () => {
     if (selectedPhotoIds.size === 0) return;
     const ids = Array.from(selectedPhotoIds);
@@ -309,6 +339,7 @@ export const App: React.FC = () => {
                 setLightboxPhotos(albumPhotos);
                 setLightboxIndex(idx);
               }}
+              onToggleFavorite={handleToggleFavorite}
             />
           ) : activeTab === "people" ? (
             /* People Management & Representative Medoid Tagging View */
@@ -644,6 +675,7 @@ export const App: React.FC = () => {
                   setLightboxIndex(idx);
                 }} 
                 onImportClick={() => setIsImportModalOpen(true)}
+                onToggleFavorite={handleToggleFavorite}
               />
             </>
           )}
@@ -712,6 +744,7 @@ export const App: React.FC = () => {
             setLightboxPhotos((prev) => (prev ? prev.filter((p) => p.id !== id) : null));
           }
         }}
+        onToggleFavorite={handleToggleFavorite}
       />
 
       {/* Confirmed Update Interactive Modal */}
