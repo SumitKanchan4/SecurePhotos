@@ -166,6 +166,54 @@ sequenceDiagram
 
 ---
 
+### 3.3 8K ULTRA Automated AI Enhancement & Face Unblur Pipeline
+
+*(Detailed architectural design: see [8k_ultra_automated_enhancement_and_trash_architecture.md](file:///c:/Sumit/Code/SecurePhotos/docs/8k_ultra_automated_enhancement_and_trash_architecture.md))*
+
+```mermaid
+flowchart LR
+    Scan[Photo Ingestion] --> Micro[256px Fast Thumbnail]
+    Micro --> Queue[Background Worker Queue]
+    Queue --> Face[YOLOv8-Face Detection]
+    Face --> CodeFormer[CodeFormer Unblur w=0.85]
+    CodeFormer --> Lanczos[8K ULTRA Resampling & Acutance]
+    Lanczos --> Proxy[8K Proxy Save CRF 19]
+    Proxy --> DB[(Update is_optimized=1)]
+    DB --> Lightbox[Lightbox Split Slider Available]
+```
+
+- **Hands-Free Operation**: Zero manual buttons; background daemon processes unoptimized photos asynchronously.
+- **Pristine Fallback**: When viewing queued/processing photos, Lightbox streams unmodified source image via `GET /api/photos/{id}/original` with a live progress pill.
+- **Before/After Split Comparison**: Upon completion, the 8K proxy (`GET /api/photos/{id}/preview`) activates with an interactive split slider (`E` shortcut).
+
+---
+
+### 3.4 Soft-Delete Trash & Retention Lifecycle
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Lightbox as Lightbox / Grid UI
+    participant API as FastAPI photos.py
+    participant DB as SQLite WAL
+    participant Purge as Hourly Purge Daemon
+
+    User->>Lightbox: Press Delete/Backspace or Click Trash
+    Lightbox->>API: DELETE /api/photos/{id} (or POST /batch-trash)
+    API->>DB: UPDATE photos SET trashed_at = CURRENT_TIMESTAMP, trash_expires_at = NOW + 30 Days
+    API-->>Lightbox: 200 OK
+    Lightbox->>Lightbox: Advance to adjacent photo or close
+
+    Note over DB,Purge: 30-Day TTL Background Cleanup
+    Purge->>DB: DELETE FROM photos WHERE trashed_at IS NOT NULL AND trash_expires_at < CURRENT_TIMESTAMP
+```
+
+- **Query Isolation**: All library grids, searches, albums, and facial clusters enforce `WHERE trashed_at IS NULL`.
+- **Restoration Guarantee**: Photos remain safely restorable for 30 days before permanent file system unlinking.
+
+---
+
 ## 4. Database Schema (Entity-Relationship Model)
 
 ```mermaid
