@@ -22,3 +22,12 @@ trigger: always_on
 - All code must feature Google-style docstrings (Python) / JSDoc (Frontend).
 - Comments must explain non-obvious rationale and architectural intent.
 - Ensure all logic has corresponding automated test coverage.
+
+## 4. Mandatory Functionality & Decision Point Documentation
+- **CRITICAL**: Every newly added feature, capability, workflow, or functional decision point MUST be explicitly documented in the living registry: `docs/features_and_functional_decisions.md` (and cross-referenced in `walkthrough.md` / feature specs).
+- For every functional change or addition, the documentation MUST specify:
+  1. **Functionality Overview**: Purpose, UX behavior, and system flow.
+  2. **Functional Decision Points & Rationale**: Why it was designed this way, rejected alternatives, constraints, and tradeoffs.
+  3. **Technical Touchpoints**: API endpoints, database schema/queries, and UI components.
+  4. **State & Lifecycle Impact**: How it interacts with existing states, data persistence, and edge cases.
+
