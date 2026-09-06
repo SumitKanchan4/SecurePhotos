@@ -182,7 +182,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onUnlockRequest, onPhotoCl
           <Lock size={48} style={{ color: "var(--accent-vault)", marginBottom: "16px" }} />
           <h3 style={{ fontSize: "16px", fontWeight: 700 }}>Frosted Privacy Shield Active</h3>
           <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
-            Media is concealed while in-memory batch 4K enhancement runs safely.
+            Media is concealed while in-memory batch 8K ULTRA enhancement runs safely.
           </p>
           <button
             onClick={() => setIsPrivacyShieldActive(false)}

@@ -16,6 +16,7 @@ import {
   Aperture,
   ExternalLink,
   Clock,
+  Trash2,
 } from "lucide-react";
 import { PhotoItem, OptimizationProgress } from "../types";
 
@@ -26,6 +27,7 @@ interface LightboxProps {
   optimizationProgress?: OptimizationProgress | null;
   onClose: () => void;
   onNavigate: (index: number) => void;
+  onDelete?: (photoId: number) => void;
 }
 
 export const Lightbox: React.FC<LightboxProps> = ({
@@ -35,6 +37,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
   optimizationProgress,
   onClose,
   onNavigate,
+  onDelete,
 }) => {
   const [zoom, setZoom] = useState(1);
   const [showInfo, setShowInfo] = useState(false);
@@ -44,6 +47,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const [isPreviewLoaded, setIsPreviewLoaded] = useState(false);
   const [previewHasError, setPreviewHasError] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const currentPhoto = photos[currentIndex];
 
@@ -85,6 +89,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
         }
       } else if (e.key === "f" || e.key === "F") {
         setIsFavorite((prev) => !prev);
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        handleDelete();
       } else if (e.key === "i" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         setShowInfo((prev) => !prev);
@@ -104,6 +110,23 @@ export const Lightbox: React.FC<LightboxProps> = ({
     navigator.clipboard.writeText(currentPhoto.filepath);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  const handleDelete = async () => {
+    if (!currentPhoto || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/photos/${currentPhoto.id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        onDelete?.(currentPhoto.id);
+      }
+    } catch (err) {
+      console.error("Failed to delete photo:", err);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -209,6 +232,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
           <button
             onClick={() => setIsFavorite(!isFavorite)}
             className="clickable"
+            title={isFavorite ? "Remove from Favorites" : "Add to Favorites"}
             style={{
               background: "transparent",
               border: "none",
@@ -217,6 +241,32 @@ export const Lightbox: React.FC<LightboxProps> = ({
             }}
           >
             <Heart size={16} fill={isFavorite ? "var(--accent-danger)" : "none"} />
+          </button>
+
+          {/* Delete / Move to Trash */}
+          <button
+            onClick={handleDelete}
+            disabled={isDeleting}
+            className="clickable"
+            title="Move to Trash (Delete / Backspace)"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--text-secondary)",
+              padding: "4px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "color 0.15s ease",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent-danger)")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-secondary)")}
+          >
+            {isDeleting ? (
+              <Loader2 size={16} className="spin" style={{ color: "var(--accent-danger)" }} />
+            ) : (
+              <Trash2 size={16} />
+            )}
           </button>
 
           {/* EXIF Drawer Toggle */}
@@ -286,7 +336,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
             ) : (
               <>
                 <Clock size={14} style={{ color: "var(--text-muted)" }} />
-                <span>Queued for AI Enhancement (4K Acutance & Face Unblur) — Showing original photo</span>
+                <span>Queued for AI Enhancement (8K ULTRA Acutance & Face Unblur) — Showing original photo</span>
               </>
             )}
           </div>
@@ -444,7 +494,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                     letterSpacing: "0.5px",
                   }}
                 >
-                  <Sparkles size={12} /> AFTER (AI ENHANCED)
+                  <Sparkles size={12} /> AFTER (AI ENHANCED: 8K ULTRA)
                 </div>
               </div>
 

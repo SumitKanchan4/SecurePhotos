@@ -88,7 +88,7 @@ export const SettingsView: React.FC = () => {
         <div>
           <h2 style={{ fontSize: "20px", fontWeight: 700 }}>Settings & Preferences</h2>
           <p style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-            Configure storage paths, 4K AI processing, runtime dependencies, and Zero-Trust Vault security
+            Configure storage paths, 8K ULTRA AI processing, runtime dependencies, and Zero-Trust Vault security
           </p>
         </div>
       </div>
@@ -196,7 +196,7 @@ export const SettingsView: React.FC = () => {
                 </div>
                 <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "3px" }}>
                   {prerequisites?.backend.running
-                    ? "Connected to FastAPI SQLite WAL backend • 4K AI Super-Resolution, OCR, and Vault active"
+                    ? "Connected to FastAPI SQLite WAL backend • 8K ULTRA AI Super-Resolution, OCR, and Vault active"
                     : "Connecting to local background engine sidecar at http://127.0.0.1:8000"}
                 </p>
               </div>
@@ -221,7 +221,7 @@ export const SettingsView: React.FC = () => {
               </div>
               <p style={{ color: "var(--text-secondary)", margin: 0 }}>
                 {prerequisites?.backend.running
-                  ? "All on-device 4K AI neural upscaling, facial recognition, full-text OCR indexing, and Zero-Trust Vault encryption are running locally on your computer with complete privacy."
+                  ? "All on-device 8K ULTRA AI neural upscaling, facial recognition, full-text OCR indexing, and Zero-Trust Vault encryption are running locally on your computer with complete privacy."
                   : "SecurePhotos runs completely on-device. The engine sidecar launches silently in the background with zero configuration required."}
               </p>
             </div>

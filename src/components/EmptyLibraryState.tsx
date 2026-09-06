@@ -109,7 +109,7 @@ export const EmptyLibraryState: React.FC<EmptyLibraryStateProps> = ({
           marginBottom: "28px" 
         }}
       >
-        Your library is currently empty. Import a photo folder from your PC, SD card, or external drive to start browsing with 4K AI super-resolution and Zero-Trust vault encryption.
+        Your library is currently empty. Import a photo folder from your PC, SD card, or external drive to start browsing with 8K ULTRA AI super-resolution and Zero-Trust vault encryption.
       </p>
 
       {/* Action Buttons */}
@@ -178,7 +178,7 @@ export const EmptyLibraryState: React.FC<EmptyLibraryStateProps> = ({
           }}
         >
           <Sparkles size={14} style={{ color: "#f59e0b" }} />
-          <span>On-Device 4K AI Super-Resolution</span>
+          <span>On-Device 8K ULTRA AI Super-Resolution</span>
         </div>
 
         <div

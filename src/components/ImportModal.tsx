@@ -286,7 +286,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                 checked={optimize4K} 
                 onChange={(e) => setOptimize4K(e.target.checked)} 
               />
-              <span>Convert to visually lossless 4K AVIF/AV1 in background</span>
+              <span>Convert to visually lossless 8K ULTRA proxy in background</span>
             </label>
           </div>
 

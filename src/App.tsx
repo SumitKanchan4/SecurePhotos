@@ -5,7 +5,8 @@ import {
   Plus, 
   FolderSync, 
   LayoutGrid,
-  Loader2 
+  Loader2,
+  Trash2
 } from "lucide-react";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
@@ -215,6 +216,35 @@ export const App: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [toggleTheme, clearSelection, setActiveVolume, isVaultUnlocked, setIsVaultUnlocked]);
 
+  const handleDeletePhoto = (photoId: number) => {
+    setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+    if (lightboxIndex !== null) {
+      if (photos.length <= 1) {
+        setLightboxIndex(null);
+      } else if (lightboxIndex >= photos.length - 1) {
+        setLightboxIndex(Math.max(0, photos.length - 2));
+      }
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedPhotoIds.size === 0) return;
+    const ids = Array.from(selectedPhotoIds);
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/photos/batch-trash", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo_ids: ids }),
+      });
+      if (res.ok) {
+        setPhotos((prev) => prev.filter((p) => !selectedPhotoIds.has(p.id)));
+        clearSelection();
+      }
+    } catch (err) {
+      console.error("Batch delete failed:", err);
+    }
+  };
+
   const selectedCount = selectedPhotoIds.size;
 
   return (
@@ -323,7 +353,7 @@ export const App: React.FC = () => {
                         }}
                       >
                         <Loader2 size={12} className="spin" />
-                        4K Optimization: Processing {optimizationProgress.active_filename || "media"} ({optimizationProgress.completed_count}/{optimizationProgress.total_count}) • {optimizationProgress.item_progress}%
+                        8K ULTRA Optimization: Processing {optimizationProgress.active_filename || "media"} ({optimizationProgress.completed_count}/{optimizationProgress.total_count}) • {optimizationProgress.item_progress}%
                       </span>
                       <div style={{ width: "80px", height: "4px", backgroundColor: "var(--bg-surface-elevated)", borderRadius: "2px", overflow: "hidden" }}>
                         <div 
@@ -338,7 +368,7 @@ export const App: React.FC = () => {
                     </div>
                   ) : (
                     <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-                      {`${photos.length.toLocaleString()} media items • 4K Space-Saver Mode Active`}
+                      {`${photos.length.toLocaleString()} media items • 8K ULTRA Space-Saver Active`}
                     </p>
                   )}
                 </div>
@@ -367,7 +397,7 @@ export const App: React.FC = () => {
                         }}
                       >
                         <LayoutGrid size={14} />
-                        4K Collage
+                        8K Collage
                       </button>
                       <button
                         className="clickable"
@@ -385,7 +415,7 @@ export const App: React.FC = () => {
                         }}
                       >
                         <Sparkles size={14} />
-                        Enhance to 4K
+                        Enhance to 8K ULTRA
                       </button>
                       <button
                         onClick={() => setIsVaultUnlockModalOpen(true)}
@@ -405,6 +435,26 @@ export const App: React.FC = () => {
                       >
                         <Lock size={14} />
                         Move to Vault (L)
+                      </button>
+                      <button
+                        onClick={handleBatchDelete}
+                        className="clickable"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "6px 12px",
+                          borderRadius: "var(--radius-sm)",
+                          backgroundColor: "var(--bg-surface)",
+                          border: "1px solid var(--border-subtle)",
+                          color: "var(--accent-danger, #ef4444)",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                        }}
+                        title="Move selected photos to trash"
+                      >
+                        <Trash2 size={14} />
+                        Move to Trash
                       </button>
                       <button
                         onClick={clearSelection}
@@ -551,6 +601,7 @@ export const App: React.FC = () => {
         optimizationProgress={optimizationProgress}
         onClose={() => setLightboxIndex(null)}
         onNavigate={(idx) => setLightboxIndex(idx)}
+        onDelete={handleDeletePhoto}
       />
 
       {/* Confirmed Update Interactive Modal */}

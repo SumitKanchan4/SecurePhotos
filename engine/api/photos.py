@@ -66,6 +66,18 @@ class OptimizationProgressResponse(BaseModel):
     last_completed_photo_id: Optional[int] = None
 
 
+class BatchTrashRequest(BaseModel):
+    """Payload to soft-delete multiple photos to trash."""
+    photo_ids: List[int]
+
+
+class BatchTrashResponse(BaseModel):
+    """Summary of batch trash operation."""
+    status: str
+    trashed_count: int
+
+
+
 # Global in-memory progress tracker
 optimization_state = {
     "is_active": False,
@@ -441,6 +453,49 @@ async def get_face_restore_preview(photo_id: int):
     )
 
 
+@router.delete("/{photo_id}", status_code=status.HTTP_200_OK)
+async def delete_photo(photo_id: int) -> dict:
+    """Soft-deletes a photo by moving it to the trash."""
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT id, trashed_at FROM photos WHERE id = ?;", (photo_id,)) as cursor:
+            row = await cursor.fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Photo not found")
+
+        if row["trashed_at"] is not None:
+            return {"status": "ok", "photo_id": photo_id, "already_trashed": True}
+
+        await conn.execute("UPDATE photos SET trashed_at = CURRENT_TIMESTAMP WHERE id = ?;", (photo_id,))
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    return {"status": "ok", "photo_id": photo_id}
+
+
+@router.post("/batch-trash", response_model=BatchTrashResponse, status_code=status.HTTP_200_OK)
+async def batch_trash_photos(payload: BatchTrashRequest) -> BatchTrashResponse:
+    """Soft-deletes multiple photos to the trash atomically."""
+    if not payload.photo_ids:
+        return BatchTrashResponse(status="ok", trashed_count=0)
+
+    conn = await get_db_connection()
+    try:
+        placeholders = ",".join("?" for _ in payload.photo_ids)
+        cursor = await conn.execute(
+            f"UPDATE photos SET trashed_at = CURRENT_TIMESTAMP WHERE id IN ({placeholders}) AND trashed_at IS NULL;",
+            payload.photo_ids,
+        )
+        trashed_count = cursor.rowcount
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    return BatchTrashResponse(status="ok", trashed_count=trashed_count)
+
+
 @router.post("/{photo_id}/favorite", status_code=status.HTTP_200_OK)
 async def toggle_favorite(photo_id: int) -> dict:
     """Toggles the favorite star status of a photo."""
@@ -459,9 +514,10 @@ async def get_optimization_progress() -> OptimizationProgressResponse:
 
 @router.post("/start-optimization", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_optimization(background_tasks: BackgroundTasks) -> dict:
-    """Triggers background 4K optimization pass for all unoptimized photos."""
+    """Triggers background 8K ULTRA optimization pass for all unoptimized photos."""
     background_tasks.add_task(run_background_optimization)
     return {"status": "started"}
+
 
 
 @router.post("/import", response_model=ImportResponse, status_code=status.HTTP_201_CREATED)

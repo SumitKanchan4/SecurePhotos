@@ -127,7 +127,7 @@ export const Sidebar: React.FC = () => {
         
         <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: prerequisites?.backend.running ? "var(--accent-success)" : "var(--text-muted)" }}>
           <Zap size={13} style={{ color: prerequisites?.backend.running ? "var(--accent-success)" : "var(--accent-primary)" }} />
-          <span>{prerequisites?.backend.running ? "4K AI Engine Active" : "Initializing Engine..."}</span>
+          <span>{prerequisites?.backend.running ? "8K AI Engine Active" : "Initializing Engine..."}</span>
         </div>
       </div>
     </aside>

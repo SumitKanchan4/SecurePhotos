@@ -68,7 +68,7 @@ export const PrerequisitesBanner: React.FC<PrerequisitesBannerProps> = ({
                 Missing Dependency: Python 3.10+ Required.{" "}
               </span>
               <span style={{ color: "var(--text-secondary, #94a3b8)" }}>
-                SecurePhotos requires Python to execute on-device 4K AI Super-Resolution and Zero-Trust Vault cryptography.
+                SecurePhotos requires Python to execute on-device 8K ULTRA AI Super-Resolution and Zero-Trust Vault cryptography.
               </span>
             </div>
           ) : !python.meets_minimum_version ? (

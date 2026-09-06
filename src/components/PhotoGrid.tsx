@@ -244,7 +244,7 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
           {photo.filename}
         </span>
         <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.7)", fontFamily: "var(--font-mono)", marginTop: "2px" }}>
-          {photo.width && photo.height ? `${photo.width} × ${photo.height}` : "4K Ultra-HD"}
+          {photo.width && photo.height ? `${photo.width} × ${photo.height}` : "8K ULTRA"}
         </span>
       </div>
 
@@ -263,7 +263,7 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
         {(() => {
           const is8k = photo.is_enhanced || photo.is_optimized;
           const maxDim = Math.max(photo.width || 0, photo.height || 0);
-          const isNative4k = maxDim >= 3840;
+          const isHighRes = maxDim >= 3840;
 
           if (is8k) {
             return (
@@ -282,15 +282,15 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
                   boxShadow: "0 1px 4px rgba(0,0,0,0.5)",
                 }}
               >
-                <Sparkles size={9} /> 8K
+                <Sparkles size={9} /> 8K ULTRA
               </span>
             );
           }
 
-          if (isNative4k) {
+          if (isHighRes) {
             return (
               <span 
-                title="Native 4K Ultra-HD Resolution"
+                title="High-Resolution Source"
                 style={{
                   backgroundColor: "rgba(16, 185, 129, 0.85)",
                   color: "#ffffff",
@@ -304,7 +304,7 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
                   boxShadow: "0 1px 4px rgba(0,0,0,0.4)",
                 }}
               >
-                4K
+                {maxDim >= 7680 ? "8K" : "HQ"}
               </span>
             );
           }
