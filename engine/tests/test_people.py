@@ -221,3 +221,44 @@ async def test_dismiss_cluster_endpoint():
         finally:
             await conn.close()
 
+
+@pytest.mark.asyncio
+async def test_reset_people_and_faces_endpoint():
+    """Verifies POST /api/people/reset cleanly purges faces, persons, and resets faces_scanned flags."""
+    conn = await get_db_connection()
+    try:
+        # Create a mock face and person record
+        cur = await conn.execute(
+            "INSERT INTO persons (name, relationship_type, is_close_one) VALUES ('Reset Test Person', 'Friend', 0);"
+        )
+        pid = cur.lastrowid
+        await conn.execute(
+            """
+            INSERT INTO faces (photo_id, person_id, cluster_id, box_x, box_y, box_w, box_h, quality_score, embedding)
+            VALUES (1, ?, 'cluster_reset_test', 0.1, 0.1, 0.2, 0.2, 0.9, '[]');
+            """,
+            (pid,),
+        )
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.post("/api/people/reset")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "reset"
+        assert data["faces_cleared"] >= 1
+        assert data["persons_cleared"] >= 1
+
+    # Verify zero faces and persons remain
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT COUNT(*) FROM faces;") as cur:
+            assert (await cur.fetchone())[0] == 0
+        async with conn.execute("SELECT COUNT(*) FROM persons;") as cur:
+            assert (await cur.fetchone())[0] == 0
+    finally:
+        await conn.close()
+

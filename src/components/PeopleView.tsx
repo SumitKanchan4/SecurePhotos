@@ -11,7 +11,8 @@ import {
   Heart,
   Loader2,
   Tag,
-  UserX
+  UserX,
+  RotateCcw
 } from "lucide-react";
 import { PersonItem, UnlabeledClusterItem, FaceScanStatus, PhotoItem } from "../types";
 
@@ -60,6 +61,8 @@ export const PeopleView: React.FC = () => {
   const [tagCloseOnes, setTagCloseOnes] = useState<{ [clusterId: string]: boolean }>({});
   const [submittingCluster, setSubmittingCluster] = useState<string | null>(null);
   const [dismissingCluster, setDismissingCluster] = useState<string | null>(null);
+  const [editingNames, setEditingNames] = useState<{ [personId: number]: string }>({});
+  const [isResetting, setIsResetting] = useState<boolean>(false);
 
   // Selected person detail view (viewing photos of a person)
   const [selectedPerson, setSelectedPerson] = useState<PersonItem | null>(null);
@@ -234,8 +237,8 @@ export const PeopleView: React.FC = () => {
     }
   };
 
-  // Update a person's relationship or Close One status
-  const handleUpdatePerson = async (personId: number, updates: { relationship_type?: string; is_close_one?: boolean }) => {
+  // Update a person's relationship, name, or Close One status
+  const handleUpdatePerson = async (personId: number, updates: { name?: string; relationship_type?: string; is_close_one?: boolean }) => {
     setUpdatingPerson(true);
     try {
       const res = await fetch(`${API_BASE}/people/${personId}`, {
@@ -246,13 +249,58 @@ export const PeopleView: React.FC = () => {
 
       if (res.ok) {
         const updated: PersonItem = await res.json();
-        setSelectedPerson(updated);
+        setSelectedPerson((prev) => (prev && prev.id === personId ? updated : prev));
         setPeople((prev) => prev.map((p) => (p.id === personId ? updated : p)));
       }
     } catch (err) {
       console.error("Failed to update person:", err);
     } finally {
       setUpdatingPerson(false);
+    }
+  };
+
+  // Handle card inline name typing
+  const handleCardNameChange = (personId: number, val: string) => {
+    setEditingNames((prev) => ({ ...prev, [personId]: val }));
+  };
+
+  // Handle card inline name commit on Enter or blur
+  const handleCardNameBlurOrEnter = async (person: PersonItem) => {
+    const rawVal = editingNames[person.id];
+    if (rawVal === undefined) return;
+    const trimmed = rawVal.trim();
+    if (!trimmed || trimmed === person.name) {
+      setEditingNames((prev) => {
+        const next = { ...prev };
+        delete next[person.id];
+        return next;
+      });
+      return;
+    }
+    await handleUpdatePerson(person.id, { name: trimmed });
+    setEditingNames((prev) => {
+      const next = { ...prev };
+      delete next[person.id];
+      return next;
+    });
+  };
+
+  // Reset all face identification to start over fresh
+  const handleResetFaces = async () => {
+    if (!window.confirm("Are you sure you want to reset all face identification? This will clear all recognized people and clusters so you can start over fresh. Your photos will remain 100% safe.")) {
+      return;
+    }
+    setIsResetting(true);
+    try {
+      const res = await fetch(`${API_BASE}/people/reset`, { method: "POST" });
+      if (res.ok) {
+        setSelectedPerson(null);
+        await Promise.all([fetchPeople(), fetchClusters(), checkScanStatus()]);
+      }
+    } catch (err) {
+      console.error("Failed to reset face identification:", err);
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -504,6 +552,42 @@ export const PeopleView: React.FC = () => {
                 />
               </div>
 
+              {/* Reset Faces Button */}
+              <button
+                onClick={handleResetFaces}
+                disabled={scanStatus.is_scanning || isResetting}
+                className="clickable"
+                title="Reset all face identification and clusters to start over fresh"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "8px 14px",
+                  borderRadius: "var(--radius-sm)",
+                  backgroundColor: "var(--bg-surface-elevated)",
+                  border: "1px solid var(--border-subtle)",
+                  color: "var(--text-muted)",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  cursor: scanStatus.is_scanning || isResetting ? "default" : "pointer",
+                  opacity: scanStatus.is_scanning || isResetting ? 0.6 : 1,
+                  transition: "all 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  if (!scanStatus.is_scanning && !isResetting) {
+                    e.currentTarget.style.color = "var(--accent-danger, #ef4444)";
+                    e.currentTarget.style.borderColor = "var(--accent-danger, #ef4444)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "var(--text-muted)";
+                  e.currentTarget.style.borderColor = "var(--border-subtle)";
+                }}
+              >
+                <RotateCcw size={13} className={isResetting ? "spinning" : ""} />
+                {isResetting ? "Resetting..." : "Reset Faces"}
+              </button>
+
               {/* Scan Trigger Button */}
               <button
                 onClick={handleTriggerScan}
@@ -593,7 +677,284 @@ export const PeopleView: React.FC = () => {
             ))}
           </datalist>
 
-          {/* Section 1: Unlabeled Face Clusters ("Name Once, Tag 1,000 Photos") */}
+          {/* Section 1: Recognized People Gallery (Prominent Top Section) */}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Users size={18} style={{ color: "var(--accent-primary)" }} />
+                <h2 style={{ fontSize: "16px", fontWeight: 700 }}>
+                  Recognized People ({filteredPeople.length})
+                </h2>
+                {people.length > 0 && (
+                  <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                    (Click person to browse photos • Edit name & relationship directly on card)
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {filteredPeople.length === 0 ? (
+              people.length === 0 ? (
+                unlabeledClusters.length === 0 && !scanStatus.is_scanning ? (
+                  <div
+                    style={{
+                      padding: "60px 20px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "var(--text-muted)",
+                      textAlign: "center",
+                      backgroundColor: "var(--bg-surface)",
+                      borderRadius: "var(--radius-md)",
+                      border: "1px dashed var(--border-subtle)",
+                    }}
+                  >
+                    <Users size={48} style={{ opacity: 0.3, marginBottom: "12px" }} />
+                    <p style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-primary)" }}>
+                      No People Identified Yet
+                    </p>
+                    <p style={{ fontSize: "12px", marginTop: "6px", maxWidth: "420px", lineHeight: "1.5" }}>
+                      Click "Scan Photos for Faces" above to run on-device facial detection across your media library.
+                    </p>
+                    <button
+                      onClick={handleTriggerScan}
+                      className="clickable"
+                      style={{
+                        marginTop: "16px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "8px 18px",
+                        borderRadius: "var(--radius-sm)",
+                        backgroundColor: "var(--accent-primary)",
+                        border: "none",
+                        color: "#ffffff",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <RefreshCw size={14} />
+                      Scan Library Now
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      padding: "16px 20px",
+                      backgroundColor: "var(--bg-surface)",
+                      borderRadius: "var(--radius-md)",
+                      border: "1px dashed var(--border-subtle)",
+                      color: "var(--text-muted)",
+                      fontSize: "13px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <Users size={16} style={{ opacity: 0.6 }} />
+                    <span>No recognized people yet. Name an unlabeled cluster below to create your first person profile!</span>
+                  </div>
+                )
+              ) : (
+                <div style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
+                  <p style={{ fontSize: "13px" }}>No recognized people match "{searchQuery}"</p>
+                </div>
+              )
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+                  gap: "14px",
+                }}
+              >
+                {filteredPeople.map((person) => (
+                  <div
+                    key={person.id}
+                    onClick={() => handleSelectPerson(person)}
+                    className="clickable glass-panel"
+                    style={{
+                      borderRadius: "var(--radius-md)",
+                      padding: "12px 12px 14px",
+                      backgroundColor: "var(--bg-surface)",
+                      border: "1px solid var(--border-subtle)",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      textAlign: "center",
+                      position: "relative",
+                      transition: "transform 0.15s ease, border-color 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = "translateY(-2px)";
+                      e.currentTarget.style.borderColor = "var(--border-highlight)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.borderColor = "var(--border-subtle)";
+                    }}
+                  >
+                    {/* Close One Star Toggle */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleUpdatePerson(person.id, { is_close_one: !person.is_close_one });
+                      }}
+                      title={person.is_close_one ? "Close One (VIP) - Click to unstar" : "Mark as Close One (VIP)"}
+                      className="clickable"
+                      style={{
+                        position: "absolute",
+                        top: "8px",
+                        right: "8px",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: "4px",
+                        color: person.is_close_one ? "var(--accent-warning)" : "var(--text-muted)",
+                        opacity: person.is_close_one ? 1 : 0.4,
+                        transition: "opacity 0.15s ease, transform 0.15s ease",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.opacity = "1";
+                        e.currentTarget.style.transform = "scale(1.15)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.opacity = person.is_close_one ? "1" : "0.4";
+                        e.currentTarget.style.transform = "scale(1)";
+                      }}
+                    >
+                      <Star size={15} fill={person.is_close_one ? "var(--accent-warning)" : "none"} />
+                    </button>
+
+                    {/* Avatar Circle */}
+                    <div
+                      style={{
+                        width: "56px",
+                        height: "56px",
+                        borderRadius: "var(--radius-full)",
+                        backgroundColor: "var(--bg-surface-elevated)",
+                        border: "2px solid var(--accent-primary)",
+                        overflow: "hidden",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginBottom: "8px",
+                      }}
+                    >
+                      {person.cover_face_id ? (
+                        <img
+                          src={`${API_BASE}/people/faces/${person.cover_face_id}/crop`}
+                          alt={person.name}
+                          loading="lazy"
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      ) : (
+                        <Users size={24} style={{ color: "var(--accent-primary)" }} />
+                      )}
+                    </div>
+
+                    {/* In-Card Editable Name */}
+                    <div onClick={(e) => e.stopPropagation()} style={{ width: "100%" }}>
+                      <input
+                        type="text"
+                        value={editingNames[person.id] !== undefined ? editingNames[person.id] : person.name}
+                        onChange={(e) => handleCardNameChange(person.id, e.target.value)}
+                        onBlur={() => handleCardNameBlurOrEnter(person)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        title="Click to edit name (press Enter or click outside to save)"
+                        placeholder="Person name..."
+                        style={{
+                          width: "100%",
+                          fontSize: "13px",
+                          fontWeight: 700,
+                          color: "var(--text-primary)",
+                          backgroundColor: "transparent",
+                          border: "1px solid transparent",
+                          borderRadius: "var(--radius-sm)",
+                          textAlign: "center",
+                          padding: "2px 4px",
+                          outline: "none",
+                          transition: "all 0.15s ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = "var(--border-subtle)";
+                          e.currentTarget.style.backgroundColor = "var(--bg-surface-elevated)";
+                        }}
+                        onMouseLeave={(e) => {
+                          if (document.activeElement !== e.currentTarget) {
+                            e.currentTarget.style.borderColor = "transparent";
+                            e.currentTarget.style.backgroundColor = "transparent";
+                          }
+                        }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = "var(--accent-primary)";
+                          e.currentTarget.style.backgroundColor = "var(--bg-surface-elevated)";
+                        }}
+                      />
+                    </div>
+
+                    {/* Interactive Inline Relationship Selector */}
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ marginTop: "4px", width: "100%" }}
+                    >
+                      <select
+                        value={person.relationship_type || "Friend"}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          handleUpdatePerson(person.id, { relationship_type: e.target.value });
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: "3px 6px",
+                          borderRadius: "var(--radius-sm)",
+                          backgroundColor: "var(--bg-sidebar)",
+                          border: "1px solid var(--border-subtle)",
+                          color: "var(--text-primary)",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          textAlign: "center",
+                          cursor: "pointer",
+                          outline: "none",
+                        }}
+                        title="Change relationship"
+                      >
+                        {RELATIONSHIP_OPTIONS.map((rel) => (
+                          <option key={rel} value={rel}>{rel}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+                      {person.confirmed_count} {person.confirmed_count === 1 ? "photo" : "photos"}
+                    </p>
+
+                    {/* Affinity Score Pill */}
+                    <div
+                      style={{
+                        marginTop: "6px",
+                        padding: "2px 8px",
+                        borderRadius: "var(--radius-full)",
+                        backgroundColor: person.is_close_one ? "rgba(16, 185, 129, 0.12)" : "var(--bg-sidebar)",
+                        color: person.is_close_one ? "var(--accent-success)" : "var(--text-muted)",
+                        fontSize: "10px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Affinity: {Math.round(person.affinity_score)}/100
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Section 2: Unlabeled Face Clusters ("Name Once, Tag 1,000 Photos") */}
           {unlabeledClusters.length > 0 && (
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
@@ -650,45 +1011,40 @@ export const PeopleView: React.FC = () => {
                         </span>
                       </div>
 
-                      {/* Distinct Photo Anchor Medoid Avatar Crops */}
+                      {/* Dynamic Anchor Faces Tile Grid (Distinct Photos Only) */}
                       {(() => {
-                        const facesToShow = (cluster.anchor_face_ids && cluster.anchor_face_ids.length > 0
+                        const facesToRender = cluster.anchor_face_ids && cluster.anchor_face_ids.length > 0
                           ? cluster.anchor_face_ids
-                          : [cluster.medoid_face_id]
-                        ).filter((id): id is number => typeof id === "number");
-
-                        const numTiles = Math.min(4, Math.max(1, facesToShow.length));
+                          : (cluster.medoid_face_id ? [cluster.medoid_face_id] : []);
+                        const count = facesToRender.length;
+                        const columns = count === 1 ? 1 : count === 2 ? 2 : count === 3 ? 3 : 4;
 
                         return (
                           <div
                             style={{
-                              display: numTiles === 1 ? "flex" : "grid",
-                              gridTemplateColumns: numTiles > 1 ? `repeat(${numTiles}, 1fr)` : undefined,
-                              justifyContent: numTiles === 1 ? "center" : undefined,
-                              gap: "10px",
-                              backgroundColor: "var(--bg-sidebar)",
-                              padding: "10px",
+                              display: "grid",
+                              gridTemplateColumns: `repeat(${columns}, 1fr)`,
+                              gap: "8px",
+                              backgroundColor: "var(--bg-surface-elevated)",
+                              padding: "8px",
                               borderRadius: "var(--radius-sm)",
                             }}
                           >
-                            {facesToShow.map((faceId, idx) => (
+                            {facesToRender.map((faceId) => (
                               <div
                                 key={faceId}
                                 style={{
-                                  width: numTiles === 1 ? "120px" : "100%",
-                                  height: numTiles === 1 ? "120px" : undefined,
-                                  aspectRatio: "1",
+                                  position: "relative",
+                                  width: "100%",
+                                  aspectRatio: "1 / 1",
                                   borderRadius: "var(--radius-sm)",
                                   overflow: "hidden",
-                                  backgroundColor: "var(--bg-surface-elevated)",
-                                  border: idx === 0 ? "2px solid var(--accent-primary)" : "1px solid var(--border-subtle)",
-                                  position: "relative",
-                                  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.2)",
+                                  backgroundColor: "var(--bg-sidebar)",
                                 }}
                               >
                                 <img
                                   src={`${API_BASE}/people/faces/${faceId}/crop`}
-                                  alt={`Face ${faceId}`}
+                                  alt="Face crop"
                                   loading="lazy"
                                   style={{
                                     width: "100%",
@@ -696,21 +1052,22 @@ export const PeopleView: React.FC = () => {
                                     objectFit: "cover",
                                   }}
                                 />
-                                {idx === 0 && (
+                                {faceId === cluster.medoid_face_id && (
                                   <div
+                                    title="Representative Medoid Face"
                                     style={{
                                       position: "absolute",
                                       bottom: "4px",
                                       left: "4px",
-                                      backgroundColor: "rgba(0,0,0,0.75)",
-                                      color: "var(--accent-primary)",
-                                      fontSize: "9px",
-                                      fontWeight: 700,
-                                      padding: "1px 5px",
+                                      backgroundColor: "rgba(0, 0, 0, 0.7)",
+                                      padding: "2px 5px",
                                       borderRadius: "3px",
+                                      fontSize: "9px",
+                                      fontWeight: 600,
+                                      color: "var(--accent-primary)",
                                     }}
                                   >
-                                    Anchor
+                                    Medoid
                                   </div>
                                 )}
                               </div>
@@ -884,215 +1241,6 @@ export const PeopleView: React.FC = () => {
               </div>
             </div>
           )}
-
-          {/* Section 2: Recognized People Gallery */}
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
-              <Users size={18} style={{ color: "var(--accent-primary)" }} />
-              <h2 style={{ fontSize: "16px", fontWeight: 700 }}>
-                Recognized People ({filteredPeople.length})
-              </h2>
-            </div>
-
-            {filteredPeople.length === 0 ? (
-              unlabeledClusters.length === 0 && !scanStatus.is_scanning ? (
-                <div
-                  style={{
-                    padding: "60px 20px",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "var(--text-muted)",
-                    textAlign: "center",
-                    backgroundColor: "var(--bg-surface)",
-                    borderRadius: "var(--radius-md)",
-                    border: "1px dashed var(--border-subtle)",
-                  }}
-                >
-                  <Users size={48} style={{ opacity: 0.3, marginBottom: "12px" }} />
-                  <p style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-primary)" }}>
-                    No People Identified Yet
-                  </p>
-                  <p style={{ fontSize: "12px", marginTop: "6px", maxWidth: "420px", lineHeight: "1.5" }}>
-                    Click "Scan Photos for Faces" above to run on-device facial detection across your media library.
-                  </p>
-                  <button
-                    onClick={handleTriggerScan}
-                    className="clickable"
-                    style={{
-                      marginTop: "16px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "8px 18px",
-                      borderRadius: "var(--radius-sm)",
-                      backgroundColor: "var(--accent-primary)",
-                      border: "none",
-                      color: "#ffffff",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <RefreshCw size={14} />
-                    Scan Library Now
-                  </button>
-                </div>
-              ) : (
-                <div style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
-                  <p style={{ fontSize: "13px" }}>No recognized people match "{searchQuery}"</p>
-                </div>
-              )
-            ) : (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-                  gap: "16px",
-                }}
-              >
-                {filteredPeople.map((person) => (
-                  <div
-                    key={person.id}
-                    onClick={() => handleSelectPerson(person)}
-                    className="clickable glass-panel"
-                    style={{
-                      borderRadius: "var(--radius-md)",
-                      padding: "18px 16px",
-                      backgroundColor: "var(--bg-surface)",
-                      border: "1px solid var(--border-subtle)",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      textAlign: "center",
-                      position: "relative",
-                      transition: "transform 0.15s ease, border-color 0.15s ease",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = "translateY(-2px)";
-                      e.currentTarget.style.borderColor = "var(--border-highlight)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = "translateY(0)";
-                      e.currentTarget.style.borderColor = "var(--border-subtle)";
-                    }}
-                  >
-                    {/* Close One Star Toggle */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleUpdatePerson(person.id, { is_close_one: !person.is_close_one });
-                      }}
-                      title={person.is_close_one ? "Close One (VIP) - Click to unstar" : "Mark as Close One (VIP)"}
-                      className="clickable"
-                      style={{
-                        position: "absolute",
-                        top: "10px",
-                        right: "10px",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        padding: "4px",
-                        color: person.is_close_one ? "var(--accent-warning)" : "var(--text-muted)",
-                        opacity: person.is_close_one ? 1 : 0.4,
-                        transition: "opacity 0.15s ease, transform 0.15s ease",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.opacity = "1";
-                        e.currentTarget.style.transform = "scale(1.15)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.opacity = person.is_close_one ? "1" : "0.4";
-                        e.currentTarget.style.transform = "scale(1)";
-                      }}
-                    >
-                      <Star size={16} fill={person.is_close_one ? "var(--accent-warning)" : "none"} />
-                    </button>
-
-                    {/* Avatar Circle */}
-                    <div
-                      style={{
-                        width: "80px",
-                        height: "80px",
-                        borderRadius: "var(--radius-full)",
-                        backgroundColor: "var(--bg-surface-elevated)",
-                        border: "2px solid var(--accent-primary)",
-                        overflow: "hidden",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        marginBottom: "12px",
-                      }}
-                    >
-                      {person.cover_face_id ? (
-                        <img
-                          src={`${API_BASE}/people/faces/${person.cover_face_id}/crop`}
-                          alt={person.name}
-                          loading="lazy"
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                        />
-                      ) : (
-                        <Users size={32} style={{ color: "var(--accent-primary)" }} />
-                      )}
-                    </div>
-
-                    <h3 style={{ fontSize: "15px", fontWeight: 700 }}>{person.name}</h3>
-
-                    {/* Interactive Inline Relationship Selector */}
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      style={{ marginTop: "6px", width: "100%", maxWidth: "160px" }}
-                    >
-                      <select
-                        value={person.relationship_type || "Friend"}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          handleUpdatePerson(person.id, { relationship_type: e.target.value });
-                        }}
-                        style={{
-                          width: "100%",
-                          padding: "4px 8px",
-                          borderRadius: "var(--radius-sm)",
-                          backgroundColor: "var(--bg-sidebar)",
-                          border: "1px solid var(--border-subtle)",
-                          color: "var(--text-primary)",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          textAlign: "center",
-                          cursor: "pointer",
-                          outline: "none",
-                        }}
-                        title="Change relationship"
-                      >
-                        {RELATIONSHIP_OPTIONS.map((rel) => (
-                          <option key={rel} value={rel}>{rel}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
-                      {person.confirmed_count} {person.confirmed_count === 1 ? "photo" : "photos"}
-                    </p>
-
-                    {/* Affinity Score Pill */}
-                    <div
-                      style={{
-                        marginTop: "10px",
-                        padding: "3px 10px",
-                        borderRadius: "var(--radius-full)",
-                        backgroundColor: person.is_close_one ? "rgba(16, 185, 129, 0.12)" : "var(--bg-sidebar)",
-                        color: person.is_close_one ? "var(--accent-success)" : "var(--text-muted)",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                      }}
-                    >
-                      Affinity: {Math.round(person.affinity_score)}/100
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </>
       )}
     </div>

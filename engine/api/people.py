@@ -14,6 +14,7 @@ from engine.database import get_db_connection
 from engine.services.face_recognition_service import get_face_thumbnails_dir
 from engine.services.face_scan_worker import (
     get_scan_status,
+    reset_scan_state,
     run_background_face_scan,
     start_background_scan,
 )
@@ -446,6 +447,50 @@ async def update_person(person_id: int, payload: UpdatePersonRequest) -> PersonR
             confirmed_count=int(row["confirmed_count"] or 0),
             cover_face_id=row["cover_face_id"],
         )
+    finally:
+        await conn.close()
+
+
+@router.post("/reset", status_code=status.HTTP_200_OK)
+async def reset_all_people_and_faces() -> dict:
+    """Safely purges all face detections, identity clusters, and persons to start over fresh."""
+    conn = await get_db_connection()
+    try:
+        # Count records before deleting
+        async with conn.execute("SELECT COUNT(*) FROM faces;") as cur:
+            row = await cur.fetchone()
+            faces_count = row[0] if row else 0
+        async with conn.execute("SELECT COUNT(*) FROM persons;") as cur:
+            row = await cur.fetchone()
+            persons_count = row[0] if row else 0
+
+        # Purge faces and persons
+        await conn.execute("DELETE FROM faces;")
+        await conn.execute("DELETE FROM persons;")
+        # Reset photos faces_scanned flag so library photos can be cleanly re-scanned
+        await conn.execute("UPDATE photos SET faces_scanned = 0;")
+        await conn.commit()
+
+        # Delete all face avatar thumbnails from disk
+        thumbnails_dir = get_face_thumbnails_dir()
+        deleted_thumbs = 0
+        if thumbnails_dir.exists():
+            for f in thumbnails_dir.glob("*.webp"):
+                try:
+                    f.unlink()
+                    deleted_thumbs += 1
+                except OSError:
+                    pass
+
+        # Reset in-memory scan status
+        reset_scan_state()
+
+        return {
+            "status": "reset",
+            "faces_cleared": faces_count,
+            "persons_cleared": persons_count,
+            "thumbnails_deleted": deleted_thumbs,
+        }
     finally:
         await conn.close()
 

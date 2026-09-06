@@ -400,20 +400,34 @@ The frontend `PeopleView.tsx` presents:
    - Selecting or typing an existing person's name automatically fills their saved relationship (e.g. `Spouse`, `Child`, `Parent`, `Extended Family`) and synchronizes their Close One (VIP) star toggle.
    - Displays a visual confirmation chip: `Existing person: {name} ({relationship}). Tagging will merge photos into their profile.`
    - In `POST /api/people/tag-cluster`, submitting an existing person's name merges the cluster's faces into that existing person entity, recalculates confirmed photo counts, and updates their profile medoid. If a new relationship is selected, it immediately updates `persons.relationship_type` and auto-promotes close family (`Extended Family`, `Spouse`, `Child`, `Parent`, `Sibling`) to VIP (`is_close_one = 1`).
-3. **Interactive In-Gallery Relationship Customizer & VIP Star Toggle**:
-   - Each card in the "Recognized People" gallery includes an inline dropdown selector allowing instant relationship customization without requiring drill-down navigation.
-   - Includes a one-click toggleable VIP Star button on each card (`e.stopPropagation()`) for immediate priority promotion/demotion.
-   - Changes trigger `PATCH /api/people/{id}`, immediately synchronizing database state, gallery cards, and cluster autocomplete suggestions.
-4. **One-Click False Positive Dismissal ("✕ Not a Face")**:
+3. **Top-Level Compact Recognized People Gallery & In-Card Name/Relationship Editing**:
+   - Prominently positions "Recognized People" at the top of the interface, above unlabeled clusters.
+   - Reduced card footprint to a modern compact layout (`minmax(180px, 1fr)`, 56px circular avatar, 12px padding) to maximize information density.
+   - **In-Card Name Editing**: Users can click the name title on any recognized person card to edit their name in-place. Submitting via `Enter` or clicking outside triggers an immediate `PATCH /api/people/{id}` update.
+   - **In-Card Relationship & VIP Editing**: Inline dropdown and toggleable star button enable 1-click relationship adjustments directly from the gallery.
+4. **Safe Full-Reset Subsystem (`POST /api/people/reset`)**:
+   - Enables users to purge all face detections, clusters, and person records to start over fresh.
+   - Unlinks cached face avatar crops (`data/thumbnails/faces/*.webp`) and resets `photos.faces_scanned = 0`.
+   - Leaves all original library photos, dates, albums, and metadata 100% untouched and safe.
+5. **One-Click False Positive Dismissal ("✕ Not a Face")**:
    - Cluster cards feature a dedicated `"Not a Face"` dismissal button with the `UserX` icon.
    - Triggers `POST /api/people/clusters/{cluster_id}/dismiss`, which deletes candidate face rows and unlinks temporary thumbnail files, instantly removing the card with zero residue.
-5. **Upright Affine Avatar Normalization**:
+6. **Upright Affine Avatar Normalization**:
    - Uses a 200x200 similarity transform matrix (`AVATAR_REF_POINTS_200`) derived from 5 facial keypoints to rotate and center tilted or reclining faces upright in their avatar crops.
-6. **Zero-Pollution Test Architecture**:
+7. **Zero-Pollution Test Architecture**:
    - All test suites (`test_trash.py`, `test_timeline.py`, `test_collages.py`, `test_enhancements.py`, `test_albums.py`, `test_people.py`, `test_thumbnails.py`, `test_ingestion.py`) run directly against the live dev database (`data/database/securephotos.db`).
    - Every test employs guaranteed `try ... finally` teardown blocks to delete test records (`photos`, `albums`, `faces`, `creative_assets`) and disk files upon test completion, leaving the dev database pristine with zero dummy images.
 
 ### Functional Decision Points & Rationale
+- **Top-Level Hierarchy & Compact Footprint**:
+  - *Problem*: Previously, Recognized People were relegated below unlabeled clusters, forcing users to scroll past dozens of cluster cards to view or customize recognized friends and family.
+  - *Solution*: Elevated Recognized People to the top section of `PeopleView.tsx`. Compacted card dimensions (`minmax(180px, 1fr)`, 56px avatar) so that up to 6–8 people fit on a single screen row without vertical bloat.
+- **In-Place Name & Relationship Editing**:
+  - *Problem*: Changing a person's name or relationship formerly required clicking into the drill-down photo gallery.
+  - *Solution*: Embedded transparent inline name inputs and relationship selectors on the card itself. Edits persist on blur/Enter without modal overlays or page transitions.
+- **Safe Reset with Zero Photo Loss**:
+  - *Problem*: Users exploring face detection or fixing classification mistakes may want a clean slate without deleting their photo library.
+  - *Solution*: Added `POST /api/people/reset` and a "Reset Faces" toolbar button that purges `faces` and `persons` and resets `faces_scanned = 0` on `photos`, allowing a fresh background scan across all library photos.
 - **Bidirectional Relationship Persistence on Cluster Tagging**:
   - *Problem*: When users tagged an unlabeled cluster as an existing person while selecting an updated relationship (e.g. changing from `Friend` to `Extended Family`), `POST /api/people/tag-cluster` only linked faces and updated photo counts, silently discarding the new relationship selection.
   - *Solution*: Enhanced `tag_medoid_cluster` to execute an `UPDATE persons SET relationship_type = ?, is_close_one = ? WHERE id = ?;` whenever `existing` is found and a relationship is supplied. Close family relations (`Extended Family`, `Spouse`, `Child`, `Parent`, `Sibling`) automatically trigger VIP elevation (`is_close_one = 1`).
@@ -435,16 +449,17 @@ The frontend `PeopleView.tsx` presents:
 ### Technical Touchpoints
 - `engine/services/face_recognition_service.py`: Added `AVATAR_REF_POINTS_200`, aspect ratio filter (`0.55 <= ar <= 1.70`), eye distance guard (`>= 6.0px`), default `conf_thresh = 0.50`, and affine-aligned avatar generation.
 - `engine/services/face_clustering_service.py`: Set `SIMILARITY_THRESHOLD = 0.52` (`DISTANCE_THRESHOLD = 0.48`).
-- `engine/services/face_scan_worker.py`: Added pre-insertion face and thumbnail purge per `photo_id`.
-- `engine/api/people.py`: Grouped anchor face queries by `photo_id`; added `POST /api/people/clusters/{cluster_id}/dismiss`; added relationship and VIP auto-promotion update on existing person tagging in `POST /api/people/tag-cluster`.
-- `src/components/PeopleView.tsx`: Added `handleNameChange`, autocomplete `<datalist>`, existing person merge badge, dynamic distinct photo tile grid, `Not a Face` dismiss button, and inline relationship / VIP star customizers on Recognized People gallery cards.
-- `engine/tests/*.py`: Added strict `try ... finally` teardown fixtures across 8 test suites.
+- `engine/services/face_scan_worker.py`: Added pre-insertion face and thumbnail purge per `photo_id`; added `reset_scan_state()`.
+- `engine/api/people.py`: Grouped anchor face queries by `photo_id`; added `POST /api/people/clusters/{cluster_id}/dismiss`; added relationship and VIP auto-promotion update in `POST /api/people/tag-cluster`; added `POST /api/people/reset`.
+- `src/components/PeopleView.tsx`: Placed Recognized People at top, compact card design (`minmax(180px, 1fr)`), in-card name input, in-card relationship dropdown, toggleable VIP star, "Reset Faces" toolbar button.
+- `engine/tests/test_people.py`: Added `test_reset_people_and_faces_endpoint`.
 
 ### State & Lifecycle Impact
 - **Database Cleanliness**:
   - Exactly 22 authentic user photos exist in `photos`.
-  - Exactly 32 valid faces are indexed across 7 distinct clusters.
+  - Exactly 0 faces and 0 persons exist in the reset state, ready for a fresh scan.
+  - All 22 photos have `faces_scanned = 0`.
   - Running `pytest engine/tests/` leaves 0 orphan records, 0 dummy collages, and 0 dummy photos in the dev database.
 - **File System Cleanliness**:
-  - Face avatars in `data/thumbnails/faces/` match valid database face IDs 1-to-1.
-  - Lingering test directories (`data/originals/2022`, `data/originals/undated`) are deleted.
+  - Face avatars in `data/thumbnails/faces/` cleaned to 0 files upon reset.
+  - Lingering test directories (`data/originals/2022`, `data/originals/undated`) remain 0.

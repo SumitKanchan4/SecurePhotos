@@ -182,3 +182,14 @@ def start_background_scan() -> None:
     """Spawns the background face scan task asynchronously if not already running."""
     if not face_scan_state["is_scanning"]:
         asyncio.create_task(run_background_face_scan())
+
+
+def reset_scan_state() -> None:
+    """Resets the in-memory face scan progress tracker."""
+    global face_scan_state
+    face_scan_state["is_scanning"] = False
+    face_scan_state["total_photos"] = 0
+    face_scan_state["scanned_photos"] = 0
+    face_scan_state["faces_found"] = 0
+    face_scan_state["current_photo"] = None
+    face_scan_state["error"] = None
