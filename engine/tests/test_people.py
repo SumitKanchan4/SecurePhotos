@@ -8,6 +8,9 @@ Verifies:
 """
 
 import json
+import shutil
+import tempfile
+from pathlib import Path
 import numpy as np
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -23,6 +26,7 @@ from engine.services.face_clustering_service import (
 from engine.services.face_recognition_service import (
     _estimate_affine_matrix,
     calculate_face_quality,
+    get_face_thumbnails_dir,
     ARCFACE_REF_POINTS,
 )
 
@@ -114,76 +118,92 @@ async def test_people_api_workflow():
         people = people_res.json()
         assert isinstance(people, list)
 
-        # If any cluster exists, test 1-click tagging and cleanup
-        if len(clusters) > 0:
-            target_cluster = clusters[0]["cluster_id"]
-            tagged_person_id = None
+        # 4. Use dedicated isolated mock face for workflow testing so it never touches live clusters
+        conn = await get_db_connection()
+        mock_face_id = None
+        try:
+            cur = await conn.execute(
+                """
+                INSERT INTO faces (photo_id, cluster_id, box_x, box_y, box_w, box_h, quality_score, embedding)
+                VALUES (1, 'cluster_workflow_mock', 0.1, 0.1, 0.2, 0.2, 0.9, '[]')
+                RETURNING id;
+                """
+            )
+            mock_face_id = (await cur.fetchone())[0]
+            await conn.commit()
+        finally:
+            await conn.close()
+
+        target_cluster = "cluster_workflow_mock"
+        tagged_person_id = None
+        try:
+            tag_res = await client.post(
+                "/api/people/tag-cluster",
+                json={
+                    "cluster_id": target_cluster,
+                    "name": "Alex Test Person",
+                    "relationship_type": "Friend",
+                    "is_close_one": True,
+                },
+            )
+            assert tag_res.status_code == 200
+            tag_data = tag_res.json()
+            assert tag_data["status"] == "tagged"
+            assert tag_data["name"] == "Alex Test Person"
+            tagged_person_id = tag_data["person_id"]
+
+            # Check that Alex Test Person now appears in /api/people
+            people_after = (await client.get("/api/people")).json()
+            names = [p["name"] for p in people_after]
+            assert "Alex Test Person" in names
+
+            # Check person photos endpoint
+            alex = [p for p in people_after if p["name"] == "Alex Test Person"][0]
+            photos_res = await client.get(f"/api/people/{alex['id']}/photos")
+            assert photos_res.status_code == 200
+            alex_photos = photos_res.json()
+            assert len(alex_photos) >= 1
+
+            # Test updating granular relationship to 'Spouse' via PATCH
+            update_res = await client.patch(
+                f"/api/people/{alex['id']}",
+                json={"relationship_type": "Spouse"},
+            )
+            assert update_res.status_code == 200
+            updated_alex = update_res.json()
+            assert updated_alex["relationship_type"] == "Spouse"
+            assert updated_alex["is_close_one"] is True
+
+            # Test tagging an existing person with new relationship 'Extended Family'
+            retag_res = await client.post(
+                "/api/people/tag-cluster",
+                json={
+                    "cluster_id": target_cluster,
+                    "name": "Alex Test Person",
+                    "relationship_type": "Extended Family",
+                    "is_close_one": False,  # Should auto-promote to True for Extended Family
+                },
+            )
+            assert retag_res.status_code == 200
+            retag_data = retag_res.json()
+            assert retag_data["person_id"] == alex["id"]
+
+            # Verify relationship was updated in DB
+            people_retag = (await client.get("/api/people")).json()
+            alex_retag = [p for p in people_retag if p["name"] == "Alex Test Person"][0]
+            assert alex_retag["relationship_type"] == "Extended Family"
+            assert alex_retag["is_close_one"] is True
+        finally:
+            # Mandatory test teardown: cleanly remove test person and mock face
+            conn = await get_db_connection()
             try:
-                tag_res = await client.post(
-                    "/api/people/tag-cluster",
-                    json={
-                        "cluster_id": target_cluster,
-                        "name": "Alex Test Person",
-                        "relationship_type": "Friend",
-                        "is_close_one": True,
-                    },
-                )
-                assert tag_res.status_code == 200
-                tag_data = tag_res.json()
-                assert tag_data["status"] == "tagged"
-                assert tag_data["name"] == "Alex Test Person"
-                tagged_person_id = tag_data["person_id"]
-
-                # Check that Alex Test Person now appears in /api/people
-                people_after = (await client.get("/api/people")).json()
-                names = [p["name"] for p in people_after]
-                assert "Alex Test Person" in names
-
-                # Check person photos endpoint
-                alex = [p for p in people_after if p["name"] == "Alex Test Person"][0]
-                photos_res = await client.get(f"/api/people/{alex['id']}/photos")
-                assert photos_res.status_code == 200
-                alex_photos = photos_res.json()
-                assert len(alex_photos) >= 1
-
-                # Test updating granular relationship to 'Spouse' via PATCH
-                update_res = await client.patch(
-                    f"/api/people/{alex['id']}",
-                    json={"relationship_type": "Spouse"},
-                )
-                assert update_res.status_code == 200
-                updated_alex = update_res.json()
-                assert updated_alex["relationship_type"] == "Spouse"
-                assert updated_alex["is_close_one"] is True
-                # Test tagging an existing person with new relationship 'Extended Family'
-                retag_res = await client.post(
-                    "/api/people/tag-cluster",
-                    json={
-                        "cluster_id": target_cluster,
-                        "name": "Alex Test Person",
-                        "relationship_type": "Extended Family",
-                        "is_close_one": False,  # Should auto-promote to True for Extended Family
-                    },
-                )
-                assert retag_res.status_code == 200
-                retag_data = retag_res.json()
-                assert retag_data["person_id"] == alex["id"]
-
-                # Verify relationship was updated in DB
-                people_retag = (await client.get("/api/people")).json()
-                alex_retag = [p for p in people_retag if p["name"] == "Alex Test Person"][0]
-                assert alex_retag["relationship_type"] == "Extended Family"
-                assert alex_retag["is_close_one"] is True
-            finally:
-                # Mandatory test teardown: clean up person and unlink faces
                 if tagged_person_id:
-                    conn = await get_db_connection()
-                    try:
-                        await conn.execute("UPDATE faces SET person_id = NULL WHERE person_id = ?;", (tagged_person_id,))
-                        await conn.execute("DELETE FROM persons WHERE id = ?;", (tagged_person_id,))
-                        await conn.commit()
-                    finally:
-                        await conn.close()
+                    await conn.execute("DELETE FROM persons WHERE id = ?;", (tagged_person_id,))
+                if mock_face_id:
+                    await conn.execute("DELETE FROM faces WHERE id = ?;", (mock_face_id,))
+                await conn.commit()
+            finally:
+                await conn.close()
 
 
 @pytest.mark.asyncio
@@ -224,9 +244,32 @@ async def test_dismiss_cluster_endpoint():
 
 @pytest.mark.asyncio
 async def test_reset_people_and_faces_endpoint():
-    """Verifies POST /api/people/reset cleanly purges faces, persons, and resets faces_scanned flags."""
+    """Verifies POST /api/people/reset cleanly purges faces, persons, and resets faces_scanned flags,
+    with guaranteed full backup and restoration of any active development database records and thumbnails.
+    """
     conn = await get_db_connection()
+    backup_persons = []
+    backup_faces = []
+    backup_photos = []
+    temp_thumb_dir = tempfile.mkdtemp(prefix="test_reset_thumbs_")
+    thumbs_dir = get_face_thumbnails_dir()
+
     try:
+        async with conn.execute("SELECT id, name, relationship_type, is_close_one, cover_face_id FROM persons;") as cur:
+            backup_persons = await cur.fetchall()
+        async with conn.execute("SELECT id, photo_id, person_id, cluster_id, box_x, box_y, box_w, box_h, quality_score, embedding FROM faces;") as cur:
+            backup_faces = await cur.fetchall()
+        async with conn.execute("SELECT id, faces_scanned FROM photos;") as cur:
+            backup_photos = await cur.fetchall()
+
+        # Copy existing thumbnails to backup directory
+        if thumbs_dir.exists():
+            for f in thumbs_dir.glob("*.webp"):
+                try:
+                    shutil.copy2(f, temp_thumb_dir)
+                except OSError:
+                    pass
+
         # Create a mock face and person record
         cur = await conn.execute(
             "INSERT INTO persons (name, relationship_type, is_close_one) VALUES ('Reset Test Person', 'Friend', 0);"
@@ -243,22 +286,62 @@ async def test_reset_people_and_faces_endpoint():
     finally:
         await conn.close()
 
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        res = await client.post("/api/people/reset")
-        assert res.status_code == 200
-        data = res.json()
-        assert data["status"] == "reset"
-        assert data["faces_cleared"] >= 1
-        assert data["persons_cleared"] >= 1
-
-    # Verify zero faces and persons remain
-    conn = await get_db_connection()
     try:
-        async with conn.execute("SELECT COUNT(*) FROM faces;") as cur:
-            assert (await cur.fetchone())[0] == 0
-        async with conn.execute("SELECT COUNT(*) FROM persons;") as cur:
-            assert (await cur.fetchone())[0] == 0
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            res = await client.post("/api/people/reset")
+            assert res.status_code == 200
+            data = res.json()
+            assert data["status"] == "reset"
+            assert data["faces_cleared"] >= 1
+            assert data["persons_cleared"] >= 1
+
+        # Verify zero faces and persons remain directly after reset
+        conn = await get_db_connection()
+        try:
+            async with conn.execute("SELECT COUNT(*) FROM faces;") as cur:
+                assert (await cur.fetchone())[0] == 0
+            async with conn.execute("SELECT COUNT(*) FROM persons;") as cur:
+                assert (await cur.fetchone())[0] == 0
+        finally:
+            await conn.close()
     finally:
-        await conn.close()
+        # Mandatory rollback/restoration of user's active database and thumbnail files
+        conn = await get_db_connection()
+        try:
+            # Restore persons
+            for p in backup_persons:
+                await conn.execute(
+                    "INSERT OR REPLACE INTO persons (id, name, relationship_type, is_close_one, cover_face_id) VALUES (?, ?, ?, ?, ?);",
+                    (p[0], p[1], p[2], p[3], p[4]),
+                )
+            # Restore faces
+            for f in backup_faces:
+                await conn.execute(
+                    """
+                    INSERT OR REPLACE INTO faces (id, photo_id, person_id, cluster_id, box_x, box_y, box_w, box_h, quality_score, embedding)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    (f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9]),
+                )
+            # Restore photos faces_scanned
+            for ph in backup_photos:
+                await conn.execute(
+                    "UPDATE photos SET faces_scanned = ? WHERE id = ?;",
+                    (ph[1], ph[0]),
+                )
+            await conn.commit()
+        finally:
+            await conn.close()
+
+        # Restore thumbnails
+        thumbs_dir.mkdir(parents=True, exist_ok=True)
+        backup_path = Path(temp_thumb_dir)
+        for f in backup_path.glob("*.webp"):
+            try:
+                shutil.copy2(f, thumbs_dir)
+            except OSError:
+                pass
+        shutil.rmtree(temp_thumb_dir, ignore_errors=True)
+
 

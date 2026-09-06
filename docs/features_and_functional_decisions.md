@@ -582,6 +582,41 @@ To maximize viewport room for unlabeled face cluster tagging while providing an 
 ### Technical Touchpoints
 - `src/components/PeopleView.tsx`: Fixed `gridTemplateColumns` to `repeat(4, 1fr)`; padded `slots` array to 4 items with `null` fallbacks; rendered hidden dummy elements for vacant slots.
 
+---
+
+## 12. Non-Destructive Library Scanning, Cover Self-Healing & Test Isolation
+
+### Functionality Overview
+1. **Non-Destructive Facial Scanning**:
+   - Previously, re-scanning library photos with `force=True` wiped `faces_scanned` on all photos and executed `DELETE FROM faces WHERE photo_id = ?;`, discarding all existing face records and unlinking avatar crop files. As a consequence, identified faces reverted to `person_id = NULL`, causing already-tagged individuals to reappear in "Unlabeled Face Clusters" and breaking avatar images.
+   - The scanner workflow was made strictly non-destructive:
+     - `face_scan_worker.py` only purges unconfirmed faces: `DELETE FROM faces WHERE photo_id = ? AND person_id IS NULL;`.
+     - Confirmed face identities (`person_id IS NOT NULL`) and their existing embeddings are preserved.
+     - `handleTriggerScan` in `PeopleView.tsx` triggers incremental scanning without blanket force resets.
+2. **Avatar Cover Self-Healing & Active Medoid Prioritization**:
+   - In `engine/api/people.py` (`GET /api/people`), added automatic self-healing: if a person's `cover_face_id` points to a face ID that no longer exists in the database, the endpoint queries the highest-quality medoid face currently associated with that `person_id` and persists the repair to `persons.cover_face_id`.
+   - In `POST /api/people/tag-cluster`, updated the SQL assignment from `COALESCE(cover_face_id, ?)` to `COALESCE(?, cover_face_id)`, ensuring the newly computed cluster medoid is always prioritized over stale references.
+3. **Guaranteed Test Database Isolation**:
+   - `test_people_api_workflow` uses dedicated mock face IDs (`cluster_workflow_mock`) rather than modifying live unlabelled clusters.
+   - `test_reset_people_and_faces_endpoint` backs up existing `persons`, `faces`, `photos.faces_scanned` rows, and disk thumbnail files to a temporary directory prior to calling `/api/people/reset`, and restores all records and thumbnail files in a `finally` block, preventing test runs from ever destroying active user data.
+
+### Functional Decision Points & Rationale
+- *Preserve Confirmed Faces vs. Full Re-computation*: Re-running face detection on an entire library should detect new faces and update unassigned clusters, but must never destroy user-labeled identities or invalidate face crops.
+- *Active Medoid Priority*: When a user labels an unassigned cluster or merges clusters into an existing person, the most representative face from that cluster (medoid) should become the new cover image unless explicitly overridden.
+- *Test DB Isolation*: In development environments where tests run against the primary SQLite database, destructive test cases must isolate synthetic records or perform atomic save-and-restore to guarantee zero user data loss.
+
+### Technical Touchpoints
+- `engine/services/face_scan_worker.py`: Changed face deletion SQL to `DELETE FROM faces WHERE photo_id = ? AND person_id IS NULL;`.
+- `engine/api/people.py`: Implemented self-healing medoid fallback in `GET /api/people`; changed `cover_face_id` SQL priority in `POST /api/people/tag-cluster`.
+- `src/components/PeopleView.tsx`: Removed `?force=true` query parameter from `handleTriggerScan`.
+- `engine/tests/test_people.py`: Added isolated mock fixtures and full database/thumbnail backup and restoration to `test_reset_people_and_faces_endpoint` and `test_people_api_workflow`.
+
+### State & Lifecycle Impact
+- Eliminates ghost unlabelled clusters after library rescanning.
+- Ensures all recognized person avatars load reliably (HTTP 200) across navigation between albums, search, and people tabs.
+- Protects database persistence integrity across automated CI/CD and local pytest runs.
+
+
 
 
 

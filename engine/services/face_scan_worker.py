@@ -55,17 +55,17 @@ async def run_background_face_scan(force: bool = False) -> Dict[str, Any]:
 
         conn = await get_db_connection()
         try:
-            # If force rescan requested, or if 0 faces exist in DB, ensure photos are unscanned
-            if force:
+            # Only reset faces_scanned if database has zero faces and zero persons (clean slate after reset)
+            async with conn.execute("SELECT COUNT(*) FROM faces;") as f_cur:
+                f_row = await f_cur.fetchone()
+                faces_in_db = f_row[0] if f_row else 0
+            async with conn.execute("SELECT COUNT(*) FROM persons;") as p_cur:
+                p_row = await p_cur.fetchone()
+                persons_in_db = p_row[0] if p_row else 0
+
+            if faces_in_db == 0 and persons_in_db == 0:
                 await conn.execute("UPDATE photos SET faces_scanned = 0 WHERE trashed_at IS NULL;")
                 await conn.commit()
-            else:
-                async with conn.execute("SELECT COUNT(*) FROM faces;") as f_cur:
-                    f_row = await f_cur.fetchone()
-                    faces_in_db = f_row[0] if f_row else 0
-                if faces_in_db == 0:
-                    await conn.execute("UPDATE photos SET faces_scanned = 0 WHERE trashed_at IS NULL;")
-                    await conn.commit()
 
             # Query all active photos that haven't been scanned for faces yet
             async with conn.execute(
@@ -117,8 +117,8 @@ async def run_background_face_scan(force: bool = False) -> Dict[str, Any]:
                     loop = asyncio.get_running_loop()
                     faces = await loop.run_in_executor(None, _process, photo_path)
 
-                    # Clean up any existing faces and thumbnails for this photo to prevent duplicate records
-                    async with conn.execute("SELECT id FROM faces WHERE photo_id = ?;", (photo_id,)) as cur:
+                    # Clean up only unconfirmed faces and their thumbnails for this photo
+                    async with conn.execute("SELECT id FROM faces WHERE photo_id = ? AND person_id IS NULL;", (photo_id,)) as cur:
                         old_rows = await cur.fetchall()
                         for old_r in old_rows:
                             old_thumb = thumbnails_dir / f"{old_r['id']}.webp"
@@ -127,7 +127,7 @@ async def run_background_face_scan(force: bool = False) -> Dict[str, Any]:
                                     old_thumb.unlink()
                                 except OSError:
                                     pass
-                    await conn.execute("DELETE FROM faces WHERE photo_id = ?;", (photo_id,))
+                    await conn.execute("DELETE FROM faces WHERE photo_id = ? AND person_id IS NULL;", (photo_id,))
 
                     for face in faces:
                         emb_json = json.dumps(face["embedding"])

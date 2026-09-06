@@ -77,8 +77,13 @@ async def list_people() -> List[PersonResponse]:
 
         people = []
         for r in rows:
-            # If cover_face_id is not set, try to find the anchor medoid face for this person
+            # If cover_face_id is not set or points to a non-existent face, self-heal to active medoid
             cover_face = r["cover_face_id"]
+            if cover_face:
+                async with conn.execute("SELECT id FROM faces WHERE id = ?;", (cover_face,)) as chk_cur:
+                    if not await chk_cur.fetchone():
+                        cover_face = None
+
             if not cover_face:
                 async with conn.execute(
                     """
@@ -92,6 +97,8 @@ async def list_people() -> List[PersonResponse]:
                     face_row = await f_cur.fetchone()
                     if face_row:
                         cover_face = face_row["id"]
+                        await conn.execute("UPDATE persons SET cover_face_id = ? WHERE id = ?;", (cover_face, r["id"]))
+                        await conn.commit()
 
             people.append(
                 PersonResponse(
@@ -316,7 +323,7 @@ async def tag_medoid_cluster(payload: TagClusterRequest) -> dict:
         await conn.execute(
             """
             UPDATE persons
-            SET confirmed_count = ?, cover_face_id = COALESCE(cover_face_id, ?)
+            SET confirmed_count = ?, cover_face_id = COALESCE(?, cover_face_id)
             WHERE id = ?;
             """,
             (total_photos, cover_face, person_id),

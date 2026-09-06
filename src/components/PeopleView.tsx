@@ -156,22 +156,17 @@ export const PeopleView: React.FC = () => {
 
   // Trigger manual face scan
   const handleTriggerScan = async () => {
-    // Immediate visual feedback
-    setScanStatus((prev) => ({
-      ...prev,
-      is_scanning: true,
-      scanned_photos: 0,
-      total_photos: prev.total_photos || 1,
-    }));
     try {
-      const res = await fetch(`${API_BASE}/people/scan?force=true`, { method: "POST" });
+      const res = await fetch(`${API_BASE}/people/scan`, { method: "POST" });
       if (res.ok) {
         const statusData: FaceScanStatus = await res.json();
         setScanStatus(statusData);
+        if (!statusData.is_scanning) {
+          await Promise.all([fetchPeople(), fetchClusters()]);
+        }
       }
     } catch (err) {
       console.error("Failed to trigger face scan:", err);
-      setScanStatus((prev) => ({ ...prev, is_scanning: false }));
     }
   };
 
