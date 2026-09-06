@@ -23,29 +23,29 @@ def create_test_image(filepath: Path, width: int = 1200, height: int = 800) -> P
 
 
 @pytest.mark.asyncio
-async def test_512px_thumbnail_generation():
-    """Verifies that generate_micro_thumbnail creates 512px Retina WebP thumbnails."""
+async def test_1024px_thumbnail_generation():
+    """Verifies that generate_micro_thumbnail creates 1024px Retina WebP thumbnails."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
-        img_path = create_test_image(tmp_path / "camera_photo.jpg", width=1200, height=800)
+        img_path = create_test_image(tmp_path / "camera_photo.jpg", width=1600, height=1200)
         file_hash = calculate_file_hash(img_path)
 
-        thumb_path, tw, th = generate_micro_thumbnail(img_path, file_hash=file_hash, size=512)
+        thumb_path, tw, th = generate_micro_thumbnail(img_path, file_hash=file_hash, size=1024)
 
         assert thumb_path.exists()
         assert thumb_path.suffix == ".webp"
-        assert tw == 512
-        assert th == round(800 * (512 / 1200))
+        assert tw == 1024
+        assert th == round(1200 * (1024 / 1600))
 
         # Verify image opens cleanly and matches dimensions
         with Image.open(thumb_path) as thumb_img:
-            assert thumb_img.width == 512
+            assert thumb_img.width == 1024
             assert thumb_img.format == "WEBP"
 
 
 @pytest.mark.asyncio
 async def test_thumbnail_upgrade_from_legacy_256px():
-    """Verifies that an older 256px thumbnail is upgraded to 512px when requested."""
+    """Verifies that an older 256px thumbnail is upgraded to 1024px when requested."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         img_path = create_test_image(tmp_path / "legacy_photo.jpg", width=1600, height=1200)
@@ -55,12 +55,12 @@ async def test_thumbnail_upgrade_from_legacy_256px():
         thumb_path, tw, th = generate_micro_thumbnail(img_path, file_hash=file_hash, size=256, force=True)
         assert tw <= 256 and th <= 256
 
-        # 2. Call generate_micro_thumbnail with size=512 (default) without force
-        # Should detect that cached thumbnail is only 256px and upgrade to 512px
-        upgraded_path, uw, uh = generate_micro_thumbnail(img_path, file_hash=file_hash, size=512, force=False)
+        # 2. Call generate_micro_thumbnail with size=1024 (default) without force
+        # Should detect that cached thumbnail is only 256px and upgrade to 1024px
+        upgraded_path, uw, uh = generate_micro_thumbnail(img_path, file_hash=file_hash, size=1024, force=False)
         assert upgraded_path == thumb_path
-        assert uw == 512
-        assert uh == round(1200 * (512 / 1600))
+        assert uw == 1024
+        assert uh == round(1200 * (1024 / 1600))
 
 
 @pytest.mark.asyncio

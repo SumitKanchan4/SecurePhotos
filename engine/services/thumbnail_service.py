@@ -73,15 +73,15 @@ def get_sharded_preview_path(file_hash: str, is_encrypted: bool = False) -> Path
 def generate_micro_thumbnail(
     source_path: Path | str,
     file_hash: Optional[str] = None,
-    size: int = 512,
+    size: int = 1024,
     force: bool = False,
 ) -> Tuple[Path, int, int]:
-    """Generates a high-speed 512px Retina-ready micro-thumbnail for virtualized grid rendering.
+    """Generates a high-speed 1024px Ultra-Crisp Retina micro-thumbnail for virtualized grid rendering.
 
     Args:
         source_path: Path to original source image.
         file_hash: Optional pre-calculated SHA-256 hash.
-        size: Maximum bounding box dimension in pixels (default 512px for High-DPI).
+        size: Maximum bounding box dimension in pixels (default 1024px for High-DPI & panoramic crops).
         force: If True, forces regeneration even if cached thumbnail exists.
 
     Returns:

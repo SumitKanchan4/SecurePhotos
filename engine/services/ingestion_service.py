@@ -414,8 +414,8 @@ async def ingest_single_photo(
         # In-Place monitored scan mode
         final_filepath = str(source_path.resolve())
 
-    # Generate 512px Retina micro-thumbnail and 2K/4K display proxy
-    thumb_path, tw, th = generate_micro_thumbnail(final_filepath, file_hash=file_hash, size=512)
+    # Generate 1024px Retina micro-thumbnail and 2K/4K display proxy
+    thumb_path, tw, th = generate_micro_thumbnail(final_filepath, file_hash=file_hash, size=1024)
     preview_path = generate_display_preview(final_filepath, file_hash=file_hash)
 
     # Insert into relational SQLite database

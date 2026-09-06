@@ -563,7 +563,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     onClick={() => onPhotoClick?.(idx, albumPhotos)}
                   >
                     <img
-                      src={`http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail`}
+                      src={`http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail?v=3`}
                       alt={photo.filename}
                       style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
                       loading="lazy"
@@ -811,7 +811,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                           }}
                         >
                           <img
-                            src={`http://127.0.0.1:8000/api/photos/${p.id}/thumbnail`}
+                            src={`http://127.0.0.1:8000/api/photos/${p.id}/thumbnail?v=3`}
                             alt={p.filename}
                             style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
                             loading="lazy"
@@ -1136,7 +1136,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
             >
               {favoriteCoverId ? (
                 <img
-                  src={`http://127.0.0.1:8000/api/photos/${favoriteCoverId}/thumbnail`}
+                  src={`http://127.0.0.1:8000/api/photos/${favoriteCoverId}/thumbnail?v=3`}
                   alt="Favorites"
                   style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
                   loading="lazy"
@@ -1234,7 +1234,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               >
                 {album.cover_photo_id ? (
                   <img
-                    src={`http://127.0.0.1:8000/api/photos/${album.cover_photo_id}/thumbnail`}
+                    src={`http://127.0.0.1:8000/api/photos/${album.cover_photo_id}/thumbnail?v=3`}
                     alt={album.name}
                     style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
                     loading="lazy"

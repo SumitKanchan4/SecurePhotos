@@ -242,7 +242,7 @@ async def run_background_thumbnail_regeneration():
                         thumb_path, tw, th = generate_micro_thumbnail(
                             target_file,
                             file_hash=file_hash,
-                            size=512,
+                            size=1024,
                             force=True,
                         )
                         update_conn = await get_db_connection()
@@ -400,7 +400,7 @@ async def get_photo_thumbnail(photo_id: int):
         src_path = Path(row["filepath"])
         if src_path.exists():
             from engine.services.thumbnail_service import generate_micro_thumbnail
-            thumb_path, _, _ = generate_micro_thumbnail(src_path, file_hash=row["file_hash"], size=512)
+            thumb_path, _, _ = generate_micro_thumbnail(src_path, file_hash=row["file_hash"], size=1024)
 
     if not thumb_path.exists():
         raise HTTPException(status_code=404, detail="Thumbnail file missing on disk")
@@ -408,7 +408,7 @@ async def get_photo_thumbnail(photo_id: int):
     return FileResponse(
         str(thumb_path),
         media_type="image/webp",
-        headers={"Cache-Control": "public, max-age=86400"}
+        headers={"Cache-Control": "public, max-age=604800, stale-while-revalidate=86400"}
     )
 
 
