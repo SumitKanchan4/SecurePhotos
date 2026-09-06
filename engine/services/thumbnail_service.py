@@ -10,7 +10,7 @@ import io
 import logging
 from pathlib import Path
 from typing import Optional, Tuple
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageFilter
 
 from engine.config import settings
 
@@ -40,13 +40,13 @@ def get_sharded_thumbnail_path(file_hash: str, is_encrypted: bool = False) -> Pa
     """Computes the 2-character sharded destination path for a micro-thumbnail.
 
     Args:
-        file_hash: 64-character SHA-256 string.
+        file_hash: 64-character SHA-256 hash.
         is_encrypted: Whether the thumbnail should use .enc extension.
 
     Returns:
         Path instance pointing to 'thumbnails/{xx}/{hash}.webp' (or .enc).
     """
-    prefix = file_hash[:2].lower()
+    prefix = file_hash[:2]
     ext = ".enc" if is_encrypted else ".webp"
     sharded_dir = settings.thumbnails_dir / prefix
     sharded_dir.mkdir(parents=True, exist_ok=True)
@@ -73,14 +73,16 @@ def get_sharded_preview_path(file_hash: str, is_encrypted: bool = False) -> Path
 def generate_micro_thumbnail(
     source_path: Path | str,
     file_hash: Optional[str] = None,
-    size: int = 256,
+    size: int = 512,
+    force: bool = False,
 ) -> Tuple[Path, int, int]:
-    """Generates a high-speed 256px micro-thumbnail for virtualized grid rendering.
+    """Generates a high-speed 512px Retina-ready micro-thumbnail for virtualized grid rendering.
 
     Args:
         source_path: Path to original source image.
         file_hash: Optional pre-calculated SHA-256 hash.
-        size: Maximum bounding box dimension in pixels.
+        size: Maximum bounding box dimension in pixels (default 512px for High-DPI).
+        force: If True, forces regeneration even if cached thumbnail exists.
 
     Returns:
         Tuple containing (thumbnail_path, width, height).
@@ -91,10 +93,13 @@ def generate_micro_thumbnail(
 
     dest_path = get_sharded_thumbnail_path(file_hash, is_encrypted=False)
 
-    # Return existing thumbnail if already generated
-    if dest_path.exists():
+    # Return existing thumbnail if already generated and at least requested size
+    if dest_path.exists() and not force:
         with Image.open(dest_path) as img:
-            return dest_path, img.width, img.height
+            if img.width >= size or img.height >= size:
+                return dest_path, img.width, img.height
+
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
 
     with Image.open(src_path) as img:
         # Correct orientation from EXIF tags
@@ -105,8 +110,11 @@ def generate_micro_thumbnail(
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
 
-        # Save with fast WebP compression (quality 80)
-        img.save(dest_path, "WEBP", quality=80, method=4)
+        # Apply subtle unsharp mask to restore micro-contrast lost during downsampling
+        img = img.filter(ImageFilter.UnsharpMask(radius=1.0, percent=115, threshold=3))
+
+        # Save with crisp WebP compression (quality 88, method 4)
+        img.save(dest_path, "WEBP", quality=88, method=4)
         return dest_path, img.width, img.height
 
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   Lock, 
   Plus, 
@@ -56,6 +56,7 @@ export const App: React.FC = () => {
   const [lightboxPhotos, setLightboxPhotos] = useState<PhotoItem[] | null>(null);
   const [optimizationProgress, setOptimizationProgress] = useState<OptimizationProgress | null>(null);
   const [timelineData, setTimelineData] = useState<TimelineYearsData>({ total_count: 0, years: [] });
+  const hasRegeneratedThumbnailsRef = useRef(false);
 
   const loadTimelineYears = async () => {
     try {
@@ -81,6 +82,12 @@ export const App: React.FC = () => {
         const data = await res.json();
         setPhotos(data);
         setTotalPhotosCount(data.length);
+
+        // Auto-trigger background 512px Retina thumbnail regeneration once on load
+        if (!hasRegeneratedThumbnailsRef.current && data.length > 0) {
+          hasRegeneratedThumbnailsRef.current = true;
+          fetch("http://127.0.0.1:8000/api/photos/regenerate-thumbnails", { method: "POST" }).catch(() => {});
+        }
 
         // Auto-trigger background 8K optimization queue if unoptimized items exist
         const hasUnoptimized = data.some((p: PhotoItem) => !p.is_optimized);

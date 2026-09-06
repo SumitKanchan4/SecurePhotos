@@ -118,6 +118,7 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
             opacity: isLoaded ? 1 : 0,
             transition: "opacity 0.35s ease",
             zIndex: 1,
+            imageRendering: "-webkit-optimize-contrast",
           }}
         />
       )}

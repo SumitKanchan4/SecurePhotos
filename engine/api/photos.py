@@ -188,6 +188,84 @@ async def run_background_optimization():
             optimization_state["last_completed_photo_id"] = None
 
 
+# Global in-memory thumbnail regeneration progress tracker
+thumbnail_regen_state = {
+    "is_active": False,
+    "total_count": 0,
+    "completed_count": 0,
+    "active_photo_id": None,
+    "active_filename": None,
+}
+
+_thumbnail_regen_lock = asyncio.Lock()
+
+
+async def run_background_thumbnail_regeneration():
+    """Iterates through photos in the library and regenerates 512px Retina thumbnails with UnsharpMask."""
+    global thumbnail_regen_state
+    if thumbnail_regen_state["is_active"]:
+        return
+
+    async with _thumbnail_regen_lock:
+        thumbnail_regen_state["is_active"] = True
+        try:
+            conn = await get_db_connection()
+            try:
+                async with conn.execute(
+                    "SELECT id, filename, filepath, file_hash, thumbnail_path FROM photos WHERE trashed_at IS NULL ORDER BY id ASC;"
+                ) as cursor:
+                    photos_list = await cursor.fetchall()
+            finally:
+                await conn.close()
+
+            if not photos_list:
+                thumbnail_regen_state["is_active"] = False
+                return
+
+            thumbnail_regen_state["total_count"] = len(photos_list)
+            thumbnail_regen_state["completed_count"] = 0
+
+            from engine.services.thumbnail_service import generate_micro_thumbnail
+
+            for row in photos_list:
+                photo_id = row["id"]
+                filename = row["filename"]
+                filepath = row["filepath"]
+                file_hash = row["file_hash"]
+
+                thumbnail_regen_state["active_photo_id"] = photo_id
+                thumbnail_regen_state["active_filename"] = filename
+
+                try:
+                    target_file = Path(filepath)
+                    if target_file.exists():
+                        thumb_path, tw, th = generate_micro_thumbnail(
+                            target_file,
+                            file_hash=file_hash,
+                            size=512,
+                            force=True,
+                        )
+                        update_conn = await get_db_connection()
+                        try:
+                            await update_conn.execute(
+                                "UPDATE photos SET thumbnail_path = ? WHERE id = ?;",
+                                (str(thumb_path), photo_id),
+                            )
+                            await update_conn.commit()
+                        finally:
+                            await update_conn.close()
+                except Exception as e:
+                    logger.error("Failed to regenerate thumbnail for photo %s: %s", photo_id, e)
+
+                thumbnail_regen_state["completed_count"] += 1
+                await asyncio.sleep(0.005)
+
+        finally:
+            thumbnail_regen_state["is_active"] = False
+            thumbnail_regen_state["active_photo_id"] = None
+            thumbnail_regen_state["active_filename"] = None
+
+
 @router.get("", response_model=List[PhotoResponse], status_code=status.HTTP_200_OK)
 async def list_photos(
     limit: int = Query(default=100, ge=1, le=1000),
@@ -299,10 +377,12 @@ async def get_timeline_years() -> TimelineYearsResponse:
 
 @router.get("/{photo_id}/thumbnail")
 async def get_photo_thumbnail(photo_id: int):
-    """Streams the 256px WebP micro-thumbnail for a photo."""
+    """Streams the 512px Retina WebP micro-thumbnail for a photo."""
     conn = await get_db_connection()
     try:
-        async with conn.execute("SELECT thumbnail_path, is_encrypted FROM photos WHERE id = ?;", (photo_id,)) as cursor:
+        async with conn.execute(
+            "SELECT filepath, file_hash, thumbnail_path, is_encrypted FROM photos WHERE id = ?;", (photo_id,)
+        ) as cursor:
             row = await cursor.fetchone()
     finally:
         await conn.close()
@@ -314,6 +394,14 @@ async def get_photo_thumbnail(photo_id: int):
         raise HTTPException(status_code=403, detail="Encrypted thumbnail requires vault authentication")
 
     thumb_path = Path(row["thumbnail_path"])
+
+    # Auto-upgrade or regenerate if missing or older low-res thumbnail
+    if row["filepath"]:
+        src_path = Path(row["filepath"])
+        if src_path.exists():
+            from engine.services.thumbnail_service import generate_micro_thumbnail
+            thumb_path, _, _ = generate_micro_thumbnail(src_path, file_hash=row["file_hash"], size=512)
+
     if not thumb_path.exists():
         raise HTTPException(status_code=404, detail="Thumbnail file missing on disk")
 
@@ -587,6 +675,19 @@ async def trigger_optimization(background_tasks: BackgroundTasks) -> dict:
     """Triggers background 8K ULTRA optimization pass for all unoptimized photos."""
     background_tasks.add_task(run_background_optimization)
     return {"status": "started"}
+
+
+@router.post("/regenerate-thumbnails", status_code=status.HTTP_202_ACCEPTED)
+async def trigger_thumbnail_regeneration(background_tasks: BackgroundTasks) -> dict:
+    """Triggers background regeneration of all library thumbnails to 512px Retina resolution."""
+    background_tasks.add_task(run_background_thumbnail_regeneration)
+    return {"status": "started"}
+
+
+@router.get("/thumbnail-regeneration-progress", status_code=status.HTTP_200_OK)
+async def get_thumbnail_regeneration_progress() -> dict:
+    """Returns the real-time background thumbnail regeneration state."""
+    return thumbnail_regen_state
 
 
 
