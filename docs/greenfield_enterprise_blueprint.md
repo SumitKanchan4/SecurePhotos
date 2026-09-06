@@ -38,7 +38,7 @@ graph TB
 
     subgraph Workers ["3. Isolated Worker Subprocesses (No GIL Contention)"]
         ScanWorker["Ingestion & Indexing Worker<br/>(Transactional Resumable Pipeline)"]
-        AIWorker["SLM & Vector Worker (DirectML / GGUF)<br/>• MobileCLIP (Text-to-Image Search)<br/>• Moondream2 / Qwen2.5-VL (Doc OCR & Tagging)<br/>• BlazeFace + MobileFaceNet (Identity Clustering)"]
+        AIWorker["SLM & Vector Worker (DirectML / GGUF)<br/>• MobileCLIP (Text-to-Image Search)<br/>• Moondream2 / Qwen2.5-VL (Doc OCR & Tagging)<br/>• YOLOv8-Face + ArcFace 512-D (Identity Clustering)"]
         VaultWorker["Chunked AES-256-GCM Streaming Worker"]
         
         CoreAPI -->|IPC Job Queue| Workers

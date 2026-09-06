@@ -47,6 +47,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Automatically trigger background 4K optimization pass if any unoptimized photos exist
     if not os.environ.get("PYTEST_CURRENT_TEST"):
         asyncio.create_task(photos.run_background_optimization())
+        from engine.services.face_scan_worker import start_background_scan
+        start_background_scan()
 
     yield
 

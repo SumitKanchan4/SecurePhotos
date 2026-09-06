@@ -147,7 +147,7 @@ Integrate a decoupled, low-priority background worker engine for non-blocking 4K
    - **Semantic Branch**: `sqlite-vec` virtual table storing 512-D MobileCLIP embeddings.
    - **Ranking**: Reciprocal Rank Fusion (RRF) blending keywords and semantic similarities.
 4. **Representative Medoid Clustering & Chronological Life-Stage Bridging**:
-   - **MediaPipe BlazeFace + InsightFace MobileFaceNet ONNX**: Sub-millisecond face detection in multi-person group photos with 512-D identity embeddings.
+   - **YOLOv8-Face + ArcFace (ResNet-50) ONNX**: High-accuracy face detection in multi-person group photos with 5-point affine alignment and 512-D identity embeddings.
    - **Representative Medoid Selection ("Name Once, Tag 1,000 Photos")**: Automatically groups clusters and presents 3–4 diverse anchor faces so naming a person once labels thousands of photos in 1 click.
    - **Temporal Transitive Linkage (Childhood ➔ Adulthood)**: Chronologically bridges aging faces using time-stamped embedding trajectories ($Age 5 \rightarrow Age 8 \rightarrow Age 14 \rightarrow Age 22 \rightarrow Age 30$).
 5. **Social Affinity Graph & Close Ones Engine**:

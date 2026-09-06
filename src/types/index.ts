@@ -72,6 +72,23 @@ export interface PersonItem {
   cover_face_id?: number;
 }
 
+export interface UnlabeledClusterItem {
+  cluster_id: string;
+  photo_count: number;
+  face_count: number;
+  medoid_face_id?: number;
+  anchor_face_ids: number[];
+}
+
+export interface FaceScanStatus {
+  is_scanning: boolean;
+  total_photos: number;
+  scanned_photos: number;
+  faces_found: number;
+  current_photo?: string | null;
+  error?: string | null;
+}
+
 export interface PythonPrerequisite {
   installed: boolean;
   version: string | null;
