@@ -113,9 +113,10 @@ Users can star/heart photos to mark them as favorites from anywhere in the appli
 
 ### Key Functional Decision Points
 - **Everywhere Access**:
-  - **Photos Grid (`PhotoGrid.tsx`)**: Top-right heart button on every thumbnail. Displays filled red when liked; translucent on hover when unliked.
+  - **Photos Grid (`PhotoGrid.tsx`)**: Top-right heart button on every thumbnail. Transparent container with vivid red heart (`#ef4444`) when liked; transparent on hover with white outline when unliked.
   - **Lightbox (`Lightbox.tsx`)**: Top toolbar heart button with active state indicator + keyboard shortcut `F`.
   - **Inside Albums (`AlbumsView.tsx`)**: Top-right heart button on every photo in both custom albums and the Favorites album.
+- **Visual Styling Decision**: The favorite button uses a completely transparent container (`background: transparent`, `border: none`) with drop-shadow for contrast, displaying a vivid red filled heart (`#ef4444`) when liked. This eliminates solid rectangular button frames over thumbnails, keeping the UI modern and unobtrusive.
 - **Non-Disruptive Click Interactions**: Clicking the heart on a grid thumbnail stops event propagation (`e.stopPropagation()`), preventing unintentional opening of the Lightbox or toggling selection checkboxes.
 - **Optimistic State Updates**: Toggling a favorite updates React state immediately across library and lightbox views with automatic rollback on network failure.
 
