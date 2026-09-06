@@ -1021,66 +1021,79 @@ export const PeopleView: React.FC = () => {
                         </span>
                       </div>
 
-                      {/* Dynamic Anchor Faces Tile Grid (Distinct Photos Only) */}
+                      {/* Fixed 4-Slot Anchor Faces Grid (Consistent size for all cards with transparent placeholders) */}
                       {(() => {
-                        const facesToRender = cluster.anchor_face_ids && cluster.anchor_face_ids.length > 0
+                        const rawFaces = cluster.anchor_face_ids && cluster.anchor_face_ids.length > 0
                           ? cluster.anchor_face_ids
                           : (cluster.medoid_face_id ? [cluster.medoid_face_id] : []);
-                        const count = facesToRender.length;
-                        const columns = count === 1 ? 1 : count === 2 ? 2 : count === 3 ? 3 : 4;
+                        // Always create an array of 4 slots, padding missing faces with null
+                        const slots: (number | null)[] = [
+                          rawFaces[0] ?? null,
+                          rawFaces[1] ?? null,
+                          rawFaces[2] ?? null,
+                          rawFaces[3] ?? null,
+                        ];
 
                         return (
                           <div
                             style={{
                               display: "grid",
-                              gridTemplateColumns: `repeat(${columns}, 1fr)`,
+                              gridTemplateColumns: "repeat(4, 1fr)",
                               gap: "8px",
-                              backgroundColor: "var(--bg-surface-elevated)",
-                              padding: "8px",
-                              borderRadius: "var(--radius-sm)",
                             }}
                           >
-                            {facesToRender.map((faceId) => (
-                              <div
-                                key={faceId}
-                                style={{
-                                  position: "relative",
-                                  width: "100%",
-                                  aspectRatio: "1 / 1",
-                                  borderRadius: "var(--radius-sm)",
-                                  overflow: "hidden",
-                                  backgroundColor: "var(--bg-sidebar)",
-                                }}
-                              >
-                                <img
-                                  src={`${API_BASE}/people/faces/${faceId}/crop`}
-                                  alt="Face crop"
-                                  loading="lazy"
+                            {slots.map((faceId, idx) => (
+                              faceId ? (
+                                <div
+                                  key={faceId}
+                                  style={{
+                                    position: "relative",
+                                    width: "100%",
+                                    aspectRatio: "1 / 1",
+                                    borderRadius: "var(--radius-sm)",
+                                    overflow: "hidden",
+                                    backgroundColor: "var(--bg-sidebar)",
+                                  }}
+                                >
+                                  <img
+                                    src={`${API_BASE}/people/faces/${faceId}/crop`}
+                                    alt="Face crop"
+                                    loading="lazy"
+                                    style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      objectFit: "cover",
+                                    }}
+                                  />
+                                  {faceId === cluster.medoid_face_id && (
+                                    <div
+                                      title="Representative Medoid Face"
+                                      style={{
+                                        position: "absolute",
+                                        bottom: "4px",
+                                        left: "4px",
+                                        backgroundColor: "rgba(0, 0, 0, 0.7)",
+                                        padding: "2px 5px",
+                                        borderRadius: "3px",
+                                        fontSize: "9px",
+                                        fontWeight: 600,
+                                        color: "var(--accent-primary)",
+                                      }}
+                                    >
+                                      Medoid
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div
+                                  key={`empty-${idx}`}
                                   style={{
                                     width: "100%",
-                                    height: "100%",
-                                    objectFit: "cover",
+                                    aspectRatio: "1 / 1",
+                                    visibility: "hidden",
                                   }}
                                 />
-                                {faceId === cluster.medoid_face_id && (
-                                  <div
-                                    title="Representative Medoid Face"
-                                    style={{
-                                      position: "absolute",
-                                      bottom: "4px",
-                                      left: "4px",
-                                      backgroundColor: "rgba(0, 0, 0, 0.7)",
-                                      padding: "2px 5px",
-                                      borderRadius: "3px",
-                                      fontSize: "9px",
-                                      fontWeight: 600,
-                                      color: "var(--accent-primary)",
-                                    }}
-                                  >
-                                    Medoid
-                                  </div>
-                                )}
-                              </div>
+                              )
                             ))}
                           </div>
                         );

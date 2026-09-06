@@ -567,5 +567,21 @@ To maximize viewport room for unlabeled face cluster tagging while providing an 
 - `engine/api/people.py`: Added `force: bool = False` query parameter to `POST /api/people/scan`.
 - `src/components/PeopleView.tsx`: Shortened button text to `"Scan Faces"` / `"Scanning..."`; updated `handleTriggerScan` to pass `?force=true` and set optimistic state.
 
+---
+
+## 11. Fixed 4-Slot Anchor Thumbnail Grid with Transparent Placeholders
+
+### Functionality Overview
+1. **Identical Card Dimensions Across All Clusters**:
+   - In `PeopleView.tsx`, cluster cards previously adapted their column count dynamically (`repeat(${count}, 1fr)`). This resulted in clusters with only 1 or 2 photos stretching their thumbnail images to giant proportions (up to 400px $\times$ 400px), causing severe height discrepancies and pixelated previews across adjacent cards.
+   - The cluster photo preview is now permanently structured as a **fixed 4-slot grid** (`gridTemplateColumns: "repeat(4, 1fr)"`, `gap: "8px"`).
+2. **Transparent Dummy Placeholders**:
+   - For clusters with fewer than 4 distinct photos (e.g. 1 or 2 photos), the remaining slots are populated by transparent placeholder elements with `aspectRatio: "1 / 1"` and `visibility: "hidden"`.
+   - Ensures that whether a person appears in 1, 2, 3, or 12+ photos, each thumbnail remains **exactly the same compact, uniform size (~85px)** and all cluster cards share identical heights and aspect ratios.
+
+### Technical Touchpoints
+- `src/components/PeopleView.tsx`: Fixed `gridTemplateColumns` to `repeat(4, 1fr)`; padded `slots` array to 4 items with `null` fallbacks; rendered hidden dummy elements for vacant slots.
+
+
 
 
