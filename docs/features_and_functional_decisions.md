@@ -25,10 +25,11 @@ Photos imported into SecurePhotos automatically undergo progressive background o
 
 ### Key Functional Decision Points
 - **Zero Manual Buttons on Thumbnails or Lightbox**: The user explicitly decided against cluttering the UI with manual "Enhance" triggers. Ingestion initiates automatic queuing.
-- **Visual Progress Indicators**:
+- **Visual Progress Indicators & Decoupled Badge Placement**:
   - Unprocessed thumbnails display a subtle "Queued" badge with a clock icon.
   - Active thumbnail displays a spinning loader and percentage badge.
-  - Optimized images receive a high-res badge (`8K` if $\ge 7680\text{px}$, otherwise `HQ`).
+  - Optimized images receive an elegant **bottom-left frosted glass tag** (`✦ 8K ULTRA` with warm gold text `#fbbf24`, dark blur backdrop, and subtle gold border).
+  - Placing the 8K tag in the bottom-left decouples it completely from the top corners (leaving top-left strictly for the selection checkbox and top-right permanently pinned for the Favorite heart), preventing any awkward horizontal shifting or facial obstruction.
 - **Lightbox Behavior Before Completion**:
   - If clicked prior to completion, the user sees the unprocessed original with a notification pill: *"AI 8K processing in progress... Displaying unprocessed original"*.
   - Once completed, the Lightbox displays the full proxy and enables an interactive **Before / After** comparison slider (accessible via toolbar button or `E` keyboard shortcut).

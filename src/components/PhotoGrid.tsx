@@ -251,100 +251,81 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
         </span>
       </div>
 
-      {/* 6. Badges (Top Right) */}
-      <div 
+      {/* 6a. Bottom-Left Resolution / AI Optimization Frosted Glass Tag (Option 2) */}
+      {(() => {
+        const is8k = photo.is_enhanced || photo.is_optimized;
+        const maxDim = Math.max(photo.width || 0, photo.height || 0);
+        const isHighRes = maxDim >= 3840;
+
+        if (!is8k && !isHighRes) return null;
+
+        return (
+          <div
+            title={is8k ? "8K ULTRA Super-Resolution Optimized" : "High-Resolution Source"}
+            style={{
+              position: "absolute",
+              bottom: "7px",
+              left: "7px",
+              zIndex: isHovered ? 1 : 3,
+              display: isHovered ? "none" : "flex",
+              alignItems: "center",
+              gap: "3px",
+              padding: "2px 6px",
+              borderRadius: "var(--radius-xs)",
+              background: "rgba(10, 12, 18, 0.65)",
+              backdropFilter: "blur(8px)",
+              border: is8k 
+                ? "1px solid rgba(251, 191, 36, 0.35)" 
+                : "1px solid rgba(255, 255, 255, 0.15)",
+              color: is8k ? "#fbbf24" : "#10b981",
+              fontSize: "9px",
+              fontWeight: 700,
+              letterSpacing: "0.3px",
+              boxShadow: "0 2px 6px rgba(0, 0, 0, 0.5)",
+              pointerEvents: "none",
+            }}
+          >
+            {is8k && <Sparkles size={9} style={{ color: "#fbbf24" }} />}
+            <span>{is8k ? "8K ULTRA" : (maxDim >= 7680 ? "8K" : "HQ")}</span>
+          </div>
+        );
+      })()}
+
+      {/* 6b. Favorite Heart Button (Top Right - Pinned to corner) */}
+      <button
+        type="button"
+        title={photo.is_favorite ? "Remove from Favorites" : "Add to Favorites"}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleFavorite?.(photo.id);
+        }}
         style={{
           position: "absolute",
           top: "6px",
           right: "6px",
+          background: "transparent",
+          border: "none",
+          cursor: "pointer",
+          width: "24px",
+          height: "24px",
           display: "flex",
-          gap: "4px",
+          alignItems: "center",
+          justifyContent: "center",
+          opacity: photo.is_favorite || isHovered ? 1 : 0,
+          transform: isHovered ? "scale(1.15)" : "scale(1)",
+          transition: "opacity 0.15s ease, transform 0.15s ease",
+          padding: 0,
+          filter: "drop-shadow(0 1px 3px rgba(0, 0, 0, 0.75))",
           zIndex: 3,
         }}
       >
-        {/* Resolution / AI Enhancement Badge */}
-        {(() => {
-          const is8k = photo.is_enhanced || photo.is_optimized;
-          const maxDim = Math.max(photo.width || 0, photo.height || 0);
-          const isHighRes = maxDim >= 3840;
-
-          if (is8k) {
-            return (
-              <span 
-                title="8K ULTRA Super-Resolution Optimized"
-                style={{
-                  backgroundColor: "rgba(59, 130, 246, 0.9)",
-                  color: "#ffffff",
-                  padding: "2px 6px",
-                  borderRadius: "var(--radius-xs)",
-                  fontSize: "9px",
-                  fontWeight: 700,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "3px",
-                  boxShadow: "0 1px 4px rgba(0,0,0,0.5)",
-                }}
-              >
-                <Sparkles size={9} /> 8K ULTRA
-              </span>
-            );
-          }
-
-          if (isHighRes) {
-            return (
-              <span 
-                title="High-Resolution Source"
-                style={{
-                  backgroundColor: "rgba(16, 185, 129, 0.85)",
-                  color: "#ffffff",
-                  padding: "2px 5px",
-                  borderRadius: "var(--radius-xs)",
-                  fontSize: "9px",
-                  fontWeight: 700,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "2px",
-                  boxShadow: "0 1px 4px rgba(0,0,0,0.4)",
-                }}
-              >
-                {maxDim >= 7680 ? "8K" : "HQ"}
-              </span>
-            );
-          }
-
-          return null;
-        })()}
-        <button
-          type="button"
-          title={photo.is_favorite ? "Remove from Favorites" : "Add to Favorites"}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleFavorite?.(photo.id);
-          }}
-          style={{
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            width: "24px",
-            height: "24px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            opacity: photo.is_favorite || isHovered ? 1 : 0,
-            transform: isHovered ? "scale(1.15)" : "scale(1)",
-            transition: "opacity 0.15s ease, transform 0.15s ease",
-            padding: 0,
-            filter: "drop-shadow(0 1px 3px rgba(0, 0, 0, 0.75))",
-          }}
-        >
-          <Heart 
-            size={18} 
-            fill={photo.is_favorite ? "#ef4444" : "none"} 
-            stroke={photo.is_favorite ? "#ef4444" : "#ffffff"}
-            strokeWidth={2}
-          />
-        </button>
-      </div>
+        <Heart 
+          size={18} 
+          fill={photo.is_favorite ? "#ef4444" : "none"} 
+          stroke={photo.is_favorite ? "#ef4444" : "#ffffff"}
+          strokeWidth={2}
+        />
+      </button>
 
       {/* 7. Selection Checkbox (Top Left) */}
       <div 
