@@ -103,3 +103,65 @@ async def test_delete_nonexistent_photo():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         res = await client.delete("/api/photos/9999999")
         assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_trash_endpoints_lifecycle():
+    """Verifies listing trashed photos, restoring from trash, and emptying trash permanently."""
+    await run_migrations()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        id1 = await create_dummy_photo(tmp_path, "trash_test_1.jpg")
+        id2 = await create_dummy_photo(tmp_path, "trash_test_2.jpg")
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # 1. Soft-delete both photos
+            await client.post("/api/photos/batch-trash", json={"photo_ids": [id1, id2]})
+
+            # 2. GET /api/trash should list both items
+            res = await client.get("/api/trash")
+            assert res.status_code == 200
+            trashed = res.json()
+            trashed_ids = [t["id"] for t in trashed]
+            assert id1 in trashed_ids
+            assert id2 in trashed_ids
+            for t in trashed:
+                assert "days_remaining" in t
+                assert t["days_remaining"] >= 0
+
+            # 3. POST /api/trash/restore for id1
+            restore_res = await client.post("/api/trash/restore", json={"photo_ids": [id1]})
+            assert restore_res.status_code == 200
+            assert restore_res.json()["restored_count"] == 1
+
+            # Verify id1 is back in /api/photos, id2 is still in /api/trash
+            active_res = await client.get("/api/photos")
+            active_ids = [p["id"] for p in active_res.json()]
+            assert id1 in active_ids
+            assert id2 not in active_ids
+
+            trash_res2 = await client.get("/api/trash")
+            trashed_ids2 = [t["id"] for t in trash_res2.json()]
+            assert id1 not in trashed_ids2
+            assert id2 in trashed_ids2
+
+            # 4. Permanent delete for id2
+            perm_res = await client.post("/api/trash/permanent", json={"photo_ids": [id2]})
+            assert perm_res.status_code == 200
+            assert perm_res.json()["deleted_count"] == 1
+
+            # Verify trash is now empty of id2
+            trash_res3 = await client.get("/api/trash")
+            assert id2 not in [t["id"] for t in trash_res3.json()]
+
+            # 5. Create id3, trash it, and test empty_trash
+            id3 = await create_dummy_photo(tmp_path, "trash_test_3.jpg")
+            await client.post("/api/photos/batch-trash", json={"photo_ids": [id3]})
+            empty_res = await client.delete("/api/trash/empty")
+            assert empty_res.status_code == 200
+            assert empty_res.json()["deleted_count"] >= 1
+
+            trash_final = await client.get("/api/trash")
+            assert len(trash_final.json()) == 0
+

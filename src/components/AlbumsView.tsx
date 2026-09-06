@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { AlbumItem, PhotoItem } from "../types";
 import { AlbumSlideshowModal } from "./AlbumSlideshowModal";
+import { RemoveFromAlbumModal } from "./RemoveFromAlbumModal";
+import { useAppStore } from "../store/useAppStore";
 
 interface AlbumsViewProps {
   onLockAlbumToVault?: (albumId: number) => void;
@@ -43,9 +45,11 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   const [isDetailLoading, setIsDetailLoading] = useState(false);
 
   // Multi-Selection in Album Detail
+  const showToast = useAppStore((state) => state.showToast);
   const [selectedAlbumPhotoIds, setSelectedAlbumPhotoIds] = useState<Set<number>>(new Set());
-  const [isBatchRemoving, setIsBatchRemoving] = useState(false);
   const [hoveredPhotoId, setHoveredPhotoId] = useState<number | null>(null);
+  const [removalModalTarget, setRemovalModalTarget] = useState<{ photoIds: number[] } | null>(null);
+  const [isRemovalProcessing, setIsRemovalProcessing] = useState(false);
 
   // Full-Screen Slideshow State
   const [isSlideshowOpen, setIsSlideshowOpen] = useState(false);
@@ -159,23 +163,6 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     }
   };
 
-  const handleRemovePhotoFromAlbum = async (photoId: number) => {
-    if (!activeAlbumId) return;
-    try {
-      const res = await fetch(`http://127.0.0.1:8000/api/albums/${activeAlbumId}/photos/${photoId}`, {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        setAlbumPhotos((prev) => prev.filter((p) => p.id !== photoId));
-        setActiveAlbumMeta((prev) => (prev ? { ...prev, photo_count: Math.max(0, (prev.photo_count || 1) - 1) } : null));
-        setAlbums((prev) =>
-          prev.map((a) => (a.id === activeAlbumId ? { ...a, photo_count: Math.max(0, (a.photo_count || 1) - 1) } : a))
-        );
-      }
-    } catch (err) {
-      console.error("Failed to remove photo from album:", err);
-    }
-  };
 
   const openFavoritesAlbum = async () => {
     setActiveAlbumId(-1);
@@ -246,13 +233,10 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     });
   };
 
-  const handleBatchRemoveFromAlbum = async () => {
-    if (!activeAlbumId || selectedAlbumPhotoIds.size === 0 || isBatchRemoving) return;
-    const ids = Array.from(selectedAlbumPhotoIds);
-    if (!window.confirm(`Remove ${ids.length} ${ids.length === 1 ? "photo" : "photos"} from this album? Photos will remain in your library.`)) {
-      return;
-    }
-    setIsBatchRemoving(true);
+  const handleConfirmRemoveFromAlbumOnly = async () => {
+    if (!activeAlbumId || !removalModalTarget || isRemovalProcessing) return;
+    setIsRemovalProcessing(true);
+    const ids = removalModalTarget.photoIds;
     try {
       const res = await fetch(`http://127.0.0.1:8000/api/albums/${activeAlbumId}/photos/batch-remove`, {
         method: "POST",
@@ -262,7 +246,11 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
       if (res.ok) {
         const removedSet = new Set(ids);
         setAlbumPhotos((prev) => prev.filter((p) => !removedSet.has(p.id)));
-        setSelectedAlbumPhotoIds(new Set());
+        setSelectedAlbumPhotoIds((prev) => {
+          const next = new Set(prev);
+          ids.forEach((id) => next.delete(id));
+          return next;
+        });
         setActiveAlbumMeta((prev) =>
           prev ? { ...prev, photo_count: Math.max(0, (prev.photo_count || ids.length) - ids.length) } : null
         );
@@ -273,11 +261,51 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               : a
           )
         );
+        showToast(`Removed ${ids.length} photo(s) from album. They remain safe in your library.`, "info");
+        setRemovalModalTarget(null);
       }
     } catch (err) {
-      console.error("Failed to batch remove photos from album:", err);
+      console.error("Failed to remove photo(s) from album:", err);
     } finally {
-      setIsBatchRemoving(false);
+      setIsRemovalProcessing(false);
+    }
+  };
+
+  const handleConfirmMoveToTrash = async () => {
+    if (!activeAlbumId || !removalModalTarget || isRemovalProcessing) return;
+    setIsRemovalProcessing(true);
+    const ids = removalModalTarget.photoIds;
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/photos/batch-trash", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo_ids: ids }),
+      });
+      if (res.ok) {
+        const removedSet = new Set(ids);
+        setAlbumPhotos((prev) => prev.filter((p) => !removedSet.has(p.id)));
+        setSelectedAlbumPhotoIds((prev) => {
+          const next = new Set(prev);
+          ids.forEach((id) => next.delete(id));
+          return next;
+        });
+        setActiveAlbumMeta((prev) =>
+          prev ? { ...prev, photo_count: Math.max(0, (prev.photo_count || ids.length) - ids.length) } : null
+        );
+        setAlbums((prev) =>
+          prev.map((a) =>
+            a.id === activeAlbumId
+              ? { ...a, photo_count: Math.max(0, (a.photo_count || ids.length) - ids.length) }
+              : a
+          )
+        );
+        showToast(`Moved ${ids.length} photo(s) to Trash (held for 30 days)`, "info");
+        setRemovalModalTarget(null);
+      }
+    } catch (err) {
+      console.error("Failed to move photo(s) to trash:", err);
+    } finally {
+      setIsRemovalProcessing(false);
     }
   };
 
@@ -464,10 +492,10 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     fontSize: "12px",
                     cursor: "pointer",
                   }}
-                  title="Delete this album"
+                  title="Delete this album (Photos will remain safe in your library)"
                 >
                   <Trash2 size={14} />
-                  Delete
+                  Delete Album
                 </button>
               </>
             )}
@@ -672,9 +700,9 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleRemovePhotoFromAlbum(photo.id);
+                            setRemovalModalTarget({ photoIds: [photo.id] });
                           }}
-                          title="Remove from album"
+                          title="Remove from album or move to trash"
                           style={{
                             background: "rgba(0, 0, 0, 0.65)",
                             border: "1px solid rgba(255, 255, 255, 0.3)",
@@ -918,8 +946,10 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
             </span>
 
             <button
-              onClick={handleBatchRemoveFromAlbum}
-              disabled={isBatchRemoving}
+              onClick={() => {
+                if (selectedAlbumPhotoIds.size === 0) return;
+                setRemovalModalTarget({ photoIds: Array.from(selectedAlbumPhotoIds) });
+              }}
               className="clickable"
               style={{
                 display: "flex",
@@ -935,7 +965,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                 cursor: "pointer",
               }}
             >
-              {isBatchRemoving ? <Loader2 size={13} className="spin" /> : <Trash2 size={13} />}
+              <Trash2 size={13} />
               Remove from Album
             </button>
 
@@ -963,6 +993,16 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
           albumName={activeAlbumMeta.name}
           photos={albumPhotos}
           onClose={() => setIsSlideshowOpen(false)}
+        />
+
+        {/* In-Album Photo Removal Choice Modal */}
+        <RemoveFromAlbumModal
+          isOpen={removalModalTarget !== null}
+          photoCount={removalModalTarget?.photoIds.length || 0}
+          onClose={() => setRemovalModalTarget(null)}
+          onRemoveFromAlbumOnly={handleConfirmRemoveFromAlbumOnly}
+          onMoveToTrash={handleConfirmMoveToTrash}
+          isProcessing={isRemovalProcessing}
         />
       </div>
     );

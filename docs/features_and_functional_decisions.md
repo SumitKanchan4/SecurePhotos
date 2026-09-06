@@ -273,3 +273,51 @@ Replaces placeholder UI mock alerts (`creatives/collages/Summer_Mosaic.avif`) wi
 ### State & Lifecycle Impact
 - **Database Consistency**: Generating a collage writes a new record into `photos` and creates a junction link in `photo_album`. If the "Collages" album does not exist, it is created idempotently.
 - **Memory & Acutance**: Rendering executes on-demand using Pillow with streaming file handles. The resulting canvas is saved in high-efficiency WebP format (92 quality, method 4).
+
+---
+
+## 13. Download Notifications, Album Deletion Clarity, In-Album Removal Choice & Full-Lifecycle Trash Subsystem
+
+### Functionality Overview
+Delivers transparent download feedback, clears up ambiguous album deletion labeling, provides an explicit choice modal when removing photos from an album, and connects a full-lifecycle, production-grade Trash subsystem. Users downloading photos receive an immediate toast confirmation indicating that the file is downloading to their system Downloads folder. Inside albums, the delete button is explicitly labeled "Delete Album", and removing photos presents a modal offering either "Remove from Album Only" or "Move to Trash". The Trash tab now displays live 1024px photo thumbnails, 30-day countdown badges, and verified Restore / Permanent Purge actions.
+
+### Functional Decision Points & Rationale
+- **Universal Download Feedback**:
+  - *Problem*: Triggering a download gave no in-app feedback, leaving users unsure if a download had started or where it went.
+  - *Decision*: Implemented a floating glassmorphic `ToastNotification` component wired to `useAppStore.showToast`. Whenever a photo or batch of photos is downloaded from Lightbox or multi-select toolbar, a notification confirms: `📥 Downloading "${filename}" to your computer's Downloads folder...`.
+- **Album Deletion Clarity (`Delete Album`)**:
+  - *Problem*: In the album detail header, the delete button was ambiguously labeled `"Delete"`, causing user confusion about whether it deleted the album or the photos inside.
+  - *Decision*: Renamed the button to `"Delete Album"` with the tooltip `"Delete this album (Photos will remain safe in your library)"` and an explicit confirmation message reiterating that photos remain safe.
+- **In-Album Photo Removal Choice Modal (`RemoveFromAlbumModal`)**:
+  - *Problem*: Removing photos from an album only removed the junction link, forcing users to navigate to the Photos gallery to hunt down the image if their actual intent was deletion.
+  - *Decision*: Clicking `X` on a photo card or `"Remove from Album"` in the batch selection bar now launches `RemoveFromAlbumModal` offering strictly two choices:
+    1. **"Remove from Album Only"**: Removes junction link; photos remain in the Photos library.
+    2. **"Move to Trash"**: Removes from album and moves the photo(s) to Trash (soft delete, held for 30 days, recoverable).
+- **Strict Zero-Permanent-Deletion Policy Outside Trash**:
+  - *Policy*: To prevent irreversible data loss accidents, permanent deletion is **strictly prohibited** from galleries, lightboxes, and album views. All deletion outside Trash is a safe soft delete to Trash. Permanent purge from disk can **only** be initiated from inside the Trash tab.
+- **Full-Lifecycle Real Trash Subsystem**:
+  - *Problem*: Previously, `TrashView.tsx` was a disconnected UI stub with static empty state `[]`, and no API endpoints existed to list, restore, or empty trash. Soft-deleted photos had `trashed_at` set in SQLite, but were never displayed to the user.
+  - *Decision*: Built `engine/api/trash.py` mounted at `/api/trash`:
+    - `GET /api/trash`: Queries soft-deleted photos ordered by `trashed_at DESC` and calculates `days_remaining` based on a 30-day retention window.
+    - `POST /api/trash/restore`: Sets `trashed_at = NULL` to restore photos to the active library and timeline.
+    - `POST /api/trash/permanent` & `DELETE /api/trash/empty`: Unlinks physical files, thumbnails, and preview proxies from disk and purges SQLite records.
+    - Rewrote `TrashView.tsx` to fetch from `/api/trash`, render real 1024px thumbnails, show countdown badges (`N days left`), and support batch select, restore, and permanent deletion.
+
+### Technical Touchpoints
+- **Backend**:
+  - `engine/api/trash.py`: REST router with `GET /api/trash`, `POST /api/trash/restore`, `POST /api/trash/permanent`, and `DELETE /api/trash/empty`.
+  - `engine/main.py`: Mounted `trash.router`.
+  - `engine/tests/test_trash.py`: Automated pytest suite verifying trash listing, retention countdown, atomic restore, and permanent deletion.
+- **Frontend**:
+  - `src/store/useAppStore.ts`: Added `toast` state, `showToast()`, and `hideToast()`.
+  - `src/components/ToastNotification.tsx`: Glassmorphic auto-dismissing toast banner.
+  - `src/components/RemoveFromAlbumModal.tsx`: Two-option removal dialog ("Remove from Album Only" vs "Move to Trash").
+  - `src/components/AlbumsView.tsx`: Renamed button to "Delete Album", integrated `RemoveFromAlbumModal`.
+  - `src/components/Lightbox.tsx`: Added download toast notification.
+  - `src/components/TrashView.tsx`: Complete rewrite with real API integration, live thumbnails, countdowns, restore, and permanent purge.
+  - `src/App.tsx`: Mounted `ToastNotification`, added toast triggers for batch downloads and batch trash operations.
+
+### State & Lifecycle Impact
+- **Data Persistence**: Restoring a photo immediately resets `trashed_at` to `NULL`, causing it to reappear seamlessly across Photos, Timeline, and Albums.
+- **Disk Cleanliness**: Emptying or permanently deleting from trash physically unlinks the media file, thumbnail, and preview proxies, preventing orphaned disk storage.
+

@@ -20,6 +20,7 @@ import {
   Download,
 } from "lucide-react";
 import { PhotoItem, OptimizationProgress } from "../types";
+import { useAppStore } from "../store/useAppStore";
 
 interface LightboxProps {
   photos: PhotoItem[];
@@ -42,6 +43,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
   onDelete,
   onToggleFavorite,
 }) => {
+  const showToast = useAppStore((state) => state.showToast);
   const [zoom, setZoom] = useState(1);
   const [showInfo, setShowInfo] = useState(false);
   const [showSplitSlider, setShowSplitSlider] = useState(false);
@@ -137,10 +139,12 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
   const handleDownload = () => {
     if (!currentPhoto) return;
+    const filename = currentPhoto.filename || "photo.jpg";
+    showToast(`📥 Downloading "${filename}" to your computer's Downloads folder...`, "info");
     const downloadUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto.id}/download`;
     const link = document.createElement("a");
     link.href = downloadUrl;
-    link.setAttribute("download", currentPhoto.filename || "photo.jpg");
+    link.setAttribute("download", filename);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

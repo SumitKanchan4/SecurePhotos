@@ -22,6 +22,7 @@ interface AppState {
   isVaultUnlocked: boolean;
   prerequisites: SystemPrerequisites | null;
   totalPhotosCount: number;
+  toast: { id: number; message: string; type: "info" | "success" | "warning" } | null;
   
   // Actions
   setTheme: (theme: "dark" | "light") => void;
@@ -36,6 +37,8 @@ interface AppState {
   setIsVaultUnlocked: (unlocked: boolean) => void;
   setPrerequisites: (prerequisites: SystemPrerequisites | null) => void;
   setTotalPhotosCount: (count: number) => void;
+  showToast: (message: string, type?: "info" | "success" | "warning") => void;
+  hideToast: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -49,6 +52,7 @@ export const useAppStore = create<AppState>((set) => ({
   isVaultUnlocked: false,
   prerequisites: null,
   totalPhotosCount: 0,
+  toast: null,
 
   setTheme: (theme) => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -83,4 +87,12 @@ export const useAppStore = create<AppState>((set) => ({
   setIsVaultUnlocked: (isVaultUnlocked) => set({ isVaultUnlocked }),
   setPrerequisites: (prerequisites) => set({ prerequisites }),
   setTotalPhotosCount: (totalPhotosCount) => set({ totalPhotosCount }),
+  showToast: (message, type = "info") => {
+    const toastId = Date.now();
+    set({ toast: { id: toastId, message, type } });
+    setTimeout(() => {
+      set((state) => (state.toast?.id === toastId ? { toast: null } : state));
+    }, 4000);
+  },
+  hideToast: () => set({ toast: null }),
 }));

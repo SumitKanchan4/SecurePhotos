@@ -28,6 +28,7 @@ import { SettingsView } from "./components/SettingsView";
 import { CollageModal } from "./components/CollageModal";
 import { AddToAlbumModal } from "./components/AddToAlbumModal";
 import { UpdateModal } from "./components/UpdateModal";
+import { ToastNotification } from "./components/ToastNotification";
 import { useAppStore } from "./store/useAppStore";
 import { PhotoItem, SystemPrerequisites, OptimizationProgress, TimelineYearsData } from "./types";
 import { invoke } from "@tauri-apps/api/core";
@@ -44,6 +45,7 @@ export const App: React.FC = () => {
     setIsVaultUnlocked,
     setPrerequisites,
     setTotalPhotosCount,
+    showToast,
   } = useAppStore();
 
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
@@ -295,6 +297,7 @@ export const App: React.FC = () => {
       });
       if (res.ok) {
         setPhotos((prev) => prev.filter((p) => !selectedPhotoIds.has(p.id)));
+        showToast(`Moved ${ids.length} photo(s) to Trash (held for 30 days)`, "info");
         clearSelection();
         loadTimelineYears();
       }
@@ -306,6 +309,7 @@ export const App: React.FC = () => {
   const handleBatchDownload = () => {
     if (selectedPhotoIds.size === 0) return;
     const ids = Array.from(selectedPhotoIds);
+    showToast(`📥 Downloading ${ids.length} photo(s) to your computer's Downloads folder...`, "info");
     ids.forEach((id, idx) => {
       setTimeout(() => {
         const photo = photos.find((p) => p.id === id);
@@ -815,6 +819,9 @@ export const App: React.FC = () => {
           onClose={() => setIsUpdateModalOpen(false)}
         />
       )}
+
+      {/* Floating System Toast Notification */}
+      <ToastNotification />
     </div>
   );
 };
