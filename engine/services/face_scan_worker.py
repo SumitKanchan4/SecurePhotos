@@ -45,12 +45,9 @@ def get_scan_status() -> Dict[str, Any]:
     return dict(face_scan_state)
 
 
-async def run_background_face_scan() -> Dict[str, Any]:
+async def run_background_face_scan(force: bool = False) -> Dict[str, Any]:
     """Iterates through all unscanned library photos, extracting faces and ArcFace vectors."""
     global face_scan_state
-
-    if face_scan_state["is_scanning"]:
-        return {"status": "already_running", **get_scan_status()}
 
     async with _scan_lock:
         face_scan_state["is_scanning"] = True
@@ -58,6 +55,18 @@ async def run_background_face_scan() -> Dict[str, Any]:
 
         conn = await get_db_connection()
         try:
+            # If force rescan requested, or if 0 faces exist in DB, ensure photos are unscanned
+            if force:
+                await conn.execute("UPDATE photos SET faces_scanned = 0 WHERE trashed_at IS NULL;")
+                await conn.commit()
+            else:
+                async with conn.execute("SELECT COUNT(*) FROM faces;") as f_cur:
+                    f_row = await f_cur.fetchone()
+                    faces_in_db = f_row[0] if f_row else 0
+                if faces_in_db == 0:
+                    await conn.execute("UPDATE photos SET faces_scanned = 0 WHERE trashed_at IS NULL;")
+                    await conn.commit()
+
             # Query all active photos that haven't been scanned for faces yet
             async with conn.execute(
                 """
@@ -178,10 +187,12 @@ async def run_background_face_scan() -> Dict[str, Any]:
             await conn.close()
 
 
-def start_background_scan() -> None:
+def start_background_scan(force: bool = False) -> None:
     """Spawns the background face scan task asynchronously if not already running."""
     if not face_scan_state["is_scanning"]:
-        asyncio.create_task(run_background_face_scan())
+        face_scan_state["is_scanning"] = True
+        face_scan_state["error"] = None
+        asyncio.create_task(run_background_face_scan(force=force))
 
 
 def reset_scan_state() -> None:

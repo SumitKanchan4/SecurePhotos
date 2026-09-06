@@ -156,14 +156,22 @@ export const PeopleView: React.FC = () => {
 
   // Trigger manual face scan
   const handleTriggerScan = async () => {
+    // Immediate visual feedback
+    setScanStatus((prev) => ({
+      ...prev,
+      is_scanning: true,
+      scanned_photos: 0,
+      total_photos: prev.total_photos || 1,
+    }));
     try {
-      const res = await fetch(`${API_BASE}/people/scan`, { method: "POST" });
+      const res = await fetch(`${API_BASE}/people/scan?force=true`, { method: "POST" });
       if (res.ok) {
         const statusData: FaceScanStatus = await res.json();
         setScanStatus(statusData);
       }
     } catch (err) {
       console.error("Failed to trigger face scan:", err);
+      setScanStatus((prev) => ({ ...prev, is_scanning: false }));
     }
   };
 
@@ -600,11 +608,12 @@ export const PeopleView: React.FC = () => {
                 onClick={handleTriggerScan}
                 disabled={scanStatus.is_scanning}
                 className="clickable"
+                title="Scan library photos for faces"
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "8px",
-                  padding: "7px 16px",
+                  gap: "7px",
+                  padding: "7px 15px",
                   borderRadius: "var(--radius-sm)",
                   backgroundColor: scanStatus.is_scanning ? "var(--bg-surface-elevated)" : "var(--accent-primary)",
                   border: "1px solid var(--border-highlight)",
@@ -616,8 +625,8 @@ export const PeopleView: React.FC = () => {
                   boxShadow: "0 1px 3px rgba(0, 0, 0, 0.15)",
                 }}
               >
-                <RefreshCw size={14} className={scanStatus.is_scanning ? "spinning" : ""} />
-                {scanStatus.is_scanning ? "Scanning Library..." : "Scan Photos for Faces"}
+                <RefreshCw size={13} className={scanStatus.is_scanning ? "spinning" : ""} />
+                {scanStatus.is_scanning ? "Scanning..." : "Scan Faces"}
               </button>
             </div>
           </div>
@@ -741,7 +750,7 @@ export const PeopleView: React.FC = () => {
                       No People Identified Yet
                     </p>
                     <p style={{ fontSize: "12px", marginTop: "4px", maxWidth: "420px", lineHeight: "1.5" }}>
-                      Click "Scan Photos for Faces" above to run on-device facial detection across your media library.
+                      Click "Scan Faces" above to run on-device facial detection across your media library.
                     </p>
                   </div>
                 ) : (

@@ -231,9 +231,9 @@ async def get_face_crop(face_id: int):
 
 
 @router.post("/scan", response_model=ScanStatusResponse, status_code=status.HTTP_202_ACCEPTED)
-async def trigger_face_scan() -> ScanStatusResponse:
+async def trigger_face_scan(force: bool = False) -> ScanStatusResponse:
     """Manually triggers or resumes the background face recognition scan worker."""
-    start_background_scan()
+    start_background_scan(force=force)
     return ScanStatusResponse(**get_scan_status())
 
 

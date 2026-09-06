@@ -546,4 +546,26 @@ To maximize viewport room for unlabeled face cluster tagging while providing an 
 ### Technical Touchpoints
 - `src/components/PeopleView.tsx`: Added `RELATION_PRIORITY`, updated sorting logic, rendered horizontal avatar shelf with "See All" button, and created the full management modal.
 
+---
+
+## 10. Concise 'Scan Faces' Action, Force Rescan & Optimistic Progress Feedback
+
+### Functionality Overview
+1. **Concise Button Text**:
+   - Shortened the primary face scan action button from `"Scan Photos for Faces"` to **`"Scan Faces"`** (and `"Scanning Library..."` to **`"Scanning..."`**), eliminating wordiness.
+   - Updated the empty state prompt to: `Click "Scan Faces" above to run on-device facial detection across your media library.`
+2. **Force Rescan & Auto-Recovery (`force: bool = False`)**:
+   - Added a `force` query parameter to `POST /api/people/scan?force=true`.
+   - When triggered, if `force=True` or if `faces` table is currently empty, the background worker automatically resets `faces_scanned = 0` across active library photos and initiates a full scan.
+   - Prevents the "dead click" bug where clicking scan when all photos are marked `faces_scanned = 1` resulted in 0 unscanned items and no visible UI change.
+3. **Instant Optimistic Visual Feedback**:
+   - In `PeopleView.tsx`, clicking `"Scan Faces"` immediately sets `is_scanning: true` in local state before the HTTP request returns, instantly displaying the loading spinner and scanning progress banner without hesitation.
+   - Polling loop continuously tracks `scanned_photos`, `total_photos`, and `current_photo` until all faces are extracted and medoids clustered.
+
+### Technical Touchpoints
+- `engine/services/face_scan_worker.py`: Added `force: bool = False` to `run_background_face_scan` and `start_background_scan`; added zero-face auto-recovery; set `is_scanning = True` immediately upon invocation.
+- `engine/api/people.py`: Added `force: bool = False` query parameter to `POST /api/people/scan`.
+- `src/components/PeopleView.tsx`: Shortened button text to `"Scan Faces"` / `"Scanning..."`; updated `handleTriggerScan` to pass `?force=true` and set optimistic state.
+
+
 
