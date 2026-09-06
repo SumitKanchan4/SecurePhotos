@@ -100,3 +100,13 @@ export interface OptimizationProgress {
   last_completed_photo_id?: number | null;
 }
 
+export interface TimelineYearItem {
+  year: string;
+  count: number;
+}
+
+export interface TimelineYearsData {
+  total_count: number;
+  years: TimelineYearItem[];
+}
+

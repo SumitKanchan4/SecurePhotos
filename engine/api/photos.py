@@ -77,6 +77,18 @@ class BatchTrashResponse(BaseModel):
     trashed_count: int
 
 
+class TimelineYearItem(BaseModel):
+    """Represents a specific calendar year and its media item count."""
+    year: str
+    count: int
+
+
+class TimelineYearsResponse(BaseModel):
+    """Summary of active timeline years with photo counts."""
+    total_count: int
+    years: List[TimelineYearItem]
+
+
 
 # Global in-memory progress tracker
 optimization_state = {
@@ -243,6 +255,46 @@ async def list_photos(
 
     await conn.close()
     return results
+
+
+@router.get("/timeline-years", response_model=TimelineYearsResponse, status_code=status.HTTP_200_OK)
+async def get_timeline_years() -> TimelineYearsResponse:
+    """Returns distinct years that actually have photos, along with photo counts."""
+    conn = await get_db_connection()
+    try:
+        # Total count of active, non-trashed, non-encrypted photos
+        async with conn.execute(
+            "SELECT COUNT(*) AS total FROM photos WHERE is_encrypted = 0 AND trashed_at IS NULL;"
+        ) as cursor:
+            row = await cursor.fetchone()
+            total_count = row["total"] if row else 0
+
+        # Aggregated photo count grouped by year
+        query = """
+            SELECT 
+                CASE 
+                    WHEN taken_at IS NULL OR taken_at = '' THEN 'Undated'
+                    ELSE strftime('%Y', taken_at)
+                END AS year_label,
+                COUNT(*) AS photo_count
+            FROM photos
+            WHERE is_encrypted = 0 AND trashed_at IS NULL
+            GROUP BY year_label
+            ORDER BY 
+                CASE WHEN year_label = 'Undated' THEN 1 ELSE 0 END ASC,
+                year_label DESC;
+        """
+        async with conn.execute(query) as cursor:
+            rows = await cursor.fetchall()
+            years = [
+                TimelineYearItem(year=row["year_label"], count=row["photo_count"])
+                for row in rows
+                if row["year_label"]
+            ]
+    finally:
+        await conn.close()
+
+    return TimelineYearsResponse(total_count=total_count, years=years)
 
 
 @router.get("/{photo_id}/thumbnail")

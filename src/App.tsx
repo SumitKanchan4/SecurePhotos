@@ -6,7 +6,8 @@ import {
   FolderSync, 
   LayoutGrid,
   Loader2,
-  Trash2
+  Trash2,
+  Calendar
 } from "lucide-react";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
@@ -26,7 +27,7 @@ import { SettingsView } from "./components/SettingsView";
 import { CollageModal } from "./components/CollageModal";
 import { UpdateModal } from "./components/UpdateModal";
 import { useAppStore } from "./store/useAppStore";
-import { PhotoItem, SystemPrerequisites, OptimizationProgress } from "./types";
+import { PhotoItem, SystemPrerequisites, OptimizationProgress, TimelineYearsData } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { check, Update } from "@tauri-apps/plugin-updater";
 
@@ -51,6 +52,17 @@ export const App: React.FC = () => {
   const [activeStoryId, setActiveStoryId] = useState<number | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [optimizationProgress, setOptimizationProgress] = useState<OptimizationProgress | null>(null);
+  const [timelineData, setTimelineData] = useState<TimelineYearsData>({ total_count: 0, years: [] });
+
+  const loadTimelineYears = async () => {
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/photos/timeline-years");
+      if (res.ok) {
+        const data: TimelineYearsData = await res.json();
+        setTimelineData(data);
+      }
+    } catch {}
+  };
 
   // Load photos from engine with optional Year or Undated filtering
   const loadPhotos = async (selectedYear: string = activeYear) => {
@@ -80,6 +92,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     loadPhotos(activeYear);
+    loadTimelineYears();
   }, [activeYear]);
 
   // Real-time polling for background 4K optimization progress
@@ -218,6 +231,7 @@ export const App: React.FC = () => {
 
   const handleDeletePhoto = (photoId: number) => {
     setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+    loadTimelineYears();
     if (lightboxIndex !== null) {
       if (photos.length <= 1) {
         setLightboxIndex(null);
@@ -239,6 +253,7 @@ export const App: React.FC = () => {
       if (res.ok) {
         setPhotos((prev) => prev.filter((p) => !selectedPhotoIds.has(p.id)));
         clearSelection();
+        loadTimelineYears();
       }
     } catch (err) {
       console.error("Batch delete failed:", err);
@@ -515,37 +530,96 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Timeline Year Filter Bar */}
+              {/* Scalable Data-Driven Timeline Year Filter Ribbon */}
               <div 
                 style={{
                   display: "flex",
                   alignItems: "center",
                   gap: "8px",
-                  padding: "8px 20px",
+                  padding: "6px 20px",
                   fontSize: "12px",
                   borderBottom: "1px solid var(--border-subtle)",
                   backgroundColor: "var(--bg-sidebar)",
+                  overflowX: "auto",
+                  whiteSpace: "nowrap",
+                  scrollbarWidth: "none",
                 }}
               >
-                <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>Timeline:</span>
-                {["All Years", "2026", "2025", "2024", "2023", "2022", "Undated"].map((year) => {
-                  const isActive = activeYear === year;
+                <div style={{ display: "flex", alignItems: "center", gap: "5px", color: "var(--text-muted)", fontWeight: 600, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px", flexShrink: 0, marginRight: "4px" }}>
+                  <Calendar size={13} style={{ color: "var(--accent-primary)" }} />
+                  <span>Timeline:</span>
+                </div>
+
+                {/* All Years Pill */}
+                <button
+                  className="clickable"
+                  onClick={() => setActiveYear("All Years")}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: activeYear === "All Years" ? "var(--accent-primary)" : "rgba(255, 255, 255, 0.04)",
+                    color: activeYear === "All Years" ? "#ffffff" : "var(--text-secondary)",
+                    border: activeYear === "All Years" ? "1px solid transparent" : "1px solid var(--border-subtle)",
+                    padding: "3px 10px",
+                    borderRadius: "var(--radius-full)",
+                    fontSize: "11px",
+                    fontWeight: activeYear === "All Years" ? 600 : 500,
+                    flexShrink: 0,
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <span>All</span>
+                  {timelineData.total_count > 0 && (
+                    <span 
+                      style={{ 
+                        fontSize: "10px", 
+                        opacity: activeYear === "All Years" ? 0.9 : 0.6,
+                        backgroundColor: activeYear === "All Years" ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.06)",
+                        padding: "1px 5px",
+                        borderRadius: "10px",
+                      }}
+                    >
+                      {timelineData.total_count.toLocaleString()}
+                    </span>
+                  )}
+                </button>
+
+                {/* Dynamic Active Years Pills (Only years with photos) */}
+                {timelineData.years.map((item) => {
+                  const isActive = activeYear === item.year;
                   return (
                     <button
-                      key={year}
+                      key={item.year}
                       className="clickable"
-                      onClick={() => setActiveYear(year)}
+                      onClick={() => setActiveYear(item.year)}
                       style={{
-                        background: isActive ? "var(--accent-primary)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        background: isActive ? "var(--accent-primary)" : "rgba(255, 255, 255, 0.04)",
                         color: isActive ? "#ffffff" : "var(--text-secondary)",
-                        border: "none",
+                        border: isActive ? "1px solid transparent" : "1px solid var(--border-subtle)",
                         padding: "3px 10px",
                         borderRadius: "var(--radius-full)",
                         fontSize: "11px",
-                        fontWeight: isActive ? 600 : 400,
+                        fontWeight: isActive ? 600 : 500,
+                        flexShrink: 0,
+                        transition: "all 0.15s ease",
                       }}
                     >
-                      {year}
+                      <span>{item.year}</span>
+                      <span 
+                        style={{ 
+                          fontSize: "10px", 
+                          opacity: isActive ? 0.9 : 0.6,
+                          backgroundColor: isActive ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.06)",
+                          padding: "1px 5px",
+                          borderRadius: "10px",
+                        }}
+                      >
+                        {item.count.toLocaleString()}
+                      </span>
                     </button>
                   );
                 })}
@@ -570,7 +644,10 @@ export const App: React.FC = () => {
       <ImportModal 
         isOpen={isImportModalOpen} 
         onClose={() => setIsImportModalOpen(false)} 
-        onImportComplete={() => loadPhotos(activeYear)}
+        onImportComplete={() => {
+          loadPhotos(activeYear);
+          loadTimelineYears();
+        }}
       />
 
       {/* Vault Unlock Modal */}
