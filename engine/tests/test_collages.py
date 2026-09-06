@@ -85,51 +85,74 @@ async def test_create_collage_endpoint_and_album():
         p1 = await create_collage_test_photo(tmp_path, "c_p1.jpg", (255, 50, 50))
         p2 = await create_collage_test_photo(tmp_path, "c_p2.jpg", (50, 255, 50))
         p3 = await create_collage_test_photo(tmp_path, "c_p3.jpg", (50, 50, 255))
+        collage_photo_id = None
+        collage_file_path = None
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                # 1. Validation test: single photo rejected with 400
+                bad_res = await client.post("/api/creatives/collage", json={"photo_ids": [p1], "layout": "mosaic"})
+                assert bad_res.status_code == 400
 
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            # 1. Validation test: single photo rejected with 400
-            bad_res = await client.post("/api/creatives/collage", json={"photo_ids": [p1], "layout": "mosaic"})
-            assert bad_res.status_code == 400
+                # 2. Validation test: >9 photos rejected with 400
+                bad_res_many = await client.post(
+                    "/api/creatives/collage", json={"photo_ids": [p1] * 10, "layout": "mosaic"}
+                )
+                assert bad_res_many.status_code == 400
 
-            # 2. Validation test: >9 photos rejected with 400
-            bad_res_many = await client.post(
-                "/api/creatives/collage", json={"photo_ids": [p1] * 10, "layout": "mosaic"}
-            )
-            assert bad_res_many.status_code == 400
+                # 3. Successful 3-photo collage creation
+                res = await client.post(
+                    "/api/creatives/collage",
+                    json={"photo_ids": [p1, p2, p3], "layout": "hero_grid", "title": "Test Hero Collage"},
+                )
+                assert res.status_code == 201
+                data = res.json()
+                assert data["status"] == "ok"
+                collage_photo_id = data["photo_id"]
+                album_id = data["album_id"]
 
-            # 3. Successful 3-photo collage creation
-            res = await client.post(
-                "/api/creatives/collage",
-                json={"photo_ids": [p1, p2, p3], "layout": "hero_grid", "title": "Test Hero Collage"},
-            )
-            assert res.status_code == 201
-            data = res.json()
-            assert data["status"] == "ok"
-            collage_photo_id = data["photo_id"]
-            album_id = data["album_id"]
+                # 4. Verify the collage exists in the photos table
+                conn = await get_db_connection()
+                async with conn.execute("SELECT filepath, width, height FROM photos WHERE id = ?;", (collage_photo_id,)) as cur:
+                    photo_row = await cur.fetchone()
+                assert photo_row is not None
+                collage_file_path = Path(photo_row["filepath"])
+                assert collage_file_path.exists()
+                assert photo_row["width"] == 3840
+                assert photo_row["height"] == 2160
 
-            # 4. Verify the collage exists in the photos table
+                # 5. Verify the Collages album contains the new photo
+                async with conn.execute("SELECT name FROM albums WHERE id = ?;", (album_id,)) as cur:
+                    album_row = await cur.fetchone()
+                assert album_row["name"] == "Collages"
+
+                async with conn.execute(
+                    "SELECT photo_id FROM photo_album WHERE album_id = ? AND photo_id = ?;",
+                    (album_id, collage_photo_id),
+                ) as cur:
+                    link_row = await cur.fetchone()
+                assert link_row is not None
+                await conn.close()
+        finally:
+            # Clean up all created database records and generated collage files
             conn = await get_db_connection()
-            async with conn.execute("SELECT filepath, width, height FROM photos WHERE id = ?;", (collage_photo_id,)) as cur:
-                photo_row = await cur.fetchone()
-            assert photo_row is not None
-            assert Path(photo_row["filepath"]).exists()
-            assert photo_row["width"] == 3840
-            assert photo_row["height"] == 2160
+            try:
+                all_ids = [p1, p2, p3]
+                if collage_photo_id:
+                    all_ids.append(collage_photo_id)
+                    await conn.execute("DELETE FROM creative_assets WHERE filepath LIKE ?;", (f"%{collage_photo_id}%",))
+                for pid in all_ids:
+                    await conn.execute("DELETE FROM photo_album WHERE photo_id = ?;", (pid,))
+                    await conn.execute("DELETE FROM photos WHERE id = ?;", (pid,))
+                await conn.commit()
+            finally:
+                await conn.close()
 
-            # 5. Verify the Collages album contains the new photo
-            async with conn.execute("SELECT name FROM albums WHERE id = ?;", (album_id,)) as cur:
-                album_row = await cur.fetchone()
-            assert album_row["name"] == "Collages"
-
-            async with conn.execute(
-                "SELECT photo_id FROM photo_album WHERE album_id = ? AND photo_id = ?;",
-                (album_id, collage_photo_id),
-            ) as cur:
-                link_row = await cur.fetchone()
-            assert link_row is not None
-            await conn.close()
+            if collage_file_path and collage_file_path.exists():
+                try:
+                    collage_file_path.unlink()
+                except OSError:
+                    pass
 
 
 @pytest.mark.asyncio
@@ -139,11 +162,19 @@ async def test_download_photo_endpoint():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         p1 = await create_collage_test_photo(tmp_path, "download_sample.jpg", (100, 150, 200))
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                res = await client.get(f"/api/photos/{p1}/download")
+                assert res.status_code == 200
+                assert "attachment" in res.headers.get("content-disposition", "")
+                assert "download_sample.jpg" in res.headers.get("content-disposition", "")
+                assert len(res.content) > 0
+        finally:
+            conn = await get_db_connection()
+            try:
+                await conn.execute("DELETE FROM photos WHERE id = ?;", (p1,))
+                await conn.commit()
+            finally:
+                await conn.close()
 
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            res = await client.get(f"/api/photos/{p1}/download")
-            assert res.status_code == 200
-            assert "attachment" in res.headers.get("content-disposition", "")
-            assert "download_sample.jpg" in res.headers.get("content-disposition", "")
-            assert len(res.content) > 0

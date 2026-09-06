@@ -22,8 +22,9 @@ from engine.database import get_db_connection
 logger = logging.getLogger("securephotos.face_clustering")
 
 # Cosine distance threshold for ArcFace (distance = 1.0 - cosine_similarity)
-# ArcFace cosine similarity: >= 0.58 (distance <= 0.42) indicates identical identity
-SIMILARITY_THRESHOLD = 0.58
+# ArcFace cosine similarity: >= 0.52 (distance <= 0.48) robustly groups identical identities
+# across smiles, expressive features, and tilted/reclined poses without collapsing distinct individuals
+SIMILARITY_THRESHOLD = 0.52
 DISTANCE_THRESHOLD = 1.0 - SIMILARITY_THRESHOLD
 
 

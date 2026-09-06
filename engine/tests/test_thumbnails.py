@@ -73,24 +73,28 @@ async def test_thumbnail_regeneration_api():
         img_path = create_test_image(tmp_path / "regen_test.jpg", width=1000, height=1000)
 
         conn = await get_db_connection()
+        photo_id = None
         try:
             photo_id = await ingest_single_photo(conn, img_path, mode="copy")
+            assert photo_id is not None
+
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                # Trigger background regeneration
+                res_trigger = await client.post("/api/photos/regenerate-thumbnails")
+                assert res_trigger.status_code == 202
+                assert res_trigger.json()["status"] == "started"
+
+                # Check progress endpoint
+                res_progress = await client.get("/api/photos/thumbnail-regeneration-progress")
+                assert res_progress.status_code == 200
+                data = res_progress.json()
+                assert "is_active" in data
+                assert "total_count" in data
+                assert "completed_count" in data
         finally:
+            if photo_id:
+                await conn.execute("DELETE FROM photos WHERE id = ?;", (photo_id,))
+                await conn.commit()
             await conn.close()
 
-        assert photo_id is not None
-
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            # Trigger background regeneration
-            res_trigger = await client.post("/api/photos/regenerate-thumbnails")
-            assert res_trigger.status_code == 202
-            assert res_trigger.json()["status"] == "started"
-
-            # Check progress endpoint
-            res_progress = await client.get("/api/photos/thumbnail-regeneration-progress")
-            assert res_progress.status_code == 200
-            data = res_progress.json()
-            assert "is_active" in data
-            assert "total_count" in data
-            assert "completed_count" in data

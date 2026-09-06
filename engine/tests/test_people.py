@@ -92,7 +92,7 @@ def test_select_cluster_medoid():
 
 @pytest.mark.asyncio
 async def test_people_api_workflow():
-    """Verifies the complete People API workflow including scanning status and cluster tagging."""
+    """Verifies the complete People API workflow including scanning status, cluster tagging, and dismissal."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # 1. Check scan progress endpoint
@@ -114,41 +114,91 @@ async def test_people_api_workflow():
         people = people_res.json()
         assert isinstance(people, list)
 
-        # If any cluster exists, test 1-click tagging
+        # If any cluster exists, test 1-click tagging and cleanup
         if len(clusters) > 0:
             target_cluster = clusters[0]["cluster_id"]
-            tag_res = await client.post(
-                "/api/people/tag-cluster",
-                json={
-                    "cluster_id": target_cluster,
-                    "name": "Alex Test",
-                    "relationship_type": "Friend",
-                    "is_close_one": True,
-                },
-            )
-            assert tag_res.status_code == 200
-            tag_data = tag_res.json()
-            assert tag_data["status"] == "tagged"
-            assert tag_data["name"] == "Alex Test"
+            tagged_person_id = None
+            try:
+                tag_res = await client.post(
+                    "/api/people/tag-cluster",
+                    json={
+                        "cluster_id": target_cluster,
+                        "name": "Alex Test Person",
+                        "relationship_type": "Friend",
+                        "is_close_one": True,
+                    },
+                )
+                assert tag_res.status_code == 200
+                tag_data = tag_res.json()
+                assert tag_data["status"] == "tagged"
+                assert tag_data["name"] == "Alex Test Person"
+                tagged_person_id = tag_data["person_id"]
 
-            # Check that Alex Test now appears in /api/people
-            people_after = (await client.get("/api/people")).json()
-            names = [p["name"] for p in people_after]
-            assert "Alex Test" in names
+                # Check that Alex Test Person now appears in /api/people
+                people_after = (await client.get("/api/people")).json()
+                names = [p["name"] for p in people_after]
+                assert "Alex Test Person" in names
 
-            # Check person photos endpoint
-            alex = [p for p in people_after if p["name"] == "Alex Test"][0]
-            photos_res = await client.get(f"/api/people/{alex['id']}/photos")
-            assert photos_res.status_code == 200
-            alex_photos = photos_res.json()
-            assert len(alex_photos) >= 1
+                # Check person photos endpoint
+                alex = [p for p in people_after if p["name"] == "Alex Test Person"][0]
+                photos_res = await client.get(f"/api/people/{alex['id']}/photos")
+                assert photos_res.status_code == 200
+                alex_photos = photos_res.json()
+                assert len(alex_photos) >= 1
 
-            # Test updating granular relationship to 'Wife'
-            update_res = await client.patch(
-                f"/api/people/{alex['id']}",
-                json={"relationship_type": "Wife"},
-            )
-            assert update_res.status_code == 200
-            updated_alex = update_res.json()
-            assert updated_alex["relationship_type"] == "Wife"
-            assert updated_alex["is_close_one"] is True
+                # Test updating granular relationship to 'Spouse'
+                update_res = await client.patch(
+                    f"/api/people/{alex['id']}",
+                    json={"relationship_type": "Spouse"},
+                )
+                assert update_res.status_code == 200
+                updated_alex = update_res.json()
+                assert updated_alex["relationship_type"] == "Spouse"
+                assert updated_alex["is_close_one"] is True
+            finally:
+                # Mandatory test teardown: clean up person and unlink faces
+                if tagged_person_id:
+                    conn = await get_db_connection()
+                    try:
+                        await conn.execute("UPDATE faces SET person_id = NULL WHERE person_id = ?;", (tagged_person_id,))
+                        await conn.execute("DELETE FROM persons WHERE id = ?;", (tagged_person_id,))
+                        await conn.commit()
+                    finally:
+                        await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_dismiss_cluster_endpoint():
+    """Verifies POST /api/people/clusters/{cluster_id}/dismiss cleanly removes false-positive candidate faces."""
+    conn = await get_db_connection()
+    try:
+        # Create a mock false-positive face record
+        cursor = await conn.execute(
+            """
+            INSERT INTO faces (photo_id, cluster_id, box_x, box_y, box_w, box_h, quality_score, embedding)
+            VALUES (1, 'cluster_mock_dismiss', 0.1, 0.1, 0.2, 0.2, 0.8, '[]')
+            RETURNING id;
+            """
+        )
+        row = await cursor.fetchone()
+        mock_face_id = row[0]
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.post("/api/people/clusters/cluster_mock_dismiss/dismiss")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "dismissed"
+        assert data["faces_removed"] >= 1
+
+        # Verify face record is removed from database
+        conn = await get_db_connection()
+        try:
+            async with conn.execute("SELECT id FROM faces WHERE id = ?;", (mock_face_id,)) as cur:
+                assert await cur.fetchone() is None
+        finally:
+            await conn.close()
+

@@ -80,20 +80,28 @@ async def test_neural_enhance_endpoint_success():
             return dest_p, 640, 480, dest_p.stat().st_size
 
         transport = ASGITransport(app=app)
-        with patch("engine.services.neural_sr_service.neural_enhance_image", side_effect=dummy_neural_enhance):
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                res = await client.post(f"/api/photos/{photo_id}/neural-enhance")
-                assert res.status_code == 200
-                data = res.json()
-                assert data["status"] == "ok"
-                assert data["photo_id"] == photo_id
-                assert data["width"] == 640
-                assert data["height"] == 480
+        try:
+            with patch("engine.services.neural_sr_service.neural_enhance_image", side_effect=dummy_neural_enhance):
+                async with AsyncClient(transport=transport, base_url="http://test") as client:
+                    res = await client.post(f"/api/photos/{photo_id}/neural-enhance")
+                    assert res.status_code == 200
+                    data = res.json()
+                    assert data["status"] == "ok"
+                    assert data["photo_id"] == photo_id
+                    assert data["width"] == 640
+                    assert data["height"] == 480
 
-                # Verify neural preview stream
-                prev_res = await client.get(f"/api/photos/{photo_id}/neural-preview")
-                assert prev_res.status_code == 200
-                assert prev_res.headers["content-type"] == "image/webp"
+                    # Verify neural preview stream
+                    prev_res = await client.get(f"/api/photos/{photo_id}/neural-preview")
+                    assert prev_res.status_code == 200
+                    assert prev_res.headers["content-type"] == "image/webp"
+        finally:
+            conn = await get_db_connection()
+            try:
+                await conn.execute("DELETE FROM photos WHERE id = ?;", (photo_id,))
+                await conn.commit()
+            finally:
+                await conn.close()
 
 
 @pytest.mark.asyncio
@@ -112,20 +120,28 @@ async def test_face_restore_endpoint_success():
             return dest_p, 320, 240, dest_p.stat().st_size
 
         transport = ASGITransport(app=app)
-        with patch("engine.services.face_restore_service.restore_faces_in_image", side_effect=dummy_face_restore):
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                res = await client.post(f"/api/photos/{photo_id}/face-restore")
-                assert res.status_code == 200
-                data = res.json()
-                assert data["status"] == "ok"
-                assert data["photo_id"] == photo_id
-                assert data["width"] == 320
-                assert data["height"] == 240
+        try:
+            with patch("engine.services.face_restore_service.restore_faces_in_image", side_effect=dummy_face_restore):
+                async with AsyncClient(transport=transport, base_url="http://test") as client:
+                    res = await client.post(f"/api/photos/{photo_id}/face-restore")
+                    assert res.status_code == 200
+                    data = res.json()
+                    assert data["status"] == "ok"
+                    assert data["photo_id"] == photo_id
+                    assert data["width"] == 320
+                    assert data["height"] == 240
 
-                # Verify face restore preview stream
-                prev_res = await client.get(f"/api/photos/{photo_id}/face-restore-preview")
-                assert prev_res.status_code == 200
-                assert prev_res.headers["content-type"] == "image/webp"
+                    # Verify face restore preview stream
+                    prev_res = await client.get(f"/api/photos/{photo_id}/face-restore-preview")
+                    assert prev_res.status_code == 200
+                    assert prev_res.headers["content-type"] == "image/webp"
+        finally:
+            conn = await get_db_connection()
+            try:
+                await conn.execute("DELETE FROM photos WHERE id = ?;", (photo_id,))
+                await conn.commit()
+            finally:
+                await conn.close()
 
 
 @pytest.mark.asyncio
@@ -137,11 +153,19 @@ async def test_get_photo_original_endpoint():
         photo_id = await create_test_photo(tmp_path)
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            res = await client.get(f"/api/photos/{photo_id}/original")
-            assert res.status_code == 200
-            assert res.headers["content-type"] == "image/jpeg"
-            assert len(res.content) > 0
+        try:
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                res = await client.get(f"/api/photos/{photo_id}/original")
+                assert res.status_code == 200
+                assert res.headers["content-type"] == "image/jpeg"
+                assert len(res.content) > 0
+        finally:
+            conn = await get_db_connection()
+            try:
+                await conn.execute("DELETE FROM photos WHERE id = ?;", (photo_id,))
+                await conn.commit()
+            finally:
+                await conn.close()
 
 
 @pytest.mark.asyncio

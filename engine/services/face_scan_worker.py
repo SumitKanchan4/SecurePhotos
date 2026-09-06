@@ -108,6 +108,18 @@ async def run_background_face_scan() -> Dict[str, Any]:
                     loop = asyncio.get_running_loop()
                     faces = await loop.run_in_executor(None, _process, photo_path)
 
+                    # Clean up any existing faces and thumbnails for this photo to prevent duplicate records
+                    async with conn.execute("SELECT id FROM faces WHERE photo_id = ?;", (photo_id,)) as cur:
+                        old_rows = await cur.fetchall()
+                        for old_r in old_rows:
+                            old_thumb = thumbnails_dir / f"{old_r['id']}.webp"
+                            if old_thumb.exists():
+                                try:
+                                    old_thumb.unlink()
+                                except OSError:
+                                    pass
+                    await conn.execute("DELETE FROM faces WHERE photo_id = ?;", (photo_id,))
+
                     for face in faces:
                         emb_json = json.dumps(face["embedding"])
                         cursor = await conn.execute(

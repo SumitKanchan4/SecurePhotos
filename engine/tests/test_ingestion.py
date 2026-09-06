@@ -112,25 +112,33 @@ async def test_managed_ingestion_and_deduplication():
         img_path = Path(tmpdir) / "original_photo.jpg"
         create_dummy_image(img_path, 1280, 720)
 
-        # Ingest photo in managed mode
-        photo_id = await ingest_single_photo(conn, img_path, mode="managed", delete_source=False)
-        assert photo_id is not None
-        assert photo_id > 0
+        managed_filepath = None
+        try:
+            # Ingest photo in managed mode
+            photo_id = await ingest_single_photo(conn, img_path, mode="managed", delete_source=False)
+            assert photo_id is not None
+            assert photo_id > 0
 
-        # Attempt to ingest the exact same file again (deduplication check)
-        duplicate_id = await ingest_single_photo(conn, img_path, mode="managed", delete_source=False)
-        assert duplicate_id == photo_id  # Must return existing ID without duplicate insert
+            # Attempt to ingest the exact same file again (deduplication check)
+            duplicate_id = await ingest_single_photo(conn, img_path, mode="managed", delete_source=False)
+            assert duplicate_id == photo_id  # Must return existing ID without duplicate insert
 
-        # Check database record
-        async with conn.execute("SELECT id, filename, is_managed, width, height FROM photos WHERE id = ?;", (photo_id,)) as cursor:
-            row = await cursor.fetchone()
-            assert row is not None
-            assert row["filename"] == "original_photo.jpg"
-            assert row["is_managed"] == 1
-            assert row["width"] == 1280
-            assert row["height"] == 720
-
-        await conn.close()
+            # Check database record
+            async with conn.execute("SELECT id, filename, filepath, is_managed, width, height FROM photos WHERE id = ?;", (photo_id,)) as cursor:
+                row = await cursor.fetchone()
+                assert row is not None
+                assert row["filename"] == "original_photo.jpg"
+                assert row["is_managed"] == 1
+                assert row["width"] == 1280
+                assert row["height"] == 720
+                managed_filepath = Path(row["filepath"])
+        finally:
+            await conn.close()
+            if managed_filepath and managed_filepath.exists():
+                try:
+                    managed_filepath.unlink()
+                except OSError:
+                    pass
 
 
 @pytest.mark.asyncio
@@ -153,28 +161,39 @@ async def test_whatsapp_extraction_and_undated_api_filter():
         await run_migrations(db_path)
         conn = await get_db_connection(db_path)
 
-        # 1. WhatsApp image without EXIF metadata
-        wa_path = Path(tmpdir) / "IMG-20220815-WA0001.jpg"
-        create_dummy_image(wa_path, 800, 600)
-        wa_id = await ingest_single_photo(conn, wa_path, mode="managed")
-        assert wa_id is not None
+        paths_to_clean = []
+        try:
+            # 1. WhatsApp image without EXIF metadata
+            wa_path = Path(tmpdir) / "IMG-20220815-WA0001.jpg"
+            create_dummy_image(wa_path, 800, 600)
+            wa_id = await ingest_single_photo(conn, wa_path, mode="managed")
+            assert wa_id is not None
 
-        async with conn.execute("SELECT taken_at FROM photos WHERE id = ?;", (wa_id,)) as cursor:
-            wa_row = await cursor.fetchone()
-            assert wa_row["taken_at"] is not None
-            assert "2022-08-15" in wa_row["taken_at"]
+            async with conn.execute("SELECT taken_at, filepath FROM photos WHERE id = ?;", (wa_id,)) as cursor:
+                wa_row = await cursor.fetchone()
+                assert wa_row["taken_at"] is not None
+                assert "2022-08-15" in wa_row["taken_at"]
+                paths_to_clean.append(Path(wa_row["filepath"]))
 
-        # 2. Completely undated image with distinct bitwise content
-        undated_path = Path(tmpdir) / "undated_graphic.jpg"
-        create_dummy_image(undated_path, 800, 600, color=(200, 100, 50))
-        undated_id = await ingest_single_photo(conn, undated_path, mode="managed")
-        assert undated_id is not None
+            # 2. Completely undated image with distinct bitwise content
+            undated_path = Path(tmpdir) / "undated_graphic.jpg"
+            create_dummy_image(undated_path, 800, 600, color=(200, 100, 50))
+            undated_id = await ingest_single_photo(conn, undated_path, mode="managed")
+            assert undated_id is not None
 
-        async with conn.execute("SELECT taken_at, filepath FROM photos WHERE id = ?;", (undated_id,)) as cursor:
-            undated_row = await cursor.fetchone()
-            assert undated_row["taken_at"] is None
-            assert "undated" in undated_row["filepath"]
+            async with conn.execute("SELECT taken_at, filepath FROM photos WHERE id = ?;", (undated_id,)) as cursor:
+                undated_row = await cursor.fetchone()
+                assert undated_row["taken_at"] is None
+                assert "undated" in undated_row["filepath"]
+                paths_to_clean.append(Path(undated_row["filepath"]))
+        finally:
+            await conn.close()
+            for p in paths_to_clean:
+                if p.exists():
+                    try:
+                        p.unlink()
+                    except OSError:
+                        pass
 
-        await conn.close()
 
 

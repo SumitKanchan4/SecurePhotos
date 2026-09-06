@@ -10,7 +10,8 @@ import {
   Image as ImageIcon,
   Heart,
   Loader2,
-  Tag
+  Tag,
+  UserX
 } from "lucide-react";
 import { PersonItem, UnlabeledClusterItem, FaceScanStatus, PhotoItem } from "../types";
 
@@ -58,6 +59,7 @@ export const PeopleView: React.FC = () => {
   const [tagRelationships, setTagRelationships] = useState<{ [clusterId: string]: string }>({});
   const [tagCloseOnes, setTagCloseOnes] = useState<{ [clusterId: string]: boolean }>({});
   const [submittingCluster, setSubmittingCluster] = useState<string | null>(null);
+  const [dismissingCluster, setDismissingCluster] = useState<string | null>(null);
 
   // Selected person detail view (viewing photos of a person)
   const [selectedPerson, setSelectedPerson] = useState<PersonItem | null>(null);
@@ -144,12 +146,42 @@ export const PeopleView: React.FC = () => {
     }
   };
 
+  // Handle typing name or selecting from autocomplete (auto-fills relationship & VIP status)
+  const handleNameChange = (clusterId: string, name: string) => {
+    setTagNames((prev) => ({ ...prev, [clusterId]: name }));
+    // Auto-fill existing person details if name matches
+    const matched = people.find((p) => p.name.trim().toLowerCase() === name.trim().toLowerCase());
+    if (matched) {
+      if (matched.relationship_type) {
+        setTagRelationships((prev) => ({ ...prev, [clusterId]: matched.relationship_type || "Friend" }));
+      }
+      setTagCloseOnes((prev) => ({ ...prev, [clusterId]: matched.is_close_one }));
+    }
+  };
+
   // Handle relationship change on a cluster card
   const handleClusterRelChange = (clusterId: string, value: string) => {
     setTagRelationships((prev) => ({ ...prev, [clusterId]: value }));
     // Auto-check Close One (VIP) if it's an immediate family or partner relation
     if (CLOSE_RELATIONSHIPS.has(value)) {
       setTagCloseOnes((prev) => ({ ...prev, [clusterId]: true }));
+    }
+  };
+
+  // Dismiss a cluster as Not a Face / False Positive
+  const handleDismissCluster = async (clusterId: string) => {
+    setDismissingCluster(clusterId);
+    try {
+      const res = await fetch(`${API_BASE}/people/clusters/${clusterId}/dismiss`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        setUnlabeledClusters((prev) => prev.filter((c) => c.cluster_id !== clusterId));
+      }
+    } catch (err) {
+      console.error("Failed to dismiss cluster:", err);
+    } finally {
+      setDismissingCluster(null);
     }
   };
 
@@ -552,6 +584,15 @@ export const PeopleView: React.FC = () => {
             </div>
           )}
 
+          {/* Autocomplete Datalist for Recognized People */}
+          <datalist id="existing-people-datalist">
+            {people.map((p) => (
+              <option key={p.id} value={p.name}>
+                {p.relationship_type ? `${p.relationship_type}` : ""}
+              </option>
+            ))}
+          </datalist>
+
           {/* Section 1: Unlabeled Face Clusters ("Name Once, Tag 1,000 Photos") */}
           {unlabeledClusters.length > 0 && (
             <div>
@@ -609,59 +650,84 @@ export const PeopleView: React.FC = () => {
                         </span>
                       </div>
 
-                      {/* 4 Diverse Anchor Medoid Avatar Crops */}
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px" }}>
-                        {(cluster.anchor_face_ids.length > 0 ? cluster.anchor_face_ids : [cluster.medoid_face_id]).filter(Boolean).map((faceId, idx) => (
+                      {/* Distinct Photo Anchor Medoid Avatar Crops */}
+                      {(() => {
+                        const facesToShow = (cluster.anchor_face_ids && cluster.anchor_face_ids.length > 0
+                          ? cluster.anchor_face_ids
+                          : [cluster.medoid_face_id]
+                        ).filter((id): id is number => typeof id === "number");
+
+                        const numTiles = Math.min(4, Math.max(1, facesToShow.length));
+
+                        return (
                           <div
-                            key={idx}
                             style={{
-                              aspectRatio: "1",
+                              display: numTiles === 1 ? "flex" : "grid",
+                              gridTemplateColumns: numTiles > 1 ? `repeat(${numTiles}, 1fr)` : undefined,
+                              justifyContent: numTiles === 1 ? "center" : undefined,
+                              gap: "10px",
+                              backgroundColor: "var(--bg-sidebar)",
+                              padding: "10px",
                               borderRadius: "var(--radius-sm)",
-                              overflow: "hidden",
-                              backgroundColor: "var(--bg-surface-elevated)",
-                              border: idx === 0 ? "2px solid var(--accent-primary)" : "1px solid var(--border-subtle)",
-                              position: "relative",
                             }}
                           >
-                            <img
-                              src={`${API_BASE}/people/faces/${faceId}/crop`}
-                              alt={`Face ${faceId}`}
-                              loading="lazy"
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
-                              }}
-                            />
-                            {idx === 0 && (
+                            {facesToShow.map((faceId, idx) => (
                               <div
+                                key={faceId}
                                 style={{
-                                  position: "absolute",
-                                  bottom: "2px",
-                                  left: "2px",
-                                  backgroundColor: "rgba(0,0,0,0.75)",
-                                  color: "var(--accent-primary)",
-                                  fontSize: "9px",
-                                  fontWeight: 700,
-                                  padding: "1px 5px",
-                                  borderRadius: "3px",
+                                  width: numTiles === 1 ? "120px" : "100%",
+                                  height: numTiles === 1 ? "120px" : undefined,
+                                  aspectRatio: "1",
+                                  borderRadius: "var(--radius-sm)",
+                                  overflow: "hidden",
+                                  backgroundColor: "var(--bg-surface-elevated)",
+                                  border: idx === 0 ? "2px solid var(--accent-primary)" : "1px solid var(--border-subtle)",
+                                  position: "relative",
+                                  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.2)",
                                 }}
                               >
-                                Anchor
+                                <img
+                                  src={`${API_BASE}/people/faces/${faceId}/crop`}
+                                  alt={`Face ${faceId}`}
+                                  loading="lazy"
+                                  style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "cover",
+                                  }}
+                                />
+                                {idx === 0 && (
+                                  <div
+                                    style={{
+                                      position: "absolute",
+                                      bottom: "4px",
+                                      left: "4px",
+                                      backgroundColor: "rgba(0,0,0,0.75)",
+                                      color: "var(--accent-primary)",
+                                      fontSize: "9px",
+                                      fontWeight: 700,
+                                      padding: "1px 5px",
+                                      borderRadius: "3px",
+                                    }}
+                                  >
+                                    Anchor
+                                  </div>
+                                )}
                               </div>
-                            )}
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                        );
+                      })()}
 
-                      {/* Inputs: Name, Relationship Selector, Close One Toggle */}
+                      {/* Inputs: Name with Autocomplete, Relationship Selector, Close One Toggle */}
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                         <div style={{ display: "flex", gap: "8px" }}>
                           <input
                             type="text"
+                            list="existing-people-datalist"
                             placeholder="Enter person name (e.g. Maya, David)..."
                             value={currentName}
-                            onChange={(e) => setTagNames({ ...tagNames, [cluster.cluster_id]: e.target.value })}
+                            onChange={(e) => handleNameChange(cluster.cluster_id, e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") handleTagCluster(cluster);
                             }}
@@ -717,34 +783,100 @@ export const PeopleView: React.FC = () => {
                           </button>
                         </div>
 
-                        {/* 1-Click Action Button */}
-                        <button
-                          onClick={() => handleTagCluster(cluster)}
-                          disabled={!currentName.trim() || isSubmitting}
-                          className="clickable"
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: "8px",
-                            padding: "9px 16px",
-                            borderRadius: "var(--radius-sm)",
-                            backgroundColor: currentName.trim() ? "var(--accent-primary)" : "var(--bg-surface-elevated)",
-                            border: "none",
-                            color: currentName.trim() ? "#ffffff" : "var(--text-muted)",
-                            fontSize: "12px",
-                            fontWeight: 600,
-                            cursor: currentName.trim() && !isSubmitting ? "pointer" : "default",
-                            opacity: isSubmitting ? 0.7 : 1,
-                          }}
-                        >
-                          {isSubmitting ? (
-                            <Loader2 size={14} className="spinning" />
-                          ) : (
-                            <Check size={14} />
-                          )}
-                          Tag All {cluster.photo_count} Photos as "{currentName.trim() || "..."}" ({currentRel})
-                        </button>
+                        {/* If typed name matches an existing person, show merge badge */}
+                        {(() => {
+                          const matched = people.find((p) => p.name.trim().toLowerCase() === currentName.trim().toLowerCase());
+                          if (matched && currentName.trim()) {
+                            return (
+                              <div
+                                style={{
+                                  fontSize: "11px",
+                                  color: "var(--accent-primary)",
+                                  backgroundColor: "var(--accent-glow)",
+                                  padding: "4px 8px",
+                                  borderRadius: "var(--radius-sm)",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                }}
+                              >
+                                <Sparkles size={12} />
+                                <span>Existing person: <strong>{matched.name}</strong> ({matched.relationship_type || "Friend"}). Tagging will merge photos into their profile.</span>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+
+                        {/* Action Buttons: Tag Cluster + Dismiss False Positive */}
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          <button
+                            onClick={() => handleTagCluster(cluster)}
+                            disabled={!currentName.trim() || isSubmitting}
+                            className="clickable"
+                            style={{
+                              flex: 1,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "8px",
+                              padding: "9px 16px",
+                              borderRadius: "var(--radius-sm)",
+                              backgroundColor: currentName.trim() ? "var(--accent-primary)" : "var(--bg-surface-elevated)",
+                              border: "none",
+                              color: currentName.trim() ? "#ffffff" : "var(--text-muted)",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              cursor: currentName.trim() && !isSubmitting ? "pointer" : "default",
+                              opacity: isSubmitting ? 0.7 : 1,
+                            }}
+                          >
+                            {isSubmitting ? (
+                              <Loader2 size={14} className="spinning" />
+                            ) : (
+                              <Check size={14} />
+                            )}
+                            Tag {cluster.photo_count} Photo{cluster.photo_count === 1 ? "" : "s"} as "{currentName.trim() || "..."}"
+                          </button>
+
+                          <button
+                            onClick={() => handleDismissCluster(cluster.cluster_id)}
+                            disabled={dismissingCluster === cluster.cluster_id}
+                            title="Dismiss false positive detection (not a real face)"
+                            className="clickable"
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "6px",
+                              padding: "9px 12px",
+                              borderRadius: "var(--radius-sm)",
+                              backgroundColor: "var(--bg-sidebar)",
+                              border: "1px solid var(--border-subtle)",
+                              color: "var(--text-muted)",
+                              fontSize: "12px",
+                              fontWeight: 500,
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                              transition: "all 0.15s ease",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.color = "var(--accent-danger, #ef4444)";
+                              e.currentTarget.style.borderColor = "var(--accent-danger, #ef4444)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.color = "var(--text-muted)";
+                              e.currentTarget.style.borderColor = "var(--border-subtle)";
+                            }}
+                          >
+                            {dismissingCluster === cluster.cluster_id ? (
+                              <Loader2 size={13} className="spinning" />
+                            ) : (
+                              <UserX size={13} />
+                            )}
+                            Not a Face
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );

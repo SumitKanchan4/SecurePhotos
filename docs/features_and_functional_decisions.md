@@ -386,3 +386,55 @@ The frontend `PeopleView.tsx` presents:
   - Model weights: `data/models/yoloface_8n.onnx` (12.6 MB) and `data/models/arcface_w600k_r50.onnx` (174 MB) are cached locally and loaded once on startup.
 
 
+---
+
+## 14. Face Recognition Precision Tuning, Person Autocomplete & Zero-Pollution Test Teardown Architecture
+
+### Functionality Overview
+1. **Dynamic Distinct Photo Avatar Tiles**:
+   - Cluster preview cards now query faces grouped by distinct photo (`GROUP BY photo_id`).
+   - Cards dynamically adjust their layout based on distinct photo count (`1` centered prominent preview tile if found in 1 photo, `2` columns for 2 photos, `3` for 3, and `4` for 4+).
+   - Eliminates duplicate identical preview tiles.
+2. **Person Naming Autocomplete & Profile Merging**:
+   - The cluster card name input features an integrated autocomplete `<datalist id="existing-people-datalist">` populated with all recognized library identities.
+   - Selecting or typing an existing person's name automatically fills their saved relationship (e.g. `Spouse`, `Child`, `Parent`) and synchronizes their Close One (VIP) star toggle.
+   - Displays a visual confirmation chip: `Existing person: {name} ({relationship}). Tagging will merge photos into their profile.`
+   - In `POST /api/people/tag-cluster`, submitting an existing person's name merges the cluster's faces into that existing person entity, recalculates confirmed photo counts, and updates their profile medoid without generating duplicate person records.
+3. **One-Click False Positive Dismissal ("✕ Not a Face")**:
+   - Cluster cards feature a dedicated `"Not a Face"` dismissal button with the `UserX` icon.
+   - Triggers `POST /api/people/clusters/{cluster_id}/dismiss`, which deletes candidate face rows and unlinks temporary thumbnail files, instantly removing the card with zero residue.
+4. **Upright Affine Avatar Normalization**:
+   - Uses a 200x200 similarity transform matrix (`AVATAR_REF_POINTS_200`) derived from 5 facial keypoints to rotate and center tilted or reclining faces upright in their avatar crops.
+5. **Zero-Pollution Test Architecture**:
+   - All test suites (`test_trash.py`, `test_timeline.py`, `test_collages.py`, `test_enhancements.py`, `test_albums.py`, `test_people.py`, `test_thumbnails.py`, `test_ingestion.py`) run directly against the live dev database (`data/database/securephotos.db`).
+   - Every test employs guaranteed `try ... finally` teardown blocks to delete test records (`photos`, `albums`, `faces`, `creative_assets`) and disk files upon test completion, leaving the dev database pristine with zero dummy images.
+
+### Functional Decision Points & Rationale
+- **False-Positive Elimination via Aspect Ratio & Landmark Geometric Bounds**:
+  - *Problem*: In low-angle photos (e.g. `IMG_20210404_193449.jpg`), brown leather sandals with straps produced high-confidence false-positive face proposals with aspect ratios $w / h > 2.10$.
+  - *Solution*: Implemented an aspect ratio sanity guard in `detect_and_embed_faces` rejecting any proposal where $w / h < 0.55$ or $w / h > 1.70$ (human faces naturally occupy $0.70 - 1.40$). Added landmark geometry verification ensuring inter-ocular distance in 640 space is $\ge 6.0\text{px}$ to discard collapsed keypoint clusters.
+- **ArcFace Cosine Distance Threshold Calibration ($0.42 \to 0.48$)**:
+  - *Problem*: Photos of the same individual in varied poses (such as lying tilted or smiling broadly) have cosine distances between $0.44$ and $0.47$. The previous strict threshold ($0.42$) fractured them into separate clusters.
+  - *Solution*: Calibrated `DISTANCE_THRESHOLD = 0.48` (`SIMILARITY_THRESHOLD = 0.52`). This merges expressive, smiling, and reclining poses of the same person while remaining safely below the cross-identity distance margin ($\ge 0.65 - 0.80$).
+- **Distinct Photo Grouping over Raw Limit**:
+  - *Problem*: Querying `ORDER BY quality_score DESC LIMIT 4` when a cluster only exists in 1 photo returned 4 duplicate crops from that single image.
+  - *Solution*: Added `GROUP BY photo_id` to cluster anchor queries, guaranteeing each tile represents a distinct photo context.
+- **In-Place Deduplication in Face Scan Worker**:
+  - *Solution*: Before inserting face records for any photo during rescans, `face_scan_worker.py` purges previous face rows and thumbnail files for that `photo_id`, guaranteeing zero duplicate entries.
+
+### Technical Touchpoints
+- `engine/services/face_recognition_service.py`: Added `AVATAR_REF_POINTS_200`, aspect ratio filter (`0.55 <= ar <= 1.70`), eye distance guard (`>= 6.0px`), default `conf_thresh = 0.50`, and affine-aligned avatar generation.
+- `engine/services/face_clustering_service.py`: Set `SIMILARITY_THRESHOLD = 0.52` (`DISTANCE_THRESHOLD = 0.48`).
+- `engine/services/face_scan_worker.py`: Added pre-insertion face and thumbnail purge per `photo_id`.
+- `engine/api/people.py`: Grouped anchor face queries by `photo_id`; added `POST /api/people/clusters/{cluster_id}/dismiss`.
+- `src/components/PeopleView.tsx`: Added `handleNameChange`, autocomplete `<datalist>`, existing person merge badge, dynamic distinct photo tile grid, and `Not a Face` dismiss button.
+- `engine/tests/*.py`: Added strict `try ... finally` teardown fixtures across 8 test suites.
+
+### State & Lifecycle Impact
+- **Database Cleanliness**:
+  - Exactly 22 authentic user photos exist in `photos`.
+  - Exactly 32 valid faces are indexed across 7 distinct clusters.
+  - Running `pytest engine/tests/` leaves 0 orphan records, 0 dummy collages, and 0 dummy photos in the dev database.
+- **File System Cleanliness**:
+  - Face avatars in `data/thumbnails/faces/` match valid database face IDs 1-to-1.
+  - Lingering test directories (`data/originals/2022`, `data/originals/undated`) are deleted.

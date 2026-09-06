@@ -79,35 +79,39 @@ async def test_get_timeline_years_aggregation_and_counts():
         id_trashed = await insert_timeline_photo(tmp_path, "p_trashed.jpg", taken_at="2026-01-01 00:00:00", is_trashed=True)
         id_enc = await insert_timeline_photo(tmp_path, "p_enc.jpg", taken_at="2024-01-01 00:00:00", is_encrypted=1)
 
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            res = await client.get("/api/photos/timeline-years")
-            assert res.status_code == 200
-            data = res.json()
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                res = await client.get("/api/photos/timeline-years")
+                assert res.status_code == 200
+                data = res.json()
 
-            # Find year items
-            year_dict = {item["year"]: item["count"] for item in data["years"]}
+                # Find year items
+                year_dict = {item["year"]: item["count"] for item in data["years"]}
 
-            # 2026 should have at least 2 active photos (excluding trashed)
-            assert "2026" in year_dict
-            assert year_dict["2026"] >= 2
+                # 2026 should have at least 2 active photos (excluding trashed)
+                assert "2026" in year_dict
+                assert year_dict["2026"] >= 2
 
-            # 2024 should have at least 1 active photo (excluding encrypted)
-            assert "2024" in year_dict
-            assert year_dict["2024"] >= 1
+                # 2024 should have at least 1 active photo (excluding encrypted)
+                assert "2024" in year_dict
+                assert year_dict["2024"] >= 1
 
-            # Undated should be present
-            assert "Undated" in year_dict
-            assert year_dict["Undated"] >= 1
+                # Undated should be present
+                assert "Undated" in year_dict
+                assert year_dict["Undated"] >= 1
 
-            # Total count should match or exceed our active additions
-            assert data["total_count"] >= 4
+                # Total count should match or exceed our active additions
+                assert data["total_count"] >= 4
+        finally:
+            # Clean up test rows guaranteed in teardown
+            conn = await get_db_connection()
+            try:
+                await conn.execute(
+                    "DELETE FROM photos WHERE id IN (?, ?, ?, ?, ?, ?);",
+                    (id_2026_1, id_2026_2, id_2024_1, id_undated, id_trashed, id_enc),
+                )
+                await conn.commit()
+            finally:
+                await conn.close()
 
-        # Clean up test rows
-        conn = await get_db_connection()
-        await conn.execute(
-            "DELETE FROM photos WHERE id IN (?, ?, ?, ?, ?, ?);",
-            (id_2026_1, id_2026_2, id_2024_1, id_undated, id_trashed, id_enc),
-        )
-        await conn.commit()
-        await conn.close()

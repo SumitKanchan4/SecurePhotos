@@ -147,11 +147,12 @@ async def list_unlabeled_clusters() -> List[UnlabeledClusterResponse]:
                 medoid_row = await m_cur.fetchone()
                 medoid_face_id = medoid_row["id"] if medoid_row else None
 
-            # Get up to 4 diverse sample faces in cluster
+            # Get up to 4 diverse sample faces in cluster, drawn from distinct photos
             async with conn.execute(
                 """
                 SELECT id FROM faces
                 WHERE cluster_id = ? AND person_id IS NULL
+                GROUP BY photo_id
                 ORDER BY is_anchor_medoid DESC, quality_score DESC
                 LIMIT 4;
                 """,
@@ -316,6 +317,37 @@ async def tag_medoid_cluster(payload: TagClusterRequest) -> dict:
         }
     finally:
         await conn.close()
+
+
+@router.post("/clusters/{cluster_id}/dismiss", status_code=status.HTTP_200_OK)
+async def dismiss_unlabeled_cluster(cluster_id: str) -> dict:
+    """Dismisses a false-positive cluster (e.g. shoe, artifact, or unwanted face), deleting its face records."""
+    conn = await get_db_connection()
+    try:
+        thumbnails_dir = get_face_thumbnails_dir()
+        async with conn.execute(
+            "SELECT id FROM faces WHERE cluster_id = ? AND person_id IS NULL;",
+            (cluster_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+
+        deleted_count = 0
+        for r in rows:
+            face_id = r["id"]
+            thumb_file = thumbnails_dir / f"{face_id}.webp"
+            if thumb_file.exists():
+                try:
+                    thumb_file.unlink()
+                except OSError:
+                    pass
+            deleted_count += 1
+
+        await conn.execute("DELETE FROM faces WHERE cluster_id = ? AND person_id IS NULL;", (cluster_id,))
+        await conn.commit()
+        return {"status": "dismissed", "cluster_id": cluster_id, "faces_removed": deleted_count}
+    finally:
+        await conn.close()
+
 
 
 @router.get("/{person_id}/photos", status_code=status.HTTP_200_OK)

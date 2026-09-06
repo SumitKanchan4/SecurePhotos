@@ -122,8 +122,18 @@ def get_inference_sessions():
     return _yolo_session, _arcface_session
 
 
-def _estimate_affine_matrix(src_landmarks: np.ndarray) -> Optional[Tuple[float, float, float, float, float, float]]:
-    """Calculates the 2D similarity transform mapping 5 facial landmarks to ArcFace reference points.
+# 200x200 Portrait reference template for upright, centered avatar thumbnails
+_SCALE_200 = 200.0 / 112.0 * 0.72
+_CENTER_112 = np.array([56.0, 68.0], dtype=np.float32)
+_TARGET_CENTER_200 = np.array([100.0, 102.0], dtype=np.float32)
+AVATAR_REF_POINTS_200 = (ARCFACE_REF_POINTS - _CENTER_112) * _SCALE_200 + _TARGET_CENTER_200
+
+
+def _estimate_affine_matrix(
+    src_landmarks: np.ndarray,
+    dst_ref: Optional[np.ndarray] = None,
+) -> Optional[Tuple[float, float, float, float, float, float]]:
+    """Calculates the 2D similarity transform mapping 5 facial landmarks to reference points.
 
     Solves the least-squares linear system:
         [x_src]   [a  -b  tx] [x_dst]
@@ -132,6 +142,7 @@ def _estimate_affine_matrix(src_landmarks: np.ndarray) -> Optional[Tuple[float, 
 
     Args:
         src_landmarks: (5, 2) numpy array of detected facial keypoints in source image space.
+        dst_ref: Optional (5, 2) destination points. Defaults to ARCFACE_REF_POINTS (112x112).
 
     Returns:
         6-tuple of affine coefficients for PIL.Image.transform, or None if underdetermined.
@@ -139,10 +150,12 @@ def _estimate_affine_matrix(src_landmarks: np.ndarray) -> Optional[Tuple[float, 
     if src_landmarks.shape != (5, 2):
         return None
 
+    target_pts = dst_ref if dst_ref is not None else ARCFACE_REF_POINTS
+
     # Construct the linear system for PIL inverse mapping (dst -> src)
     a_mat = []
     b_vec = []
-    for (xd, yd), (xs, ys) in zip(ARCFACE_REF_POINTS, src_landmarks):
+    for (xd, yd), (xs, ys) in zip(target_pts, src_landmarks):
         a_mat.append([xd, -yd, 1.0, 0.0])
         a_mat.append([yd,  xd, 0.0, 1.0])
         b_vec.append(xs)
@@ -206,14 +219,14 @@ def calculate_face_quality(crop: Image.Image, orig_w: int, orig_h: int, box_w: i
 
 def detect_and_embed_faces(
     image: Image.Image,
-    conf_thresh: float = 0.40,
+    conf_thresh: float = 0.50,
     iou_thresh: float = 0.45,
 ) -> List[Dict[str, Any]]:
     """Detects faces, normalizes poses via 5-point landmarks, and extracts 512-D ArcFace vectors.
 
     Args:
         image: Source PIL Image in RGB format.
-        conf_thresh: Confidence threshold for candidate face proposals.
+        conf_thresh: Confidence threshold for candidate face proposals (default 0.50).
         iou_thresh: Non-maximum suppression IoU threshold.
 
     Returns:
@@ -296,8 +309,21 @@ def detect_and_embed_faces(
         box_w_px = max(4.0, orig_bx2 - orig_bx1)
         box_h_px = max(4.0, orig_by2 - orig_by1)
 
+        # Aspect ratio sanity guard: human faces have aspect ratios roughly in [0.55, 1.70].
+        # Directly eliminates horizontal non-faces like shoes, belts, furniture (e.g. shoe had ar=2.10 - 2.31)
+        aspect_ratio = box_w_px / max(1.0, box_h_px)
+        if aspect_ratio < 0.55 or aspect_ratio > 1.70:
+            continue
+
         # Extract 5 landmarks in original coordinates
         raw_lms = det[5:].reshape(5, 3)  # (x, y, conf)
+
+        # Geometric landmark sanity check:
+        # Distance between eyes in 640 space must be >= 6.0px (rejects collapsed / spurious keypoints)
+        eye_dist_640 = float(np.linalg.norm(raw_lms[0, :2] - raw_lms[1, :2]))
+        if eye_dist_640 < 6.0:
+            continue
+
         orig_lms = np.zeros((5, 2), dtype=np.float32)
         for idx in range(5):
             orig_lms[idx, 0] = max(0.0, min(float(orig_w), (raw_lms[idx, 0] - pad_x) / scale))
@@ -335,13 +361,24 @@ def detect_and_embed_faces(
         else:
             normalized_emb = raw_emb.tolist()
 
-        # Create avatar square thumbnail (200x200 with balanced 25% facial context margin)
-        thumb_margin = 0.25
-        tx1 = max(0, int(orig_bx1 - box_w_px * thumb_margin))
-        ty1 = max(0, int(orig_by1 - box_h_px * thumb_margin))
-        tx2 = min(orig_w, int(orig_bx2 + box_w_px * thumb_margin))
-        ty2 = min(orig_h, int(orig_by2 + box_h_px * thumb_margin))
-        thumb_crop = image.crop((tx1, ty1, tx2, ty2)).resize((200, 200), Image.Resampling.LANCZOS)
+        # Create avatar square thumbnail (200x200):
+        # Uses 5-point affine transform to ensure upright orientation even for tilted/reclined poses
+        avatar_affine = _estimate_affine_matrix(orig_lms, dst_ref=AVATAR_REF_POINTS_200)
+        if avatar_affine is not None:
+            thumb_crop = image.transform(
+                (200, 200),
+                Image.Transform.AFFINE,
+                avatar_affine,
+                Image.Resampling.BICUBIC,
+            )
+        else:
+            # Fallback to padded bounding box crop if affine solve fails
+            thumb_margin = 0.25
+            tx1 = max(0, int(orig_bx1 - box_w_px * thumb_margin))
+            ty1 = max(0, int(orig_by1 - box_h_px * thumb_margin))
+            tx2 = min(orig_w, int(orig_bx2 + box_w_px * thumb_margin))
+            ty2 = min(orig_h, int(orig_by2 + box_h_px * thumb_margin))
+            thumb_crop = image.crop((tx1, ty1, tx2, ty2)).resize((200, 200), Image.Resampling.LANCZOS)
 
         quality = calculate_face_quality(thumb_crop, orig_w, orig_h, int(box_w_px), int(box_h_px))
 
