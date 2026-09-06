@@ -397,19 +397,29 @@ The frontend `PeopleView.tsx` presents:
    - Eliminates duplicate identical preview tiles.
 2. **Person Naming Autocomplete & Profile Merging**:
    - The cluster card name input features an integrated autocomplete `<datalist id="existing-people-datalist">` populated with all recognized library identities.
-   - Selecting or typing an existing person's name automatically fills their saved relationship (e.g. `Spouse`, `Child`, `Parent`) and synchronizes their Close One (VIP) star toggle.
+   - Selecting or typing an existing person's name automatically fills their saved relationship (e.g. `Spouse`, `Child`, `Parent`, `Extended Family`) and synchronizes their Close One (VIP) star toggle.
    - Displays a visual confirmation chip: `Existing person: {name} ({relationship}). Tagging will merge photos into their profile.`
-   - In `POST /api/people/tag-cluster`, submitting an existing person's name merges the cluster's faces into that existing person entity, recalculates confirmed photo counts, and updates their profile medoid without generating duplicate person records.
-3. **One-Click False Positive Dismissal ("✕ Not a Face")**:
+   - In `POST /api/people/tag-cluster`, submitting an existing person's name merges the cluster's faces into that existing person entity, recalculates confirmed photo counts, and updates their profile medoid. If a new relationship is selected, it immediately updates `persons.relationship_type` and auto-promotes close family (`Extended Family`, `Spouse`, `Child`, `Parent`, `Sibling`) to VIP (`is_close_one = 1`).
+3. **Interactive In-Gallery Relationship Customizer & VIP Star Toggle**:
+   - Each card in the "Recognized People" gallery includes an inline dropdown selector allowing instant relationship customization without requiring drill-down navigation.
+   - Includes a one-click toggleable VIP Star button on each card (`e.stopPropagation()`) for immediate priority promotion/demotion.
+   - Changes trigger `PATCH /api/people/{id}`, immediately synchronizing database state, gallery cards, and cluster autocomplete suggestions.
+4. **One-Click False Positive Dismissal ("✕ Not a Face")**:
    - Cluster cards feature a dedicated `"Not a Face"` dismissal button with the `UserX` icon.
    - Triggers `POST /api/people/clusters/{cluster_id}/dismiss`, which deletes candidate face rows and unlinks temporary thumbnail files, instantly removing the card with zero residue.
-4. **Upright Affine Avatar Normalization**:
+5. **Upright Affine Avatar Normalization**:
    - Uses a 200x200 similarity transform matrix (`AVATAR_REF_POINTS_200`) derived from 5 facial keypoints to rotate and center tilted or reclining faces upright in their avatar crops.
-5. **Zero-Pollution Test Architecture**:
+6. **Zero-Pollution Test Architecture**:
    - All test suites (`test_trash.py`, `test_timeline.py`, `test_collages.py`, `test_enhancements.py`, `test_albums.py`, `test_people.py`, `test_thumbnails.py`, `test_ingestion.py`) run directly against the live dev database (`data/database/securephotos.db`).
    - Every test employs guaranteed `try ... finally` teardown blocks to delete test records (`photos`, `albums`, `faces`, `creative_assets`) and disk files upon test completion, leaving the dev database pristine with zero dummy images.
 
 ### Functional Decision Points & Rationale
+- **Bidirectional Relationship Persistence on Cluster Tagging**:
+  - *Problem*: When users tagged an unlabeled cluster as an existing person while selecting an updated relationship (e.g. changing from `Friend` to `Extended Family`), `POST /api/people/tag-cluster` only linked faces and updated photo counts, silently discarding the new relationship selection.
+  - *Solution*: Enhanced `tag_medoid_cluster` to execute an `UPDATE persons SET relationship_type = ?, is_close_one = ? WHERE id = ?;` whenever `existing` is found and a relationship is supplied. Close family relations (`Extended Family`, `Spouse`, `Child`, `Parent`, `Sibling`) automatically trigger VIP elevation (`is_close_one = 1`).
+- **Direct Gallery Relationship Editing**:
+  - *Problem*: Previously, modifying a recognized person's relationship required clicking into the person's photo drill-down page, which was non-obvious to users viewing their recognized gallery.
+  - *Solution*: Added an inline `<select>` and clickable VIP star directly on the person card in the gallery with `e.stopPropagation()`, giving users 1-click editing capabilities.
 - **False-Positive Elimination via Aspect Ratio & Landmark Geometric Bounds**:
   - *Problem*: In low-angle photos (e.g. `IMG_20210404_193449.jpg`), brown leather sandals with straps produced high-confidence false-positive face proposals with aspect ratios $w / h > 2.10$.
   - *Solution*: Implemented an aspect ratio sanity guard in `detect_and_embed_faces` rejecting any proposal where $w / h < 0.55$ or $w / h > 1.70$ (human faces naturally occupy $0.70 - 1.40$). Added landmark geometry verification ensuring inter-ocular distance in 640 space is $\ge 6.0\text{px}$ to discard collapsed keypoint clusters.
@@ -426,8 +436,8 @@ The frontend `PeopleView.tsx` presents:
 - `engine/services/face_recognition_service.py`: Added `AVATAR_REF_POINTS_200`, aspect ratio filter (`0.55 <= ar <= 1.70`), eye distance guard (`>= 6.0px`), default `conf_thresh = 0.50`, and affine-aligned avatar generation.
 - `engine/services/face_clustering_service.py`: Set `SIMILARITY_THRESHOLD = 0.52` (`DISTANCE_THRESHOLD = 0.48`).
 - `engine/services/face_scan_worker.py`: Added pre-insertion face and thumbnail purge per `photo_id`.
-- `engine/api/people.py`: Grouped anchor face queries by `photo_id`; added `POST /api/people/clusters/{cluster_id}/dismiss`.
-- `src/components/PeopleView.tsx`: Added `handleNameChange`, autocomplete `<datalist>`, existing person merge badge, dynamic distinct photo tile grid, and `Not a Face` dismiss button.
+- `engine/api/people.py`: Grouped anchor face queries by `photo_id`; added `POST /api/people/clusters/{cluster_id}/dismiss`; added relationship and VIP auto-promotion update on existing person tagging in `POST /api/people/tag-cluster`.
+- `src/components/PeopleView.tsx`: Added `handleNameChange`, autocomplete `<datalist>`, existing person merge badge, dynamic distinct photo tile grid, `Not a Face` dismiss button, and inline relationship / VIP star customizers on Recognized People gallery cards.
 - `engine/tests/*.py`: Added strict `try ... finally` teardown fixtures across 8 test suites.
 
 ### State & Lifecycle Impact

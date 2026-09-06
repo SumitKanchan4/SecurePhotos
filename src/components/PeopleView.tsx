@@ -977,20 +977,37 @@ export const PeopleView: React.FC = () => {
                       e.currentTarget.style.borderColor = "var(--border-subtle)";
                     }}
                   >
-                    {/* Close One Star Badge */}
-                    {person.is_close_one && (
-                      <div
-                        title="Close One (High Affinity)"
-                        style={{
-                          position: "absolute",
-                          top: "12px",
-                          right: "12px",
-                          color: "var(--accent-warning)",
-                        }}
-                      >
-                        <Star size={16} fill="var(--accent-warning)" />
-                      </div>
-                    )}
+                    {/* Close One Star Toggle */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleUpdatePerson(person.id, { is_close_one: !person.is_close_one });
+                      }}
+                      title={person.is_close_one ? "Close One (VIP) - Click to unstar" : "Mark as Close One (VIP)"}
+                      className="clickable"
+                      style={{
+                        position: "absolute",
+                        top: "10px",
+                        right: "10px",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: "4px",
+                        color: person.is_close_one ? "var(--accent-warning)" : "var(--text-muted)",
+                        opacity: person.is_close_one ? 1 : 0.4,
+                        transition: "opacity 0.15s ease, transform 0.15s ease",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.opacity = "1";
+                        e.currentTarget.style.transform = "scale(1.15)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.opacity = person.is_close_one ? "1" : "0.4";
+                        e.currentTarget.style.transform = "scale(1)";
+                      }}
+                    >
+                      <Star size={16} fill={person.is_close_one ? "var(--accent-warning)" : "none"} />
+                    </button>
 
                     {/* Avatar Circle */}
                     <div
@@ -1020,10 +1037,40 @@ export const PeopleView: React.FC = () => {
                     </div>
 
                     <h3 style={{ fontSize: "15px", fontWeight: 700 }}>{person.name}</h3>
-                    <p style={{ fontSize: "12px", color: "var(--text-secondary)", fontWeight: 600, marginTop: "2px" }}>
-                      {person.relationship_type || "Friend"}
-                    </p>
-                    <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px" }}>
+
+                    {/* Interactive Inline Relationship Selector */}
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ marginTop: "6px", width: "100%", maxWidth: "160px" }}
+                    >
+                      <select
+                        value={person.relationship_type || "Friend"}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          handleUpdatePerson(person.id, { relationship_type: e.target.value });
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: "4px 8px",
+                          borderRadius: "var(--radius-sm)",
+                          backgroundColor: "var(--bg-sidebar)",
+                          border: "1px solid var(--border-subtle)",
+                          color: "var(--text-primary)",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          textAlign: "center",
+                          cursor: "pointer",
+                          outline: "none",
+                        }}
+                        title="Change relationship"
+                      >
+                        {RELATIONSHIP_OPTIONS.map((rel) => (
+                          <option key={rel} value={rel}>{rel}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
                       {person.confirmed_count} {person.confirmed_count === 1 ? "photo" : "photos"}
                     </p>
 

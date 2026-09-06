@@ -146,7 +146,7 @@ async def test_people_api_workflow():
                 alex_photos = photos_res.json()
                 assert len(alex_photos) >= 1
 
-                # Test updating granular relationship to 'Spouse'
+                # Test updating granular relationship to 'Spouse' via PATCH
                 update_res = await client.patch(
                     f"/api/people/{alex['id']}",
                     json={"relationship_type": "Spouse"},
@@ -155,6 +155,25 @@ async def test_people_api_workflow():
                 updated_alex = update_res.json()
                 assert updated_alex["relationship_type"] == "Spouse"
                 assert updated_alex["is_close_one"] is True
+                # Test tagging an existing person with new relationship 'Extended Family'
+                retag_res = await client.post(
+                    "/api/people/tag-cluster",
+                    json={
+                        "cluster_id": target_cluster,
+                        "name": "Alex Test Person",
+                        "relationship_type": "Extended Family",
+                        "is_close_one": False,  # Should auto-promote to True for Extended Family
+                    },
+                )
+                assert retag_res.status_code == 200
+                retag_data = retag_res.json()
+                assert retag_data["person_id"] == alex["id"]
+
+                # Verify relationship was updated in DB
+                people_retag = (await client.get("/api/people")).json()
+                alex_retag = [p for p in people_retag if p["name"] == "Alex Test Person"][0]
+                assert alex_retag["relationship_type"] == "Extended Family"
+                assert alex_retag["is_close_one"] is True
             finally:
                 # Mandatory test teardown: clean up person and unlink faces
                 if tagged_person_id:

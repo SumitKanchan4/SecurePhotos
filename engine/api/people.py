@@ -258,8 +258,22 @@ async def tag_medoid_cluster(payload: TagClusterRequest) -> dict:
         ) as cursor:
             existing = await cursor.fetchone()
 
+        close_relationships = {
+            "Spouse", "Child", "Parent", "Sibling", "Extended Family",
+            "Wife", "Husband", "Partner", "Son", "Daughter", "Mother", "Father", "Brother", "Sister",
+        }
+        new_rel = (payload.relationship_type or "Friend").strip()
+        new_close = bool(payload.is_close_one)
+        if new_rel in close_relationships:
+            new_close = True
+
         if existing:
             person_id = existing["id"]
+            if payload.relationship_type:
+                await conn.execute(
+                    "UPDATE persons SET relationship_type = ?, is_close_one = ? WHERE id = ?;",
+                    (new_rel, 1 if new_close else 0, person_id),
+                )
         else:
             # Create new person
             cur = await conn.execute(
@@ -267,7 +281,7 @@ async def tag_medoid_cluster(payload: TagClusterRequest) -> dict:
                 INSERT INTO persons (name, relationship_type, is_close_one, affinity_score)
                 VALUES (?, ?, ?, 50.0);
                 """,
-                (name_clean, payload.relationship_type or "Friend", 1 if payload.is_close_one else 0),
+                (name_clean, new_rel, 1 if new_close else 0),
             )
             person_id = cur.lastrowid
 
