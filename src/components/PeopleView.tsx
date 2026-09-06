@@ -9,19 +9,56 @@ import {
   ArrowLeft,
   Image as ImageIcon,
   Heart,
-  Loader2
+  Loader2,
+  Tag
 } from "lucide-react";
 import { PersonItem, UnlabeledClusterItem, FaceScanStatus, PhotoItem } from "../types";
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
-const RELATIONSHIP_OPTIONS = [
-  "Friend",
-  "Family",
-  "Partner",
-  "Colleague",
-  "Acquaintance",
+export const RELATIONSHIP_CATEGORIES = [
+  {
+    category: "Spouse & Partner",
+    options: ["Wife", "Husband", "Partner", "Spouse", "Fiancé", "Fiancée"],
+  },
+  {
+    category: "Immediate Family",
+    options: ["Son", "Daughter", "Child", "Mother", "Father", "Parent", "Brother", "Sister", "Sibling"],
+  },
+  {
+    category: "Extended Family",
+    options: [
+      "Grandmother",
+      "Grandfather",
+      "Grandchild",
+      "Aunt",
+      "Uncle",
+      "Cousin",
+      "Nephew",
+      "Niece",
+      "In-Law",
+      "Family",
+    ],
+  },
+  {
+    category: "Friends & Social",
+    options: ["Best Friend", "Friend", "Acquaintance", "Roommate", "Neighbor"],
+  },
+  {
+    category: "Work & Community",
+    options: ["Colleague", "Mentor", "Client", "Other"],
+  },
 ];
+
+// Relationships that represent immediate family or partners (VIP / Close One by default)
+const CLOSE_RELATIONSHIPS = new Set([
+  "Wife", "Husband", "Partner", "Spouse", "Fiancé", "Fiancée",
+  "Son", "Daughter", "Child",
+  "Mother", "Father", "Parent",
+  "Brother", "Sister", "Sibling",
+  "Grandmother", "Grandfather",
+  "Family", "Best Friend",
+]);
 
 export const PeopleView: React.FC = () => {
   const [people, setPeople] = useState<PersonItem[]>([]);
@@ -40,6 +77,7 @@ export const PeopleView: React.FC = () => {
   // Tagging form state per cluster
   const [tagNames, setTagNames] = useState<{ [clusterId: string]: string }>({});
   const [tagRelationships, setTagRelationships] = useState<{ [clusterId: string]: string }>({});
+  const [tagCustomRels, setTagCustomRels] = useState<{ [clusterId: string]: string }>({});
   const [tagCloseOnes, setTagCloseOnes] = useState<{ [clusterId: string]: boolean }>({});
   const [submittingCluster, setSubmittingCluster] = useState<string | null>(null);
 
@@ -47,6 +85,7 @@ export const PeopleView: React.FC = () => {
   const [selectedPerson, setSelectedPerson] = useState<PersonItem | null>(null);
   const [personPhotos, setPersonPhotos] = useState<PhotoItem[]>([]);
   const [loadingPhotos, setLoadingPhotos] = useState<boolean>(false);
+  const [updatingPerson, setUpdatingPerson] = useState<boolean>(false);
 
   // Load recognized people
   const fetchPeople = useCallback(async () => {
@@ -127,10 +166,24 @@ export const PeopleView: React.FC = () => {
     }
   };
 
+  // Handle relationship change on a cluster card
+  const handleClusterRelChange = (clusterId: string, value: string) => {
+    setTagRelationships((prev) => ({ ...prev, [clusterId]: value }));
+    // Auto-check Close One (VIP) if it's an immediate family or partner relation
+    if (CLOSE_RELATIONSHIPS.has(value)) {
+      setTagCloseOnes((prev) => ({ ...prev, [clusterId]: true }));
+    }
+  };
+
   // 1-Click Tag Cluster ("Name Once, Tag 1,000 Photos")
   const handleTagCluster = async (cluster: UnlabeledClusterItem) => {
     const name = (tagNames[cluster.cluster_id] || "").trim();
     if (!name) return;
+
+    const selectedRel = tagRelationships[cluster.cluster_id] || "Friend";
+    const finalRel = selectedRel === "Custom" 
+      ? (tagCustomRels[cluster.cluster_id]?.trim() || "Friend")
+      : selectedRel;
 
     setSubmittingCluster(cluster.cluster_id);
     try {
@@ -140,8 +193,8 @@ export const PeopleView: React.FC = () => {
         body: JSON.stringify({
           cluster_id: cluster.cluster_id,
           name,
-          relationship_type: tagRelationships[cluster.cluster_id] || "Friend",
-          is_close_one: !!tagCloseOnes[cluster.cluster_id],
+          relationship_type: finalRel,
+          is_close_one: !!tagCloseOnes[cluster.cluster_id] || CLOSE_RELATIONSHIPS.has(finalRel),
         }),
       });
 
@@ -174,8 +227,31 @@ export const PeopleView: React.FC = () => {
     }
   };
 
+  // Update a person's relationship or Close One status
+  const handleUpdatePerson = async (personId: number, updates: { relationship_type?: string; is_close_one?: boolean }) => {
+    setUpdatingPerson(true);
+    try {
+      const res = await fetch(`${API_BASE}/people/${personId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      if (res.ok) {
+        const updated: PersonItem = await res.json();
+        setSelectedPerson(updated);
+        setPeople((prev) => prev.map((p) => (p.id === personId ? updated : p)));
+      }
+    } catch (err) {
+      console.error("Failed to update person:", err);
+    } finally {
+      setUpdatingPerson(false);
+    }
+  };
+
   const filteredPeople = people.filter((p) =>
-    p.name.toLowerCase().includes(searchQuery.toLowerCase())
+    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.relationship_type && p.relationship_type.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   if (isLoading) {
@@ -192,7 +268,7 @@ export const PeopleView: React.FC = () => {
       {selectedPerson ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           {/* Header */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "16px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
               <button
                 onClick={() => setSelectedPerson(null)}
@@ -217,8 +293,8 @@ export const PeopleView: React.FC = () => {
               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                 <div
                   style={{
-                    width: "48px",
-                    height: "48px",
+                    width: "52px",
+                    height: "52px",
                     borderRadius: "var(--radius-full)",
                     overflow: "hidden",
                     border: "2px solid var(--accent-primary)",
@@ -235,21 +311,81 @@ export const PeopleView: React.FC = () => {
                       style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     />
                   ) : (
-                    <Users size={24} style={{ color: "var(--accent-primary)" }} />
+                    <Users size={26} style={{ color: "var(--accent-primary)" }} />
                   )}
                 </div>
 
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <h1 style={{ fontSize: "20px", fontWeight: 700 }}>{selectedPerson.name}</h1>
-                    {selectedPerson.is_close_one && (
-                      <Star size={16} fill="var(--accent-warning)" color="var(--accent-warning)" />
-                    )}
+                    {/* Interactive VIP Toggle */}
+                    <button
+                      onClick={() => handleUpdatePerson(selectedPerson.id, { is_close_one: !selectedPerson.is_close_one })}
+                      title={selectedPerson.is_close_one ? "Close One (High Priority)" : "Mark as Close One (VIP)"}
+                      className="clickable"
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "2px",
+                        color: selectedPerson.is_close_one ? "var(--accent-warning)" : "var(--text-muted)",
+                      }}
+                    >
+                      <Star size={18} fill={selectedPerson.is_close_one ? "var(--accent-warning)" : "none"} />
+                    </button>
                   </div>
                   <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-                    {selectedPerson.relationship_type || "Friend"} • {personPhotos.length} Photos Found
+                    {personPhotos.length} {personPhotos.length === 1 ? "photo" : "photos"} found in your library
                   </p>
                 </div>
+              </div>
+            </div>
+
+            {/* Granular Relationship Customizer */}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <Tag size={15} style={{ color: "var(--text-muted)" }} />
+              <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500 }}>
+                Relationship:
+              </span>
+              <select
+                value={selectedPerson.relationship_type || "Friend"}
+                disabled={updatingPerson}
+                onChange={(e) => handleUpdatePerson(selectedPerson.id, { relationship_type: e.target.value })}
+                style={{
+                  padding: "7px 12px",
+                  borderRadius: "var(--radius-sm)",
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-highlight)",
+                  color: "var(--text-primary)",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  outline: "none",
+                  cursor: "pointer",
+                }}
+              >
+                {RELATIONSHIP_CATEGORIES.map((group) => (
+                  <optgroup key={group.category} label={group.category}>
+                    {group.options.map((rel) => (
+                      <option key={rel} value={rel}>{rel}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+
+              {/* Affinity Score */}
+              <div
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: selectedPerson.is_close_one ? "rgba(16, 185, 129, 0.12)" : "var(--bg-surface-elevated)",
+                  color: selectedPerson.is_close_one ? "var(--accent-success)" : "var(--text-muted)",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                }}
+              >
+                Affinity: {Math.round(selectedPerson.affinity_score)}/100
               </div>
             </div>
           </div>
@@ -351,7 +487,7 @@ export const PeopleView: React.FC = () => {
                 <Search size={14} style={{ color: "var(--text-muted)" }} />
                 <input
                   type="text"
-                  placeholder="Search recognized people..."
+                  placeholder="Search by name or relation (e.g. Wife, Son)..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{
@@ -360,7 +496,7 @@ export const PeopleView: React.FC = () => {
                     backgroundColor: "transparent",
                     color: "var(--text-primary)",
                     fontSize: "12px",
-                    width: "180px",
+                    width: "220px",
                   }}
                 />
               </div>
@@ -469,6 +605,7 @@ export const PeopleView: React.FC = () => {
                   const isSubmitting = submittingCluster === cluster.cluster_id;
                   const currentName = tagNames[cluster.cluster_id] || "";
                   const currentRel = tagRelationships[cluster.cluster_id] || "Friend";
+                  const isCustom = currentRel === "Custom";
                   const isClose = !!tagCloseOnes[cluster.cluster_id];
 
                   return (
@@ -547,12 +684,12 @@ export const PeopleView: React.FC = () => {
                         ))}
                       </div>
 
-                      {/* Inputs: Name, Relationship, Close One Toggle */}
+                      {/* Inputs: Name, Relationship Selector, Close One Toggle */}
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                         <div style={{ display: "flex", gap: "8px" }}>
                           <input
                             type="text"
-                            placeholder="Enter person name (e.g. Alex, Maya)..."
+                            placeholder="Enter person name (e.g. Maya, David)..."
                             value={currentName}
                             onChange={(e) => setTagNames({ ...tagNames, [cluster.cluster_id]: e.target.value })}
                             onKeyDown={(e) => {
@@ -570,9 +707,10 @@ export const PeopleView: React.FC = () => {
                             }}
                           />
 
+                          {/* Grouped Relationship Selector */}
                           <select
                             value={currentRel}
-                            onChange={(e) => setTagRelationships({ ...tagRelationships, [cluster.cluster_id]: e.target.value })}
+                            onChange={(e) => handleClusterRelChange(cluster.cluster_id, e.target.value)}
                             style={{
                               padding: "9px 10px",
                               borderRadius: "var(--radius-sm)",
@@ -581,16 +719,22 @@ export const PeopleView: React.FC = () => {
                               color: "var(--text-primary)",
                               fontSize: "12px",
                               outline: "none",
+                              maxWidth: "140px",
                             }}
                           >
-                            {RELATIONSHIP_OPTIONS.map((rel) => (
-                              <option key={rel} value={rel}>{rel}</option>
+                            {RELATIONSHIP_CATEGORIES.map((group) => (
+                              <optgroup key={group.category} label={group.category}>
+                                {group.options.map((rel) => (
+                                  <option key={rel} value={rel}>{rel}</option>
+                                ))}
+                              </optgroup>
                             ))}
+                            <option value="Custom">Custom...</option>
                           </select>
 
                           {/* Close One Star Toggle */}
                           <button
-                            title={isClose ? "Marked as Close One" : "Mark as Close One (VIP)"}
+                            title={isClose ? "Marked as Close One (VIP)" : "Mark as Close One (VIP)"}
                             onClick={() => setTagCloseOnes({ ...tagCloseOnes, [cluster.cluster_id]: !isClose })}
                             className="clickable"
                             style={{
@@ -607,6 +751,25 @@ export const PeopleView: React.FC = () => {
                             <Star size={16} fill={isClose ? "var(--accent-warning)" : "none"} />
                           </button>
                         </div>
+
+                        {/* Custom relationship input if selected */}
+                        {isCustom && (
+                          <input
+                            type="text"
+                            placeholder="Type custom relationship (e.g. Godmother, Coach)..."
+                            value={tagCustomRels[cluster.cluster_id] || ""}
+                            onChange={(e) => setTagCustomRels({ ...tagCustomRels, [cluster.cluster_id]: e.target.value })}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: "var(--radius-sm)",
+                              backgroundColor: "var(--bg-sidebar)",
+                              border: "1px solid var(--accent-primary)",
+                              color: "var(--text-primary)",
+                              fontSize: "12px",
+                              outline: "none",
+                            }}
+                          />
+                        )}
 
                         {/* 1-Click Action Button */}
                         <button
@@ -634,7 +797,7 @@ export const PeopleView: React.FC = () => {
                           ) : (
                             <Check size={14} />
                           )}
-                          Tag All {cluster.photo_count} Photos as "{currentName.trim() || "..."}"
+                          Tag All {cluster.photo_count} Photos as "{currentName.trim() || "..."}" ({isCustom ? (tagCustomRels[cluster.cluster_id] || "Custom") : currentRel})
                         </button>
                       </div>
                     </div>
@@ -779,8 +942,11 @@ export const PeopleView: React.FC = () => {
                     </div>
 
                     <h3 style={{ fontSize: "15px", fontWeight: 700 }}>{person.name}</h3>
-                    <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
-                      {person.relationship_type || "Friend"} • {person.confirmed_count} {person.confirmed_count === 1 ? "photo" : "photos"}
+                    <p style={{ fontSize: "12px", color: "var(--text-secondary)", fontWeight: 600, marginTop: "2px" }}>
+                      {person.relationship_type || "Friend"}
+                    </p>
+                    <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px" }}>
+                      {person.confirmed_count} {person.confirmed_count === 1 ? "photo" : "photos"}
                     </p>
 
                     {/* Affinity Score Pill */}

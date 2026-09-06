@@ -340,3 +340,69 @@ async def get_person_photos(person_id: int):
         return [dict(r) for r in rows]
     finally:
         await conn.close()
+
+
+class UpdatePersonRequest(BaseModel):
+    """Request schema for updating person metadata, relationships, or VIP status."""
+    name: Optional[str] = None
+    relationship_type: Optional[str] = None
+    is_close_one: Optional[bool] = None
+
+
+@router.patch("/{person_id}", response_model=PersonResponse, status_code=status.HTTP_200_OK)
+async def update_person(person_id: int, payload: UpdatePersonRequest) -> PersonResponse:
+    """Updates a recognized person's granular relationship, display name, or Close One flag."""
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(
+            """
+            SELECT id, name, relationship_type, is_close_one, affinity_score,
+                   confirmed_count, cover_face_id
+            FROM persons
+            WHERE id = ?;
+            """,
+            (person_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Person not found")
+
+        new_name = payload.name.strip() if payload.name is not None and payload.name.strip() else row["name"]
+        new_rel = payload.relationship_type.strip() if payload.relationship_type is not None else row["relationship_type"]
+        new_close = payload.is_close_one if payload.is_close_one is not None else bool(row["is_close_one"])
+
+        # Auto-promote close family and partners to Close One (VIP)
+        close_relationships = {
+            "Wife", "Husband", "Partner", "Spouse",
+            "Son", "Daughter", "Child",
+            "Mother", "Father", "Parent",
+            "Brother", "Sister", "Sibling",
+            "Grandmother", "Grandfather",
+            "Family", "Best Friend",
+        }
+        if new_rel in close_relationships:
+            new_close = True
+
+        await conn.execute(
+            """
+            UPDATE persons
+            SET name = ?, relationship_type = ?, is_close_one = ?
+            WHERE id = ?;
+            """,
+            (new_name, new_rel, 1 if new_close else 0, person_id),
+        )
+        await conn.commit()
+
+        return PersonResponse(
+            id=person_id,
+            name=new_name,
+            affinity_score=float(row["affinity_score"] or 0.0),
+            relationship_type=new_rel,
+            is_close_one=new_close,
+            confirmed_count=int(row["confirmed_count"] or 0),
+            cover_face_id=row["cover_face_id"],
+        )
+    finally:
+        await conn.close()
+

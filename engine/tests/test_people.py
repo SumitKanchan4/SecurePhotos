@@ -142,3 +142,13 @@ async def test_people_api_workflow():
             assert photos_res.status_code == 200
             alex_photos = photos_res.json()
             assert len(alex_photos) >= 1
+
+            # Test updating granular relationship to 'Wife'
+            update_res = await client.patch(
+                f"/api/people/{alex['id']}",
+                json={"relationship_type": "Wife"},
+            )
+            assert update_res.status_code == 200
+            updated_alex = update_res.json()
+            assert updated_alex["relationship_type"] == "Wife"
+            assert updated_alex["is_close_one"] is True

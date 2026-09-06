@@ -110,7 +110,15 @@ async def refresh_all_social_affinities() -> int:
                 int_row = await int_cursor.fetchone()
                 intimate_cnt = int_row[0] if int_row else 0
 
-            is_close_rel = person["relationship_type"] in ("Partner", "Family", "Best Friend")
+            close_relationships = {
+                "Wife", "Husband", "Partner", "Spouse",
+                "Son", "Daughter", "Child",
+                "Mother", "Father", "Parent",
+                "Brother", "Sister", "Sibling",
+                "Grandmother", "Grandfather",
+                "Family", "Best Friend",
+            }
+            is_close_rel = person["relationship_type"] in close_relationships
             score = calculate_affinity_score(
                 photo_count=cnt,
                 span_years=span_years,
