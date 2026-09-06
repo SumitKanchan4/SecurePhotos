@@ -82,10 +82,14 @@ Allows creating named custom albums, adding photos in bulk or from album detail 
 - **Multiple Ingestion Pathways**:
   1. **Selection Toolbar**: Selecting photos in the main grid opens a floating toolbar with `<FolderPlus /> Add to Album`, opening `AddToAlbumModal`.
   2. **Album Detail View**: In-app photo picker modal allows picking any library photo not already in the album.
+- **Album Multi-Selection & Batch Removal**:
+  - Inside the album detail view, each photo item displays a top-left selection checkbox on hover (or permanently when selected).
+  - Selecting one or more photos reveals a floating batch action bar at the bottom with photo count, "Remove from Album", and "Clear".
+  - Batch removal calls `POST /api/albums/{album_id}/photos/batch-remove` which atomicly unlinks multiple junction entries in a single database transaction, immediately updating UI state.
 - **Removed Redundant Selection Actions**: Removed obsolete "Enhance to 8K Ultra" from the multi-select floating bar, and renamed "8K Collage" to "Create Collage".
 
 ### Technical Touchpoints
-- **Backend**: `engine/api/albums.py`, `GET /api/albums`, `POST /api/albums`, `POST /api/albums/{id}/photos`, `DELETE /api/albums/{id}/photos/{photo_id}`.
+- **Backend**: `engine/api/albums.py`, `GET /api/albums`, `POST /api/albums`, `POST /api/albums/{id}/photos`, `DELETE /api/albums/{id}/photos/{photo_id}`, `POST /api/albums/{album_id}/photos/batch-remove`.
 - **Frontend**: `src/components/AlbumsView.tsx`, `src/components/AddToAlbumModal.tsx`, `src/App.tsx`.
 
 ---
@@ -96,14 +100,15 @@ Allows creating named custom albums, adding photos in bulk or from album detail 
 Users can choose which photo represents an album in the gallery view.
 
 ### Key Functional Decision Points
-- **Contextual One-Click Assignment**: Inside any user album detail view, each photo card features a "Set Cover" button on hover.
-- **Visual Feedback**: The active cover photo displays a prominent `Cover` badge with a checkmark.
+- **Cover Persistence Across Tab Switches**: Backend `AlbumDetailResponse` explicitly includes `cover_photo_id: Optional[int]`. When navigating between tabs or re-entering an album, the active cover is immediately retrieved and matched without losing state.
+- **Hover-Only "Set Cover"**: Rather than permanently cluttering photo cards, the "Set Cover" button is strictly rendered on hover (`onMouseEnter`/`onMouseLeave`).
+- **Clean Aesthetic (Zero Badges/Labels)**: Per user design specification, the active cover photo does NOT display any badge, tag, or label. To indicate it is already the cover, the "Set Cover" option is completely omitted on the active cover photo, so only non-cover photos show "Set Cover" on hover.
 - **Integrity Validation**: Backend validates that `photo_id` is an active member of the target album before updating `albums.cover_photo_id`.
 - **Fallback Resolution**: If no custom cover is set, backend queries dynamically fall back to the newest photo in the album.
 
 ### Technical Touchpoints
-- **Backend**: `POST /api/albums/{album_id}/cover` in `engine/api/albums.py`.
-- **Frontend**: `handleSetAlbumCover` in `src/components/AlbumsView.tsx`.
+- **Backend**: `POST /api/albums/{album_id}/cover` and `AlbumDetailResponse` in `engine/api/albums.py`.
+- **Frontend**: `handleSetAlbumCover`, `hoveredPhotoId`, and cover matching logic in `src/components/AlbumsView.tsx`.
 
 ---
 
@@ -170,3 +175,30 @@ Isolates photo arrays across different viewing contexts (e.g. main library, cust
 
 ### Technical Touchpoints
 - **Frontend**: `src/App.tsx`, `src/components/AlbumsView.tsx`.
+
+---
+
+## 10. Full-Screen Cinematic Album Slideshow with Procedural Ambient Soundscape
+
+### Overview
+A cinematic full-screen slideshow experience tailored for viewing album memories with smooth motion transitions and relaxing, continuous ambient music.
+
+### Key Functional Decision Points
+- **Cinematic Ken Burns Motion Animation**:
+  - Automatically applies smooth hardware-accelerated CSS keyframe transforms (`scale(1.0)` to `scale(1.08)` and subtle drift) with opacity cross-fading over each 5-second slide duration.
+  - Gives still photos an emotional, living presence without requiring heavy video re-encoding or external plugins.
+- **Procedural Ambient Soundscape (Zero External Assets)**:
+  - Rather than bundling bulky MP3/WAV files that require network bandwidth or licensing rights, uses the native **Web Audio API** (`AudioContext`, polyphonic sine/triangle oscillators, lowpass biquad filters, and volume envelopes).
+  - Synthesizes warm, continuous ambient harmonic chord pads dynamically in real time.
+  - 100% offline, lightweight, and royalty-free.
+  - Automatically ramps volume up on entry and soft-ramps to zero when closing or pausing to prevent speaker pop/clicks.
+  - Includes a one-click mute/unmute toggle (`M` shortcut).
+- **Auto-Hiding Floating Controls & Keyboard Navigation**:
+  - Overlays (header, bottom controls, navigation arrows) automatically fade away after 3 seconds of cursor inactivity, providing true borderless immersion.
+  - Re-appear instantly upon cursor movement.
+  - Full keyboard shortcuts: `Space` (Play/Pause), `ArrowLeft`/`ArrowRight` (Prev/Next), `M` (Mute/Unmute audio), `Esc` (Exit), and Fullscreen toggle (`Maximize` icon).
+- **Zero Memory Leaks**:
+  - Cleans up Web Audio oscillators and cancels timeouts immediately when the modal unmounts.
+
+### Technical Touchpoints
+- **Frontend**: `src/components/AlbumSlideshowModal.tsx`, invoked from `src/components/AlbumsView.tsx`.

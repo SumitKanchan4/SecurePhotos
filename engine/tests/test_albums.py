@@ -98,11 +98,25 @@ async def test_albums_crud_lifecycle():
             assert cover_res.status_code == 200
             assert cover_res.json()["cover_photo_id"] == p2
 
+            # Verify GET /api/albums/{album_id} detail returns cover_photo_id
+            detail_res_cover = await client.get(f"/api/albums/{album_id}")
+            assert detail_res_cover.status_code == 200
+            assert detail_res_cover.json()["cover_photo_id"] == p2
+
             # Test setting non-member photo as cover fails with 400
             invalid_cover_res = await client.post(f"/api/albums/{album_id}/cover", json={"photo_id": p1})
             assert invalid_cover_res.status_code == 400
 
-            # 7. Delete the album
+            # 7. Batch remove photos from album
+            batch_rem_res = await client.post(f"/api/albums/{album_id}/photos/batch-remove", json={"photo_ids": [p2]})
+            assert batch_rem_res.status_code == 200
+            assert batch_rem_res.json()["removed_count"] == 1
+
+            # Detail should now have 0 photos
+            detail_after_batch = await client.get(f"/api/albums/{album_id}")
+            assert detail_after_batch.json()["photo_count"] == 0
+
+            # 8. Delete the album
             del_res = await client.delete(f"/api/albums/{album_id}")
             assert del_res.status_code == 200
             assert del_res.json()["deleted_album_id"] == album_id

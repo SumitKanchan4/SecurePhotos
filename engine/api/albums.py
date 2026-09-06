@@ -51,9 +51,15 @@ class AlbumDetailResponse(BaseModel):
     description: Optional[str] = None
     is_vault: bool = False
     is_favorite: bool = False
+    cover_photo_id: Optional[int] = None
     created_at: Optional[str] = None
     photo_count: int = 0
     photos: List[PhotoResponse]
+
+
+class BatchRemovePhotosRequest(BaseModel):
+    """Payload to batch remove photos from an album."""
+    photo_ids: List[int]
 
 
 @router.get("", response_model=List[AlbumResponse], status_code=status.HTTP_200_OK)
@@ -234,6 +240,7 @@ async def get_album_detail(album_id: int) -> AlbumDetailResponse:
             description=album["description"],
             is_vault=bool(album["is_vault"]),
             is_favorite=bool(album["is_favorite"]),
+            cover_photo_id=album["cover_photo_id"],
             created_at=str(album["created_at"]) if album["created_at"] else None,
             photo_count=len(photos),
             photos=photos,
@@ -292,6 +299,25 @@ async def remove_photo_from_album(album_id: int, photo_id: int) -> dict:
             raise HTTPException(status_code=404, detail="Photo is not in this album")
 
         return {"status": "ok", "removed_photo_id": photo_id, "album_id": album_id}
+    finally:
+        await conn.close()
+
+
+@router.post("/{album_id}/photos/batch-remove", status_code=status.HTTP_200_OK)
+async def batch_remove_photos_from_album(album_id: int, payload: BatchRemovePhotosRequest) -> dict:
+    """Removes a list of photo IDs from an album in a single atomic transaction."""
+    if not payload.photo_ids:
+        return {"status": "ok", "removed_count": 0, "album_id": album_id}
+
+    conn = await get_db_connection()
+    try:
+        placeholders = ",".join("?" for _ in payload.photo_ids)
+        cursor = await conn.execute(
+            f"DELETE FROM photo_album WHERE album_id = ? AND photo_id IN ({placeholders});",
+            (album_id, *payload.photo_ids),
+        )
+        await conn.commit()
+        return {"status": "ok", "removed_count": cursor.rowcount, "album_id": album_id}
     finally:
         await conn.close()
 

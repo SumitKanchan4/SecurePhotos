@@ -10,9 +10,11 @@ import {
   Trash2,
   X,
   Check,
-  Loader2
+  Loader2,
+  Play
 } from "lucide-react";
 import { AlbumItem, PhotoItem } from "../types";
+import { AlbumSlideshowModal } from "./AlbumSlideshowModal";
 
 interface AlbumsViewProps {
   onLockAlbumToVault?: (albumId: number) => void;
@@ -39,6 +41,14 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   const [albumPhotos, setAlbumPhotos] = useState<PhotoItem[]>([]);
   const [activeAlbumMeta, setActiveAlbumMeta] = useState<AlbumItem | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+
+  // Multi-Selection in Album Detail
+  const [selectedAlbumPhotoIds, setSelectedAlbumPhotoIds] = useState<Set<number>>(new Set());
+  const [isBatchRemoving, setIsBatchRemoving] = useState(false);
+  const [hoveredPhotoId, setHoveredPhotoId] = useState<number | null>(null);
+
+  // Full-Screen Slideshow State
+  const [isSlideshowOpen, setIsSlideshowOpen] = useState(false);
 
   // Photo Picker to Add Photos to Current Album
   const [isPhotoPickerOpen, setIsPhotoPickerOpen] = useState(false);
@@ -227,6 +237,50 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     }
   };
 
+  const toggleAlbumPhotoSelection = (photoId: number) => {
+    setSelectedAlbumPhotoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(photoId)) next.delete(photoId);
+      else next.add(photoId);
+      return next;
+    });
+  };
+
+  const handleBatchRemoveFromAlbum = async () => {
+    if (!activeAlbumId || selectedAlbumPhotoIds.size === 0 || isBatchRemoving) return;
+    const ids = Array.from(selectedAlbumPhotoIds);
+    if (!window.confirm(`Remove ${ids.length} ${ids.length === 1 ? "photo" : "photos"} from this album? Photos will remain in your library.`)) {
+      return;
+    }
+    setIsBatchRemoving(true);
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/albums/${activeAlbumId}/photos/batch-remove`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo_ids: ids }),
+      });
+      if (res.ok) {
+        const removedSet = new Set(ids);
+        setAlbumPhotos((prev) => prev.filter((p) => !removedSet.has(p.id)));
+        setSelectedAlbumPhotoIds(new Set());
+        setActiveAlbumMeta((prev) =>
+          prev ? { ...prev, photo_count: Math.max(0, (prev.photo_count || ids.length) - ids.length) } : null
+        );
+        setAlbums((prev) =>
+          prev.map((a) =>
+            a.id === activeAlbumId
+              ? { ...a, photo_count: Math.max(0, (a.photo_count || ids.length) - ids.length) }
+              : a
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Failed to batch remove photos from album:", err);
+    } finally {
+      setIsBatchRemoving(false);
+    }
+  };
+
   const openPhotoPicker = async () => {
     setPickerSelectedIds(new Set());
     setIsPhotoPickerOpen(true);
@@ -299,6 +353,8 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                 setActiveAlbumId(null);
                 setActiveAlbumMeta(null);
                 setAlbumPhotos([]);
+                setSelectedAlbumPhotoIds(new Set());
+                setHoveredPhotoId(null);
                 loadAlbums();
               }}
               className="clickable"
@@ -346,50 +402,76 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
             </div>
           </div>
 
-          {activeAlbumId !== -1 && (
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {albumPhotos.length > 0 && (
               <button
-                onClick={openPhotoPicker}
+                onClick={() => setIsSlideshowOpen(true)}
                 className="clickable"
                 style={{
                   display: "flex",
                   alignItems: "center",
                   gap: "6px",
-                  padding: "7px 16px",
+                  padding: "7px 14px",
                   borderRadius: "var(--radius-sm)",
-                  backgroundColor: "var(--accent-primary)",
-                  border: "none",
-                  color: "#ffffff",
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-subtle)",
+                  color: "var(--text-primary)",
                   fontSize: "12px",
                   fontWeight: 600,
                   cursor: "pointer",
                 }}
+                title="Play full-screen cinematic slideshow with ambient music"
               >
-                <Plus size={14} />
-                Add Photos
+                <Play size={13} fill="currentColor" />
+                Slideshow
               </button>
-              <button
-                onClick={() => handleDeleteAlbum(activeAlbumMeta.id)}
-                className="clickable"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "7px 12px",
-                  borderRadius: "var(--radius-sm)",
-                  backgroundColor: "var(--bg-surface)",
-                  border: "1px solid var(--border-subtle)",
-                  color: "var(--accent-danger, #ef4444)",
-                  fontSize: "12px",
-                  cursor: "pointer",
-                }}
-                title="Delete this album"
-              >
-                <Trash2 size={14} />
-                Delete
-              </button>
-            </div>
-          )}
+            )}
+
+            {activeAlbumId !== -1 && (
+              <>
+                <button
+                  onClick={openPhotoPicker}
+                  className="clickable"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "7px 16px",
+                    borderRadius: "var(--radius-sm)",
+                    backgroundColor: "var(--accent-primary)",
+                    border: "none",
+                    color: "#ffffff",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  <Plus size={14} />
+                  Add Photos
+                </button>
+                <button
+                  onClick={() => handleDeleteAlbum(activeAlbumMeta.id)}
+                  className="clickable"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "7px 12px",
+                    borderRadius: "var(--radius-sm)",
+                    backgroundColor: "var(--bg-surface)",
+                    border: "1px solid var(--border-subtle)",
+                    color: "var(--accent-danger, #ef4444)",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                  }}
+                  title="Delete this album"
+                >
+                  <Trash2 size={14} />
+                  Delete
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Photos Grid or Empty State */}
@@ -460,6 +542,9 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
             >
               {albumPhotos.map((photo, idx) => {
                 const isCover = activeAlbumMeta.cover_photo_id === photo.id;
+                const isSelected = selectedAlbumPhotoIds.has(photo.id);
+                const isHovered = hoveredPhotoId === photo.id;
+
                 return (
                   <div
                     key={photo.id}
@@ -470,9 +555,11 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                       borderRadius: "var(--radius-sm)",
                       overflow: "hidden",
                       backgroundColor: "var(--bg-surface-elevated)",
-                      border: isCover ? "2px solid var(--accent-primary)" : "1px solid var(--border-subtle)",
+                      border: isSelected ? "2px solid var(--accent-primary)" : "1px solid var(--border-subtle)",
                       cursor: "pointer",
                     }}
+                    onMouseEnter={() => setHoveredPhotoId(photo.id)}
+                    onMouseLeave={() => setHoveredPhotoId(null)}
                     onClick={() => onPhotoClick?.(idx, albumPhotos)}
                   >
                     <img
@@ -482,54 +569,69 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                       loading="lazy"
                     />
 
-                    {/* Top Left: Cover Status / Set as Cover Button (Only for user albums) */}
-                    {activeAlbumId !== -1 && (
-                      <div style={{ position: "absolute", top: "6px", left: "6px", zIndex: 3 }}>
-                        {isCover ? (
-                          <span
-                            title="Current Album Cover"
-                            style={{
-                              backgroundColor: "var(--accent-primary)",
-                              color: "#ffffff",
-                              padding: "2px 7px",
-                              borderRadius: "var(--radius-xs)",
-                              fontSize: "10px",
-                              fontWeight: 700,
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "3px",
-                              boxShadow: "0 2px 6px rgba(0,0,0,0.5)",
-                            }}
-                          >
-                            <Check size={10} strokeWidth={3} /> Cover
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSetAlbumCover(photo.id);
-                            }}
-                            title="Set as Album Cover"
-                            style={{
-                              backgroundColor: "rgba(0, 0, 0, 0.65)",
-                              border: "1px solid rgba(255, 255, 255, 0.3)",
-                              borderRadius: "var(--radius-xs)",
-                              color: "#ffffff",
-                              padding: "2px 6px",
-                              fontSize: "10px",
-                              fontWeight: 600,
-                              cursor: "pointer",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "3px",
-                              backdropFilter: "blur(4px)",
-                            }}
-                          >
-                            <ImageIcon size={10} /> Set Cover
-                          </button>
-                        )}
-                      </div>
+                    {/* Top Left: Checkbox (Multi-Selection) */}
+                    <div
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleAlbumPhotoSelection(photo.id);
+                      }}
+                      style={{
+                        position: "absolute",
+                        top: "6px",
+                        left: "6px",
+                        width: "18px",
+                        height: "18px",
+                        borderRadius: "var(--radius-xs, 4px)",
+                        backgroundColor: isSelected ? "var(--accent-primary)" : "rgba(0, 0, 0, 0.45)",
+                        border: isSelected ? "none" : "1px solid rgba(255, 255, 255, 0.5)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "#ffffff",
+                        zIndex: 3,
+                        opacity: isSelected || isHovered ? 1 : 0.35,
+                        transition: "opacity 0.15s ease, background-color 0.15s ease",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {isSelected && <Check size={12} strokeWidth={3} />}
+                    </div>
+
+                    {/* Hover-Only "Set Cover" Button: Only on non-cover photos in user albums */}
+                    {activeAlbumId !== -1 && !isCover && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSetAlbumCover(photo.id);
+                        }}
+                        title="Set as Album Cover"
+                        style={{
+                          position: "absolute",
+                          top: "6px",
+                          left: "28px",
+                          backgroundColor: "rgba(0, 0, 0, 0.7)",
+                          border: "1px solid rgba(255, 255, 255, 0.3)",
+                          borderRadius: "var(--radius-xs, 4px)",
+                          color: "#ffffff",
+                          padding: "2px 7px",
+                          fontSize: "10px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "3px",
+                          backdropFilter: "blur(6px)",
+                          opacity: isHovered ? 1 : 0,
+                          transform: isHovered ? "scale(1)" : "scale(0.95)",
+                          transition: "opacity 0.15s ease, transform 0.15s ease",
+                          zIndex: 3,
+                          boxShadow: "0 2px 6px rgba(0,0,0,0.5)",
+                          pointerEvents: isHovered ? "auto" : "none",
+                        }}
+                      >
+                        <ImageIcon size={11} /> Set Cover
+                      </button>
                     )}
 
                     {/* Top Right: Like Heart & Remove Buttons */}
@@ -790,6 +892,78 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
             </div>
           </div>
         )}
+
+        {/* Floating Batch Selection Bar for Album */}
+        {selectedAlbumPhotoIds.size > 0 && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: "24px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              padding: "10px 18px",
+              borderRadius: "var(--radius-full, 9999px)",
+              backgroundColor: "rgba(20, 24, 38, 0.92)",
+              border: "1px solid var(--border-subtle)",
+              backdropFilter: "blur(16px)",
+              boxShadow: "0 16px 36px rgba(0,0,0,0.75)",
+              zIndex: 100,
+            }}
+          >
+            <span style={{ fontSize: "12px", fontWeight: 600, color: "#ffffff", paddingRight: "4px" }}>
+              {selectedAlbumPhotoIds.size} {selectedAlbumPhotoIds.size === 1 ? "Photo" : "Photos"} Selected
+            </span>
+
+            <button
+              onClick={handleBatchRemoveFromAlbum}
+              disabled={isBatchRemoving}
+              className="clickable"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "6px 14px",
+                borderRadius: "var(--radius-full, 9999px)",
+                backgroundColor: "var(--accent-danger, #ef4444)",
+                border: "none",
+                color: "#ffffff",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {isBatchRemoving ? <Loader2 size={13} className="spin" /> : <Trash2 size={13} />}
+              Remove from Album
+            </button>
+
+            <button
+              onClick={() => setSelectedAlbumPhotoIds(new Set())}
+              className="clickable"
+              style={{
+                padding: "6px 12px",
+                borderRadius: "var(--radius-full, 9999px)",
+                backgroundColor: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(255,255,255,0.15)",
+                color: "var(--text-secondary)",
+                fontSize: "12px",
+                cursor: "pointer",
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
+        {/* Full-Screen Cinematic Slideshow Modal */}
+        <AlbumSlideshowModal
+          isOpen={isSlideshowOpen}
+          albumName={activeAlbumMeta.name}
+          photos={albumPhotos}
+          onClose={() => setIsSlideshowOpen(false)}
+        />
       </div>
     );
   }
