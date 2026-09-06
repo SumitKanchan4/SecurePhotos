@@ -4,7 +4,8 @@ import {
   Lock, 
   Plus, 
   FolderSync, 
-  LayoutGrid 
+  LayoutGrid,
+  Loader2 
 } from "lucide-react";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
@@ -24,7 +25,7 @@ import { SettingsView } from "./components/SettingsView";
 import { CollageModal } from "./components/CollageModal";
 import { UpdateModal } from "./components/UpdateModal";
 import { useAppStore } from "./store/useAppStore";
-import { PhotoItem, SystemPrerequisites } from "./types";
+import { PhotoItem, SystemPrerequisites, OptimizationProgress } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { check, Update } from "@tauri-apps/plugin-updater";
 
@@ -48,6 +49,7 @@ export const App: React.FC = () => {
   const [isCollageModalOpen, setIsCollageModalOpen] = useState(false);
   const [activeStoryId, setActiveStoryId] = useState<number | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [optimizationProgress, setOptimizationProgress] = useState<OptimizationProgress | null>(null);
 
   // Load photos from engine with optional Year or Undated filtering
   const loadPhotos = async (selectedYear: string = activeYear) => {
@@ -63,6 +65,12 @@ export const App: React.FC = () => {
         const data = await res.json();
         setPhotos(data);
         setTotalPhotosCount(data.length);
+
+        // Auto-trigger background 8K optimization queue if unoptimized items exist
+        const hasUnoptimized = data.some((p: PhotoItem) => !p.is_optimized);
+        if (hasUnoptimized) {
+          fetch("http://127.0.0.1:8000/api/photos/start-optimization", { method: "POST" }).catch(() => {});
+        }
       }
     } catch {
       // Backend may be starting or offline
@@ -71,6 +79,45 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     loadPhotos(activeYear);
+  }, [activeYear]);
+
+  // Real-time polling for background 4K optimization progress
+  useEffect(() => {
+    let wasActive = false;
+    let lastCompletedCount = 0;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("http://127.0.0.1:8000/api/photos/optimization-progress");
+        if (res.ok) {
+          const data: OptimizationProgress = await res.json();
+          setOptimizationProgress(data);
+
+          // If an individual photo just finished optimizing, immediately update its 4K badge & refresh
+          if (data.completed_count > lastCompletedCount) {
+            lastCompletedCount = data.completed_count;
+            if (data.last_completed_photo_id) {
+              setPhotos((prev) =>
+                prev.map((p) =>
+                  p.id === data.last_completed_photo_id
+                    ? { ...p, is_optimized: true, is_enhanced: true }
+                    : p
+                )
+              );
+            }
+            loadPhotos(activeYear);
+          }
+
+          // If the entire active batch completed, reload photos list
+          if (wasActive && !data.is_active) {
+            loadPhotos(activeYear);
+            lastCompletedCount = 0;
+          }
+          wasActive = data.is_active;
+        }
+      } catch {}
+    }, 1000);
+
+    return () => clearInterval(interval);
   }, [activeYear]);
 
   // Updater and diagnostics state
@@ -252,11 +299,48 @@ export const App: React.FC = () => {
                   <h1 style={{ fontSize: "18px", fontWeight: 700, textTransform: "capitalize", letterSpacing: "-0.3px" }}>
                     All Photos & Videos
                   </h1>
-                  <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-                    {photos.length === 0 
-                      ? "No photos yet • Import a folder to begin"
-                      : `${photos.length.toLocaleString()} media items • 4K Space-Saver Mode Active`}
-                  </p>
+                  {photos.length === 0 ? (
+                    <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
+                      No photos yet • Import a folder to begin
+                    </p>
+                  ) : optimizationProgress?.is_active ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "4px" }}>
+                      <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                        {photos.length.toLocaleString()} media items
+                      </span>
+                      <span 
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "3px 10px",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "rgba(59, 130, 246, 0.12)",
+                          border: "1px solid rgba(59, 130, 246, 0.35)",
+                          fontSize: "11px",
+                          color: "var(--accent-primary)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <Loader2 size={12} className="spin" />
+                        4K Optimization: Processing {optimizationProgress.active_filename || "media"} ({optimizationProgress.completed_count}/{optimizationProgress.total_count}) • {optimizationProgress.item_progress}%
+                      </span>
+                      <div style={{ width: "80px", height: "4px", backgroundColor: "var(--bg-surface-elevated)", borderRadius: "2px", overflow: "hidden" }}>
+                        <div 
+                          style={{ 
+                            height: "100%", 
+                            width: `${optimizationProgress.item_progress}%`, 
+                            backgroundColor: "var(--accent-primary)", 
+                            transition: "width 0.2s ease" 
+                          }} 
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
+                      {`${photos.length.toLocaleString()} media items • 4K Space-Saver Mode Active`}
+                    </p>
+                  )}
                 </div>
 
                 {/* Selection & Batch Action Toolbar */}
@@ -420,6 +504,7 @@ export const App: React.FC = () => {
               {/* 60 FPS Virtualized Grid / Empty State */}
               <PhotoGrid 
                 photos={photos} 
+                optimizationProgress={optimizationProgress}
                 onPhotoClick={(idx) => setLightboxIndex(idx)} 
                 onImportClick={() => setIsImportModalOpen(true)}
               />

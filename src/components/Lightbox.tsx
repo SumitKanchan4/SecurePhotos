@@ -8,7 +8,14 @@ import {
   Info, 
   ZoomIn, 
   ZoomOut, 
-  Camera
+  Copy,
+  Check,
+  Loader2,
+  Camera,
+  MapPin,
+  Aperture,
+  ExternalLink,
+  Zap
 } from "lucide-react";
 import { PhotoItem } from "../types";
 
@@ -32,6 +39,12 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const [showSplitSlider, setShowSplitSlider] = useState(false);
   const [splitPosition, setSplitPosition] = useState(50); // percentage 0 to 100
   const [isFavorite, setIsFavorite] = useState(false);
+  const [isPreviewLoaded, setIsPreviewLoaded] = useState(false);
+  const [previewHasError, setPreviewHasError] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
+  const [isNeuralGenerating, setIsNeuralGenerating] = useState(false);
+  const [neuralPreviewUrl, setNeuralPreviewUrl] = useState<string | null>(null);
+  const [neuralStatusText, setNeuralStatusText] = useState<string | null>(null);
 
   const currentPhoto = photos[currentIndex];
 
@@ -40,8 +53,50 @@ export const Lightbox: React.FC<LightboxProps> = ({
       setIsFavorite(currentPhoto.is_favorite);
       setZoom(1);
       setShowSplitSlider(false);
+      setIsPreviewLoaded(false);
+      setPreviewHasError(false);
+      setIsCopied(false);
+      setIsNeuralGenerating(false);
+      setNeuralStatusText(null);
+
+      // Check if pre-computed neural preview exists
+      fetch(`http://127.0.0.1:8000/api/photos/${currentPhoto.id}/neural-preview`, { method: "HEAD" })
+        .then((r) => {
+          if (r.ok) {
+            setNeuralPreviewUrl(`http://127.0.0.1:8000/api/photos/${currentPhoto.id}/neural-preview`);
+          } else {
+            setNeuralPreviewUrl(null);
+          }
+        })
+        .catch(() => setNeuralPreviewUrl(null));
     }
   }, [currentIndex, currentPhoto]);
+
+  const handleRunNeuralEnhance = async () => {
+    if (!currentPhoto || isNeuralGenerating) return;
+    setIsNeuralGenerating(true);
+    setNeuralStatusText("Synthesizing deep neural micro-textures (Real-ESRGAN)...");
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/photos/${currentPhoto.id}/neural-enhance`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        setNeuralPreviewUrl(`http://127.0.0.1:8000/api/photos/${currentPhoto.id}/neural-preview?t=${Date.now()}`);
+        setShowSplitSlider(true);
+        setNeuralStatusText("Neural texture synthesis complete! Drag the slider to compare.");
+        setTimeout(() => setNeuralStatusText(null), 4000);
+      } else {
+        const err = await res.json().catch(() => ({ detail: "Request failed" }));
+        setNeuralStatusText(`Error: ${err.detail || "Failed to synthesize textures"}`);
+        setTimeout(() => setNeuralStatusText(null), 5000);
+      }
+    } catch (e: any) {
+      setNeuralStatusText(`Network error: ${e.message}`);
+      setTimeout(() => setNeuralStatusText(null), 5000);
+    } finally {
+      setIsNeuralGenerating(false);
+    }
+  };
 
   // Keyboard navigation shortcuts
   useEffect(() => {
@@ -73,13 +128,22 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const handleZoomIn = () => setZoom((z) => Math.min(z + 0.5, 4));
   const handleZoomOut = () => setZoom((z) => Math.max(z - 0.5, 1));
 
+  const previewUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto.id}/preview`;
+  const thumbnailUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto.id}/thumbnail`;
+
+  const copyStoragePath = () => {
+    navigator.clipboard.writeText(currentPhoto.filepath);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+
   return (
     <div 
       style={{
         position: "fixed",
         inset: 0,
-        backgroundColor: "rgba(5, 6, 10, 0.96)",
-        backdropFilter: "blur(20px)",
+        backgroundColor: "rgba(5, 6, 10, 0.97)",
+        backdropFilter: "blur(24px)",
         display: "flex",
         flexDirection: "column",
         zIndex: 3000,
@@ -94,7 +158,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
           alignItems: "center",
           justifyContent: "space-between",
           padding: "0 16px",
-          backgroundColor: "rgba(14, 16, 23, 0.8)",
+          backgroundColor: "rgba(14, 16, 23, 0.85)",
           borderBottom: "1px solid var(--border-subtle)",
           zIndex: 10,
         }}
@@ -106,11 +170,28 @@ export const Lightbox: React.FC<LightboxProps> = ({
           <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
             {currentIndex + 1} of {photos.length}
           </span>
+          {currentPhoto.is_enhanced && (
+            <span 
+              style={{
+                fontSize: "10px",
+                fontWeight: 700,
+                color: "#ffffff",
+                backgroundColor: "var(--accent-primary)",
+                padding: "2px 6px",
+                borderRadius: "var(--radius-xs)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "3px",
+              }}
+            >
+              <Sparkles size={10} /> 8K ULTRA
+            </span>
+          )}
         </div>
 
         {/* Action Controls */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          {/* 4K Split Slider Toggle Button */}
+          {/* 8K Split Slider Toggle Button */}
           <button
             onClick={() => setShowSplitSlider(!showSplitSlider)}
             className="clickable"
@@ -128,7 +209,44 @@ export const Lightbox: React.FC<LightboxProps> = ({
             }}
           >
             <Sparkles size={13} />
-            {showSplitSlider ? "Hide 4K Comparison" : "4K AI Comparison (E)"}
+            {showSplitSlider ? "Hide 8K Comparison" : "8K AI Comparison (E)"}
+          </button>
+
+          {/* Deep Texture Neural AI Button */}
+          <button
+            onClick={handleRunNeuralEnhance}
+            disabled={isNeuralGenerating}
+            className="clickable"
+            title="Reconstruct realistic high-frequency micro-textures (hair, skin, fabric) via local Real-ESRGAN AI"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "5px 10px",
+              borderRadius: "var(--radius-sm)",
+              backgroundColor: neuralPreviewUrl ? "rgba(16, 185, 129, 0.2)" : "var(--bg-surface)",
+              border: `1px solid ${neuralPreviewUrl ? "var(--accent-success)" : "var(--border-subtle)"}`,
+              color: neuralPreviewUrl ? "var(--accent-success)" : "var(--text-primary)",
+              fontSize: "11px",
+              fontWeight: 600,
+            }}
+          >
+            {isNeuralGenerating ? (
+              <>
+                <Loader2 size={13} className="spin" style={{ color: "var(--accent-primary)" }} />
+                Synthesizing Textures...
+              </>
+            ) : neuralPreviewUrl ? (
+              <>
+                <Zap size={13} style={{ color: "var(--accent-success)" }} />
+                Neural AI Active
+              </>
+            ) : (
+              <>
+                <Zap size={13} style={{ color: "var(--accent-primary)" }} />
+                Deep Texture AI
+              </>
+            )}
           </button>
 
           {/* Zoom Controls */}
@@ -200,6 +318,38 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
       {/* Main Viewport Container */}
       <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden" }}>
+        {/* Floating Neural AI Status Pill */}
+        {neuralStatusText && (
+          <div
+            style={{
+              position: "absolute",
+              top: "16px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              backgroundColor: "rgba(14, 16, 23, 0.95)",
+              backdropFilter: "blur(12px)",
+              border: "1px solid var(--accent-primary)",
+              padding: "8px 18px",
+              borderRadius: "var(--radius-full)",
+              color: "#ffffff",
+              fontSize: "12px",
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              zIndex: 100,
+              boxShadow: "0 4px 24px rgba(0,0,0,0.7)",
+            }}
+          >
+            {isNeuralGenerating ? (
+              <Loader2 size={14} className="spin" style={{ color: "var(--accent-primary)" }} />
+            ) : (
+              <Zap size={14} style={{ color: "var(--accent-success)" }} />
+            )}
+            <span>{neuralStatusText}</span>
+          </div>
+        )}
+
         {/* Navigation Arrows */}
         {currentIndex > 0 && (
           <button
@@ -261,19 +411,21 @@ export const Lightbox: React.FC<LightboxProps> = ({
             justifyContent: "center",
             padding: "20px",
             position: "relative",
+            overflow: "hidden",
           }}
         >
           {showSplitSlider ? (
             /* Interactive 4K AI Split Slider View */
             <div 
               style={{
-                width: "90%",
-                height: "85%",
+                width: "92%",
+                height: "90%",
                 position: "relative",
                 borderRadius: "var(--radius-md)",
                 overflow: "hidden",
                 border: "1px solid var(--border-highlight)",
                 backgroundColor: "#000000",
+                cursor: "ew-resize",
               }}
               onMouseMove={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
@@ -281,21 +433,34 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 setSplitPosition(Math.max(5, Math.min(95, pos)));
               }}
             >
-              {/* Left Side: Original Image */}
-              <div 
+              {/* Left Side: Standard Image */}
+              <img
+                src={previewHasError ? thumbnailUrl : previewUrl}
+                alt={currentPhoto.filename}
                 style={{
                   position: "absolute",
                   inset: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  filter: "blur(1.5px)", // Visual representation of lower res original
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  filter: "brightness(0.95) contrast(0.95)",
+                }}
+              />
+              <div 
+                style={{
+                  position: "absolute",
+                  top: "16px",
+                  left: "16px",
+                  padding: "4px 10px",
+                  borderRadius: "var(--radius-xs)",
+                  backgroundColor: "rgba(0, 0, 0, 0.75)",
+                  color: "#ffffff",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  zIndex: 2,
                 }}
               >
-                <div style={{ color: "#ffffff", textAlign: "center" }}>
-                  <p style={{ fontSize: "18px", fontWeight: 700 }}>Original Source (1080p Standard)</p>
-                  <p style={{ fontSize: "12px", opacity: 0.7 }}>File Size: 4.8 MB</p>
-                </div>
+                Standard Preview
               </div>
 
               {/* Right Side: Enhanced 4K Clipped Layer */}
@@ -304,17 +469,48 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   position: "absolute",
                   inset: 0,
                   clipPath: `polygon(${splitPosition}% 0, 100% 0, 100% 100%, ${splitPosition}% 100%)`,
-                  backgroundColor: "rgba(16, 20, 30, 0.95)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  overflow: "hidden",
                 }}
               >
-                <div style={{ color: "var(--accent-primary)", textAlign: "center" }}>
-                  <p style={{ fontSize: "18px", fontWeight: 700 }}>✨ 4K AI Super-Resolution (Real-ESRGAN)</p>
-                  <p style={{ fontSize: "12px", color: "var(--accent-success)" }}>
-                    Visually Lossless AVIF (1.4 MB • -71% space saved)
-                  </p>
+                <img
+                  src={neuralPreviewUrl || (previewHasError ? thumbnailUrl : previewUrl)}
+                  alt={currentPhoto.filename}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain",
+                    filter: neuralPreviewUrl ? "none" : "contrast(1.08) saturate(1.05)",
+                  }}
+                />
+                <div 
+                  style={{
+                    position: "absolute",
+                    top: "16px",
+                    right: "16px",
+                    padding: "4px 10px",
+                    borderRadius: "var(--radius-xs)",
+                    backgroundColor: neuralPreviewUrl ? "rgba(16, 185, 129, 0.9)" : "rgba(59, 130, 246, 0.85)",
+                    color: "#ffffff",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    zIndex: 2,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
+                  }}
+                >
+                  {neuralPreviewUrl ? (
+                    <>
+                      <Zap size={12} /> Neural Texture AI (Real-ESRGAN)
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={12} /> 8K AI Enhanced
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -327,8 +523,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   left: `${splitPosition}%`,
                   width: "2px",
                   backgroundColor: "#ffffff",
-                  boxShadow: "0 0 10px rgba(0,0,0,0.8)",
-                  cursor: "ew-resize",
+                  boxShadow: "0 0 12px rgba(0,0,0,0.9)",
+                  pointerEvents: "none",
+                  zIndex: 5,
                 }}
               >
                 <div 
@@ -337,8 +534,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
                     top: "50%",
                     left: "50%",
                     transform: "translate(-50%, -50%)",
-                    width: "28px",
-                    height: "28px",
+                    width: "30px",
+                    height: "30px",
                     borderRadius: "var(--radius-full)",
                     backgroundColor: "var(--accent-primary)",
                     border: "2px solid #ffffff",
@@ -348,6 +545,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                     color: "#ffffff",
                     fontSize: "10px",
                     fontWeight: 800,
+                    boxShadow: "0 2px 10px rgba(0,0,0,0.5)",
                   }}
                 >
                   ⚡
@@ -355,28 +553,75 @@ export const Lightbox: React.FC<LightboxProps> = ({
               </div>
             </div>
           ) : (
-            /* Standard Lightbox Zoomable Media View */
+            /* Standard Lightbox Zoomable Media View with Real Image */
             <div 
               style={{
-                transform: `scale(${zoom})`,
-                transition: "transform 0.15s ease",
-                maxWidth: "90%",
-                maxHeight: "85%",
+                width: "100%",
+                height: "100%",
                 display: "flex",
-                flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: "var(--bg-surface-elevated)",
-                borderRadius: "var(--radius-md)",
-                padding: "80px",
-                border: "1px solid var(--border-subtle)",
+                position: "relative",
               }}
             >
-              <Camera size={64} style={{ color: "var(--accent-primary)", opacity: 0.6, marginBottom: "16px" }} />
-              <p style={{ fontSize: "16px", fontWeight: 600 }}>{currentPhoto.filename}</p>
-              <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
-                3840 × 2160 (4K UHD) • {(currentPhoto.file_size / (1024 * 1024)).toFixed(1)} MB
-              </p>
+              {/* Instant Thumbnail Low-Res Backdrop while Preview Loads */}
+              {!isPreviewLoaded && !previewHasError && (
+                <img
+                  src={thumbnailUrl}
+                  alt={currentPhoto.filename}
+                  style={{
+                    maxWidth: "92%",
+                    maxHeight: "88%",
+                    objectFit: "contain",
+                    filter: "blur(8px)",
+                    opacity: 0.6,
+                    position: "absolute",
+                  }}
+                />
+              )}
+
+              {/* High-Resolution Preview Image */}
+              <img
+                src={previewHasError ? thumbnailUrl : previewUrl}
+                alt={currentPhoto.filename}
+                onLoad={() => setIsPreviewLoaded(true)}
+                onError={() => {
+                  setPreviewHasError(true);
+                  setIsPreviewLoaded(true);
+                }}
+                style={{
+                  maxWidth: "94%",
+                  maxHeight: "90%",
+                  objectFit: "contain",
+                  transform: `scale(${zoom})`,
+                  transition: zoom === 1 ? "transform 0.15s ease, opacity 0.25s ease" : "none",
+                  opacity: isPreviewLoaded ? 1 : 0.4,
+                  borderRadius: "var(--radius-sm)",
+                  boxShadow: "0 8px 32px rgba(0, 0, 0, 0.6)",
+                  cursor: zoom > 1 ? "grab" : "default",
+                }}
+              />
+
+              {/* Loading Spinner */}
+              {!isPreviewLoaded && (
+                <div 
+                  style={{
+                    position: "absolute",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "8px 14px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "rgba(0, 0, 0, 0.7)",
+                    color: "#ffffff",
+                    fontSize: "12px",
+                    backdropFilter: "blur(8px)",
+                  }}
+                >
+                  <Loader2 size={16} className="spin" style={{ color: "var(--accent-primary)" }} />
+                  Loading 8K Preview...
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -385,10 +630,10 @@ export const Lightbox: React.FC<LightboxProps> = ({
         {showInfo && (
           <aside 
             style={{
-              width: "300px",
+              width: "340px",
               backgroundColor: "var(--bg-sidebar)",
               borderLeft: "1px solid var(--border-subtle)",
-              padding: "16px",
+              padding: "20px",
               display: "flex",
               flexDirection: "column",
               gap: "16px",
@@ -396,32 +641,204 @@ export const Lightbox: React.FC<LightboxProps> = ({
               zIndex: 10,
             }}
           >
-            <h3 style={{ fontSize: "14px", fontWeight: 600 }}>Media Info & Metadata</h3>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h3 style={{ fontSize: "14px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
+                <Info size={16} style={{ color: "var(--accent-primary)" }} />
+                Media Details & EXIF
+              </h3>
+              <button
+                onClick={() => setShowInfo(false)}
+                className="clickable"
+                style={{ background: "transparent", border: "none", color: "var(--text-muted)", padding: "2px" }}
+              >
+                <X size={16} />
+              </button>
+            </div>
             
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "12px" }}>
-              <div>
-                <span style={{ color: "var(--text-muted)", display: "block" }}>Date Taken:</span>
-                <span style={{ fontWeight: 500 }}>
-                  {currentPhoto.taken_at ? new Date(currentPhoto.taken_at).toLocaleString() : "Unknown"}
-                </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px", fontSize: "12px" }}>
+              {/* File & Dimension Card */}
+              <div style={{ backgroundColor: "var(--bg-surface)", padding: "12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
+                <div style={{ marginBottom: "8px" }}>
+                  <span style={{ color: "var(--text-muted)", fontSize: "11px", display: "block", marginBottom: "2px" }}>Filename:</span>
+                  <span style={{ fontWeight: 600, color: "var(--text-primary)", wordBreak: "break-all" }}>
+                    {currentPhoto.filename}
+                  </span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "8px" }}>
+                  <div>
+                    <span style={{ color: "var(--text-muted)", fontSize: "11px", display: "block" }}>Resolution:</span>
+                    <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+                      {currentPhoto.width || "?"} × {currentPhoto.height || "?"}
+                    </span>
+                  </div>
+                  <div>
+                    <span style={{ color: "var(--text-muted)", fontSize: "11px", display: "block" }}>File Size:</span>
+                    <span style={{ fontWeight: 500, fontFamily: "var(--font-mono)" }}>
+                      {(currentPhoto.file_size / (1024 * 1024)).toFixed(2)} MB
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: "8px" }}>
+                  <span style={{ color: "var(--text-muted)", fontSize: "11px", display: "block" }}>Date Taken:</span>
+                  <span style={{ fontWeight: 500 }}>
+                    {currentPhoto.taken_at ? new Date(currentPhoto.taken_at).toLocaleString() : "Unknown"}
+                  </span>
+                </div>
               </div>
-              <div>
-                <span style={{ color: "var(--text-muted)", display: "block" }}>Resolution:</span>
-                <span style={{ fontWeight: 500 }}>
-                  {currentPhoto.width || 3840} × {currentPhoto.height || 2160} (4K)
-                </span>
+
+              {/* Camera & Optics Card */}
+              <div style={{ backgroundColor: "var(--bg-surface)", padding: "12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px", color: "var(--text-primary)", fontWeight: 600 }}>
+                  <Camera size={14} style={{ color: "var(--accent-primary)" }} />
+                  <span>Camera & Optics</span>
+                </div>
+
+                <div style={{ marginBottom: "8px" }}>
+                  <span style={{ color: "var(--text-muted)", fontSize: "11px", display: "block" }}>Device:</span>
+                  <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+                    {(() => {
+                      const make = (currentPhoto.camera_make || "").trim();
+                      const model = (currentPhoto.camera_model || "").trim();
+                      if (!make && !model) return "Standard Camera";
+                      if (!make) return model;
+                      if (!model) return make;
+                      if (model.toLowerCase().startsWith(make.toLowerCase())) return model;
+                      return `${make} ${model}`;
+                    })()}
+                  </span>
+                </div>
+
+                {/* Optical Badges Grid */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "6px", marginTop: "6px" }}>
+                  {currentPhoto.aperture ? (
+                    <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
+                      <span style={{ color: "var(--text-muted)", fontSize: "10px", display: "flex", alignItems: "center", gap: "3px" }}>
+                        <Aperture size={10} style={{ color: "var(--accent-primary)" }} /> Aperture
+                      </span>
+                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>f/{currentPhoto.aperture.toFixed(1)}</span>
+                    </div>
+                  ) : null}
+
+                  {currentPhoto.shutter_speed ? (
+                    <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
+                      <span style={{ color: "var(--text-muted)", fontSize: "10px", display: "block" }}>Shutter</span>
+                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{currentPhoto.shutter_speed}</span>
+                    </div>
+                  ) : null}
+
+                  {currentPhoto.iso ? (
+                    <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
+                      <span style={{ color: "var(--text-muted)", fontSize: "10px", display: "block" }}>ISO Speed</span>
+                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>ISO {currentPhoto.iso}</span>
+                    </div>
+                  ) : null}
+
+                  {currentPhoto.focal_length ? (
+                    <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
+                      <span style={{ color: "var(--text-muted)", fontSize: "10px", display: "block" }}>Focal Length</span>
+                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{currentPhoto.focal_length.toFixed(1)} mm</span>
+                    </div>
+                  ) : null}
+                </div>
               </div>
-              <div>
-                <span style={{ color: "var(--text-muted)", display: "block" }}>Storage Path:</span>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", wordBreak: "break-all" }}>
+
+              {/* Location & GPS Card */}
+              {currentPhoto.latitude != null && currentPhoto.longitude != null && (
+                <div style={{ backgroundColor: "var(--bg-surface)", padding: "12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-primary)", fontWeight: 600 }}>
+                      <MapPin size={14} style={{ color: "var(--accent-primary)" }} />
+                      <span>GPS Location</span>
+                    </div>
+                    <a
+                      href={`https://www.openstreetmap.org/?mlat=${currentPhoto.latitude}&mlon=${currentPhoto.longitude}#map=16/${currentPhoto.latitude}/${currentPhoto.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="clickable"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        fontSize: "11px",
+                        color: "var(--accent-primary)",
+                        textDecoration: "none",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Open Map <ExternalLink size={11} />
+                    </a>
+                  </div>
+
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-secondary)", marginBottom: "4px" }}>
+                    {currentPhoto.latitude.toFixed(4)}° {currentPhoto.latitude >= 0 ? "N" : "S"},{" "}
+                    {currentPhoto.longitude.toFixed(4)}° {currentPhoto.longitude >= 0 ? "E" : "W"}
+                  </div>
+                </div>
+              )}
+
+              {/* Storage & Quality Card */}
+              <div style={{ backgroundColor: "var(--bg-surface)", padding: "12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+                  <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>Local Storage:</span>
+                  <button
+                    onClick={copyStoragePath}
+                    className="clickable"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      background: "transparent",
+                      border: "none",
+                      color: isCopied ? "var(--accent-success)" : "var(--accent-primary)",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      padding: "2px 6px",
+                      borderRadius: "var(--radius-xs)",
+                    }}
+                  >
+                    {isCopied ? (
+                      <>
+                        <Check size={12} /> Copied!
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={12} /> Copy Path
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div 
+                  style={{ 
+                    fontFamily: "var(--font-mono)", 
+                    fontSize: "10px", 
+                    wordBreak: "break-all",
+                    backgroundColor: "var(--bg-card)",
+                    padding: "8px 10px",
+                    borderRadius: "var(--radius-xs)",
+                    border: "1px solid var(--border-subtle)",
+                    color: "var(--text-secondary)",
+                    lineHeight: "1.4",
+                    marginBottom: "10px",
+                  }}
+                >
                   {currentPhoto.filepath}
-                </span>
-              </div>
-              <div>
-                <span style={{ color: "var(--text-muted)", display: "block" }}>Optimization:</span>
-                <span style={{ color: "var(--accent-success)", fontWeight: 600 }}>
-                  Visually Lossless AVIF (CRF 18)
-                </span>
+                </div>
+
+                <div>
+                  <span style={{ color: "var(--text-muted)", fontSize: "11px", display: "block", marginBottom: "2px" }}>Optimization Tier:</span>
+                  <span style={{ color: currentPhoto.is_optimized ? "var(--accent-success)" : "var(--accent-primary)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    {currentPhoto.is_optimized ? (
+                      <>
+                        <Sparkles size={12} /> 8K ULTRA Lossless (CRF 19)
+                      </>
+                    ) : (
+                      "Original Camera Master"
+                    )}
+                  </span>
+                </div>
               </div>
             </div>
           </aside>

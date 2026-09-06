@@ -156,6 +156,38 @@ fn check_system_prerequisites() -> SystemPrerequisites {
     }
 }
 
+fn find_project_root() -> Option<PathBuf> {
+    let mut check_dirs = Vec::new();
+
+    if let Ok(curr) = std::env::current_dir() {
+        check_dirs.push(curr.clone());
+        if let Some(parent) = curr.parent() {
+            check_dirs.push(parent.to_path_buf());
+        }
+    }
+
+    if let Ok(exe) = std::env::current_exe() {
+        let mut p = exe.as_path();
+        while let Some(parent) = p.parent() {
+            check_dirs.push(parent.to_path_buf());
+            p = parent;
+        }
+    }
+
+    check_dirs.push(PathBuf::from("."));
+    check_dirs.push(PathBuf::from(".."));
+
+    for dir in check_dirs {
+        if dir.join("engine").join("main.py").exists() {
+            if let Ok(canonical) = dir.canonicalize() {
+                return Some(canonical);
+            }
+            return Some(dir);
+        }
+    }
+    None
+}
+
 #[tauri::command]
 fn start_backend_engine(state: tauri::State<BackendManager>) -> serde_json::Value {
     if TcpStream::connect_timeout(
@@ -166,6 +198,47 @@ fn start_backend_engine(state: tauri::State<BackendManager>) -> serde_json::Valu
             "status": "running",
             "message": "Engine is already active on port 8000"
         });
+    }
+
+    let project_root = find_project_root();
+
+    // In development mode (debug builds), prefer running directly from local .venv
+    #[cfg(debug_assertions)]
+    {
+        let mut venv_candidates = Vec::new();
+        if let Some(ref root) = project_root {
+            venv_candidates.push(root.join(".venv/Scripts/python.exe"));
+            venv_candidates.push(root.join(".venv/bin/python"));
+        }
+        venv_candidates.push(PathBuf::from(".venv/Scripts/python.exe"));
+        venv_candidates.push(PathBuf::from("../.venv/Scripts/python.exe"));
+        venv_candidates.push(PathBuf::from(".venv/bin/python"));
+        venv_candidates.push(PathBuf::from("../.venv/bin/python"));
+
+        for venv_py in venv_candidates {
+            if venv_py.exists() {
+                let mut cmd = Command::new(&venv_py);
+                if let Some(ref root) = project_root {
+                    cmd.current_dir(root);
+                    cmd.env("PYTHONPATH", root);
+                }
+                cmd.args(["-m", "uvicorn", "engine.main:app", "--port", "8000", "--reload"]);
+                #[cfg(target_os = "windows")]
+                {
+                    use std::os::windows::process::CommandExt;
+                    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+                }
+                if let Ok(child) = cmd.spawn() {
+                    if let Ok(mut lock) = state.0.lock() {
+                        *lock = Some(child);
+                    }
+                    return serde_json::json!({
+                        "status": "starting",
+                        "message": "Development Python engine started via .venv"
+                    });
+                }
+            }
+        }
     }
 
     // Priority 1: Launch compiled standalone sidecar binary
@@ -223,6 +296,10 @@ fn start_backend_engine(state: tauri::State<BackendManager>) -> serde_json::Valu
     };
 
     let mut cmd = Command::new(py);
+    if let Some(ref root) = project_root {
+        cmd.current_dir(root);
+        cmd.env("PYTHONPATH", root);
+    }
     cmd.args(["-m", "uvicorn", "engine.main:app", "--port", "8000"]);
     #[cfg(target_os = "windows")]
     {
@@ -243,7 +320,7 @@ fn start_backend_engine(state: tauri::State<BackendManager>) -> serde_json::Valu
         Err(err) => {
             serde_json::json!({
                 "status": "error",
-                "message": format!("Failed to start engine: {}", err)
+                "message": format!("Failed to spawn engine: {}", err)
             })
         }
     }
@@ -260,30 +337,19 @@ fn stop_backend_engine(state: tauri::State<BackendManager>) -> bool {
     false
 }
 
+/// Prompts the user with a native, non-blocking folder selection dialog.
+///
+/// Uses `rfd::AsyncFileDialog` to invoke the platform-native file picker
+/// (Windows `IFileDialog` with `FOS_PICKFOLDERS`) directly in-process without
+/// spawning external console processes or blocking the main event loop.
 #[tauri::command]
-fn select_import_folder() -> Option<String> {
-    #[cfg(target_os = "windows")]
-    {
-        let ps_script = r#"
-Add-Type -AssemblyName System.Windows.Forms
-$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$dialog.Description = "Select a folder containing photos to import"
-$dialog.ShowNewFolderButton = $false
-if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-    Write-Output $dialog.SelectedPath
-}
-"#;
-        if let Ok(out) = Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", ps_script])
-            .output()
-        {
-            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !path.is_empty() {
-                return Some(path);
-            }
-        }
-    }
-    None
+async fn select_import_folder() -> Option<String> {
+    let folder = rfd::AsyncFileDialog::new()
+        .set_title("Select Folder to Import")
+        .pick_folder()
+        .await;
+
+    folder.map(|handle| handle.path().to_string_lossy().to_string())
 }
 
 #[tauri::command]

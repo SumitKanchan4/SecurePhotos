@@ -32,6 +32,12 @@ export interface PhotoItem {
   taken_at?: string;
   camera_make?: string;
   camera_model?: string;
+  latitude?: number;
+  longitude?: number;
+  iso?: number;
+  aperture?: number;
+  shutter_speed?: string;
+  focal_length?: number;
   is_favorite: boolean;
   is_encrypted: boolean;
   vault_type?: 'documents' | 'private' | null;
@@ -82,5 +88,15 @@ export interface SystemPrerequisites {
   python: PythonPrerequisite;
   backend: BackendPrerequisite;
   all_ready: boolean;
+}
+
+export interface OptimizationProgress {
+  is_active: boolean;
+  active_photo_id: number | null;
+  active_filename: string | null;
+  item_progress: number;
+  completed_count: number;
+  total_count: number;
+  last_completed_photo_id?: number | null;
 }
 

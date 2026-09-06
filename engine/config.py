@@ -18,18 +18,19 @@ logger = logging.getLogger("securephotos.config")
 def resolve_default_data_dir() -> Path:
     """Resolves the default storage directory for database, cache, and models.
 
-    If running as a frozen PyInstaller binary (e.g. on an external drive like
-    E:\\SecurePhotos), returns <install_dir>/data for 100% portable operation.
-    In local development, uses project data/ directory or ~/.securephotos_data.
+    Strictly portable: always stores in <app_dir>/data, never in the user's home folder.
+    - If running as a frozen PyInstaller binary (e.g. on an external drive), returns <install_dir>/data.
+    - In development, returns <project_root>/data.
     """
     if getattr(sys, "frozen", False):
         exe_dir = Path(sys.executable).resolve().parent
-        return exe_dir / "data"
+        data_dir = exe_dir / "data"
+    else:
+        dev_data = Path(__file__).resolve().parent.parent / "data"
+        data_dir = dev_data
 
-    dev_data = Path(__file__).resolve().parent.parent / "data"
-    if dev_data.exists():
-        return dev_data
-    return Path.home() / ".securephotos_data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir
 
 
 class AppConfig(BaseSettings):
@@ -105,20 +106,37 @@ class AppConfig(BaseSettings):
         self.models_dir.mkdir(parents=True, exist_ok=True)
         self.originals_dir.mkdir(parents=True, exist_ok=True)
 
-        # Automatic legacy migration from ~/.securephotos_data if current database is brand new
+        # Automatic legacy migration from ~/.securephotos_data if present
         try:
             legacy_data = Path.home() / ".securephotos_data"
             legacy_db = legacy_data / "database" / "securephotos.db"
-            if legacy_db.exists() and not self.database_path.exists() and legacy_data.resolve() != self.data_dir.resolve():
+            if legacy_data.exists() and legacy_data.resolve() != self.data_dir.resolve():
                 import shutil
-                logger.info(f"Migrating legacy database from {legacy_db} to {self.database_path}")
-                shutil.copy2(legacy_db, self.database_path)
+                logger.info(f"Migrating legacy database from {legacy_data} to {self.data_dir}")
+                if legacy_db.exists() and not self.database_path.exists():
+                    shutil.copy2(legacy_db, self.database_path)
                 for folder in ("thumbnails", "previews", "models", "originals"):
                     legacy_folder = legacy_data / folder
                     target_folder = self.data_dir / folder
-                    if legacy_folder.exists() and not any(target_folder.iterdir()):
+                    if legacy_folder.exists():
                         shutil.copytree(legacy_folder, target_folder, dirs_exist_ok=True)
-                logger.info("Legacy data migration completed successfully.")
+
+                # Update SQLite paths in migrated database
+                if self.database_path.exists():
+                    import sqlite3
+                    conn = sqlite3.connect(self.database_path)
+                    old_prefix = str(legacy_data)
+                    new_prefix = str(self.data_dir)
+                    conn.execute(
+                        "UPDATE photos SET filepath = REPLACE(filepath, ?, ?), thumbnail_path = REPLACE(thumbnail_path, ?, ?), preview_path = REPLACE(preview_path, ?, ?);",
+                        (old_prefix, new_prefix, old_prefix, new_prefix, old_prefix, new_prefix)
+                    )
+                    conn.commit()
+                    conn.close()
+
+                # Clean up legacy user directory
+                shutil.rmtree(legacy_data, ignore_errors=True)
+                logger.info("Legacy data migration completed and ~/.securephotos_data cleaned up successfully.")
         except Exception as e:
             logger.warning(f"Legacy data migration notice: {e}")
 

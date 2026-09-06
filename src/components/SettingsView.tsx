@@ -20,7 +20,7 @@ import { UpdateModal } from "./UpdateModal";
 import { SystemPrerequisites } from "../types";
 
 export const SettingsView: React.FC = () => {
-  const { theme, toggleTheme, activeVolume, prerequisites, setPrerequisites } = useAppStore();
+  const { theme, toggleTheme, prerequisites, setPrerequisites } = useAppStore();
   const [autoLockDuration, setAutoLockDuration] = useState("30");
   const [enableSpaceSaver, setEnableSpaceSaver] = useState(true);
   const [pauseOnBattery, setPauseOnBattery] = useState(true);
@@ -319,7 +319,7 @@ export const SettingsView: React.FC = () => {
           )}
 
           <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "10px" }}>
-            🔒 <strong>Zero-Wipe Guarantee:</strong> All SQLite databases, encryption keys, and configurations are stored in your persistent user directory (<code style={{ fontFamily: "var(--font-mono)" }}>%APPDATA%/SecurePhotos</code>). Updating the app binary will never delete or overwrite your media library.
+            🔒 <strong>Zero-Wipe Portable Guarantee:</strong> All SQLite databases, encryption keys, and media files are stored strictly inside your self-contained directory (<code style={{ fontFamily: "var(--font-mono)" }}>./data/</code>). No files are scattered to user profile folders, ensuring full offline portability.
           </p>
         </div>
 
@@ -335,28 +335,28 @@ export const SettingsView: React.FC = () => {
         >
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
             <HardDrive size={18} style={{ color: "var(--accent-primary)" }} />
-            <h3 style={{ fontSize: "14px", fontWeight: 700 }}>Active Storage Location</h3>
+            <h3 style={{ fontSize: "14px", fontWeight: 700 }}>Portable Storage & Data Layout</h3>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border-subtle)" }}>
-              <span style={{ color: "var(--text-muted)" }}>Mounted Volume:</span>
-              <span style={{ fontWeight: 600 }}>{activeVolume?.volume_name || "Samsung_T7"} ({activeVolume?.drive_letter || "E:\\"})</span>
+              <span style={{ color: "var(--text-muted)" }}>Storage Mode:</span>
+              <span style={{ fontWeight: 600, color: "var(--accent-success)" }}>Self-Contained Portable (data/)</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border-subtle)" }}>
-              <span style={{ color: "var(--text-muted)" }}>Hardware Volume UUID:</span>
+              <span style={{ color: "var(--text-muted)" }}>Database Location:</span>
               <span style={{ fontFamily: "var(--font-mono)", color: "var(--accent-primary)" }}>
-                {activeVolume?.volume_serial || "7F2A-91C4"}
+                data/database/securephotos.db
               </span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0" }}>
               <span style={{ color: "var(--text-muted)" }}>Storage Directory Layout:</span>
-              <span style={{ fontFamily: "var(--font-mono)" }}>originals/YYYY/MM/DD/ (&lt; 500 items/folder)</span>
+              <span style={{ fontFamily: "var(--font-mono)" }}>data/originals/YYYY/MM/DD/ (&lt; 500 items/folder)</span>
             </div>
           </div>
         </div>
 
-        {/* Section 2: 4K AI Space-Saver & Super-Resolution */}
+        {/* Section 2: 8K ULTRA AI Space-Saver & Super-Resolution */}
         <div 
           className="glass-panel"
           style={{
@@ -368,15 +368,15 @@ export const SettingsView: React.FC = () => {
         >
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
             <Sparkles size={18} style={{ color: "var(--accent-primary)" }} />
-            <h3 style={{ fontSize: "14px", fontWeight: 700 }}>4K AI Super-Resolution & Space Saver</h3>
+            <h3 style={{ fontSize: "14px", fontWeight: 700 }}>8K ULTRA AI Super-Resolution & Space Saver</h3>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
               <div>
-                <p style={{ fontSize: "13px", fontWeight: 600 }}>Enable 4K Space-Saver Mode</p>
+                <p style={{ fontSize: "13px", fontWeight: 600 }}>Enable 8K ULTRA Space-Saver Mode</p>
                 <p style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                  Reconstructs photos to 4K UHD and transcodes to visually lossless AVIF (saves 50–70% disk space)
+                  Reconstructs photos to 8K ULTRA UHD and transcodes to visually lossless AVIF (saves 50–70% disk space)
                 </p>
               </div>
               <input 
@@ -393,7 +393,7 @@ export const SettingsView: React.FC = () => {
                 <div>
                   <p style={{ fontSize: "13px", fontWeight: 600 }}>Thermal & Battery Awareness</p>
                   <p style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                    Automatically pause heavy 4K AI upscaling when running on laptop battery
+                    Automatically pause heavy 8K AI upscaling when running on laptop battery
                   </p>
                 </div>
               </div>
@@ -406,18 +406,38 @@ export const SettingsView: React.FC = () => {
             </label>
 
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "6px" }}>
-                <span style={{ color: "var(--text-muted)" }}>AVIF Visual Quality (CRF {qualityCrf})</span>
-                <span style={{ fontWeight: 600, color: "var(--accent-success)" }}>Visually Lossless</span>
-              </div>
-              <input 
-                type="range" 
-                min={12} 
-                max={28} 
-                value={qualityCrf} 
-                onChange={(e) => setQualityCrf(Number(e.target.value))}
-                style={{ width: "100%", accentColor: "var(--accent-primary)" }}
-              />
+              {(() => {
+                const getTier = (crf: number) => {
+                  if (crf <= 15) return { label: "Studio Archival (~5.0 MB/photo)", color: "var(--accent-primary)", desc: "Maximum bit-depth fidelity, visually indistinguishable from uncompressed RAW" };
+                  if (crf <= 20) return { label: "Visually Lossless 8K (~2.5 MB • Recommended)", color: "var(--accent-success)", desc: "Optimal balance: human eye cannot distinguish loss at 100% zoom" };
+                  if (crf <= 24) return { label: "High Efficiency (~1.5 MB/photo)", color: "var(--accent-warning)", desc: "High density compression for large 50k+ collections" };
+                  return { label: "Max Space-Saver (~800 KB/photo)", color: "var(--text-muted)", desc: "Aggressive compression for low-capacity storage" };
+                };
+                const tier = getTier(qualityCrf);
+                return (
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12px", marginBottom: "6px" }}>
+                      <span style={{ color: "var(--text-muted)" }}>
+                        AVIF / WebP Visual Quality: <strong>CRF {qualityCrf}</strong>
+                      </span>
+                      <span style={{ fontWeight: 600, color: tier.color }}>
+                        {tier.label}
+                      </span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min={12} 
+                      max={28} 
+                      value={qualityCrf} 
+                      onChange={(e) => setQualityCrf(Number(e.target.value))}
+                      style={{ width: "100%", accentColor: "var(--accent-primary)" }}
+                    />
+                    <p style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "4px" }}>
+                      {tier.desc}
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

@@ -23,7 +23,7 @@ PRAGMAS = [
     "PRAGMA cache_size = -64000;",      # 64 MB dedicated page cache
     "PRAGMA temp_store = MEMORY;",       # In-memory sorting and temp indexes
     "PRAGMA mmap_size = 268435456;",     # 256 MB memory-mapped I/O
-    "PRAGMA busy_timeout = 5000;",       # 5000ms wait before lock error
+    "PRAGMA busy_timeout = 30000;",      # 30000ms wait before lock error
     "PRAGMA foreign_keys = ON;",         # Enforce relational constraints
 ]
 
@@ -361,7 +361,7 @@ async def get_db_connection(db_path: Optional[Path] = None) -> aiosqlite.Connect
     target_path = db_path or settings.database_path
     target_path.parent.mkdir(parents=True, exist_ok=True)
     
-    conn = await aiosqlite.connect(target_path)
+    conn = await aiosqlite.connect(target_path, timeout=30.0)
     conn.row_factory = aiosqlite.Row
 
     # Execute all performance and durability pragmas

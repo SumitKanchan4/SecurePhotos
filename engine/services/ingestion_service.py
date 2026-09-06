@@ -16,7 +16,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import aiosqlite
-from PIL import Image, ExifTags
+from PIL import Image, ExifTags, ImageOps
 
 from engine.config import settings
 from engine.database import get_db_connection
@@ -152,14 +152,26 @@ def parse_date_from_directory(parent_path: Path) -> Optional[datetime.datetime]:
     return None
 
 
+def _convert_gps_to_degrees(value) -> Optional[float]:
+    """Helper to convert GPS rational coordinates (degrees, minutes, seconds) to decimal degrees."""
+    if not value:
+        return None
+    try:
+        d = float(value[0])
+        m = float(value[1])
+        s = float(value[2])
+        return d + (m / 60.0) + (s / 3600.0)
+    except (ValueError, TypeError, IndexError, ZeroDivisionError):
+        return None
+
+
 def extract_exif_metadata(filepath: Path) -> Dict[str, any]:
     """Extracts camera metadata, timestamps, and GPS from EXIF tags with fallback heuristics.
 
-    Resolution hierarchy:
-    1. EXIF DateTimeOriginal or DateTime tags.
-    2. Intelligent regex parsing from filename (WhatsApp, Telegram, Screenshots, Android/iOS).
-    3. Parent directory date heuristics (e.g., '2023-08-Vacation').
-    4. Undated (None) - avoids artificially assigning misleading import timestamps.
+    Extracts:
+    - Root IFD0: Camera Make, Model, Dimensions, Orientation
+    - EXIF Sub-IFD: ISO, Aperture (FNumber), Shutter Speed (ExposureTime), Focal Length, Flash, White Balance, Metering Mode
+    - GPS Sub-IFD: Decimal Latitude and Longitude
 
     Args:
         filepath: Absolute path to image file.
@@ -175,31 +187,104 @@ def extract_exif_metadata(filepath: Path) -> Dict[str, any]:
         "aperture": None,
         "focal_length": None,
         "shutter_speed": None,
+        "latitude": None,
+        "longitude": None,
         "width": None,
         "height": None,
     }
 
     try:
         with Image.open(filepath) as img:
-            metadata["width"] = img.width
-            metadata["height"] = img.height
+            # Transpose orientation to ensure accurate width and height
+            transposed = ImageOps.exif_transpose(img)
+            if transposed:
+                metadata["width"], metadata["height"] = transposed.size
+            else:
+                metadata["width"], metadata["height"] = img.size
             
             exif_raw = img.getexif()
             if exif_raw:
-                exif = {ExifTags.TAGS.get(k, k): v for k, v in exif_raw.items()}
+                # 1. Root IFD0 (Make, Model, DateTime)
+                root = {ExifTags.TAGS.get(k, k): v for k, v in exif_raw.items()}
+                metadata["camera_make"] = str(root.get("Make", "")).strip() or None
+                metadata["camera_model"] = str(root.get("Model", "")).strip() or None
 
-                # Extract DateTimeOriginal or DateTime
-                dt_str = exif.get("DateTimeOriginal") or exif.get("DateTime")
+                dt_str = root.get("DateTimeOriginal") or root.get("DateTime")
                 if dt_str:
                     try:
-                        # Standard EXIF format: "YYYY:MM:DD HH:MM:SS"
                         dt = datetime.datetime.strptime(str(dt_str), "%Y:%m:%d %H:%M:%S")
                         metadata["taken_at"] = dt.isoformat()
                     except ValueError:
                         pass
 
-                metadata["camera_make"] = str(exif.get("Make", "")).strip() or None
-                metadata["camera_model"] = str(exif.get("Model", "")).strip() or None
+                # 2. EXIF Sub-IFD (Optics, Exposure, ISO, Shutter, Aperture)
+                exif_sub = exif_raw.get_ifd(ExifTags.IFD.Exif)
+                if exif_sub:
+                    sub_tags = {ExifTags.TAGS.get(k, k): v for k, v in exif_sub.items()}
+                    
+                    if not metadata["taken_at"]:
+                        dto = sub_tags.get("DateTimeOriginal") or sub_tags.get("DateTimeDigitized")
+                        if dto:
+                            try:
+                                metadata["taken_at"] = datetime.datetime.strptime(str(dto), "%Y:%m:%d %H:%M:%S").isoformat()
+                            except ValueError:
+                                pass
+
+                    # ISO
+                    iso = sub_tags.get("ISOSpeedRatings") or sub_tags.get("PhotographicSensitivity")
+                    if iso:
+                        try:
+                            metadata["iso"] = int(iso[0]) if isinstance(iso, (tuple, list)) else int(iso)
+                        except (ValueError, TypeError):
+                            pass
+
+                    # Aperture (FNumber)
+                    fnum = sub_tags.get("FNumber")
+                    if fnum:
+                        try:
+                            metadata["aperture"] = round(float(fnum), 2)
+                        except (ValueError, TypeError):
+                            pass
+
+                    # Shutter Speed (ExposureTime)
+                    exp_time = sub_tags.get("ExposureTime")
+                    if exp_time:
+                        try:
+                            val = float(exp_time)
+                            if 0 < val < 1.0:
+                                metadata["shutter_speed"] = f"1/{int(round(1.0 / val))} sec."
+                            else:
+                                metadata["shutter_speed"] = f"{round(val, 2)} sec."
+                        except (ValueError, TypeError):
+                            metadata["shutter_speed"] = str(exp_time)
+
+                    # Focal Length
+                    fl = sub_tags.get("FocalLength")
+                    if fl:
+                        try:
+                            metadata["focal_length"] = round(float(fl), 2)
+                        except (ValueError, TypeError):
+                            pass
+
+                # 3. GPS Sub-IFD (Coordinates)
+                gps_ifd = exif_raw.get_ifd(ExifTags.IFD.GPSInfo)
+                if gps_ifd:
+                    gps = {ExifTags.GPSTAGS.get(k, k): v for k, v in gps_ifd.items()}
+                    lat_val = gps.get("GPSLatitude")
+                    lat_ref = gps.get("GPSLatitudeRef")
+                    lon_val = gps.get("GPSLongitude")
+                    lon_ref = gps.get("GPSLongitudeRef")
+
+                    lat = _convert_gps_to_degrees(lat_val)
+                    if lat is not None and lat_ref == "S":
+                        lat = -lat
+
+                    lon = _convert_gps_to_degrees(lon_val)
+                    if lon is not None and lon_ref == "W":
+                        lon = -lon
+
+                    metadata["latitude"] = lat
+                    metadata["longitude"] = lon
 
     except Exception as e:
         logger.debug(f"Could not parse EXIF for {filepath}: {e}")
@@ -339,12 +424,14 @@ async def ingest_single_photo(
         INSERT INTO photos (
             filename, filepath, volume_uuid, file_size, mime_type,
             width, height, original_width, original_height, taken_at,
-            camera_make, camera_model, is_favorite, is_encrypted,
+            camera_make, camera_model, latitude, longitude, iso,
+            aperture, shutter_speed, focal_length, is_favorite, is_encrypted,
             thumbnail_path, preview_path, file_hash, is_managed, original_path
         ) VALUES (
             ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?,
-            ?, ?, 0, 0,
+            ?, ?, ?, ?, ?,
+            ?, ?, ?, 0, 0,
             ?, ?, ?, ?, ?
         );
         """,
@@ -361,6 +448,12 @@ async def ingest_single_photo(
             metadata["taken_at"],
             metadata["camera_make"],
             metadata["camera_model"],
+            metadata["latitude"],
+            metadata["longitude"],
+            metadata["iso"],
+            metadata["aperture"],
+            metadata["shutter_speed"],
+            metadata["focal_length"],
             str(thumb_path),
             str(preview_path),
             file_hash,

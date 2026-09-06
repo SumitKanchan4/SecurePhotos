@@ -6,6 +6,7 @@ and mounts API routers.
 """
 
 import argparse
+import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -41,6 +42,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.critical(f"Database migration failed: {e}", exc_info=True)
         sys.exit(1)
+
+    # Automatically trigger background 4K optimization pass if any unoptimized photos exist
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        asyncio.create_task(photos.run_background_optimization())
 
     yield
 

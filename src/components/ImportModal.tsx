@@ -22,7 +22,20 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
   const [skipDuplicates, setSkipDuplicates] = useState(true);
   const [optimize4K, setOptimize4K] = useState(true);
   const [isImporting, setIsImporting] = useState(false);
+  const [isBrowsing, setIsBrowsing] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
+
+  // Keyboard shortcut: Escape to close modal when not importing
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isImporting && !isBrowsing) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isImporting, isBrowsing, onClose]);
 
   if (!isOpen) return null;
 
@@ -65,6 +78,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
 
   return (
     <div 
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isImporting && !isBrowsing) {
+          onClose();
+        }
+      }}
       style={{
         position: "fixed",
         inset: 0,
@@ -101,16 +119,17 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
         >
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <FolderDown size={18} style={{ color: "var(--accent-primary)" }} />
-            <h2 style={{ fontSize: "15px", fontWeight: 600 }}>Import Media to External Vault</h2>
+            <h2 style={{ fontSize: "15px", fontWeight: 600 }}>Import Media to SecurePhotos</h2>
           </div>
           <button 
             onClick={onClose}
+            disabled={isImporting || isBrowsing}
             className="clickable"
             style={{
               background: "transparent",
               border: "none",
               color: "var(--text-muted)",
-              cursor: "pointer",
+              cursor: isImporting || isBrowsing ? "not-allowed" : "pointer",
             }}
           >
             <X size={16} />
@@ -139,29 +158,37 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                 </span>
                 <button
                   type="button"
+                  disabled={isBrowsing || isImporting}
                   onClick={async () => {
+                    if (isBrowsing || isImporting) return;
+                    setIsBrowsing(true);
                     try {
                       const selected = await invoke<string | null>("select_import_folder");
                       if (selected) setSourcePath(selected);
-                    } catch {}
+                    } catch (err) {
+                      console.error("Failed to select import folder:", err);
+                    } finally {
+                      setIsBrowsing(false);
+                    }
                   }}
                   className="clickable"
                   style={{
                     padding: "3px 8px",
                     borderRadius: "4px",
-                    backgroundColor: "var(--bg-surface-elevated)",
+                    backgroundColor: isBrowsing ? "var(--bg-surface)" : "var(--bg-surface-elevated)",
                     border: "1px solid var(--border-subtle)",
-                    color: "var(--accent-primary)",
+                    color: isBrowsing ? "var(--text-muted)" : "var(--accent-primary)",
                     fontSize: "11px",
                     fontWeight: 600,
-                    cursor: "pointer",
+                    cursor: isBrowsing ? "wait" : "pointer",
                     display: "flex",
                     alignItems: "center",
-                    gap: "4px"
+                    gap: "4px",
+                    opacity: isBrowsing ? 0.7 : 1,
                   }}
                 >
-                  <FolderOpen size={12} />
-                  Browse...
+                  {isBrowsing ? <Loader2 size={12} className="spin" /> : <FolderOpen size={12} />}
+                  {isBrowsing ? "Browsing..." : "Browse..."}
                 </button>
               </div>
             </div>

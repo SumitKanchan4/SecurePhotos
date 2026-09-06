@@ -1,13 +1,14 @@
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Check, Sparkles, Heart } from "lucide-react";
+import { Check, Sparkles, Heart, Loader2, Image as ImageIcon, Clock } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
-import { PhotoItem } from "../types";
+import { PhotoItem, OptimizationProgress } from "../types";
 
 import { EmptyLibraryState } from "./EmptyLibraryState";
 
 interface PhotoGridProps {
   photos?: PhotoItem[];
+  optimizationProgress?: OptimizationProgress | null;
   onPhotoClick?: (index: number) => void;
   onImportClick?: () => void;
   onDropFiles?: (files: FileList) => void;
@@ -32,8 +33,331 @@ export const generateMockPhotos = (count: number): PhotoItem[] => {
   }));
 };
 
+interface PhotoCardProps {
+  photo: PhotoItem;
+  globalIndex: number;
+  isSelected: boolean;
+  optimizationProgress?: OptimizationProgress | null;
+  onPhotoClick?: (index: number) => void;
+  togglePhotoSelection: (id: number) => void;
+}
+
+const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
+  photo,
+  globalIndex,
+  isSelected,
+  optimizationProgress,
+  onPhotoClick,
+  togglePhotoSelection,
+}) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+
+  const thumbnailUrl = `http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail`;
+  const isOptimizingThis = Boolean(optimizationProgress?.is_active && optimizationProgress.active_photo_id === photo.id);
+  const isQueued = Boolean(optimizationProgress?.is_active && !photo.is_optimized && !isOptimizingThis);
+
+  return (
+    <div
+      onClick={(e) => {
+        if (e.shiftKey || e.ctrlKey) {
+          togglePhotoSelection(photo.id);
+        } else {
+          onPhotoClick?.(globalIndex);
+        }
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className="clickable"
+      style={{
+        position: "relative",
+        borderRadius: "var(--radius-sm)",
+        overflow: "hidden",
+        backgroundColor: "var(--bg-surface-elevated)",
+        border: isSelected 
+          ? "2px solid var(--accent-primary)" 
+          : isOptimizingThis
+            ? "2px solid var(--accent-primary)"
+            : isHovered 
+              ? "1px solid var(--border-highlight)" 
+              : "1px solid var(--border-subtle)",
+        boxShadow: isSelected 
+          ? "0 0 14px var(--accent-glow)" 
+          : isOptimizingThis
+            ? "0 0 16px var(--accent-glow)"
+            : isHovered 
+              ? "var(--shadow-md)" 
+              : "var(--shadow-sm)",
+        aspectRatio: "16 / 10",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        transition: "transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease",
+        transform: isHovered ? "scale(1.015)" : "scale(1)",
+      }}
+    >
+      {/* 1. Actual Real Thumbnail Image */}
+      {!hasError && (
+        <img
+          src={thumbnailUrl}
+          alt={photo.filename}
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setIsLoaded(true)}
+          onError={() => setHasError(true)}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            opacity: isLoaded ? 1 : 0,
+            transition: "opacity 0.35s ease",
+            zIndex: 1,
+          }}
+        />
+      )}
+
+      {/* 2. Shimmering Skeleton + Filename (while image is loading or fallback) */}
+      {!isLoaded && (
+        <div 
+          className="skeleton-shimmer"
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "8px",
+            zIndex: 0,
+          }}
+        >
+          {hasError ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
+              <ImageIcon size={20} style={{ color: "var(--text-muted)", opacity: 0.7 }} />
+              <span style={{ fontSize: "10px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                {photo.filename.split(".")[0]}
+              </span>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
+              <Loader2 size={16} className="spin" style={{ color: "var(--accent-primary)", opacity: 0.8 }} />
+              <span style={{ fontSize: "10px", color: "var(--text-muted)", fontFamily: "var(--font-mono)", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {photo.filename.split(".")[0]}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 3. Live Progress Bar on the actively processing photo */}
+      {isOptimizingThis && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: "4px",
+            backgroundColor: "rgba(0, 0, 0, 0.6)",
+            overflow: "hidden",
+            zIndex: 4,
+          }}
+        >
+          <div
+            style={{
+              height: "100%",
+              width: `${optimizationProgress?.item_progress || 30}%`,
+              background: "linear-gradient(90deg, #3b82f6, #60a5fa)",
+              borderRadius: "2px",
+              transition: "width 0.3s ease",
+            }}
+          />
+        </div>
+      )}
+
+      {/* 4. Active / Queued Status Badge */}
+      {isOptimizingThis ? (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "8px",
+            padding: "3px 8px",
+            borderRadius: "var(--radius-full)",
+            backgroundColor: "rgba(14, 16, 23, 0.9)",
+            backdropFilter: "blur(4px)",
+            border: "1px solid var(--accent-primary)",
+            display: "flex",
+            alignItems: "center",
+            gap: "5px",
+            zIndex: 4,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.6)",
+          }}
+        >
+          <Loader2 size={10} className="spin" style={{ color: "var(--accent-primary)" }} />
+          <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--accent-primary)", letterSpacing: "0.2px" }}>
+            Optimizing: {optimizationProgress?.item_progress}%
+          </span>
+        </div>
+      ) : isQueued ? (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "8px",
+            padding: "2px 7px",
+            borderRadius: "var(--radius-full)",
+            backgroundColor: "rgba(14, 16, 23, 0.75)",
+            backdropFilter: "blur(4px)",
+            border: "1px solid var(--border-subtle)",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            zIndex: 3,
+          }}
+        >
+          <Clock size={9} style={{ color: "var(--text-muted)" }} />
+          <span style={{ fontSize: "9px", color: "var(--text-muted)", fontWeight: 500 }}>
+            Queued
+          </span>
+        </div>
+      ) : null}
+
+      {/* 5. Hover Scrim with Filename & Resolution */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 45%, transparent 100%)",
+          opacity: isHovered ? 1 : 0,
+          transition: "opacity 0.2s ease",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "flex-end",
+          padding: "8px",
+          zIndex: 2,
+          pointerEvents: "none",
+        }}
+      >
+        <span style={{ fontSize: "11px", fontWeight: 600, color: "#ffffff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {photo.filename}
+        </span>
+        <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.7)", fontFamily: "var(--font-mono)", marginTop: "2px" }}>
+          {photo.width && photo.height ? `${photo.width} × ${photo.height}` : "4K Ultra-HD"}
+        </span>
+      </div>
+
+      {/* 6. Badges (Top Right) */}
+      <div 
+        style={{
+          position: "absolute",
+          top: "6px",
+          right: "6px",
+          display: "flex",
+          gap: "4px",
+          zIndex: 3,
+        }}
+      >
+        {/* Resolution / AI Enhancement Badge */}
+        {(() => {
+          const is8k = photo.is_enhanced || photo.is_optimized;
+          const maxDim = Math.max(photo.width || 0, photo.height || 0);
+          const isNative4k = maxDim >= 3840;
+
+          if (is8k) {
+            return (
+              <span 
+                title="8K ULTRA Super-Resolution Optimized"
+                style={{
+                  backgroundColor: "rgba(59, 130, 246, 0.9)",
+                  color: "#ffffff",
+                  padding: "2px 6px",
+                  borderRadius: "var(--radius-xs)",
+                  fontSize: "9px",
+                  fontWeight: 700,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "3px",
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.5)",
+                }}
+              >
+                <Sparkles size={9} /> 8K
+              </span>
+            );
+          }
+
+          if (isNative4k) {
+            return (
+              <span 
+                title="Native 4K Ultra-HD Resolution"
+                style={{
+                  backgroundColor: "rgba(16, 185, 129, 0.85)",
+                  color: "#ffffff",
+                  padding: "2px 5px",
+                  borderRadius: "var(--radius-xs)",
+                  fontSize: "9px",
+                  fontWeight: 700,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "2px",
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.4)",
+                }}
+              >
+                4K
+              </span>
+            );
+          }
+
+          return null;
+        })()}
+        {photo.is_favorite && (
+          <span 
+            style={{
+              backgroundColor: "rgba(239, 68, 68, 0.85)",
+              color: "#ffffff",
+              padding: "2px 4px",
+              borderRadius: "var(--radius-xs)",
+            }}
+          >
+            <Heart size={9} fill="#ffffff" />
+          </span>
+        )}
+      </div>
+
+      {/* 7. Selection Checkbox (Top Left) */}
+      <div 
+        onClick={(e) => {
+          e.stopPropagation();
+          togglePhotoSelection(photo.id);
+        }}
+        style={{
+          position: "absolute",
+          top: "6px",
+          left: "6px",
+          width: "18px",
+          height: "18px",
+          borderRadius: "var(--radius-xs)",
+          backgroundColor: isSelected ? "var(--accent-primary)" : "rgba(0, 0, 0, 0.45)",
+          border: isSelected ? "none" : "1px solid rgba(255, 255, 255, 0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#ffffff",
+          zIndex: 3,
+          opacity: isSelected || isHovered ? 1 : 0.4,
+          transition: "opacity 0.15s ease, background-color 0.15s ease",
+        }}
+      >
+        {isSelected && <Check size={12} strokeWidth={3} />}
+      </div>
+    </div>
+  );
+});
+
 export const PhotoGrid: React.FC<PhotoGridProps> = ({ 
   photos, 
+  optimizationProgress,
   onPhotoClick,
   onImportClick,
   onDropFiles
@@ -105,118 +429,15 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                 const isSelected = selectedPhotoIds.has(photo.id);
 
                 return (
-                  <div
+                  <PhotoCard
                     key={photo.id}
-                    onClick={(e) => {
-                      if (e.shiftKey || e.ctrlKey) {
-                        togglePhotoSelection(photo.id);
-                      } else {
-                        onPhotoClick?.(globalIndex);
-                      }
-                    }}
-                    className="clickable"
-                    style={{
-                      position: "relative",
-                      borderRadius: "var(--radius-sm)",
-                      overflow: "hidden",
-                      backgroundColor: "var(--bg-surface-elevated)",
-                      border: isSelected 
-                        ? "2px solid var(--accent-primary)" 
-                        : "1px solid var(--border-subtle)",
-                      boxShadow: isSelected ? "0 0 12px var(--accent-glow)" : "var(--shadow-sm)",
-                      aspectRatio: "16 / 10",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {/* Shimmering Aspect-Ratio Placeholder Skeleton (CLS=0) */}
-                    <div 
-                      className="skeleton-shimmer"
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        padding: "8px",
-                      }}
-                    >
-                      <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                        4K • {photo.filename.split(".")[0]}
-                      </span>
-                    </div>
-
-                    {/* Top Right Badges */}
-                    <div 
-                      style={{
-                        position: "absolute",
-                        top: "6px",
-                        right: "6px",
-                        display: "flex",
-                        gap: "4px",
-                        zIndex: 2,
-                      }}
-                    >
-                      {photo.is_enhanced && (
-                        <span 
-                          title="4K AI Super-Resolution Enhanced"
-                          style={{
-                            backgroundColor: "rgba(59, 130, 246, 0.85)",
-                            color: "#ffffff",
-                            padding: "2px 4px",
-                            borderRadius: "var(--radius-xs)",
-                            fontSize: "9px",
-                            fontWeight: 700,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "2px",
-                          }}
-                        >
-                          <Sparkles size={9} /> 4K
-                        </span>
-                      )}
-                      {photo.is_favorite && (
-                        <span 
-                          style={{
-                            backgroundColor: "rgba(239, 68, 68, 0.85)",
-                            color: "#ffffff",
-                            padding: "2px 4px",
-                            borderRadius: "var(--radius-xs)",
-                          }}
-                        >
-                          <Heart size={9} fill="#ffffff" />
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Selection Checkbox */}
-                    <div 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        togglePhotoSelection(photo.id);
-                      }}
-                      style={{
-                        position: "absolute",
-                        top: "6px",
-                        left: "6px",
-                        width: "18px",
-                        height: "18px",
-                        borderRadius: "var(--radius-xs)",
-                        backgroundColor: isSelected ? "var(--accent-primary)" : "rgba(0, 0, 0, 0.4)",
-                        border: isSelected ? "none" : "1px solid rgba(255, 255, 255, 0.4)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "#ffffff",
-                        zIndex: 2,
-                        opacity: isSelected ? 1 : 0.4,
-                      }}
-                    >
-                      {isSelected && <Check size={12} strokeWidth={3} />}
-                    </div>
-                  </div>
+                    photo={photo}
+                    globalIndex={globalIndex}
+                    isSelected={isSelected}
+                    optimizationProgress={optimizationProgress}
+                    onPhotoClick={onPhotoClick}
+                    togglePhotoSelection={togglePhotoSelection}
+                  />
                 );
               })}
             </div>
