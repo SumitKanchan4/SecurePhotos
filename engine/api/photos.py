@@ -467,6 +467,39 @@ async def get_photo_original(photo_id: int):
     )
 
 
+@router.get("/{photo_id}/download")
+async def download_photo(photo_id: int):
+    """Streams the photo file as an attachment download to the client machine."""
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(
+            "SELECT filepath, mime_type, is_encrypted, filename FROM photos WHERE id = ?;",
+            (photo_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    finally:
+        await conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    if row["is_encrypted"]:
+        raise HTTPException(status_code=403, detail="Encrypted photo requires vault authentication")
+
+    src_file = Path(row["filepath"])
+    if not src_file.exists():
+        raise HTTPException(status_code=404, detail="Photo file missing on disk")
+
+    mime = row["mime_type"] or "image/jpeg"
+    dl_filename = row["filename"] or src_file.name
+    return FileResponse(
+        str(src_file),
+        media_type=mime,
+        filename=dl_filename,
+        headers={"Content-Disposition": f'attachment; filename="{dl_filename}"'}
+    )
+
+
 
 @router.post("/{photo_id}/neural-enhance", status_code=status.HTTP_200_OK)
 async def trigger_neural_enhancement(photo_id: int):

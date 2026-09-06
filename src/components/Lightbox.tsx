@@ -17,6 +17,7 @@ import {
   ExternalLink,
   Clock,
   Trash2,
+  Download,
 } from "lucide-react";
 import { PhotoItem, OptimizationProgress } from "../types";
 
@@ -132,6 +133,17 @@ export const Lightbox: React.FC<LightboxProps> = ({
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  const handleDownload = () => {
+    if (!currentPhoto) return;
+    const downloadUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto.id}/download`;
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.setAttribute("download", currentPhoto.filename || "photo.jpg");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -257,6 +269,27 @@ export const Lightbox: React.FC<LightboxProps> = ({
           >
             <Heart size={16} fill={isFavorite ? "var(--accent-danger)" : "none"} />
             <span style={{ fontSize: "11px", fontWeight: 600 }}>{isFavorite ? "Liked" : "Like"}</span>
+          </button>
+
+          {/* Download Photo */}
+          <button
+            onClick={handleDownload}
+            className="clickable"
+            title="Download original photo to your computer"
+            style={{
+              background: "transparent",
+              borderRadius: "var(--radius-xs)",
+              border: "1px solid var(--border-subtle)",
+              color: "var(--text-secondary)",
+              padding: "4px 8px",
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              cursor: "pointer",
+            }}
+          >
+            <Download size={15} />
+            <span style={{ fontSize: "11px", fontWeight: 600 }}>Download</span>
           </button>
 
           {/* Delete / Move to Trash */}

@@ -234,3 +234,42 @@ Eliminates blurry, soft thumbnails across both the main gallery and albums by up
   - `engine/api/photos.py`: `get_photo_thumbnail` on-demand auto-upgrade, `POST /api/photos/regenerate-thumbnails`, `GET /api/photos/thumbnail-regeneration-progress`.
   - `engine/tests/test_thumbnails.py`: Automated pytest test suite covering 1024px generation, legacy upgrades, and API endpoints.
 - **Frontend**: `src/components/PhotoGrid.tsx`, `src/components/AlbumsView.tsx`, `src/App.tsx`.
+
+---
+
+## 12. Real 4K UHD Collage Composition Engine, System Collages Album & Universal Media Download
+
+### Functionality Overview
+Replaces placeholder UI mock alerts (`creatives/collages/Summer_Mosaic.avif`) with a genuine, production-grade 4K UHD photo collage composition engine. Users can select between 2 and 9 photos in their gallery and composite them into a razor-sharp 3840×2160 master canvas using balanced Mosaic, Hero Grid (1-dominant + stacked secondary), or Geometric Treemap layouts. The resulting composite is saved to disk, ingested into the SecurePhotos library, and automatically organized into a dedicated "Collages" album. Furthermore, universal one-click download buttons are integrated into the Lightbox view and multi-select floating toolbar, allowing users to download any photo or collage directly to their computer's Downloads folder at will.
+
+### Functional Decision Points & Rationale
+- **Eliminating Placeholder Mock Paths & Filesystem Confusion**:
+  - *Problem*: Previously, `CollageModal.tsx` executed a mock `setTimeout` and fired an alert stating that a collage was saved to `creatives/collages/Summer_Mosaic.avif`, but no file was written or ingested.
+  - *Decision*: Fully implemented backend composite rendering (`render_collage`) using Pillow and an API route (`POST /api/creatives/collage`) that renders physical WebP masters into `data/originals/creatives/collages/`, computes metadata, and ingests them into the SQLite database.
+- **Strict 2 to 9 Photos Bound**:
+  - *Rationale*: A collage requires at least 2 source images to form a composition. Setting an upper bound of 9 photos preserves visual clarity and high acutance per cell on standard 16:9 / 4K displays without overcrowding.
+  - *Enforcement*: Validated on both the backend (`HTTP 400 Bad Request` with descriptive errors) and frontend (the "Create Collage" toolbar button is disabled with descriptive tooltip when count < 2 or > 9, and `CollageModal` displays an informative warning banner).
+- **Auto-Ingestion & Dedicated "Collages" System Album**:
+  - *Rationale*: Collages are first-class creative artifacts. Automatically creating/linking them to a system album named `"Collages"` (with the new collage set as the cover photo if empty) ensures instant discoverability in the Albums view without manual user intervention.
+- **Decoupled Universal Download Policy**:
+  - *Decision*: Generating a collage does NOT automatically trigger an unsolicited browser download to the user's computer. Instead, the collage is safely stored in the user's library and album.
+  - *Universal Download Capability*: A dedicated "Download" button was added to:
+    1. **Lightbox Toolbar**: Individual full-resolution download for the currently viewed photo or collage.
+    2. **Multi-Selection Floating Toolbar**: Batch download for selected items with staggered execution (250ms spacing) to avoid browser download throttling.
+  - *Endpoint*: `GET /api/photos/{photo_id}/download` returning `FileResponse` with `Content-Disposition: attachment; filename="{filename}"`.
+
+### Technical Touchpoints
+- **Backend**:
+  - `engine/services/collage_service.py`: 4K UHD composite rendering engine (`compute_mosaic_boxes`, `compute_hero_boxes`, `compute_treemap_boxes`, `render_collage` with Lanczos resampling and subtle UnsharpMask).
+  - `engine/api/creatives.py`: `POST /api/creatives/collage` endpoint handling validation, rendering, filesystem persistence, database ingestion, and album linking.
+  - `engine/api/photos.py`: `GET /api/photos/{photo_id}/download` attachment streaming endpoint.
+  - `engine/main.py`: Mounted `creatives.router`.
+  - `engine/tests/test_collages.py`: Automated pytest suite covering bounding box algorithms, bounds validation, end-to-end collage creation, and download streaming.
+- **Frontend**:
+  - `src/components/CollageModal.tsx`: Real API integration, live selected photos thumbnail strip, title input, layout switcher, and error/success notifications.
+  - `src/App.tsx`: Batch action toolbar integration (2–9 photo bounds validation, `handleBatchDownload`, and refreshed library on collage creation).
+  - `src/components/Lightbox.tsx`: Added Download button and `handleDownload` trigger to top toolbar.
+
+### State & Lifecycle Impact
+- **Database Consistency**: Generating a collage writes a new record into `photos` and creates a junction link in `photo_album`. If the "Collages" album does not exist, it is created idempotently.
+- **Memory & Acutance**: Rendering executes on-demand using Pillow with streaming file handles. The resulting canvas is saved in high-efficiency WebP format (92 quality, method 4).

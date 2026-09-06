@@ -7,7 +7,8 @@ import {
   Loader2,
   Trash2,
   Calendar,
-  FolderPlus
+  FolderPlus,
+  Download,
 } from "lucide-react";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
@@ -302,6 +303,23 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleBatchDownload = () => {
+    if (selectedPhotoIds.size === 0) return;
+    const ids = Array.from(selectedPhotoIds);
+    ids.forEach((id, idx) => {
+      setTimeout(() => {
+        const photo = photos.find((p) => p.id === id);
+        const filename = photo?.filename || `photo_${id}.jpg`;
+        const link = document.createElement("a");
+        link.href = `http://127.0.0.1:8000/api/photos/${id}/download`;
+        link.setAttribute("download", filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }, idx * 250);
+    });
+  };
+
   const selectedCount = selectedPhotoIds.size;
 
   return (
@@ -444,7 +462,37 @@ export const App: React.FC = () => {
                       </span>
                       <button
                         onClick={() => setIsCollageModalOpen(true)}
+                        disabled={selectedCount < 2 || selectedCount > 9}
                         className="clickable"
+                        title={
+                          selectedCount < 2
+                            ? "Select at least 2 photos to create a collage"
+                            : selectedCount > 9
+                            ? "Collages support up to 9 photos"
+                            : "Create 4K Collage (2-9 photos)"
+                        }
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "6px 12px",
+                          borderRadius: "var(--radius-sm)",
+                          backgroundColor: "var(--bg-surface)",
+                          border: "1px solid var(--border-subtle)",
+                          color: selectedCount >= 2 && selectedCount <= 9 ? "var(--text-primary)" : "var(--text-muted)",
+                          fontSize: "12px",
+                          fontWeight: 500,
+                          opacity: selectedCount >= 2 && selectedCount <= 9 ? 1 : 0.6,
+                          cursor: selectedCount >= 2 && selectedCount <= 9 ? "pointer" : "not-allowed",
+                        }}
+                      >
+                        <LayoutGrid size={14} />
+                        Create Collage {selectedCount >= 2 && selectedCount <= 9 ? `(${selectedCount})` : ""}
+                      </button>
+                      <button
+                        onClick={handleBatchDownload}
+                        className="clickable"
+                        title="Download selected photos to your computer"
                         style={{
                           display: "flex",
                           alignItems: "center",
@@ -458,8 +506,8 @@ export const App: React.FC = () => {
                           fontWeight: 500,
                         }}
                       >
-                        <LayoutGrid size={14} />
-                        Create Collage
+                        <Download size={14} />
+                        Download
                       </button>
                       <button
                         onClick={() => setIsAddToAlbumModalOpen(true)}
@@ -712,7 +760,12 @@ export const App: React.FC = () => {
       <CollageModal
         isOpen={isCollageModalOpen}
         onClose={() => setIsCollageModalOpen(false)}
-        selectedCount={selectedCount}
+        selectedPhotoIds={Array.from(selectedPhotoIds)}
+        onSuccess={() => {
+          clearSelection();
+          loadPhotos(activeYear);
+          loadTimelineYears();
+        }}
       />
 
       {/* Add Selected Photos to Album Modal */}

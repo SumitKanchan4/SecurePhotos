@@ -2,34 +2,71 @@ import React, { useState } from "react";
 import { 
   X, 
   Sparkles, 
-  Download, 
   LayoutGrid, 
-  Maximize 
+  Maximize,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Layers
 } from "lucide-react";
 
 interface CollageModalProps {
   isOpen: boolean;
   onClose: () => void;
-  selectedCount: number;
+  selectedPhotoIds: number[];
+  onSuccess?: () => void;
 }
 
 export const CollageModal: React.FC<CollageModalProps> = ({
   isOpen,
   onClose,
-  selectedCount,
+  selectedPhotoIds,
+  onSuccess,
 }) => {
   const [layout, setLayout] = useState<"mosaic" | "hero_grid" | "treemap">("mosaic");
+  const [title, setTitle] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const handleExportCollage = () => {
+  const count = selectedPhotoIds.length;
+  const isValidCount = count >= 2 && count <= 9;
+
+  const handleRenderCollage = async () => {
+    if (!isValidCount || isExporting) return;
     setIsExporting(true);
-    setTimeout(() => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/creatives/collage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          photo_ids: selectedPhotoIds,
+          layout,
+          title: title.trim() || undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ detail: "Failed to render collage" }));
+        throw new Error(errorData.detail || "Collage rendering failed");
+      }
+
+      await res.json();
+      setSuccessMessage("4K UHD Collage saved to your library and added to the 'Collages' album!");
+      setTimeout(() => {
+        setIsExporting(false);
+        onSuccess?.();
+        onClose();
+      }, 1400);
+    } catch (err: any) {
       setIsExporting(false);
-      alert("Mosaic Collage generated and saved: creatives/collages/Summer_Mosaic.avif");
-      onClose();
-    }, 1000);
+      setErrorMessage(err.message || "An unexpected error occurred during collage generation.");
+    }
   };
 
   return (
@@ -48,7 +85,8 @@ export const CollageModal: React.FC<CollageModalProps> = ({
       <div 
         className="glass-panel"
         style={{
-          width: "520px",
+          width: "560px",
+          maxWidth: "92vw",
           backgroundColor: "var(--bg-surface)",
           borderRadius: "var(--radius-lg)",
           boxShadow: "var(--shadow-lg)",
@@ -70,48 +108,144 @@ export const CollageModal: React.FC<CollageModalProps> = ({
         >
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <Sparkles size={18} style={{ color: "var(--accent-primary)" }} />
-            <h2 style={{ fontSize: "15px", fontWeight: 700 }}>Create Mosaic Collage</h2>
+            <h2 style={{ fontSize: "15px", fontWeight: 700, margin: 0 }}>Create 4K Photo Collage</h2>
           </div>
-          <button onClick={onClose} className="clickable" style={{ background: "transparent", border: "none", color: "var(--text-muted)" }}>
+          <button 
+            onClick={onClose} 
+            disabled={isExporting}
+            className="clickable" 
+            style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer" }}
+          >
             <X size={16} />
           </button>
         </div>
 
         {/* Body */}
-        <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
-          <p style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: "1.5" }}>
-            Combining {selectedCount || 6} selected media items into a high-res printable canvas with face-aware cropping.
-          </p>
+        <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px", maxHeight: "70vh", overflowY: "auto" }}>
+          {/* Item count status */}
+          {!isValidCount ? (
+            <div 
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                padding: "12px 14px",
+                borderRadius: "var(--radius-md)",
+                backgroundColor: "rgba(239, 68, 68, 0.12)",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+                color: "var(--accent-danger)",
+                fontSize: "12px",
+              }}
+            >
+              <AlertCircle size={18} style={{ flexShrink: 0 }} />
+              <span>
+                Collages require between <strong>2 and 9</strong> selected photos. You currently have <strong>{count}</strong> selected. Please adjust your selection.
+              </span>
+            </div>
+          ) : (
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: "1.5", margin: 0 }}>
+              Combining <strong>{count}</strong> selected photos into a high-acutance 4K UHD composite canvas (3840×2160).
+            </p>
+          )}
+
+          {/* Selected Photos Thumbnails Strip */}
+          <div>
+            <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "8px" }}>
+              Selected Photos ({count})
+            </span>
+            <div 
+              style={{ 
+                display: "flex", 
+                gap: "8px", 
+                overflowX: "auto", 
+                paddingBottom: "6px",
+              }}
+            >
+              {selectedPhotoIds.map((id) => (
+                <div 
+                  key={id}
+                  style={{
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "var(--radius-sm)",
+                    overflow: "hidden",
+                    border: "1px solid var(--border-subtle)",
+                    flexShrink: 0,
+                    backgroundColor: "var(--bg-sidebar)",
+                  }}
+                >
+                  <img 
+                    src={`http://127.0.0.1:8000/api/photos/${id}/thumbnail`} 
+                    alt={`Photo ${id}`} 
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Collage Title Input */}
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "6px" }}>
+              Collage Title (Optional)
+            </label>
+            <input 
+              type="text" 
+              value={title} 
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Summer Memories 2026"
+              disabled={isExporting}
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                borderRadius: "var(--radius-sm)",
+                backgroundColor: "var(--bg-sidebar)",
+                border: "1px solid var(--border-subtle)",
+                color: "var(--text-primary)",
+                fontSize: "12px",
+                boxSizing: "border-box",
+                outline: "none",
+              }}
+            />
+          </div>
 
           {/* Layout Options */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px" }}>
-            {[
-              { id: "mosaic", label: "Polaroid Mosaic", icon: <LayoutGrid size={20} /> },
-              { id: "hero_grid", label: "Hero Grid (1+4)", icon: <Maximize size={20} /> },
-              { id: "treemap", label: "Geometric Treemap", icon: <Sparkles size={20} /> },
-            ].map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => setLayout(opt.id as any)}
-                className="clickable"
-                style={{
-                  padding: "14px 10px",
-                  borderRadius: "var(--radius-md)",
-                  backgroundColor: layout === opt.id ? "var(--bg-surface-elevated)" : "var(--bg-sidebar)",
-                  border: `2px solid ${layout === opt.id ? "var(--accent-primary)" : "var(--border-subtle)"}`,
-                  color: layout === opt.id ? "var(--accent-primary)" : "var(--text-secondary)",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: "8px",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                }}
-              >
-                {opt.icon}
-                <span>{opt.label}</span>
-              </button>
-            ))}
+          <div>
+            <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: "8px" }}>
+              Composition Layout
+            </span>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px" }}>
+              {[
+                { id: "mosaic", label: "Balanced Mosaic", icon: <LayoutGrid size={20} /> },
+                { id: "hero_grid", label: "Hero Grid (1+Dominant)", icon: <Maximize size={20} /> },
+                { id: "treemap", label: "Geometric Treemap", icon: <Layers size={20} /> },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  disabled={isExporting}
+                  onClick={() => setLayout(opt.id as any)}
+                  className="clickable"
+                  style={{
+                    padding: "14px 10px",
+                    borderRadius: "var(--radius-md)",
+                    backgroundColor: layout === opt.id ? "var(--bg-surface-elevated)" : "var(--bg-sidebar)",
+                    border: `2px solid ${layout === opt.id ? "var(--accent-primary)" : "var(--border-subtle)"}`,
+                    color: layout === opt.id ? "var(--accent-primary)" : "var(--text-secondary)",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "8px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {opt.icon}
+                  <span>{opt.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Canvas Specs */}
@@ -129,14 +263,51 @@ export const CollageModal: React.FC<CollageModalProps> = ({
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Output Canvas:</span>
-              <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>3840 × 2160 (4K UHD)</span>
+              <span>Output Resolution:</span>
+              <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>3840 × 2160 (4K UHD Master)</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Compression:</span>
-              <span style={{ color: "var(--accent-success)", fontWeight: 600 }}>Lossless 10-bit AVIF</span>
+              <span>Placement:</span>
+              <span style={{ color: "var(--accent-primary)", fontWeight: 600 }}>Saved to Library & "Collages" Album</span>
             </div>
           </div>
+
+          {/* Status Messages */}
+          {errorMessage && (
+            <div 
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "10px 14px",
+                borderRadius: "var(--radius-md)",
+                backgroundColor: "rgba(239, 68, 68, 0.1)",
+                color: "var(--accent-danger)",
+                fontSize: "12px",
+              }}
+            >
+              <AlertCircle size={16} />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {successMessage && (
+            <div 
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "10px 14px",
+                borderRadius: "var(--radius-md)",
+                backgroundColor: "rgba(16, 185, 129, 0.12)",
+                color: "var(--accent-success)",
+                fontSize: "12px",
+              }}
+            >
+              <CheckCircle2 size={16} />
+              <span>{successMessage}</span>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -152,6 +323,7 @@ export const CollageModal: React.FC<CollageModalProps> = ({
         >
           <button
             onClick={onClose}
+            disabled={isExporting}
             className="clickable"
             style={{
               padding: "7px 14px",
@@ -160,13 +332,14 @@ export const CollageModal: React.FC<CollageModalProps> = ({
               border: "1px solid var(--border-subtle)",
               color: "var(--text-secondary)",
               fontSize: "12px",
+              cursor: "pointer",
             }}
           >
             Cancel
           </button>
           <button
-            onClick={handleExportCollage}
-            disabled={isExporting}
+            onClick={handleRenderCollage}
+            disabled={!isValidCount || isExporting}
             className="clickable"
             style={{
               display: "flex",
@@ -174,15 +347,26 @@ export const CollageModal: React.FC<CollageModalProps> = ({
               gap: "6px",
               padding: "7px 18px",
               borderRadius: "var(--radius-sm)",
-              backgroundColor: "var(--accent-primary)",
+              backgroundColor: isValidCount ? "var(--accent-primary)" : "var(--text-muted)",
               border: "none",
               color: "#ffffff",
               fontSize: "12px",
               fontWeight: 600,
+              cursor: isValidCount ? "pointer" : "not-allowed",
+              opacity: isValidCount ? 1 : 0.6,
             }}
           >
-            <Download size={14} />
-            {isExporting ? "Rendering Canvas..." : "Render Collage"}
+            {isExporting ? (
+              <>
+                <Loader2 size={14} className="spin" />
+                Rendering 4K Canvas...
+              </>
+            ) : (
+              <>
+                <Sparkles size={14} />
+                Generate Collage
+              </>
+            )}
           </button>
         </div>
       </div>
