@@ -53,6 +53,7 @@ export const App: React.FC = () => {
   const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
   const [activeStoryId, setActiveStoryId] = useState<number | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [lightboxPhotos, setLightboxPhotos] = useState<PhotoItem[] | null>(null);
   const [optimizationProgress, setOptimizationProgress] = useState<OptimizationProgress | null>(null);
   const [timelineData, setTimelineData] = useState<TimelineYearsData>({ total_count: 0, years: [] });
 
@@ -93,9 +94,11 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
-    loadPhotos(activeYear);
-    loadTimelineYears();
-  }, [activeYear]);
+    if (activeTab === "photos") {
+      loadPhotos(activeYear);
+      loadTimelineYears();
+    }
+  }, [activeTab, activeYear]);
 
   // Real-time polling for background 4K optimization progress
   useEffect(() => {
@@ -303,7 +306,7 @@ export const App: React.FC = () => {
             <AlbumsView 
               onLockAlbumToVault={() => setIsVaultUnlockModalOpen(true)}
               onPhotoClick={(idx, albumPhotos) => {
-                setPhotos(albumPhotos);
+                setLightboxPhotos(albumPhotos);
                 setLightboxIndex(idx);
               }}
             />
@@ -636,7 +639,10 @@ export const App: React.FC = () => {
               <PhotoGrid 
                 photos={photos} 
                 optimizationProgress={optimizationProgress}
-                onPhotoClick={(idx) => setLightboxIndex(idx)} 
+                onPhotoClick={(idx) => {
+                  setLightboxPhotos(null);
+                  setLightboxIndex(idx);
+                }} 
                 onImportClick={() => setIsImportModalOpen(true)}
               />
             </>
@@ -691,13 +697,21 @@ export const App: React.FC = () => {
 
       {/* Immersive Fluid Lightbox */}
       <Lightbox
-        photos={photos}
+        photos={lightboxPhotos ?? photos}
         currentIndex={lightboxIndex ?? 0}
         isOpen={lightboxIndex !== null}
         optimizationProgress={optimizationProgress}
-        onClose={() => setLightboxIndex(null)}
+        onClose={() => {
+          setLightboxIndex(null);
+          setLightboxPhotos(null);
+        }}
         onNavigate={(idx) => setLightboxIndex(idx)}
-        onDelete={handleDeletePhoto}
+        onDelete={(id) => {
+          handleDeletePhoto(id);
+          if (lightboxPhotos) {
+            setLightboxPhotos((prev) => (prev ? prev.filter((p) => p.id !== id) : null));
+          }
+        }}
       />
 
       {/* Confirmed Update Interactive Modal */}
