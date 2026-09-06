@@ -565,7 +565,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     <img
                       src={`http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail`}
                       alt={photo.filename}
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
                       loading="lazy"
                     />
 
@@ -813,7 +813,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                           <img
                             src={`http://127.0.0.1:8000/api/photos/${p.id}/thumbnail`}
                             alt={p.filename}
-                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
                             loading="lazy"
                           />
                           <div
@@ -1138,7 +1138,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                 <img
                   src={`http://127.0.0.1:8000/api/photos/${favoriteCoverId}/thumbnail`}
                   alt="Favorites"
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
                   loading="lazy"
                 />
               ) : (
@@ -1236,7 +1236,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   <img
                     src={`http://127.0.0.1:8000/api/photos/${album.cover_photo_id}/thumbnail`}
                     alt={album.name}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
                     loading="lazy"
                   />
                 ) : (
