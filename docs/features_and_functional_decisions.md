@@ -463,3 +463,40 @@ The frontend `PeopleView.tsx` presents:
 - **File System Cleanliness**:
   - Face avatars in `data/thumbnails/faces/` cleaned to 0 files upon reset.
   - Lingering test directories (`data/originals/2022`, `data/originals/undated`) remain 0.
+
+---
+
+## 8. Toolbar Consolidation, Technical Jargon Elimination & Contextual Global Search
+
+### Functionality Overview
+To streamline the user experience, optimize vertical space, and eliminate cognitive clutter, the navigation and action bars in `PeopleView` and `TitleBar` were redesigned:
+1. **Contextual Global Search (`TitleBar.tsx`)**:
+   - Rather than maintaining duplicate search boxes on the screen, the top application `TitleBar` search box now intelligently adapts to the user's active tab.
+   - When viewing the People tab (`activeTab === 'people'`), the placeholder changes dynamically to: `"Search people by name or relationship... (Ctrl+K)"`.
+   - `PeopleView.tsx` binds directly to `useAppStore.searchQuery`, instantly filtering recognized people by name and relationship without any secondary search input.
+2. **Title Area Action Consolidation & Vertical Space Reclaiming**:
+   - The secondary toolbar row was removed entirely, reclaiming ~80px of vertical viewport height for photos and face clusters.
+   - The primary action buttons were consolidated into the top-right of the title row:
+     - **Reset Faces Button**: Prominently styled as a secondary action button with distinct border, background, and hover states (`var(--bg-surface-elevated)`, hover danger tint), ensuring clear affordance.
+     - **Scan Photos for Faces Button**: Styled as the primary action button (`var(--accent-primary)`) with live scanning spinner and disabled states.
+3. **Single Primary CTA (Elimination of Duplicate Scan Button)**:
+   - Eliminated the redundant `"Scan Library Now"` button inside the empty state card.
+   - The empty state card now provides clear, focused guidance directing users to the primary `"Scan Photos for Faces"` header button, avoiding confusing duplicate actions with different labels.
+4. **User-Centric Language (Zero Technical Jargon)**:
+   - Replaced internal engineering noise (`"High-Accuracy On-Device Face Recognition (YOLOv8 + ArcFace 512-D) • 100% Private"`) with clear, user-focused copy: `"Group and organize photos of people in your library • 100% Private & On-Device"`.
+
+### Functional Decision Points & Rationale
+- **Contextual Global Search vs. Local Filter Boxes**:
+  - *Problem*: Having two search inputs visible simultaneously (the global title bar search and a local people search) confused users and consumed unnecessary screen space.
+  - *Solution*: Made the top `TitleBar` search bar contextual. When on the People tab, typing or hitting `Ctrl+K` filters recognized people. When switching tabs, the search resets or applies contextually.
+- **Header Action Consolidation**:
+  - *Problem*: The previous layout had an empty space next to the title while placing action buttons in a separate lower toolbar row, pushing content down by ~80px.
+  - *Solution*: Aligned action buttons (`Reset Faces` and `Scan Photos for Faces`) to the right side of the main title header (`justifyContent: "space-between"`).
+- **Single CTA Principle**:
+  - *Problem*: Two buttons with different names (`"Scan Photos for Faces"` vs `"Scan Library Now"`) performed the identical action, creating user hesitation.
+  - *Solution*: Kept a single primary CTA in the header, updating empty state copy to reference it directly.
+
+### Technical Touchpoints
+- `src/components/TitleBar.tsx`: Added `activeTab` from `useAppStore` and `getSearchPlaceholder()` helper.
+- `src/components/PeopleView.tsx`: Subscribed to `useAppStore.searchQuery`; removed redundant inner search input and `Search` icon; relocated `Reset Faces` and `Scan Photos for Faces` buttons to the header row; removed `"Scan Library Now"` from empty state.
+

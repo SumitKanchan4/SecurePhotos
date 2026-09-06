@@ -5,7 +5,6 @@ import {
   Check,
   Star,
   RefreshCw,
-  Search,
   ArrowLeft,
   Image as ImageIcon,
   Heart,
@@ -15,6 +14,7 @@ import {
   RotateCcw
 } from "lucide-react";
 import { PersonItem, UnlabeledClusterItem, FaceScanStatus, PhotoItem } from "../types";
+import { useAppStore } from "../store/useAppStore";
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
@@ -53,7 +53,7 @@ export const PeopleView: React.FC = () => {
     error: null,
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  const { searchQuery } = useAppStore();
 
   // Tagging form state per cluster
   const [tagNames, setTagNames] = useState<{ [clusterId: string]: string }>({});
@@ -510,48 +510,20 @@ export const PeopleView: React.FC = () => {
       ) : (
         /* Main View: People Gallery & Unlabeled Clusters */
         <>
-          {/* Header Bar */}
+          {/* Header Bar: Title on Left, Action Buttons on Right */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <Users size={24} style={{ color: "var(--accent-primary)" }} />
-                <h1 style={{ fontSize: "22px", fontWeight: 700 }}>People & Social Affinity</h1>
+                <Users size={22} style={{ color: "var(--accent-primary)" }} />
+                <h1 style={{ fontSize: "20px", fontWeight: 700 }}>People & Family</h1>
               </div>
-              <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "4px" }}>
-                High-Accuracy On-Device Face Recognition (YOLOv8 + ArcFace 512-D) • 100% Private
+              <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "3px" }}>
+                Group and organize photos of people in your library • 100% Private & On-Device
               </p>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              {/* Search Bar */}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  padding: "8px 14px",
-                  borderRadius: "var(--radius-sm)",
-                  backgroundColor: "var(--bg-surface)",
-                  border: "1px solid var(--border-subtle)",
-                }}
-              >
-                <Search size={14} style={{ color: "var(--text-muted)" }} />
-                <input
-                  type="text"
-                  placeholder="Search by name or relation (e.g. Wife, Son)..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{
-                    border: "none",
-                    outline: "none",
-                    backgroundColor: "transparent",
-                    color: "var(--text-primary)",
-                    fontSize: "12px",
-                    width: "220px",
-                  }}
-                />
-              </div>
-
+            {/* Actions: Reset Faces + Scan Library */}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               {/* Reset Faces Button */}
               <button
                 onClick={handleResetFaces}
@@ -562,33 +534,36 @@ export const PeopleView: React.FC = () => {
                   display: "flex",
                   alignItems: "center",
                   gap: "6px",
-                  padding: "8px 14px",
+                  padding: "7px 13px",
                   borderRadius: "var(--radius-sm)",
                   backgroundColor: "var(--bg-surface-elevated)",
-                  border: "1px solid var(--border-subtle)",
-                  color: "var(--text-muted)",
+                  border: "1px solid var(--border-highlight)",
+                  color: "var(--text-primary)",
                   fontSize: "12px",
-                  fontWeight: 500,
+                  fontWeight: 600,
                   cursor: scanStatus.is_scanning || isResetting ? "default" : "pointer",
                   opacity: scanStatus.is_scanning || isResetting ? 0.6 : 1,
                   transition: "all 0.15s ease",
+                  boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
                 }}
                 onMouseEnter={(e) => {
                   if (!scanStatus.is_scanning && !isResetting) {
                     e.currentTarget.style.color = "var(--accent-danger, #ef4444)";
                     e.currentTarget.style.borderColor = "var(--accent-danger, #ef4444)";
+                    e.currentTarget.style.backgroundColor = "rgba(239, 68, 68, 0.08)";
                   }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.color = "var(--text-muted)";
-                  e.currentTarget.style.borderColor = "var(--border-subtle)";
+                  e.currentTarget.style.color = "var(--text-primary)";
+                  e.currentTarget.style.borderColor = "var(--border-highlight)";
+                  e.currentTarget.style.backgroundColor = "var(--bg-surface-elevated)";
                 }}
               >
                 <RotateCcw size={13} className={isResetting ? "spinning" : ""} />
                 {isResetting ? "Resetting..." : "Reset Faces"}
               </button>
 
-              {/* Scan Trigger Button */}
+              {/* Scan Photos Button */}
               <button
                 onClick={handleTriggerScan}
                 disabled={scanStatus.is_scanning}
@@ -597,7 +572,7 @@ export const PeopleView: React.FC = () => {
                   display: "flex",
                   alignItems: "center",
                   gap: "8px",
-                  padding: "8px 16px",
+                  padding: "7px 16px",
                   borderRadius: "var(--radius-sm)",
                   backgroundColor: scanStatus.is_scanning ? "var(--bg-surface-elevated)" : "var(--accent-primary)",
                   border: "1px solid var(--border-highlight)",
@@ -606,6 +581,7 @@ export const PeopleView: React.FC = () => {
                   fontWeight: 600,
                   opacity: scanStatus.is_scanning ? 0.7 : 1,
                   cursor: scanStatus.is_scanning ? "default" : "pointer",
+                  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.15)",
                 }}
               >
                 <RefreshCw size={14} className={scanStatus.is_scanning ? "spinning" : ""} />
@@ -717,26 +693,6 @@ export const PeopleView: React.FC = () => {
                     <p style={{ fontSize: "12px", marginTop: "6px", maxWidth: "420px", lineHeight: "1.5" }}>
                       Click "Scan Photos for Faces" above to run on-device facial detection across your media library.
                     </p>
-                    <button
-                      onClick={handleTriggerScan}
-                      className="clickable"
-                      style={{
-                        marginTop: "16px",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        padding: "8px 18px",
-                        borderRadius: "var(--radius-sm)",
-                        backgroundColor: "var(--accent-primary)",
-                        border: "none",
-                        color: "#ffffff",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                      }}
-                    >
-                      <RefreshCw size={14} />
-                      Scan Library Now
-                    </button>
                   </div>
                 ) : (
                   <div

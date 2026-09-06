@@ -13,7 +13,17 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAppStore } from "../store/useAppStore";
 
 export const TitleBar: React.FC = () => {
-  const { theme, toggleTheme, searchQuery, setSearchQuery, activeVolume, isDriveConnected } = useAppStore();
+  const { theme, toggleTheme, activeTab, searchQuery, setSearchQuery, activeVolume, isDriveConnected } = useAppStore();
+
+  const getSearchPlaceholder = () => {
+    if (activeTab === "people") {
+      return "Search people by name or relationship... (Ctrl+K)";
+    }
+    if (activeTab === "albums") {
+      return "Search albums by title... (Ctrl+K)";
+    }
+    return "Search photos, people, tags, OCR documents... (Ctrl+K)";
+  };
 
   const handleMinimize = async () => {
     try {
@@ -114,7 +124,7 @@ export const TitleBar: React.FC = () => {
           <Search size={14} style={{ color: "var(--text-muted)" }} />
           <input
             type="text"
-            placeholder="Search photos, people, tags, OCR documents... (Ctrl+K)"
+            placeholder={getSearchPlaceholder()}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
