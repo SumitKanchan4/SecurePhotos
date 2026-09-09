@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { 
   Users, 
   Sparkles,
@@ -16,6 +16,7 @@ import {
   Search,
   X,
   Play,
+  ChevronDown,
 } from "lucide-react";
 import { PersonItem, UnlabeledClusterItem, FaceScanStatus, PhotoItem } from "../types";
 import { useAppStore } from "../store/useAppStore";
@@ -98,6 +99,8 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
   const [loadingPhotos, setLoadingPhotos] = useState<boolean>(false);
   const [updatingPerson, setUpdatingPerson] = useState<boolean>(false);
   const [isSlideshowOpen, setIsSlideshowOpen] = useState<boolean>(false);
+  const [personFilter, setPersonFilter] = useState<string>("all");
+  const [isRelationshipPopoverOpen, setIsRelationshipPopoverOpen] = useState<boolean>(false);
 
   // Load recognized people
   const fetchPeople = useCallback(async () => {
@@ -355,6 +358,65 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
     (p.relationship_type && p.relationship_type.toLowerCase().includes(modalSearch.toLowerCase()))
   );
 
+  // Computed values for selectedPerson drill-down
+  const { availableYears, yearsRange, favCount, timelineGroups } = useMemo(() => {
+    if (!selectedPerson || personPhotos.length === 0) {
+      return {
+        availableYears: [] as string[],
+        yearsRange: "",
+        favCount: 0,
+        timelineGroups: [] as [string, PhotoItem[]][],
+      };
+    }
+
+    const yearsSet = new Set<string>();
+    let favorites = 0;
+    for (const p of personPhotos) {
+      if (p.is_favorite) favorites++;
+      if (p.taken_at) {
+        const y = p.taken_at.slice(0, 4);
+        if (/^\d{4}$/.test(y)) yearsSet.add(y);
+      }
+    }
+    const years = Array.from(yearsSet).sort((a, b) => b.localeCompare(a));
+    const range = years.length === 0 ? "" : years.length === 1 ? years[0] : `${years[years.length - 1]}–${years[0]}`;
+
+    // Filter by personFilter ('all' | 'favorites' | specific year)
+    let filtered = personPhotos;
+    if (personFilter === "favorites") {
+      filtered = personPhotos.filter((p) => p.is_favorite);
+    } else if (personFilter !== "all") {
+      filtered = personPhotos.filter((p) => p.taken_at && p.taken_at.startsWith(personFilter));
+    }
+
+    // Chronological grouping by Month & Year
+    const groupsMap = new Map<string, PhotoItem[]>();
+    for (const p of filtered) {
+      let groupKey = "Earlier Moments";
+      if (p.taken_at) {
+        try {
+          const d = new Date(p.taken_at);
+          if (!isNaN(d.getTime())) {
+            groupKey = d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+          }
+        } catch {
+          groupKey = "Earlier Moments";
+        }
+      }
+      if (!groupsMap.has(groupKey)) {
+        groupsMap.set(groupKey, []);
+      }
+      groupsMap.get(groupKey)!.push(p);
+    }
+
+    return {
+      availableYears: years,
+      yearsRange: range,
+      favCount: favorites,
+      timelineGroups: Array.from(groupsMap.entries()),
+    };
+  }, [selectedPerson, personPhotos, personFilter]);
+
   if (isLoading) {
     return (
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "400px" }}>
@@ -367,13 +429,32 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
     <div style={{ flex: 1, overflowY: "auto", padding: "24px 32px", display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* View: Individual Person Photos Drill-Down */}
       {selectedPerson ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          {/* Dedicated Navigation & Action Bar */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          {/* Glassmorphic Sticky Navigation Bar */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "12px",
+              padding: "10px 16px",
+              backgroundColor: "rgba(23, 23, 23, 0.75)",
+              backdropFilter: "blur(20px)",
+              WebkitBackdropFilter: "blur(20px)",
+              borderRadius: "var(--radius-lg)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              position: "sticky",
+              top: 0,
+              zIndex: 20,
+            }}
+          >
             <button
               onClick={() => {
                 setSelectedPerson(null);
                 setPersonPhotos([]);
+                setPersonFilter("all");
+                setIsRelationshipPopoverOpen(false);
               }}
               className="clickable"
               style={{
@@ -381,9 +462,9 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                 alignItems: "center",
                 gap: "8px",
                 padding: "8px 16px",
-                borderRadius: "var(--radius-sm)",
-                backgroundColor: "var(--bg-surface-elevated)",
-                border: "1px solid var(--border-subtle)",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "rgba(255, 255, 255, 0.06)",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
                 color: "var(--text-primary)",
                 fontSize: "13px",
                 fontWeight: 600,
@@ -392,7 +473,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
               }}
             >
               <ArrowLeft size={16} />
-              Back to People
+              People
             </button>
 
             {personPhotos.length > 0 && (
@@ -403,45 +484,51 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                   display: "flex",
                   alignItems: "center",
                   gap: "8px",
-                  padding: "8px 16px",
-                  borderRadius: "var(--radius-sm)",
-                  backgroundColor: "var(--accent-primary)",
+                  padding: "8px 20px",
+                  borderRadius: "var(--radius-full)",
+                  background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
                   border: "none",
                   color: "#ffffff",
                   fontSize: "13px",
                   fontWeight: 600,
                   cursor: "pointer",
-                  boxShadow: "0 2px 8px rgba(99, 102, 241, 0.25)",
+                  boxShadow: "0 4px 14px rgba(99, 102, 241, 0.35)",
+                  transition: "all 0.2s ease",
                 }}
               >
                 <Play size={14} fill="currentColor" />
-                Slideshow ({personPhotos.length})
+                Play Slideshow ({personPhotos.length})
               </button>
             )}
           </div>
 
-          {/* Person Profile Banner / Hero */}
+          {/* Ambient Portrait Hero Banner */}
           <div
             style={{
+              position: "relative",
+              overflow: "visible",
+              borderRadius: "var(--radius-lg)",
+              padding: "28px 28px",
+              background: "radial-gradient(ellipse at 15% 50%, rgba(99, 102, 241, 0.15), transparent 70%), linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(0, 0, 0, 0.2) 100%)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
               flexWrap: "wrap",
-              gap: "16px",
-              padding: "16px 20px",
-              backgroundColor: "var(--bg-surface-elevated)",
-              borderRadius: "var(--radius-md)",
-              border: "1px solid var(--border-subtle)",
+              gap: "20px",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+            {/* Left: Avatar & Typography */}
+            <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
               <div
                 style={{
-                  width: "56px",
-                  height: "56px",
+                  position: "relative",
+                  width: "68px",
+                  height: "68px",
                   borderRadius: "var(--radius-full)",
                   overflow: "hidden",
-                  border: "2px solid var(--accent-primary)",
+                  border: "3px solid #6366f1",
+                  boxShadow: "0 0 20px rgba(99, 102, 241, 0.4)",
                   backgroundColor: "var(--bg-surface)",
                   display: "flex",
                   alignItems: "center",
@@ -456,84 +543,194 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
                 ) : (
-                  <Users size={28} style={{ color: "var(--accent-primary)" }} />
+                  <Users size={32} style={{ color: "var(--accent-primary)" }} />
                 )}
               </div>
 
               <div>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <h1 style={{ fontSize: "20px", fontWeight: 700, margin: 0 }}>{selectedPerson.name}</h1>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                  <h1 style={{ fontSize: "24px", fontWeight: 800, margin: 0, letterSpacing: "-0.02em" }}>
+                    {selectedPerson.name}
+                  </h1>
                   {/* Interactive VIP Toggle */}
                   <button
                     onClick={() => handleUpdatePerson(selectedPerson.id, { is_close_one: !selectedPerson.is_close_one })}
-                    title={selectedPerson.is_close_one ? "Close One (High Priority)" : "Mark as Close One (VIP)"}
+                    title={selectedPerson.is_close_one ? "Close One (VIP Highlighted)" : "Mark as Close One (VIP)"}
                     className="clickable"
                     style={{
-                      background: "none",
-                      border: "none",
+                      background: selectedPerson.is_close_one ? "rgba(245, 158, 11, 0.18)" : "rgba(255, 255, 255, 0.06)",
+                      border: selectedPerson.is_close_one ? "1px solid rgba(245, 158, 11, 0.4)" : "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: "var(--radius-full)",
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
-                      padding: "2px",
+                      padding: "4px 10px",
+                      gap: "5px",
                       color: selectedPerson.is_close_one ? "var(--accent-warning)" : "var(--text-muted)",
+                      fontSize: "11px",
+                      fontWeight: 600,
                     }}
                   >
-                    <Star size={18} fill={selectedPerson.is_close_one ? "var(--accent-warning)" : "none"} />
+                    <Star size={12} fill={selectedPerson.is_close_one ? "var(--accent-warning)" : "none"} />
+                    <span>{selectedPerson.is_close_one ? "Close One" : "Mark VIP"}</span>
                   </button>
                 </div>
-                <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px", margin: 0 }}>
-                  {personPhotos.length} {personPhotos.length === 1 ? "photo" : "photos"} found in your library
+
+                {/* Subtitle Telemetry */}
+                <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "6px", margin: 0 }}>
+                  {personPhotos.length} {personPhotos.length === 1 ? "photo" : "photos"}
+                  {yearsRange ? ` • ${yearsRange}` : ""}
+                  {` • Affinity ${Math.round(selectedPerson.affinity_score)}%`}
                 </p>
               </div>
             </div>
 
-            {/* Granular Relationship Customizer */}
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <Tag size={15} style={{ color: "var(--text-muted)" }} />
-                <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500 }}>
-                  Relationship:
-                </span>
-                <select
-                  value={selectedPerson.relationship_type || "Friend"}
-                  disabled={updatingPerson}
-                  onChange={(e) => handleUpdatePerson(selectedPerson.id, { relationship_type: e.target.value })}
-                  style={{
-                    padding: "7px 12px",
-                    borderRadius: "var(--radius-sm)",
-                    backgroundColor: "var(--bg-surface)",
-                    border: "1px solid var(--border-highlight)",
-                    color: "var(--text-primary)",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    outline: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  {RELATIONSHIP_OPTIONS.map((rel) => (
-                    <option key={rel} value={rel}>{rel}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Affinity Score */}
-              <div
+            {/* Right: Modern Relationship Popover Pill */}
+            <div style={{ position: "relative" }}>
+              <button
+                onClick={() => setIsRelationshipPopoverOpen((prev) => !prev)}
+                className="clickable"
                 style={{
-                  padding: "5px 12px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "8px 16px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: selectedPerson.is_close_one ? "rgba(16, 185, 129, 0.12)" : "var(--bg-surface)",
-                  color: selectedPerson.is_close_one ? "var(--accent-success)" : "var(--text-muted)",
-                  fontSize: "11px",
+                  backgroundColor: "rgba(255, 255, 255, 0.08)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  color: "var(--text-primary)",
+                  fontSize: "13px",
                   fontWeight: 600,
-                  border: "1px solid var(--border-subtle)",
+                  cursor: "pointer",
                 }}
               >
-                Affinity: {Math.round(selectedPerson.affinity_score)}/100
-              </div>
+                <Tag size={14} style={{ color: "var(--accent-primary)" }} />
+                <span>Relationship: <strong>{selectedPerson.relationship_type || "Friend"}</strong></span>
+                <ChevronDown size={14} style={{ opacity: 0.7 }} />
+              </button>
+
+              {/* Popover Dropdown Menu */}
+              {isRelationshipPopoverOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 8px)",
+                    right: 0,
+                    backgroundColor: "var(--bg-surface-elevated)",
+                    border: "1px solid var(--border-highlight)",
+                    borderRadius: "var(--radius-md)",
+                    padding: "6px",
+                    boxShadow: "0 12px 32px rgba(0, 0, 0, 0.6)",
+                    zIndex: 30,
+                    minWidth: "190px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "2px",
+                  }}
+                >
+                  {RELATIONSHIP_OPTIONS.map((rel) => {
+                    const isSelected = (selectedPerson.relationship_type || "Friend") === rel;
+                    return (
+                      <button
+                        key={rel}
+                        disabled={updatingPerson}
+                        onClick={() => {
+                          handleUpdatePerson(selectedPerson.id, { relationship_type: rel });
+                          setIsRelationshipPopoverOpen(false);
+                        }}
+                        className="clickable"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "8px 12px",
+                          borderRadius: "var(--radius-sm)",
+                          backgroundColor: isSelected ? "rgba(99, 102, 241, 0.15)" : "transparent",
+                          color: isSelected ? "var(--accent-primary)" : "var(--text-primary)",
+                          fontSize: "12px",
+                          fontWeight: isSelected ? 600 : 500,
+                          border: "none",
+                          cursor: "pointer",
+                          textAlign: "left",
+                          width: "100%",
+                        }}
+                      >
+                        <span>{rel}</span>
+                        {isSelected && <Check size={14} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Photos Grid */}
+          {/* Quick Filter Strip (All, Favorites, Years) */}
+          {personPhotos.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              <button
+                onClick={() => setPersonFilter("all")}
+                className="clickable"
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: personFilter === "all" ? "var(--accent-primary)" : "var(--bg-surface-elevated)",
+                  color: personFilter === "all" ? "#ffffff" : "var(--text-muted)",
+                  border: "1px solid var(--border-subtle)",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                All ({personPhotos.length})
+              </button>
+
+              {favCount > 0 && (
+                <button
+                  onClick={() => setPersonFilter("favorites")}
+                  className="clickable"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "6px 14px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: personFilter === "favorites" ? "rgba(239, 68, 68, 0.18)" : "var(--bg-surface-elevated)",
+                    color: personFilter === "favorites" ? "#ef4444" : "var(--text-muted)",
+                    border: personFilter === "favorites" ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid var(--border-subtle)",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  <Heart size={12} fill={personFilter === "favorites" ? "#ef4444" : "none"} />
+                  Favorites ({favCount})
+                </button>
+              )}
+
+              {availableYears.map((year) => (
+                <button
+                  key={year}
+                  onClick={() => setPersonFilter(year)}
+                  className="clickable"
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: personFilter === year ? "var(--accent-primary)" : "var(--bg-surface-elevated)",
+                    color: personFilter === year ? "#ffffff" : "var(--text-muted)",
+                    border: "1px solid var(--border-subtle)",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {year}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Timeline-Grouped Photos Grid */}
           {loadingPhotos ? (
             <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
               <Loader2 size={32} className="spinning" style={{ color: "var(--accent-primary)" }} />
@@ -543,71 +740,122 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
               <ImageIcon size={40} style={{ opacity: 0.3, marginBottom: "12px" }} />
               <p style={{ fontSize: "14px", fontWeight: 600 }}>No Photos Associated</p>
             </div>
+          ) : timelineGroups.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)" }}>
+              <p style={{ fontSize: "14px" }}>No photos match the selected filter.</p>
+              <button
+                onClick={() => setPersonFilter("all")}
+                className="clickable"
+                style={{
+                  marginTop: "8px",
+                  padding: "6px 14px",
+                  borderRadius: "var(--radius-sm)",
+                  backgroundColor: "var(--bg-surface-elevated)",
+                  border: "1px solid var(--border-subtle)",
+                  color: "var(--accent-primary)",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Reset Filter
+              </button>
+            </div>
           ) : (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-                gap: "12px",
-              }}
-            >
-              {personPhotos.map((photo, idx) => (
-                <div
-                  key={photo.id}
-                  className="clickable"
-                  onClick={() => onPhotoClick?.(idx, personPhotos)}
-                  style={{
-                    aspectRatio: "1",
-                    borderRadius: "var(--radius-md)",
-                    overflow: "hidden",
-                    position: "relative",
-                    backgroundColor: "var(--bg-surface)",
-                    border: "1px solid var(--border-subtle)",
-                    cursor: "pointer",
-                  }}
-                >
-                  <img
-                    src={`http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail`}
-                    alt={photo.filename}
-                    loading="lazy"
+            <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
+              {timelineGroups.map(([groupTitle, photosInGroup]) => (
+                <div key={groupTitle} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                  {/* Timeline Cluster Header */}
+                  <div style={{ display: "flex", alignItems: "baseline", gap: "10px", paddingBottom: "2px", borderBottom: "1px solid var(--border-subtle)" }}>
+                    <h3 style={{ fontSize: "16px", fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
+                      {groupTitle}
+                    </h3>
+                    <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500 }}>
+                      {photosInGroup.length} {photosInGroup.length === 1 ? "photo" : "photos"}
+                    </span>
+                  </div>
+
+                  <div
                     style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      transition: "transform 0.2s ease",
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.04)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1.0)")}
-                  />
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (onToggleFavorite) {
-                        onToggleFavorite(photo.id);
-                        setPersonPhotos((prev) =>
-                          prev.map((p) => (p.id === photo.id ? { ...p, is_favorite: !p.is_favorite } : p))
-                        );
-                      }
-                    }}
-                    className="clickable"
-                    title={photo.is_favorite ? "Remove from Favorites" : "Add to Favorites"}
-                    style={{
-                      position: "absolute",
-                      top: "8px",
-                      right: "8px",
-                      backgroundColor: "rgba(0,0,0,0.6)",
-                      borderRadius: "50%",
-                      padding: "6px",
-                      display: photo.is_favorite ? "flex" : "none",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      border: "none",
-                      cursor: "pointer",
-                      transition: "transform 0.15s ease",
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))",
+                      gap: "14px",
                     }}
                   >
-                    <Heart size={14} fill={photo.is_favorite ? "#ef4444" : "none"} color={photo.is_favorite ? "#ef4444" : "#ffffff"} />
-                  </button>
+                    {photosInGroup.map((photo) => {
+                      const globalIdx = personPhotos.findIndex((p) => p.id === photo.id);
+                      return (
+                        <div
+                          key={photo.id}
+                          className="clickable"
+                          onClick={() => onPhotoClick?.(globalIdx >= 0 ? globalIdx : 0, personPhotos)}
+                          style={{
+                            aspectRatio: "1",
+                            borderRadius: "var(--radius-lg)",
+                            overflow: "hidden",
+                            position: "relative",
+                            backgroundColor: "var(--bg-surface)",
+                            border: "1px solid var(--border-subtle)",
+                            cursor: "pointer",
+                            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.2)",
+                            transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = "translateY(-3px)";
+                            e.currentTarget.style.borderColor = "var(--border-highlight)";
+                            e.currentTarget.style.boxShadow = "0 8px 20px rgba(0, 0, 0, 0.4)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = "translateY(0)";
+                            e.currentTarget.style.borderColor = "var(--border-subtle)";
+                            e.currentTarget.style.boxShadow = "0 2px 8px rgba(0, 0, 0, 0.2)";
+                          }}
+                        >
+                          <img
+                            src={`http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail`}
+                            alt={photo.filename}
+                            loading="lazy"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                            }}
+                          />
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onToggleFavorite) {
+                                onToggleFavorite(photo.id);
+                                setPersonPhotos((prev) =>
+                                  prev.map((p) => (p.id === photo.id ? { ...p, is_favorite: !p.is_favorite } : p))
+                                );
+                              }
+                            }}
+                            className="clickable"
+                            title={photo.is_favorite ? "Remove from Favorites" : "Add to Favorites"}
+                            style={{
+                              position: "absolute",
+                              top: "8px",
+                              right: "8px",
+                              backgroundColor: "rgba(0,0,0,0.6)",
+                              backdropFilter: "blur(4px)",
+                              WebkitBackdropFilter: "blur(4px)",
+                              borderRadius: "50%",
+                              padding: "6px",
+                              display: photo.is_favorite ? "flex" : "none",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              border: "none",
+                              cursor: "pointer",
+                              transition: "transform 0.15s ease",
+                            }}
+                          >
+                            <Heart size={14} fill={photo.is_favorite ? "#ef4444" : "none"} color={photo.is_favorite ? "#ef4444" : "#ffffff"} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
             </div>

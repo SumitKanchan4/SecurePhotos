@@ -769,43 +769,53 @@ To maximize viewport room for unlabeled face cluster tagging while providing an 
 - Zero database schema modifications required.
 ---
 
-## 16. People View Photo Drilldown: Lightbox Viewing, Ambient Slideshow & Clean Navigation
+## 16. People View Photo Drilldown: Apple Photos Cinematic Hero, Ambient Slideshow & Chronological Timeline
 
 ### Functionality Overview
-Resolves three critical navigation and viewer UX defects in the People feature:
+Elevates the individual person photo viewing experience from an administrative boxy layout into a modern, magazine-grade **Apple Photos-inspired Cinematic Hero**:
 1. **Interactive Lightbox Viewing**:
-   - Clicking any photo thumbnail in a recognized person's photo collection now immediately opens the photo inside the high-resolution Lightbox viewer.
-   - Preserves the person's photo list context (`lightboxPhotos`), enabling seamless left/right keyboard (`ArrowLeft`/`ArrowRight`) and mouse navigation across all photos of that person.
+   - Clicking any photo thumbnail opens the high-resolution Lightbox viewer with global index tracking across that person's library.
+   - Enables smooth left/right navigation (`ArrowLeft`/`ArrowRight`) across all of that person's photos.
 2. **Cinematic Ambient Slideshow**:
-   - Added a prominent **`Slideshow ({count})`** button in the top action toolbar of the person drill-down view.
-   - Reuses `AlbumSlideshowModal`, offering auto-advancing slides, Ken Burns hardware-accelerated pan/zoom motion, and procedurally generated Web Audio ambient soundscapes without external media assets.
-3. **Dedicated Breadcrumb & Navigation Bar**:
-   - Decoupled the **`Back to People`** button from the person's profile hero card into a dedicated, clean top navigation bar.
-   - Cleanses state upon clicking (`selectedPerson = null`, `personPhotos = []`), ensuring fast, flicker-free returns to the main People grid.
-   - Added an interactive favorite toggle (`Heart` icon) on photo thumbnails wired to `onToggleFavorite`.
+   - Prominent **`Play Slideshow ({count})`** button styled with vibrant indigo-to-violet gradient and glowing ambient elevation.
+   - Integrates `AlbumSlideshowModal` with hardware-accelerated Ken Burns motion and real-time Web Audio procedural soundscapes.
+3. **Floating Glassmorphic Sticky Navigation**:
+   - Sticky top bar (`backdrop-filter: blur(20px)`) housing a sleek `← People` button and the `Play Slideshow` action.
+   - Cleanses state (`selectedPerson = null`, `personPhotos = []`, `personFilter = 'all'`, `isRelationshipPopoverOpen = false`) upon exiting.
+4. **Ambient Portrait Hero Banner**:
+   - Borderless hero container with radial purple/indigo backdrop lighting.
+   - 68px halo avatar with glowing border shadow (`box-shadow: 0 0 20px rgba(99, 102, 241, 0.4)`).
+   - Display typography (24px bold) with an interactive VIP Close One toggle (`★`).
+   - Subtitle telemetry: Photo count, years range (e.g. `2023–2024`), and affinity percentage score.
+5. **Modern Interactive Relationship Popover Pill**:
+   - Replaced the clunky raw `<select>` dropdown with an interactive pill `[ 🏷️ Relationship: Family ▾ ]`.
+   - Clicking opens a sleek floating popover chip menu with active checkmarks, eliminating administrative form visual noise.
+6. **Smart Quick-Filter Strip**:
+   - One-tap filter chips: `All ({count})`, `Favorites ({favCount})`, and dynamic Year chips (`2024`, `2023`, etc.).
+7. **Chronological Timeline Grouping**:
+   - Automatically groups photos into Month & Year clusters (e.g. *"August 2024"*, *"June 2024"*, *"Earlier Moments"*).
+   - Sticky section headers with sub-item counts and responsive 190px cards with smooth elevation transitions.
 
 ### Functional Decision Points & Rationale
-- **Decoupled Breadcrumb Bar vs. Inline Jammed Header**:
-  - *Problem*: The "Back to People" button was crammed inside the same flex row as the 52px avatar, person's name, VIP star, relationship dropdown, and affinity badge, causing layout wrapping, poor visual hierarchy, and misclicks on mobile or smaller desktop windows.
-  - *Solution*: Placed "Back to People" on the left of a dedicated top navigation bar, with the new "Slideshow" action button positioned on the right. Below this bar, a separate, elevated Hero Profile Card clearly showcases the person's avatar, metadata, and relationship controls.
-- **Props Wiring in `App.tsx` (`onPhotoClick`, `onToggleFavorite`)**:
-  - *Problem*: `PeopleView` was mounted in `App.tsx` with zero props, and photo grid cards lacked `onClick` listeners, rendering the thumbnails inert.
-  - *Solution*: Passed `onPhotoClick={(idx, personPhotos) => { setLightboxPhotos(personPhotos); setLightboxIndex(idx); }}` and `onToggleFavorite={handleToggleFavorite}` to `<PeopleView />`.
-- **Slideshow Component Reuse**:
-  - *Rationale*: Rather than duplicating slideshow code, `AlbumSlideshowModal` was cleanly reused by passing `albumName={`${selectedPerson.name}'s Photos`}` and `photos={personPhotos}`.
+- **Elimination of "Admin/CRM Syndrome"**:
+  - *Problem*: Enclosing person metadata inside a gray border card with a raw `<select>` element made the gallery feel like an administrative dashboard rather than an emotional photo album.
+  - *Solution*: Designed a borderless ambient gradient hero with an interactive popover chip selector and typography-first hierarchy matching Apple Photos and Google Photos.
+- **Timeline Clusters vs. Flat Wall of Squares**:
+  - *Problem*: Dumping dozens of photos into a uniform square grid loses chronological context and emotional pacing.
+  - *Solution*: Built a high-performance `useMemo` timeline cluster grouping photos by Month & Year based on `photo.taken_at`.
 
 ### Technical Touchpoints
 - `src/components/PeopleView.tsx`:
-  - Added `PeopleViewProps` (`onPhotoClick`, `onToggleFavorite`).
-  - Added `isSlideshowOpen` state and rendered `<AlbumSlideshowModal />`.
-  - Added dedicated navigation bar with `Back to People` and `Slideshow` action button.
-  - Added `onClick` handler to photo thumbnails to trigger `onPhotoClick(idx, personPhotos)` with pointer cursor.
-  - Made the favorite heart badge interactive with stopPropagation and local state update.
+  - Added `useMemo` timeline grouper, year extraction, and multi-mode filter (`all`, `favorites`, `year`).
+  - Added `isRelationshipPopoverOpen` and floating popover chip menu.
+  - Added glassmorphic sticky top navigation bar.
+  - Added timeline group mapping with sticky headers and responsive cards.
 - `src/App.tsx`:
   - Provided `onPhotoClick` and `onToggleFavorite` props to `<PeopleView />`.
 
 ### State & Lifecycle Impact
-- Zero database changes; purely enhances frontend interaction, state propagation, and UX fidelity.
+- Zero database modifications; delivers a dramatic upgrade in visual polish, interaction speed, and emotional presentation.
+
 
 
 
