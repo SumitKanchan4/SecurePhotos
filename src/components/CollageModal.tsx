@@ -7,7 +7,8 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
-  Layers
+  Layers,
+  Calendar
 } from "lucide-react";
 
 interface CollageModalProps {
@@ -25,6 +26,7 @@ export const CollageModal: React.FC<CollageModalProps> = ({
 }) => {
   const [layout, setLayout] = useState<"mosaic" | "hero_grid" | "treemap">("mosaic");
   const [title, setTitle] = useState("");
+  const [dateMode, setDateMode] = useState<"smart" | "now" | "event">("smart");
   const [isExporting, setIsExporting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -48,6 +50,7 @@ export const CollageModal: React.FC<CollageModalProps> = ({
           photo_ids: selectedPhotoIds,
           layout,
           title: title.trim() || undefined,
+          date_mode: dateMode,
         }),
       });
 
@@ -248,6 +251,47 @@ export const CollageModal: React.FC<CollageModalProps> = ({
             </div>
           </div>
 
+          {/* Timeline Date Mode */}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+              <Calendar size={13} style={{ color: "var(--accent-primary)" }} />
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", margin: 0 }}>
+                Timeline Date Placement
+              </label>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" }}>
+              {[
+                { id: "smart", label: "Smart Date", desc: "Auto-sync with event or today" },
+                { id: "now", label: "Today / Now", desc: "Show at top of timeline" },
+                { id: "event", label: "Photo Date", desc: "Group with source photos" },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  disabled={isExporting}
+                  onClick={() => setDateMode(opt.id as any)}
+                  className="clickable"
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: "var(--radius-sm)",
+                    backgroundColor: dateMode === opt.id ? "var(--bg-surface-elevated)" : "var(--bg-sidebar)",
+                    border: `1.5px solid ${dateMode === opt.id ? "var(--accent-primary)" : "var(--border-subtle)"}`,
+                    color: dateMode === opt.id ? "var(--accent-primary)" : "var(--text-secondary)",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    gap: "2px",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <span style={{ fontSize: "11px", fontWeight: 600 }}>{opt.label}</span>
+                  <span style={{ fontSize: "9px", color: "var(--text-muted)", lineHeight: 1.2 }}>{opt.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Canvas Specs */}
           <div 
             style={{
@@ -265,6 +309,12 @@ export const CollageModal: React.FC<CollageModalProps> = ({
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span>Output Resolution:</span>
               <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>3840 × 2160 (4K UHD Master)</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span>Dating Strategy:</span>
+              <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>
+                {dateMode === "smart" ? "Smart Event Clustering" : dateMode === "now" ? "Creation Timestamp (Today)" : "Source Event Date"}
+              </span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span>Placement:</span>

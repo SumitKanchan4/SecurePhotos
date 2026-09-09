@@ -123,3 +123,93 @@ async def generate_through_the_years_story(person_id: int) -> Optional[StoryMode
         )
     finally:
         await conn.close()
+
+
+async def generate_year_in_review_story(year: Optional[str] = None) -> Optional[StoryModel]:
+    """Generates a dynamic 'Year in Review' highlight story from library photos.
+
+    Args:
+        year: Specific calendar year string (e.g. '2025'). If None, selects the year with the most photos.
+
+    Returns:
+        Generated StoryModel or None if insufficient photos exist.
+    """
+    conn = await get_db_connection()
+    try:
+        if not year:
+            async with conn.execute(
+                """
+                SELECT strftime('%Y', taken_at) as yr 
+                FROM photos 
+                WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0 
+                GROUP BY yr 
+                ORDER BY COUNT(*) DESC 
+                LIMIT 1;
+                """
+            ) as cursor:
+                row = await cursor.fetchone()
+                if not row or not row["yr"]:
+                    return None
+                year = row["yr"]
+
+        async with conn.execute(
+            """
+            SELECT id, filename, taken_at, strftime('%Y', taken_at) as yr
+            FROM photos
+            WHERE strftime('%Y', taken_at) = ? AND trashed_at IS NULL AND is_encrypted = 0
+            ORDER BY is_favorite DESC, id ASC
+            LIMIT 10;
+            """,
+            (year,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        if len(rows) < 2:
+            return None
+
+        slides = [
+            StorySlide(
+                photo_id=r["id"],
+                filename=r["filename"],
+                taken_at=r["taken_at"],
+                year_label=r["yr"] or year,
+                transition_type="zoom_in",
+                focal_x=0.5,
+                focal_y=0.5,
+            )
+            for r in rows
+        ]
+
+        title = f"Memories of {year}"
+        cursor = await conn.execute(
+            """
+            INSERT INTO stories (title, story_type, vibe_mood, cover_photo_id, music_track_path)
+            VALUES (?, 'year_in_review', 'upbeat', ?, ?);
+            """,
+            (title, slides[0].photo_id, VIBE_TRACKS["upbeat"]),
+        )
+        story_id = cursor.lastrowid
+
+        for idx, slide in enumerate(slides):
+            await conn.execute(
+                """
+                INSERT INTO story_items (story_id, photo_id, sort_order, transition_type, focal_x, focal_y)
+                VALUES (?, ?, ?, ?, ?, ?);
+                """,
+                (story_id, slide.photo_id, idx, slide.transition_type, slide.focal_x, slide.focal_y),
+            )
+
+        await conn.commit()
+
+        return StoryModel(
+            id=story_id,
+            title=title,
+            story_type="year_in_review",
+            vibe_mood="upbeat",
+            music_track_path=VIBE_TRACKS["upbeat"],
+            cover_photo_id=slides[0].photo_id,
+            slides=slides,
+        )
+    finally:
+        await conn.close()
+

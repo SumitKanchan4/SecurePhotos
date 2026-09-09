@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from engine.config import settings
 from engine.database import get_db_connection
-from engine.services.collage_service import render_collage
+from engine.services.collage_service import render_collage, determine_collage_taken_at
 from engine.services.ingestion_service import ingest_single_photo
 
 logger = logging.getLogger("securephotos.api.creatives")
@@ -22,6 +22,8 @@ class CollageRequest(BaseModel):
     photo_ids: List[int] = Field(..., description="List of 2 to 9 photo IDs to include in the collage")
     layout: str = Field(default="mosaic", description="Layout mode: 'mosaic' | 'hero_grid' | 'treemap'")
     title: Optional[str] = Field(default=None, description="Optional custom title for the collage")
+    date_mode: Optional[str] = Field(default="smart", description="Dating mode: 'smart' (default), 'now', or 'event'")
+    custom_date: Optional[str] = Field(default=None, description="Optional ISO timestamp string override")
 
 
 class CollageResponse(BaseModel):
@@ -30,6 +32,7 @@ class CollageResponse(BaseModel):
     photo_id: int
     album_id: int
     filename: str
+    taken_at: Optional[str] = None
 
 
 @router.post("/collage", response_model=CollageResponse, status_code=status.HTTP_201_CREATED)
@@ -42,23 +45,51 @@ async def create_photo_collage(payload: CollageRequest) -> CollageResponse:
 
     conn = await get_db_connection()
     try:
-        # 1. Fetch source photo paths in preserved selection order
+        # 1. Fetch source photo paths and taken_at in preserved selection order
         placeholders = ",".join("?" for _ in payload.photo_ids)
-        query = f"SELECT id, filepath FROM photos WHERE id IN ({placeholders}) AND trashed_at IS NULL;"
+        query = f"SELECT id, filepath, taken_at FROM photos WHERE id IN ({placeholders}) AND trashed_at IS NULL;"
         async with conn.execute(query, payload.photo_ids) as cursor:
             rows = await cursor.fetchall()
 
-        rows_by_id = {r["id"]: Path(r["filepath"]) for r in rows if r["filepath"]}
-        photo_paths = [rows_by_id[pid] for pid in payload.photo_ids if pid in rows_by_id and rows_by_id[pid].exists()]
+        rows_by_id = {r["id"]: r for r in rows if r["filepath"]}
+        photo_paths = [
+            Path(rows_by_id[pid]["filepath"])
+            for pid in payload.photo_ids
+            if pid in rows_by_id and Path(rows_by_id[pid]["filepath"]).exists()
+        ]
 
         if len(photo_paths) < 2:
             raise HTTPException(status_code=400, detail="At least 2 valid source photo files on disk are required.")
+
+        # Extract parsed datetimes for dating determination
+        source_dates: List[datetime.datetime] = []
+        for pid in payload.photo_ids:
+            if pid in rows_by_id and rows_by_id[pid]["taken_at"]:
+                raw_dt = rows_by_id[pid]["taken_at"]
+                try:
+                    parsed_dt = datetime.datetime.fromisoformat(str(raw_dt).replace("Z", "+00:00"))
+                    source_dates.append(parsed_dt.replace(tzinfo=None))
+                except (ValueError, TypeError):
+                    pass
+
+        custom_dt = None
+        if payload.custom_date:
+            try:
+                custom_dt = datetime.datetime.fromisoformat(payload.custom_date.replace("Z", "+00:00")).replace(tzinfo=None)
+            except (ValueError, TypeError):
+                pass
+
+        collage_taken_at = determine_collage_taken_at(
+            source_dates=source_dates,
+            date_mode=payload.date_mode or "smart",
+            custom_date=custom_dt,
+        )
 
         # 2. Render 4K UHD composite canvas
         canvas = render_collage(photo_paths, layout=payload.layout, canvas_width=3840, canvas_height=2160)
 
         # 3. Save to managed creatives directory
-        timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp_str = collage_taken_at.strftime("%Y%m%d_%H%M%S")
         safe_title = (payload.title or f"Collage_{payload.layout}").strip().replace(" ", "_")
         filename = f"{safe_title}_{timestamp_str}.webp"
 
@@ -73,10 +104,11 @@ async def create_photo_collage(payload: CollageRequest) -> CollageResponse:
         if not new_photo_id:
             raise HTTPException(status_code=500, detail="Failed to ingest generated collage into library.")
 
-        # Update caption
+        # Update caption and guarantee taken_at timestamp (never undated)
+        taken_at_db_str = collage_taken_at.strftime("%Y-%m-%d %H:%M:%S")
         await conn.execute(
-            "UPDATE photos SET caption = ? WHERE id = ?;",
-            (f"4K Collage ({payload.layout.title()})", new_photo_id),
+            "UPDATE photos SET caption = ?, taken_at = ? WHERE id = ?;",
+            (f"4K Collage ({payload.layout.title()})", taken_at_db_str, new_photo_id),
         )
 
         # 5. Ensure "Collages" system album exists and associate the new collage
@@ -103,7 +135,13 @@ async def create_photo_collage(payload: CollageRequest) -> CollageResponse:
             )
 
         await conn.commit()
-        return CollageResponse(status="ok", photo_id=new_photo_id, album_id=album_id, filename=filename)
+        return CollageResponse(
+            status="ok",
+            photo_id=new_photo_id,
+            album_id=album_id,
+            filename=filename,
+            taken_at=taken_at_db_str,
+        )
 
     finally:
         await conn.close()

@@ -1,5 +1,4 @@
-"""Automated Tests for 4K Collage Generation & Universal Photo Download."""
-
+import datetime
 import tempfile
 from pathlib import Path
 from PIL import Image
@@ -13,11 +12,14 @@ from engine.services.collage_service import (
     compute_mosaic_boxes,
     compute_hero_boxes,
     compute_treemap_boxes,
+    determine_collage_taken_at,
 )
 from engine.services.thumbnail_service import calculate_file_hash
 
 
-async def create_collage_test_photo(tmp_path: Path, filename: str, color=(120, 80, 200)) -> int:
+async def create_collage_test_photo(
+    tmp_path: Path, filename: str, color=(120, 80, 200), taken_at: str = None
+) -> int:
     """Helper to write a test image to disk and record it in the database."""
     img_path = tmp_path / filename
     img = Image.new("RGB", (300, 200), color=color)
@@ -29,11 +31,11 @@ async def create_collage_test_photo(tmp_path: Path, filename: str, color=(120, 8
         """
         INSERT INTO photos (
             filename, filepath, file_hash, file_size, mime_type, width, height,
-            is_encrypted, is_optimized, is_enhanced
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, 1)
+            is_encrypted, is_optimized, is_enhanced, taken_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, 1, ?)
         RETURNING id;
         """,
-        (filename, str(img_path), file_hash, img_path.stat().st_size, "image/jpeg", 300, 200),
+        (filename, str(img_path), file_hash, img_path.stat().st_size, "image/jpeg", 300, 200, taken_at),
     )
     row = await cursor.fetchone()
     photo_id = row[0]
@@ -76,17 +78,55 @@ def test_render_collage_bounds_validation():
         render_collage([f"photo_{i}.jpg" for i in range(10)])
 
 
+def test_determine_collage_taken_at_smart_clustering():
+    """Validates the smart hybrid dating logic for collages."""
+    d1 = datetime.datetime(2025, 7, 10, 10, 0, 0)
+    d2 = datetime.datetime(2025, 7, 12, 12, 0, 0)
+    d3 = datetime.datetime(2025, 7, 14, 15, 30, 0)
+    old_date = datetime.datetime(2021, 1, 1, 9, 0, 0)
+
+    # 1. Cohesive single-event cluster (<30 days apart) -> inherits newest photo date
+    result_smart = determine_collage_taken_at([d1, d2, d3], date_mode="smart")
+    assert result_smart == d3
+
+    # 2. Multi-year throwback cluster (>30 days apart) -> defaults to current time
+    now_before = datetime.datetime.now()
+    result_multiyear = determine_collage_taken_at([old_date, d3], date_mode="smart")
+    now_after = datetime.datetime.now()
+    assert now_before <= result_multiyear <= now_after
+
+    # 3. Undated source photos (empty list) -> defaults to current time (never None)
+    result_undated = determine_collage_taken_at([], date_mode="smart")
+    assert now_before <= result_undated <= now_after
+
+    # 4. Explicit 'now' mode override
+    result_now = determine_collage_taken_at([d1, d2], date_mode="now")
+    assert now_before <= result_now <= now_after
+
+    # 5. Explicit 'event' mode override across multi-year
+    result_event = determine_collage_taken_at([old_date, d3], date_mode="event")
+    assert result_event == d3
+
+    # 6. Explicit custom_date override
+    custom = datetime.datetime(2023, 5, 20, 8, 0, 0)
+    result_custom = determine_collage_taken_at([d1], custom_date=custom)
+    assert result_custom == custom
+
+
 @pytest.mark.asyncio
 async def test_create_collage_endpoint_and_album():
-    """Validates POST /api/creatives/collage end-to-end including Collages album placement."""
+    """Validates POST /api/creatives/collage end-to-end including smart dating and Collages album placement."""
     await run_migrations()
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        p1 = await create_collage_test_photo(tmp_path, "c_p1.jpg", (255, 50, 50))
-        p2 = await create_collage_test_photo(tmp_path, "c_p2.jpg", (50, 255, 50))
-        p3 = await create_collage_test_photo(tmp_path, "c_p3.jpg", (50, 50, 255))
+        p1 = await create_collage_test_photo(tmp_path, "c_p1.jpg", (255, 50, 50), taken_at="2025-07-10 10:00:00")
+        p2 = await create_collage_test_photo(tmp_path, "c_p2.jpg", (50, 255, 50), taken_at="2025-07-12 12:00:00")
+        p3 = await create_collage_test_photo(tmp_path, "c_p3.jpg", (50, 50, 255), taken_at="2025-07-14 15:30:00")
+        p_old = await create_collage_test_photo(tmp_path, "c_old.jpg", (10, 10, 10), taken_at="2020-01-01 00:00:00")
         collage_photo_id = None
+        collage_multi_id = None
         collage_file_path = None
+        collage_multi_path = None
         try:
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -100,26 +140,35 @@ async def test_create_collage_endpoint_and_album():
                 )
                 assert bad_res_many.status_code == 400
 
-                # 3. Successful 3-photo collage creation
+                # 3. Successful 3-photo collage creation with smart event dating
                 res = await client.post(
                     "/api/creatives/collage",
-                    json={"photo_ids": [p1, p2, p3], "layout": "hero_grid", "title": "Test Hero Collage"},
+                    json={
+                        "photo_ids": [p1, p2, p3],
+                        "layout": "hero_grid",
+                        "title": "Summer Trip",
+                        "date_mode": "smart",
+                    },
                 )
                 assert res.status_code == 201
                 data = res.json()
                 assert data["status"] == "ok"
+                assert data["taken_at"] == "2025-07-14 15:30:00"
                 collage_photo_id = data["photo_id"]
                 album_id = data["album_id"]
 
-                # 4. Verify the collage exists in the photos table
+                # 4. Verify the collage exists in the photos table with correct taken_at date (not Undated)
                 conn = await get_db_connection()
-                async with conn.execute("SELECT filepath, width, height FROM photos WHERE id = ?;", (collage_photo_id,)) as cur:
+                async with conn.execute(
+                    "SELECT filepath, width, height, taken_at FROM photos WHERE id = ?;", (collage_photo_id,)
+                ) as cur:
                     photo_row = await cur.fetchone()
                 assert photo_row is not None
                 collage_file_path = Path(photo_row["filepath"])
                 assert collage_file_path.exists()
                 assert photo_row["width"] == 3840
                 assert photo_row["height"] == 2160
+                assert photo_row["taken_at"] == "2025-07-14 15:30:00"
 
                 # 5. Verify the Collages album contains the new photo
                 async with conn.execute("SELECT name FROM albums WHERE id = ?;", (album_id,)) as cur:
@@ -132,15 +181,42 @@ async def test_create_collage_endpoint_and_album():
                 ) as cur:
                     link_row = await cur.fetchone()
                 assert link_row is not None
+
+                # 6. Test multi-year collage falls back to current date
+                res_multi = await client.post(
+                    "/api/creatives/collage",
+                    json={
+                        "photo_ids": [p_old, p3],
+                        "layout": "mosaic",
+                        "title": "Through The Years",
+                        "date_mode": "smart",
+                    },
+                )
+                assert res_multi.status_code == 201
+                data_multi = res_multi.json()
+                collage_multi_id = data_multi["photo_id"]
+                assert data_multi["taken_at"] is not None
+                # Assert multi-year is dated in current year
+                assert str(datetime.datetime.now().year) in data_multi["taken_at"]
+
+                async with conn.execute(
+                    "SELECT filepath, taken_at FROM photos WHERE id = ?;", (collage_multi_id,)
+                ) as cur:
+                    multi_row = await cur.fetchone()
+                assert multi_row["taken_at"] is not None
+                collage_multi_path = Path(multi_row["filepath"])
+                assert collage_multi_path.exists()
+
                 await conn.close()
         finally:
             # Clean up all created database records and generated collage files
             conn = await get_db_connection()
             try:
-                all_ids = [p1, p2, p3]
-                if collage_photo_id:
-                    all_ids.append(collage_photo_id)
-                    await conn.execute("DELETE FROM creative_assets WHERE filepath LIKE ?;", (f"%{collage_photo_id}%",))
+                all_ids = [p1, p2, p3, p_old]
+                for cid in (collage_photo_id, collage_multi_id):
+                    if cid:
+                        all_ids.append(cid)
+                        await conn.execute("DELETE FROM creative_assets WHERE filepath LIKE ?;", (f"%{cid}%",))
                 for pid in all_ids:
                     await conn.execute("DELETE FROM photo_album WHERE photo_id = ?;", (pid,))
                     await conn.execute("DELETE FROM photos WHERE id = ?;", (pid,))
@@ -148,11 +224,12 @@ async def test_create_collage_endpoint_and_album():
             finally:
                 await conn.close()
 
-            if collage_file_path and collage_file_path.exists():
-                try:
-                    collage_file_path.unlink()
-                except OSError:
-                    pass
+            for p in (collage_file_path, collage_multi_path):
+                if p and p.exists():
+                    try:
+                        p.unlink()
+                    except OSError:
+                        pass
 
 
 @pytest.mark.asyncio

@@ -316,6 +316,7 @@ CREATE INDEX IF NOT EXISTS ix_faces_cluster_id ON faces (cluster_id);
 CREATE INDEX IF NOT EXISTS ix_photo_album_album_id ON photo_album (album_id);
 CREATE INDEX IF NOT EXISTS ix_import_items_task_id ON import_items (task_id);
 CREATE INDEX IF NOT EXISTS ix_opt_items_task_id ON optimization_items (task_id);
+CREATE INDEX IF NOT EXISTS ix_photos_counts ON photos (is_document, mime_type, trashed_at);
 
 -- ── Full-Text Search Table (FTS5) ───────────────────────────────────────────
 CREATE VIRTUAL TABLE IF NOT EXISTS photos_fts USING fts5(

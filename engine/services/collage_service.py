@@ -5,12 +5,66 @@ with face-aware aspect cropping, hardware-accelerated Lanczos resampling, and sl
 geometric layouts (Mosaic, Hero Grid 1+4, and Geometric Treemap).
 """
 
+import datetime
 import logging
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from PIL import Image, ImageOps, ImageFilter
 
 logger = logging.getLogger("securephotos.collage_service")
+
+
+def determine_collage_taken_at(
+    source_dates: List[datetime.datetime],
+    date_mode: str = "smart",
+    custom_date: Optional[datetime.datetime] = None,
+    max_days_event_threshold: int = 30,
+) -> datetime.datetime:
+    """Determines the chronological 'taken_at' timestamp for a generated collage.
+
+    Prevents manually created collages from being categorized as 'Undated'.
+    Applies smart event clustering:
+    - If date_mode is 'now': returns current local timestamp.
+    - If date_mode is 'event': returns the newest constituent photo timestamp (or now if none).
+    - If date_mode is 'smart':
+      - If source photos are within max_days_event_threshold (e.g. 30 days of each other),
+        inherits the latest constituent date (so the collage sits alongside the trip/event in the gallery).
+      - If source photos span multiple years or seasons (retrospective/throwback) or have no dates,
+        falls back to current creation timestamp.
+
+    Args:
+        source_dates: List of valid datetime instances for constituent photos.
+        date_mode: 'smart' (default), 'now', or 'event'.
+        custom_date: Optional explicit datetime override.
+        max_days_event_threshold: Maximum days between min and max photo dates to be
+            considered a cohesive event (defaults to 30).
+
+    Returns:
+        A datetime object representing the assigned taken_at date.
+    """
+    if custom_date:
+        return custom_date
+
+    now = datetime.datetime.now()
+
+    if date_mode == "now":
+        return now
+
+    if not source_dates:
+        return now
+
+    if date_mode == "event":
+        return max(source_dates)
+
+    # 'smart' hybrid evaluation
+    min_date = min(source_dates)
+    max_date = max(source_dates)
+
+    if abs((max_date - min_date).days) <= max_days_event_threshold:
+        return max_date
+
+    return now
+
 
 
 def compute_mosaic_boxes(count: int, width: int, height: int, gap: int = 24, margin: int = 24) -> List[Tuple[int, int, int, int]]:

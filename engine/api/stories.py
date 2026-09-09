@@ -68,3 +68,38 @@ async def list_stories() -> List[StoryModel]:
         return stories
     finally:
         await conn.close()
+
+
+@router.post("/generate", response_model=List[StoryModel], status_code=status.HTTP_200_OK)
+async def generate_stories() -> List[StoryModel]:
+    """Generates AI-curated nostalgia and milestone stories from library photos.
+
+    Evaluates close people for 'Through the Years' stories and generates
+    'Year in Review' milestone stories for prominent timeline years.
+
+    Returns:
+        List of all active StoryModel instances.
+    """
+    from engine.services.stories_service import (
+        generate_through_the_years_story,
+        generate_year_in_review_story,
+    )
+
+    conn = await get_db_connection()
+    try:
+        # 1. Generate for close persons
+        async with conn.execute(
+            "SELECT id FROM persons ORDER BY is_close_one DESC, affinity_score DESC LIMIT 5;"
+        ) as cursor:
+            person_rows = await cursor.fetchall()
+
+        for pr in person_rows:
+            await generate_through_the_years_story(pr["id"])
+
+        # 2. Generate Year in Review highlight stories
+        await generate_year_in_review_story()
+    finally:
+        await conn.close()
+
+    return await list_stories()
+
