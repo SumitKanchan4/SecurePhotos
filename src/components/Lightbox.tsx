@@ -18,6 +18,7 @@ import {
   Clock,
   Trash2,
   Download,
+  Printer,
 } from "lucide-react";
 import { PhotoItem, OptimizationProgress } from "../types";
 import { useAppStore } from "../store/useAppStore";
@@ -46,8 +47,6 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const showToast = useAppStore((state) => state.showToast);
   const [zoom, setZoom] = useState(1);
   const [showInfo, setShowInfo] = useState(false);
-  const [showSplitSlider, setShowSplitSlider] = useState(false);
-  const [splitPosition, setSplitPosition] = useState(50); // percentage 0 to 100
   const [isFavorite, setIsFavorite] = useState(false);
   const [isPreviewLoaded, setIsPreviewLoaded] = useState(false);
   const [previewHasError, setPreviewHasError] = useState(false);
@@ -70,7 +69,6 @@ export const Lightbox: React.FC<LightboxProps> = ({
     if (currentPhoto) {
       setIsFavorite(currentPhoto.is_favorite);
       setZoom(1);
-      setShowSplitSlider(false);
       setIsPreviewLoaded(false);
       setPreviewHasError(false);
       setIsCopied(false);
@@ -88,10 +86,6 @@ export const Lightbox: React.FC<LightboxProps> = ({
         if (currentIndex < photos.length - 1) onNavigate(currentIndex + 1);
       } else if (e.key === "ArrowLeft" || e.key === "k" || e.key === "K") {
         if (currentIndex > 0) onNavigate(currentIndex - 1);
-      } else if (e.key === "e" || e.key === "E") {
-        if (isCompleted) {
-          setShowSplitSlider((prev) => !prev);
-        }
       } else if (e.key === "f" || e.key === "F") {
         if (currentPhoto) {
           setIsFavorite((prev) => !prev);
@@ -137,11 +131,18 @@ export const Lightbox: React.FC<LightboxProps> = ({
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = (mode: "original" | "studio_print" = "original") => {
     if (!currentPhoto) return;
-    const filename = currentPhoto.filename || "photo.jpg";
-    showToast(`📥 Downloading "${filename}" to your computer's Downloads folder...`, "info");
-    const downloadUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto.id}/download`;
+    const baseName = currentPhoto.filename ? currentPhoto.filename.replace(/\.[^/.]+$/, "") : "photo";
+    const filename = mode === "studio_print" ? `${baseName}_studio_300dpi.jpg` : (currentPhoto.filename || "photo.jpg");
+
+    if (mode === "studio_print") {
+      showToast(`🖨️ Downloading print-ready photo "${filename}" to your computer's Downloads folder...`, "info");
+    } else {
+      showToast(`📥 Downloading "${filename}" to your computer's Downloads folder...`, "info");
+    }
+
+    const downloadUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto.id}/download?mode=${mode}`;
     const link = document.createElement("a");
     link.href = downloadUrl;
     link.setAttribute("download", filename);
@@ -204,30 +205,6 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
         {/* Action Controls */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          {/* Before / After Split Slider Toggle Button (only when enhancement is complete) */}
-          {isCompleted && (
-            <button
-              onClick={() => setShowSplitSlider(!showSplitSlider)}
-              className="clickable"
-              title="Compare Original (Before) vs. AI Enhanced (After) (E)"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "5px 12px",
-                borderRadius: "var(--radius-sm)",
-                backgroundColor: showSplitSlider ? "var(--accent-primary)" : "var(--bg-surface)",
-                border: "1px solid var(--border-subtle)",
-                color: showSplitSlider ? "#ffffff" : "var(--text-primary)",
-                fontSize: "11px",
-                fontWeight: 600,
-              }}
-            >
-              <Sparkles size={13} />
-              {showSplitSlider ? "Hide Comparison" : "Before / After (E)"}
-            </button>
-          )}
-
           {/* Zoom Controls */}
           <button 
             onClick={handleZoomOut} 
@@ -275,11 +252,11 @@ export const Lightbox: React.FC<LightboxProps> = ({
             <span style={{ fontSize: "11px", fontWeight: 600 }}>{isFavorite ? "Liked" : "Like"}</span>
           </button>
 
-          {/* Download Photo */}
+          {/* Standard Download */}
           <button
-            onClick={handleDownload}
+            onClick={() => handleDownload("original")}
             className="clickable"
-            title="Download original photo to your computer"
+            title="Download image file to your computer"
             style={{
               background: "transparent",
               borderRadius: "var(--radius-xs)",
@@ -294,6 +271,27 @@ export const Lightbox: React.FC<LightboxProps> = ({
           >
             <Download size={15} />
             <span style={{ fontSize: "11px", fontWeight: 600 }}>Download</span>
+          </button>
+
+          {/* Studio Print Export Button */}
+          <button
+            onClick={() => handleDownload("studio_print")}
+            className="clickable"
+            title="Download print-ready photo for studio printing, posters, and framing"
+            style={{
+              background: "rgba(59, 130, 246, 0.12)",
+              borderRadius: "var(--radius-xs)",
+              border: "1px solid rgba(59, 130, 246, 0.35)",
+              color: "var(--accent-primary)",
+              padding: "4px 10px",
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              cursor: "pointer",
+            }}
+          >
+            <Printer size={14} />
+            <span style={{ fontSize: "11px", fontWeight: 600 }}>Print Ready</span>
           </button>
 
           {/* Delete / Move to Trash */}
@@ -459,208 +457,76 @@ export const Lightbox: React.FC<LightboxProps> = ({
             overflow: "hidden",
           }}
         >
-          {showSplitSlider ? (
-            /* Interactive 4K AI Split Slider View */
-            <div 
-              style={{
-                width: "92%",
-                height: "90%",
-                position: "relative",
-                borderRadius: "var(--radius-md)",
-                overflow: "hidden",
-                border: "1px solid var(--border-highlight)",
-                backgroundColor: "#000000",
-                cursor: "ew-resize",
-              }}
-              onMouseMove={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const pos = ((e.clientX - rect.left) / rect.width) * 100;
-                setSplitPosition(Math.max(5, Math.min(95, pos)));
-              }}
-            >
-              {/* Left Side: Original Image (Before) */}
+          {/* Standard Lightbox Zoomable Media View with Real Image */}
+          <div 
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              position: "relative",
+            }}
+          >
+            {/* Instant Thumbnail Low-Res Backdrop while High-Res Loads */}
+            {!isPreviewLoaded && !previewHasError && (
               <img
-                src={previewHasError ? thumbnailUrl : originalUrl}
+                src={thumbnailUrl}
                 alt={currentPhoto.filename}
                 style={{
-                  position: "absolute",
-                  inset: 0,
-                  width: "100%",
-                  height: "100%",
+                  maxWidth: "92%",
+                  maxHeight: "88%",
                   objectFit: "contain",
+                  filter: "blur(8px)",
+                  opacity: 0.6,
+                  position: "absolute",
                 }}
               />
+            )}
+
+            {/* High-Resolution Media Image */}
+            <img
+              src={previewHasError ? thumbnailUrl : primaryImageUrl}
+              alt={currentPhoto.filename}
+              onLoad={() => setIsPreviewLoaded(true)}
+              onError={() => {
+                setPreviewHasError(true);
+                setIsPreviewLoaded(true);
+              }}
+              style={{
+                maxWidth: "94%",
+                maxHeight: "90%",
+                objectFit: "contain",
+                transform: `scale(${zoom})`,
+                transition: zoom === 1 ? "transform 0.15s ease, opacity 0.25s ease" : "none",
+                opacity: isPreviewLoaded ? 1 : 0.4,
+                borderRadius: "var(--radius-sm)",
+                boxShadow: "0 8px 32px rgba(0, 0, 0, 0.6)",
+                cursor: zoom > 1 ? "grab" : "default",
+              }}
+            />
+
+            {/* Loading Spinner */}
+            {!isPreviewLoaded && (
               <div 
                 style={{
                   position: "absolute",
-                  top: "16px",
-                  left: "16px",
-                  padding: "4px 10px",
-                  borderRadius: "var(--radius-xs)",
-                  backgroundColor: "rgba(0, 0, 0, 0.75)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "8px 14px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "rgba(0, 0, 0, 0.7)",
                   color: "#ffffff",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  zIndex: 2,
-                  letterSpacing: "0.5px",
+                  fontSize: "12px",
+                  backdropFilter: "blur(8px)",
                 }}
               >
-                BEFORE (ORIGINAL)
+                <Loader2 size={16} className="spin" style={{ color: "var(--accent-primary)" }} />
+                {isCompleted ? "Loading Enhanced Photo..." : "Loading Original Photo..."}
               </div>
-
-              {/* Right Side: Enhanced AI Clipped Layer (After) */}
-              <div 
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  clipPath: `polygon(${splitPosition}% 0, 100% 0, 100% 100%, ${splitPosition}% 100%)`,
-                  overflow: "hidden",
-                }}
-              >
-                <img
-                  src={previewHasError ? thumbnailUrl : previewUrl}
-                  alt={currentPhoto.filename}
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "contain",
-                  }}
-                />
-                <div 
-                  style={{
-                    position: "absolute",
-                    top: "16px",
-                    right: "16px",
-                    padding: "4px 10px",
-                    borderRadius: "var(--radius-xs)",
-                    backgroundColor: "rgba(59, 130, 246, 0.9)",
-                    color: "#ffffff",
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    zIndex: 2,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "5px",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  <Sparkles size={12} /> AFTER (AI ENHANCED: 8K ULTRA)
-                </div>
-              </div>
-
-              {/* Split Line Divider */}
-              <div 
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  bottom: 0,
-                  left: `${splitPosition}%`,
-                  width: "2px",
-                  backgroundColor: "#ffffff",
-                  boxShadow: "0 0 12px rgba(0,0,0,0.9)",
-                  pointerEvents: "none",
-                  zIndex: 5,
-                }}
-              >
-                <div 
-                  style={{
-                    position: "absolute",
-                    top: "50%",
-                    left: "50%",
-                    transform: "translate(-50%, -50%)",
-                    width: "30px",
-                    height: "30px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "var(--accent-primary)",
-                    border: "2px solid #ffffff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#ffffff",
-                    fontSize: "10px",
-                    fontWeight: 800,
-                    boxShadow: "0 2px 10px rgba(0,0,0,0.5)",
-                  }}
-                >
-                  ⚡
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* Standard Lightbox Zoomable Media View with Real Image */
-            <div 
-              style={{
-                width: "100%",
-                height: "100%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                position: "relative",
-              }}
-            >
-              {/* Instant Thumbnail Low-Res Backdrop while Preview Loads */}
-              {!isPreviewLoaded && !previewHasError && (
-                <img
-                  src={thumbnailUrl}
-                  alt={currentPhoto.filename}
-                  style={{
-                    maxWidth: "92%",
-                    maxHeight: "88%",
-                    objectFit: "contain",
-                    filter: "blur(8px)",
-                    opacity: 0.6,
-                    position: "absolute",
-                  }}
-                />
-              )}
-
-              {/* High-Resolution Media Image (Enhanced if completed, Original if in progress) */}
-              <img
-                src={previewHasError ? thumbnailUrl : primaryImageUrl}
-                alt={currentPhoto.filename}
-                onLoad={() => setIsPreviewLoaded(true)}
-                onError={() => {
-                  setPreviewHasError(true);
-                  setIsPreviewLoaded(true);
-                }}
-                style={{
-                  maxWidth: "94%",
-                  maxHeight: "90%",
-                  objectFit: "contain",
-                  transform: `scale(${zoom})`,
-                  transition: zoom === 1 ? "transform 0.15s ease, opacity 0.25s ease" : "none",
-                  opacity: isPreviewLoaded ? 1 : 0.4,
-                  borderRadius: "var(--radius-sm)",
-                  boxShadow: "0 8px 32px rgba(0, 0, 0, 0.6)",
-                  cursor: zoom > 1 ? "grab" : "default",
-                }}
-              />
-
-              {/* Loading Spinner */}
-              {!isPreviewLoaded && (
-                <div 
-                  style={{
-                    position: "absolute",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    padding: "8px 14px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(0, 0, 0, 0.7)",
-                    color: "#ffffff",
-                    fontSize: "12px",
-                    backdropFilter: "blur(8px)",
-                  }}
-                >
-                  <Loader2 size={16} className="spin" style={{ color: "var(--accent-primary)" }} />
-                  {isCompleted ? "Loading Enhanced Preview..." : "Loading Original Photo..."}
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Collapsible EXIF Metadata Drawer */}
@@ -877,6 +743,93 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   </span>
                 </div>
               </div>
+
+              {/* Studio Poster Print Readiness Card */}
+              {(() => {
+                const w = currentPhoto.width || 0;
+                const h = currentPhoto.height || 0;
+                const dpi300W = w > 0 ? (w / 300).toFixed(1) : "0";
+                const dpi300H = h > 0 ? (h / 300).toFixed(1) : "0";
+                const dpi300Wcm = w > 0 ? ((w / 300) * 2.54).toFixed(0) : "0";
+                const dpi300Hcm = h > 0 ? ((h / 300) * 2.54).toFixed(0) : "0";
+
+                const dpi200W = w > 0 ? (w / 200).toFixed(1) : "0";
+                const dpi200H = h > 0 ? (h / 200).toFixed(1) : "0";
+                const dpi200Wcm = w > 0 ? ((w / 200) * 2.54).toFixed(0) : "0";
+                const dpi200Hcm = h > 0 ? ((h / 200) * 2.54).toFixed(0) : "0";
+
+                const maxDim = Math.max(w, h);
+                const isPosterReady = maxDim >= 4500;
+                const isMediumReady = maxDim >= 2400;
+
+                return (
+                  <div style={{ backgroundColor: "var(--bg-surface)", padding: "12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-primary)", fontWeight: 600 }}>
+                        <Printer size={14} style={{ color: "var(--accent-primary)" }} />
+                        <span>Studio Print Readiness</span>
+                      </div>
+                      <span style={{ 
+                        fontSize: "10px", 
+                        fontWeight: 700, 
+                        padding: "2px 6px", 
+                        borderRadius: "var(--radius-xs)",
+                        backgroundColor: isPosterReady ? "rgba(16, 185, 129, 0.15)" : isMediumReady ? "rgba(59, 130, 246, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                        color: isPosterReady ? "var(--accent-success)" : isMediumReady ? "var(--accent-primary)" : "var(--accent-warning)",
+                        border: `1px solid ${isPosterReady ? "rgba(16, 185, 129, 0.4)" : isMediumReady ? "rgba(59, 130, 246, 0.4)" : "rgba(245, 158, 11, 0.4)"}`
+                      }}>
+                        {isPosterReady ? "✓ Studio Poster Ready" : isMediumReady ? "✓ Studio Photo Ready" : "Desk Print Ready"}
+                      </span>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "11px" }}>
+                      <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                          <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>300 DPI (Studio Glossy / Framing)</span>
+                          <span style={{ color: "var(--accent-success)", fontWeight: 700 }}>Razor Sharp</span>
+                        </div>
+                        <div style={{ color: "var(--text-muted)", fontSize: "10px" }}>
+                          Max Crisp Size: <strong style={{ color: "var(--text-secondary)" }}>{dpi300W}" × {dpi300H}"</strong> ({dpi300Wcm} × {dpi300Hcm} cm)
+                        </div>
+                      </div>
+
+                      <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                          <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>200 DPI (Wall Poster / Canvas)</span>
+                          <span style={{ color: "var(--accent-primary)", fontWeight: 700 }}>Poster Grade</span>
+                        </div>
+                        <div style={{ color: "var(--text-muted)", fontSize: "10px" }}>
+                          Max Poster Size: <strong style={{ color: "var(--text-secondary)" }}>{dpi200W}" × {dpi200H}"</strong> ({dpi200Wcm} × {dpi200Hcm} cm)
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleDownload("studio_print")}
+                      className="clickable"
+                      title="Download print-ready photo to your computer's Downloads folder"
+                      style={{
+                        width: "100%",
+                        marginTop: "10px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
+                        padding: "7px 10px",
+                        borderRadius: "var(--radius-xs)",
+                        backgroundColor: "var(--accent-primary)",
+                        border: "none",
+                        color: "#ffffff",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Printer size={13} /> Download Print-Ready Photo
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           </aside>
         )}

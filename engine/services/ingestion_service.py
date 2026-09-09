@@ -76,6 +76,11 @@ FILENAME_DATE_PATTERNS = [
         re.compile(r"(?:^|[^\d])(\d{4})[-_](\d{2})[-_](\d{2})(?:[^\d]|$)", re.IGNORECASE),
         lambda m: datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
     ),
+    # 8. Creatives / Collages / Named media with timestamp: Collage_mosaic_20260909_191342 or Summer_Trip_20230815_143000
+    (
+        re.compile(r"(?:^|[\w-]+[_-])(\d{4})(\d{2})(\d{2})[_-](\d{2})(\d{2})(\d{2})(?:[^\d]|$)", re.IGNORECASE),
+        lambda m: datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5)), int(m.group(6)))
+    ),
 ]
 
 
@@ -414,9 +419,9 @@ async def ingest_single_photo(
         # In-Place monitored scan mode
         final_filepath = str(source_path.resolve())
 
-    # Generate 1024px Retina micro-thumbnail and 2K/4K display proxy
+    # Generate 1024px Retina micro-thumbnail for fast grid rendering
     thumb_path, tw, th = generate_micro_thumbnail(final_filepath, file_hash=file_hash, size=1024)
-    preview_path = generate_display_preview(final_filepath, file_hash=file_hash)
+    preview_path = None
 
     # Insert into relational SQLite database
     cursor = await conn.execute(

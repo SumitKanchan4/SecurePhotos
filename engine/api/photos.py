@@ -131,6 +131,8 @@ async def run_background_optimization():
             optimization_state["completed_count"] = 0
 
             from engine.services.super_resolution_service import upscale_and_optimize_to_8k
+            from engine.services.thumbnail_service import calculate_file_hash
+            from PIL import Image
 
             for idx, row in enumerate(unoptimized):
                 photo_id = row["id"]
@@ -147,9 +149,9 @@ async def run_background_optimization():
 
                 try:
                     target_file = Path(filepath)
-                    dest_file = Path(preview_path) if preview_path else None
                     if target_file.exists():
-                        opt_path, _, _, _ = upscale_and_optimize_to_8k(target_file, destination_path=dest_file)
+                        # Perform verified atomic in-place replacement directly on target_file
+                        opt_path, opt_w, opt_h, opt_sz = upscale_and_optimize_to_8k(target_file, destination_path=None)
                         optimization_state["item_progress"] = 65
 
                         # Automatically apply Google Photos-style face unblur (YOLOv8-Face + CodeFormer w=0.85)
@@ -159,18 +161,38 @@ async def run_background_optimization():
                         except Exception as face_err:
                             logger.debug(f"Face unblur skipped or no faces in {filename}: {face_err}")
 
-                    optimization_state["item_progress"] = 90
-                    
-                    # Update database entry to mark optimized & enhanced
-                    conn = await get_db_connection()
-                    try:
-                        await conn.execute(
-                            "UPDATE photos SET is_optimized = 1, is_enhanced = 1 WHERE id = ?;",
-                            (photo_id,)
-                        )
-                        await conn.commit()
-                    finally:
-                        await conn.close()
+                        # Calculate new verified checksum and accurate dimensions after enhancements
+                        new_hash = calculate_file_hash(opt_path)
+                        final_size = opt_path.stat().st_size
+                        with Image.open(opt_path) as fin_img:
+                            fin_w, fin_h = fin_img.size
+
+                        # Reclaim space: remove obsolete duplicate preview if present
+                        if preview_path:
+                            try:
+                                prev_file = Path(preview_path)
+                                if prev_file.exists() and prev_file.resolve() != opt_path.resolve():
+                                    prev_file.unlink(missing_ok=True)
+                            except Exception as pe:
+                                logger.debug(f"Could not remove old preview for {filename}: {pe}")
+
+                        optimization_state["item_progress"] = 90
+                        
+                        # Update database entry with new file hash, size, and dimensions, clearing preview_path
+                        conn = await get_db_connection()
+                        try:
+                            await conn.execute(
+                                """
+                                UPDATE photos 
+                                SET file_hash = ?, file_size = ?, width = ?, height = ?, 
+                                    is_optimized = 1, is_enhanced = 1, preview_path = NULL 
+                                WHERE id = ?;
+                                """,
+                                (new_hash, final_size, fin_w, fin_h, photo_id),
+                            )
+                            await conn.commit()
+                        finally:
+                            await conn.close()
 
                 except Exception as err:
                     logger.warning(f"Could not optimize photo {filename}: {err}")
@@ -414,10 +436,14 @@ async def get_photo_thumbnail(photo_id: int):
 
 @router.get("/{photo_id}/preview")
 async def get_photo_preview(photo_id: int):
-    """Streams the 2K/4K display proxy for Lightbox rendering."""
+    """Streams the display image for Lightbox rendering.
+
+    If an explicit preview file exists, streams it. Otherwise, serves the in-place
+    optimized original photo directly with zero overhead.
+    """
     conn = await get_db_connection()
     try:
-        async with conn.execute("SELECT preview_path, filepath, is_encrypted FROM photos WHERE id = ?;", (photo_id,)) as cursor:
+        async with conn.execute("SELECT preview_path, filepath, mime_type, is_encrypted FROM photos WHERE id = ?;", (photo_id,)) as cursor:
             row = await cursor.fetchone()
     finally:
         await conn.close()
@@ -428,13 +454,24 @@ async def get_photo_preview(photo_id: int):
     if row["is_encrypted"]:
         raise HTTPException(status_code=403, detail="Encrypted photo requires vault authentication")
 
-    preview_path = Path(row["preview_path"]) if row["preview_path"] else Path(row["filepath"])
-    if not preview_path.exists():
-        raise HTTPException(status_code=404, detail="Preview file missing on disk")
+    # Seamless fallback to filepath
+    preview_file = Path(row["preview_path"]) if row["preview_path"] and Path(row["preview_path"]).exists() else Path(row["filepath"])
+    if not preview_file.exists():
+        raise HTTPException(status_code=404, detail="Photo file missing on disk")
+
+    suffix = preview_file.suffix.lower()
+    if suffix == ".webp":
+        mime = "image/webp"
+    elif suffix in (".jpg", ".jpeg"):
+        mime = "image/jpeg"
+    elif suffix == ".png":
+        mime = "image/png"
+    else:
+        mime = row["mime_type"] or "image/jpeg"
 
     return FileResponse(
-        str(preview_path),
-        media_type="image/webp",
+        str(preview_file),
+        media_type=mime,
         headers={"Cache-Control": "public, max-age=86400"}
     )
 
@@ -468,8 +505,13 @@ async def get_photo_original(photo_id: int):
 
 
 @router.get("/{photo_id}/download")
-async def download_photo(photo_id: int):
-    """Streams the photo file as an attachment download to the client machine."""
+async def download_photo(photo_id: int, mode: str = Query("original", pattern="^(original|studio_print)$")):
+    """Streams the photo file as an attachment download to the client machine.
+
+    If mode == 'studio_print', converts the photo to a 300 DPI studio master
+    with full 4:4:4 chroma subsampling (no color compression) and embedded
+    JFIF/EXIF print headers for professional photo lab RIP systems.
+    """
     conn = await get_db_connection()
     try:
         async with conn.execute(
@@ -490,13 +532,61 @@ async def download_photo(photo_id: int):
     if not src_file.exists():
         raise HTTPException(status_code=404, detail="Photo file missing on disk")
 
+    if mode == "studio_print":
+        import os
+        import tempfile
+        from PIL import Image, ImageOps
+        from starlette.background import BackgroundTask
+
+        stem = src_file.stem
+        dl_filename = f"{stem}_studio_300dpi.jpg"
+
+        temp_dir = Path(tempfile.gettempdir())
+        temp_print = temp_dir / f"securephotos_studio_print_{photo_id}_{os.getpid()}.jpg"
+
+        with Image.open(src_file) as img:
+            exif_data = img.info.get("exif")
+            img = ImageOps.exif_transpose(img)
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+
+            save_kwargs = {
+                "format": "JPEG",
+                "quality": 98,
+                "subsampling": 0,  # 4:4:4 full color fidelity, eliminates chroma bleeding
+                "dpi": (300, 300),  # Explicit 300 DPI header for photo lab RIP software
+                "optimize": True,
+            }
+            if exif_data:
+                save_kwargs["exif"] = exif_data
+
+            img.save(temp_print, **save_kwargs)
+
+        def cleanup_temp():
+            try:
+                if temp_print.exists():
+                    temp_print.unlink()
+            except OSError:
+                pass
+
+        return FileResponse(
+            str(temp_print),
+            media_type="image/jpeg",
+            filename=dl_filename,
+            headers={
+                "Content-Disposition": f'attachment; filename="{dl_filename}"',
+                "X-Print-DPI": "300",
+            },
+            background=BackgroundTask(cleanup_temp),
+        )
+
     mime = row["mime_type"] or "image/jpeg"
     dl_filename = row["filename"] or src_file.name
     return FileResponse(
         str(src_file),
         media_type=mime,
         filename=dl_filename,
-        headers={"Content-Disposition": f'attachment; filename="{dl_filename}"'}
+        headers={"Content-Disposition": f'attachment; filename="{dl_filename}"'},
     )
 
 

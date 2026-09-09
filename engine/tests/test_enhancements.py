@@ -188,3 +188,36 @@ async def test_enhancements_nonexistent_photo():
         res_face_prev = await client.get("/api/photos/999999/face-restore-preview")
         assert res_face_prev.status_code == 404
 
+
+@pytest.mark.asyncio
+async def test_download_studio_print_300dpi():
+    """Verifies that download?mode=studio_print embeds 300 DPI metadata and returns a valid JPEG."""
+    await run_migrations()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        photo_id = await create_test_photo(tmp_path)
+
+        transport = ASGITransport(app=app)
+        try:
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                res = await client.get(f"/api/photos/{photo_id}/download?mode=studio_print")
+                assert res.status_code == 200
+                assert res.headers["content-type"] == "image/jpeg"
+                assert res.headers.get("x-print-dpi") == "300"
+                assert "attachment" in res.headers["content-disposition"]
+                assert "_studio_300dpi.jpg" in res.headers["content-disposition"]
+
+                # Verify PIL decodes and reads embedded (300, 300) DPI
+                import io
+                with Image.open(io.BytesIO(res.content)) as img:
+                    assert img.format == "JPEG"
+                    assert img.info.get("dpi") == (300, 300)
+        finally:
+            conn = await get_db_connection()
+            try:
+                await conn.execute("DELETE FROM photos WHERE id = ?;", (photo_id,))
+                await conn.commit()
+            finally:
+                await conn.close()
+
+

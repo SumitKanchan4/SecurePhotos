@@ -48,62 +48,82 @@ def upscale_and_optimize_to_8k(
 
     dest_file = Path(destination_path) if destination_path else src_file
     dest_file.parent.mkdir(parents=True, exist_ok=True)
-    temp_dest = dest_file.parent / f".{dest_file.name}.8k.tmp"
+    temp_dest = dest_file.parent / f".{dest_file.name}.opt.tmp"
 
-    with Image.open(src_file) as img:
-        exif_bytes = img.info.get("exif")
-        img = ImageOps.exif_transpose(img)
-        orig_w, orig_h = img.size
+    try:
+        with Image.open(src_file) as img:
+            exif_bytes = img.info.get("exif")
+            img = ImageOps.exif_transpose(img)
+            orig_w, orig_h = img.size
 
-        long_edge = max(orig_w, orig_h)
-        short_edge = min(orig_w, orig_h)
-        aspect = long_edge / short_edge if short_edge > 0 else 1.0
+            long_edge = max(orig_w, orig_h)
+            short_edge = min(orig_w, orig_h)
+            aspect = long_edge / short_edge if short_edge > 0 else 1.0
 
-        # Smart 1:1 Acutance Preservation vs Upscaling:
-        # If the image is already high resolution (>= 3840px on long edge, e.g. 12MP/16MP camera shots),
-        # DO NOT artificially stretch to 8K, which creates 20 million empty interpolated pixels and causes softness.
-        # Preserve pristine 1:1 sensor acuity and apply fine-edge acutance kernel (hair, eyes, fabric).
-        if long_edge >= 3840:
-            new_w, new_h = orig_w, orig_h
-            # Fine-edge micro-contrast acutance (radius 0.8, 160% strength, threshold 1)
-            enhanced = img.filter(ImageFilter.UnsharpMask(radius=0.8, percent=160, threshold=1))
-        elif long_edge < target_long_edge:
-            # For lower resolution images, upscale to target_long_edge with Lanczos + acutance
-            new_long = target_long_edge
-            new_short = int(target_long_edge / aspect)
-            if orig_w >= orig_h:
-                new_w, new_h = new_long, new_short
+            # Smart 1:1 Acutance Preservation vs Upscaling:
+            # If the image is already high resolution (>= 3840px on long edge, e.g. 12MP/16MP camera shots),
+            # DO NOT artificially stretch to 8K, which creates 20 million empty interpolated pixels and causes softness.
+            # Preserve pristine 1:1 sensor acuity and apply fine-edge acutance kernel (hair, eyes, fabric).
+            if long_edge >= 3840:
+                new_w, new_h = orig_w, orig_h
+                # Fine-edge micro-contrast acutance (radius 0.8, 160% strength, threshold 1)
+                enhanced = img.filter(ImageFilter.UnsharpMask(radius=0.8, percent=160, threshold=1))
+            elif long_edge < target_long_edge:
+                # For lower resolution images, upscale to target_long_edge with Lanczos + acutance
+                new_long = target_long_edge
+                new_short = int(target_long_edge / aspect)
+                if orig_w >= orig_h:
+                    new_w, new_h = new_long, new_short
+                else:
+                    new_w, new_h = new_short, new_long
+
+                upscaled = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                enhanced = upscaled.filter(ImageFilter.UnsharpMask(radius=0.9, percent=150, threshold=1))
             else:
-                new_w, new_h = new_short, new_long
+                enhanced = img
+                new_w, new_h = orig_w, orig_h
 
-            upscaled = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-            enhanced = upscaled.filter(ImageFilter.UnsharpMask(radius=0.9, percent=150, threshold=1))
-        else:
-            enhanced = img
-            new_w, new_h = orig_w, orig_h
+            if enhanced.mode in ("RGBA", "P"):
+                enhanced = enhanced.convert("RGB")
 
-        if enhanced.mode in ("RGBA", "P"):
-            enhanced = enhanced.convert("RGB")
+            # Determine format matching destination extension
+            ext = dest_file.suffix.lower()
+            if ext in (".jpg", ".jpeg"):
+                save_format = "JPEG"
+                save_kwargs = {"quality": quality, "optimize": True, "subsampling": 0}
+            elif ext == ".png":
+                save_format = "PNG"
+                save_kwargs = {"optimize": True}
+            else:
+                save_format = "WEBP"
+                save_kwargs = {"quality": quality, "method": 4}
 
-        # Save to temporary file preserving EXIF if available
-        save_kwargs = {"quality": quality, "method": 4}
-        if exif_bytes:
-            save_kwargs["exif"] = exif_bytes
+            if exif_bytes and save_format in ("JPEG", "WEBP"):
+                save_kwargs["exif"] = exif_bytes
 
-        enhanced.save(temp_dest, "WEBP", **save_kwargs)
+            enhanced.save(temp_dest, save_format, **save_kwargs)
 
-    # Validate output
-    if not temp_dest.exists() or temp_dest.stat().st_size == 0:
+        # Validate output exists, is non-empty, and decodable before atomic swap
+        if not temp_dest.exists() or temp_dest.stat().st_size == 0:
+            raise IOError("Failed to produce optimized asset: output empty or missing.")
+
+        with Image.open(temp_dest) as test_img:
+            test_img.verify()
+
+        # Atomic kernel swap into destination
+        os.replace(temp_dest, dest_file)
+        new_size = dest_file.stat().st_size
+
+        logger.info(f"Optimized {dest_file.name} ({new_w}x{new_h}, {new_size} bytes, format={save_format})")
+        return dest_file, new_w, new_h, new_size
+
+    except Exception as err:
         if temp_dest.exists():
-            temp_dest.unlink()
-        raise IOError("Failed to produce optimized 8K asset.")
-
-    # Atomic swap into destination
-    os.replace(temp_dest, dest_file)
-    new_size = dest_file.stat().st_size
-
-    logger.info(f"Optimized {dest_file.name} to 8K ULTRA ({new_w}x{new_h}, {new_size} bytes)")
-    return dest_file, new_w, new_h, new_size
+            try:
+                temp_dest.unlink()
+            except OSError:
+                pass
+        raise err
 
 
 def upscale_and_optimize_to_4k(
