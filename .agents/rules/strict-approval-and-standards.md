@@ -31,3 +31,15 @@ trigger: always_on
   3. **Technical Touchpoints**: API endpoints, database schema/queries, and UI components.
   4. **State & Lifecycle Impact**: How it interacts with existing states, data persistence, and edge cases.
 
+## 5. Mandatory Token Efficiency & MCP Optimization (`codegraph` & `headroom`)
+- **CRITICAL**: Maximize context efficiency and reduce token costs by prioritizing MCP tools:
+  1. **`codegraph_explore` (MCP)**:
+     - Always use `codegraph_explore` as the primary discovery tool when surveying features, tracing call paths, understanding component hierarchies, or checking the blast radius of changes before editing.
+     - Avoid repetitive, expensive grep-and-read loops across multiple files when `codegraph_explore` can return the exact symbols and caller trees in a single capped call.
+  2. **`headroom_compress` (MCP)**:
+     - Proactively compress large verbose outputs, lengthy build/test logs, massive JSON schemas, or big text blobs using `headroom_compress` before processing them.
+     - Use `headroom_retrieve` on demand when specific details from compressed content are required.
+  3. **Context Hygiene**:
+     - Never read whole large files when a sliced range suffices. Always use `StartLine` and `EndLine` in `view_file` to keep the context window compact and cost-effective.
+
+
