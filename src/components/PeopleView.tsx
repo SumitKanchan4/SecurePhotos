@@ -774,8 +774,8 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))",
-                      gap: "14px",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(185px, 1fr))",
+                      gap: "10px",
                     }}
                   >
                     {photosInGroup.map((photo) => {

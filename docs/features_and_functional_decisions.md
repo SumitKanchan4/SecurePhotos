@@ -815,6 +815,26 @@ Elevates the individual person photo viewing experience from an administrative b
 ### State & Lifecycle Impact
 - Zero database modifications; delivers a dramatic upgrade in visual polish, interaction speed, and emotional presentation.
 
+---
+
+## 17. Universal Harmonized Responsive Photo Grid Sizing
+
+### Functionality Overview
+Harmonizes individual photo thumbnail scaling across all core photo viewing surfaces in the application (Photos Library, inside Albums, and inside People collections):
+1. **Target Responsive Size Standard (`minmax(185px, 1fr)`)**:
+   - Replaced the rigid, non-responsive `COLUMNS = 5` in `PhotoGrid.tsx` with an adaptive ResizeObserver grid engine targeting 185px per photo card with a consistent 10px gap.
+   - On wide desktop monitors (e.g. 1920px), the grid automatically scales up to 8–9 columns, maintaining clean 185px cards rather than blowing up photos to 350px+.
+   - On compact laptop displays (e.g. 1200px), it scales down to 5–6 columns, keeping cards at the exact same physical size.
+2. **Unified Inter-Tab Geometry**:
+   - Standardized `PhotoGrid.tsx`, `AlbumsView.tsx`, and `PeopleView.tsx` to share identical `185px` minimum width, `10px` gap spacing, and `var(--radius-md)` corner curvature.
+   - Photos feel identical in size and feel regardless of which navigation route was used to open them.
+
+### Technical Touchpoints
+- `src/components/PhotoGrid.tsx`: Added adaptive column & row-height calculation based on `parentRef.current.clientWidth` with ResizeObserver; standardized `gap` to 10px.
+- `src/components/AlbumsView.tsx`: Standardized album photo grid to `repeat(auto-fill, minmax(185px, 1fr))` with `10px` gap.
+- `src/components/PeopleView.tsx`: Standardized people photo grid to `repeat(auto-fill, minmax(185px, 1fr))` with `10px` gap.
+
+
 
 
 

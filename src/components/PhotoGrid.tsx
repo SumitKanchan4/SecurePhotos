@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check, Sparkles, Heart, Loader2, Image as ImageIcon, Clock } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
@@ -371,13 +371,35 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   
   const allPhotos = photos ?? [];
 
-  const COLUMNS = 5;
-  const rowCount = Math.ceil(allPhotos.length / COLUMNS);
+  const [columns, setColumns] = useState<number>(5);
+  const [rowHeight, setRowHeight] = useState<number>(195);
+
+  useEffect(() => {
+    if (!parentRef.current) return;
+    const updateGrid = () => {
+      if (!parentRef.current) return;
+      const width = parentRef.current.clientWidth - 32; // 16px padding on each side
+      if (width <= 0) return;
+      const gap = 10;
+      const targetSize = 185;
+      const cols = Math.max(2, Math.floor((width + gap) / (targetSize + gap)));
+      const itemWidth = (width - (cols - 1) * gap) / cols;
+      setColumns(cols);
+      setRowHeight(itemWidth + gap);
+    };
+
+    updateGrid();
+    const observer = new ResizeObserver(updateGrid);
+    observer.observe(parentRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const rowCount = Math.ceil(allPhotos.length / columns);
 
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 180,
+    estimateSize: () => rowHeight,
     overscan: 2,
   });
 
@@ -409,8 +431,8 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
         }}
       >
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-          const startIndex = virtualRow.index * COLUMNS;
-          const rowPhotos = allPhotos.slice(startIndex, startIndex + COLUMNS);
+          const startIndex = virtualRow.index * columns;
+          const rowPhotos = allPhotos.slice(startIndex, startIndex + columns);
 
           return (
             <div
@@ -423,7 +445,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                 height: `${virtualRow.size}px`,
                 transform: `translateY(${virtualRow.start}px)`,
                 display: "grid",
-                gridTemplateColumns: `repeat(${COLUMNS}, 1fr)`,
+                gridTemplateColumns: `repeat(${columns}, 1fr)`,
                 gap: "10px",
                 paddingBottom: "10px",
               }}

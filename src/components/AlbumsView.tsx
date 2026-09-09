@@ -564,8 +564,8 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-                gap: "12px",
+                gridTemplateColumns: "repeat(auto-fill, minmax(185px, 1fr))",
+                gap: "10px",
               }}
             >
               {albumPhotos.map((photo, idx) => {
