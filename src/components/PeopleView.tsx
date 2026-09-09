@@ -524,10 +524,10 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                   <h1 style={{ fontSize: "18px", fontWeight: 700, margin: 0, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>
                     {selectedPerson.name}
                   </h1>
-                  {/* Interactive VIP Toggle */}
+                  {/* Interactive VIP Star Toggle */}
                   <button
                     onClick={() => handleUpdatePerson(selectedPerson.id, { is_close_one: !selectedPerson.is_close_one })}
-                    title={selectedPerson.is_close_one ? "Close One (VIP Highlighted)" : "Mark as Close One (VIP)"}
+                    title={selectedPerson.is_close_one ? "Favorited (Close One)" : "Mark as Favorite"}
                     className="clickable"
                     style={{
                       background: selectedPerson.is_close_one ? "rgba(245, 158, 11, 0.18)" : "rgba(255, 255, 255, 0.06)",
@@ -536,15 +536,13 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
-                      padding: "2px 8px",
-                      gap: "4px",
+                      justifyContent: "center",
+                      padding: "5px",
                       color: selectedPerson.is_close_one ? "var(--accent-warning)" : "var(--text-muted)",
-                      fontSize: "11px",
-                      fontWeight: 600,
+                      transition: "all 0.15s ease",
                     }}
                   >
-                    <Star size={11} fill={selectedPerson.is_close_one ? "var(--accent-warning)" : "none"} />
-                    <span>{selectedPerson.is_close_one ? "Close One" : "Mark VIP"}</span>
+                    <Star size={14} fill={selectedPerson.is_close_one ? "var(--accent-warning)" : "none"} />
                   </button>
                 </div>
 
