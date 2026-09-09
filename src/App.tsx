@@ -20,6 +20,7 @@ import { VaultUnlockModal } from "./components/VaultUnlockModal";
 import { VaultView } from "./components/VaultView";
 import { StoriesCarousel } from "./components/StoriesCarousel";
 import { StoryPlayerModal } from "./components/StoryPlayerModal";
+import { DashboardView } from "./components/DashboardView";
 import { PeopleView } from "./components/PeopleView";
 import { AlbumsView } from "./components/AlbumsView";
 import { DocumentsView } from "./components/DocumentsView";
@@ -37,6 +38,7 @@ import { check, Update } from "@tauri-apps/plugin-updater";
 export const App: React.FC = () => {
   const { 
     activeTab, 
+    setActiveTab,
     toggleTheme, 
     selectedPhotoIds, 
     clearSelection,
@@ -47,6 +49,7 @@ export const App: React.FC = () => {
     setTotalPhotosCount,
     showToast,
   } = useAppStore();
+
 
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [activeYear, setActiveYear] = useState<string>("All Years");
@@ -354,7 +357,13 @@ export const App: React.FC = () => {
             overflow: "hidden" 
           }}
         >
-          {activeTab === "vault" ? (
+          {activeTab === "dashboard" ? (
+            /* Unified Executive Dashboard & Stories Hub */
+            <DashboardView 
+              onPlayStory={(id) => setActiveStoryId(id)}
+              onNavigate={(tab) => setActiveTab(tab)}
+            />
+          ) : activeTab === "vault" ? (
             /* Dedicated Zero-Trust Private Vault Gallery */
             <VaultView 
               onUnlockRequest={() => setIsVaultUnlockModalOpen(true)}
@@ -372,7 +381,13 @@ export const App: React.FC = () => {
             />
           ) : activeTab === "people" ? (
             /* People Management & Representative Medoid Tagging View */
-            <PeopleView />
+            <PeopleView 
+              onPhotoClick={(idx, personPhotos) => {
+                setLightboxPhotos(personPhotos);
+                setLightboxIndex(idx);
+              }}
+              onToggleFavorite={handleToggleFavorite}
+            />
           ) : activeTab === "documents" ? (
             /* OCR Scanned Documents & Invoices */
             <DocumentsView />
@@ -383,17 +398,13 @@ export const App: React.FC = () => {
             /* Settings & Preferences */
             <SettingsView />
           ) : activeTab === "stories" ? (
-            /* Stories Hub & Insights */
-            <div style={{ flex: 1, overflowY: "auto", padding: "10px" }}>
-              {photos.length > 0 ? (
-                <StoriesCarousel onPlayStory={(id) => setActiveStoryId(id)} />
-              ) : (
-                <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)" }}>
-                  <p>Import photos into your library to generate AI-curated stories and milestone moments.</p>
-                </div>
-              )}
-            </div>
+            /* Unified Executive Dashboard & Stories Hub */
+            <DashboardView 
+              onPlayStory={(id) => setActiveStoryId(id)}
+              onNavigate={(tab) => setActiveTab(tab)}
+            />
           ) : (
+
             /* Standard Photos & Media Grid View */
             <>
               {/* Stories Highlight Bar on Home View */}
@@ -452,7 +463,7 @@ export const App: React.FC = () => {
                     </div>
                   ) : (
                     <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-                      {`${photos.length.toLocaleString()} media items • 8K ULTRA Space-Saver Active`}
+                      8K ULTRA Space-Saver Active
                     </p>
                   )}
                 </div>

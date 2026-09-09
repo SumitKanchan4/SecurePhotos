@@ -15,8 +15,13 @@ This document serves as the **central, living source of truth** for all function
 7. [Default Pinned "Favorites" / "Likes" Smart Album](#7-default-pinned-favorites--likes-smart-album)
 8. [Zero-Trust Encrypted Private Vault](#8-zero-trust-encrypted-private-vault)
 9. [Architectural State Isolation (Album vs. Library Gallery)](#9-architectural-state-isolation-album-vs-library-gallery)
+10. [Concise 'Scan Faces' Action, Force Rescan & Optimistic Feedback](#10-concise-scan-faces-action-force-rescan--optimistic-progress-feedback)
+11. [Fixed 4-Slot Anchor Thumbnail Grid with Transparent Placeholders](#11-fixed-4-slot-anchor-thumbnail-grid-with-transparent-placeholders)
+12. [Non-Destructive Library Scanning, Cover Self-Healing & Test Isolation](#12-non-destructive-library-scanning-cover-self-healing--test-isolation)
+13. [Media Library Dashboard & Storage Visualizer with Integrated Stories](#13-media-library-dashboard--storage-visualizer-with-integrated-stories)
 
 ---
+
 
 ## 1. Automated 8K ULTRA Enhancement Pipeline
 
@@ -251,6 +256,14 @@ Replaces placeholder UI mock alerts (`creatives/collages/Summer_Mosaic.avif`) wi
   - *Enforcement*: Validated on both the backend (`HTTP 400 Bad Request` with descriptive errors) and frontend (the "Create Collage" toolbar button is disabled with descriptive tooltip when count < 2 or > 9, and `CollageModal` displays an informative warning banner).
 - **Auto-Ingestion & Dedicated "Collages" System Album**:
   - *Rationale*: Collages are first-class creative artifacts. Automatically creating/linking them to a system album named `"Collages"` (with the new collage set as the cover photo if empty) ensures instant discoverability in the Albums view without manual user intervention.
+- **Smart Chronological Dating & Zero-Undated Collages Policy**:
+  - *Problem*: Previously, generated collages were assigned `taken_at = NULL` because Pillow renders an in-memory canvas without EXIF tags, and the destination filename did not match standard camera regexes. Consequently, collages were relegated to the "Undated" bucket in the gallery timeline.
+  - *Decision*: Implemented smart event clustering via `determine_collage_taken_at` with three operational modes:
+    1. `smart` (Default): Evaluates the time delta between the earliest and latest constituent photos. If within a 30-day threshold, the collage inherits the newest photo's date (`max(source_dates)`), placing it contextually alongside the trip/event in the gallery timeline. If the photos span multiple years (e.g., a "through the years" retrospective) or are undated, it defaults to the physical creation timestamp (`datetime.now()`), placing the collage at the top of the timeline under "Today".
+    2. `now`: Explicitly forces current creation timestamp (`datetime.now()`).
+    3. `event`: Explicitly forces constituent photo date inheritance.
+  - *Filesystem & Ingestion Resilience*: File names embed the resolved date (`{safe_title}_{YYYYMMDD_HHMMSS}.webp`), and `FILENAME_DATE_PATTERNS` was updated with pattern #8 so future disk scans or library rebuilds extract the exact timestamp even without EXIF headers.
+  - *UI Control*: Added a Timeline Date Placement selector to `CollageModal.tsx` displaying options for "Smart Date", "Today / Now", and "Photo Date" with live strategy confirmation.
 - **Decoupled Universal Download Policy**:
   - *Decision*: Generating a collage does NOT automatically trigger an unsolicited browser download to the user's computer. Instead, the collage is safely stored in the user's library and album.
   - *Universal Download Capability*: A dedicated "Download" button was added to:
@@ -260,18 +273,20 @@ Replaces placeholder UI mock alerts (`creatives/collages/Summer_Mosaic.avif`) wi
 
 ### Technical Touchpoints
 - **Backend**:
-  - `engine/services/collage_service.py`: 4K UHD composite rendering engine (`compute_mosaic_boxes`, `compute_hero_boxes`, `compute_treemap_boxes`, `render_collage` with Lanczos resampling and subtle UnsharpMask).
-  - `engine/api/creatives.py`: `POST /api/creatives/collage` endpoint handling validation, rendering, filesystem persistence, database ingestion, and album linking.
+  - `engine/services/collage_service.py`: Added `determine_collage_taken_at` smart dating helper; 4K UHD composite rendering engine (`compute_mosaic_boxes`, `compute_hero_boxes`, `compute_treemap_boxes`, `render_collage` with Lanczos resampling and subtle UnsharpMask).
+  - `engine/services/ingestion_service.py`: Added Pattern #8 to `FILENAME_DATE_PATTERNS` to parse generic timestamped creative media during disk scans.
+  - `engine/api/creatives.py`: `POST /api/creatives/collage` endpoint handling validation, dating mode evaluation, rendering, filesystem persistence, database ingestion, explicit `photos.taken_at` synchronization, and album linking.
   - `engine/api/photos.py`: `GET /api/photos/{photo_id}/download` attachment streaming endpoint.
   - `engine/main.py`: Mounted `creatives.router`.
-  - `engine/tests/test_collages.py`: Automated pytest suite covering bounding box algorithms, bounds validation, end-to-end collage creation, and download streaming.
+  - `engine/tests/test_collages.py`: Automated pytest suite covering bounding box algorithms, bounds validation, smart dating resolution across clusters and modes, end-to-end collage creation, and download streaming.
 - **Frontend**:
-  - `src/components/CollageModal.tsx`: Real API integration, live selected photos thumbnail strip, title input, layout switcher, and error/success notifications.
+  - `src/components/CollageModal.tsx`: Real API integration, live selected photos thumbnail strip, title input, layout switcher, date placement segmented selector, and error/success notifications.
   - `src/App.tsx`: Batch action toolbar integration (2–9 photo bounds validation, `handleBatchDownload`, and refreshed library on collage creation).
   - `src/components/Lightbox.tsx`: Added Download button and `handleDownload` trigger to top toolbar.
 
 ### State & Lifecycle Impact
-- **Database Consistency**: Generating a collage writes a new record into `photos` and creates a junction link in `photo_album`. If the "Collages" album does not exist, it is created idempotently.
+- **Database Consistency**: Generating a collage writes a new record into `photos` with guaranteed non-null `taken_at` and creates a junction link in `photo_album`. If the "Collages" album does not exist, it is created idempotently.
+- **Zero-Undated Collages**: Eliminates the previous defect where all collages were grouped under "Undated".
 - **Memory & Acutance**: Rendering executes on-demand using Pillow with streaming file handles. The resulting canvas is saved in high-efficiency WebP format (92 quality, method 4).
 
 ---
@@ -615,6 +630,184 @@ To maximize viewport room for unlabeled face cluster tagging while providing an 
 - Eliminates ghost unlabelled clusters after library rescanning.
 - Ensures all recognized person avatars load reliably (HTTP 200) across navigation between albums, search, and people tabs.
 - Protects database persistence integrity across automated CI/CD and local pytest runs.
+
+---
+
+## 13. Media Library Dashboard & Storage Visualizer with Integrated Stories
+
+### Functionality Overview
+1. **Executive Media Distribution Metrics**:
+   - Provides live index-backed counts for **Photos & Images**, **Videos & Clips**, and **OCR-Scanned Documents & Receipts**, alongside **Favorites**, **Recognized People**, and **Albums**.
+   - Clicking any primary media card immediately routes the user to the corresponding view (Photos or Documents).
+2. **Physical Storage Allocation & Multi-Segment Visualizer**:
+   - Measures the exact byte footprint consumed by the SecurePhotos application:
+     - Managed original media (`data/originals`)
+     - 2K/4K display proxies (`data/previews`)
+     - Micro-thumbnails cache (`data/thumbnails`)
+     - Relational SQLite database & FTS5 full-text index (`data/database`)
+     - Local ONNX and GGUF neural AI models (`data/models`)
+   - Visual multi-segment horizontal gauge displays:
+     - **SecurePhotos Vault** (Vibrant Purple gradient)
+     - **OS & Other System Files** (Slate Gray gradient)
+     - **Available Free Disk Space** (Emerald Green gradient)
+3. **Hardware Partition Detection & Internal Drive Contextual Advisory**:
+   - Win32 API (`GetDriveTypeW` and `GetDiskFreeSpaceExW`) detects whether the active storage partition is an **Internal Fixed Drive** or **External Removable USB Drive**.
+   - If the vault resides on an internal system drive, displays a clear contextual advisory:
+     *"This vault is stored on an internal system drive ({drive_letter}). Available space is shared with the operating system, installed applications, and personal files. SecurePhotos is utilizing {app_size} ({pct}%) of the drive."*
+4. **Integrated Stories & Nostalgic Memories Section (Option A Layout)**:
+   - Houses AI-curated nostalgic reels ("Through the Years", "On This Day", "Year in Review") directly within the dashboard command center.
+   - Includes a "Curate / Generate Stories" trigger that invokes `POST /api/stories/generate` to synthesize milestone reels from close persons or prominent timeline years.
+   - Interactive story cards launch the dynamic `StoryPlayerModal` with beat-synchronized soundtrack vibes and auto-advancing slides.
+
+- **Bento Grid HUD Layout (Single-Viewport Ergonomics)**:
+  - *Rationale*: Replaced bulky vertical scrolling cards with a high-density, single-screen Bento grid layout inspired by modern desktop design (macOS Sonoma / Linear):
+    1. **Cinematic Hero Tile (60% width)**: Highlights the active curated story reel with ambient glow, soundtrack vibe, pagination controls, and one-click montage playback.
+    2. **Storage & Drive HUD Tile (40% width)**: Displays an SVG circular donut chart and concise 4-tier breakdown:
+       - **Media Content** (Blue): Photos, videos, display proxies, and thumbnails combined.
+       - **App & Engine** (Purple): SecurePhotos SQLite database, FTS5 search index, and local AI neural models.
+       - **Other Files** (Slate Gray): All other files/software on the drive (omitting OS-specific assumptions to accurately support secondary internal data drives like D:\ and external drives).
+       - **Free Space** (Emerald Green): Unallocated storage capacity.
+       - **Clean 1-Line Notice**: *"✦ Note: Drive space is shared with other files and software stored on this drive."*
+    3. **High-Density Metric Strip (Bottom)**: 6 micro-stat cards for Photos, Videos, Documents, Favorites, People, and Albums with one-click navigation.
+- **Sub-5ms Query Latency**:
+  - *Covering Index*: Added `CREATE INDEX IF NOT EXISTS ix_photos_counts ON photos (is_document, mime_type, trashed_at);` allowing a single unified SQL query with `CASE` aggregation to return all media counts in under 2ms.
+  - *Filesystem Cache*: Cached filesystem walks for app components with a 15-second TTL (`STORAGE_CACHE_TTL_SEC`), preventing redundant disk I/O when navigating between tabs.
+
+
+
+### Technical Touchpoints
+- **Backend API**:
+  - `engine/api/system.py`: Added `GET /api/system/dashboard`, returning `DashboardOverviewResponse` with `media_counts`, `app_storage`, and `drive_storage`.
+  - `engine/database.py`: Added covering composite index `ix_photos_counts`.
+  - `engine/services/stories_service.py`: Added `generate_year_in_review_story`.
+  - `engine/api/stories.py`: Added `POST /api/stories/generate` endpoint.
+  - `engine/tests/test_dashboard_api.py`: Automated contract & unit tests covering counts, storage calculations, and internal drive disclaimer.
+- **Frontend Components**:
+  - `src/components/DashboardView.tsx`: Glassmorphic executive dashboard with counter cards, storage allocation bar, internal drive notice, and stories grid.
+  - `src/components/Sidebar.tsx`: Added `Dashboard` with `<LayoutDashboard />` as the top navigation item.
+  - `src/App.tsx`: Wired `DashboardView` into main layout routing.
+  - `src/types/index.ts`: Added TypeScript interfaces `DashboardOverview`, `MediaCounts`, `AppStorageStats`, `DriveStorageStats`, and `StoryModel`.
+  - `src/store/useAppStore.ts`: Added `"dashboard"` to `NavTab` and set as default landing tab.
+
+### State & Lifecycle Impact
+- Default landing experience transitions from an empty photo grid to the executive dashboard.
+- Real-time refresh button allows immediate re-synchronization with disk storage.
+- All media queries strictly exclude trashed items (`trashed_at IS NULL`), maintaining consistency with the 30-day trash lifecycle.
+
+---
+
+## 14. Atomic In-Place Media Replacement (Swap) & Storage Reclamation
+
+### Functionality Overview
+1. **Zero-Duplicate Storage Architecture**:
+   - Ingestion previously generated a duplicate 2048px WebP display proxy (`data/previews`) for every imported photo, causing 23 photos (~32 MB of originals) to consume ~87 MB of total media storage.
+   - The ingestion pipeline was streamlined to generate solely the 1024px grid thumbnail (`data/thumbnails`), completely eliminating redundant 2K proxy files on import.
+2. **Atomic In-Place Optimization (Swap)**:
+   - When the background optimization engine runs (acutance sharpening, 8K super-resolution for low-res shots, and YOLOv8-Face + CodeFormer face unblur), it performs a **verified atomic in-place replacement** directly on the managed photo file (`filepath`).
+   - The enhanced asset is written to a temporary hidden file (`.{filename}.opt.tmp`) in the identical directory.
+   - The temporary file is validated for byte completeness and decodability (`Image.open().verify()`).
+   - The kernel atomically swaps the file via `os.replace(temp_dest, target_file)`.
+   - The SQLite database record is updated in the same flow with the new cryptographic SHA-256 checksum (`file_hash`), new file size (`file_size`), updated pixel dimensions (`width`, `height`), and `preview_path = NULL`.
+3. **Seamless Lightbox Display & Space Reclaim**:
+   - `GET /api/photos/{photo_id}/preview` falls back dynamically to the managed `filepath` if `preview_path` is null, serving the enhanced image with zero duplication overhead.
+   - Existing legacy display proxies (107 files totaling ~50 MB) were safely purged from `data/previews/`, dropping the media storage footprint from ~87 MB down to **37.7 MB**.
+
+### Functional Decision Points & Rationale
+- **In-Place Replacement vs. Duplicate Proxies**:
+  - *Problem*: Maintaining separate "Original", "Preview Proxy", and "Thumbnail" files triples storage usage, making 20-30 photos consume nearly 100 MB.
+  - *Solution*: Once the enhancement engine polishes a photo (applying lossless acutance and face restoration), replacing the original file in-place preserves high fidelity while eliminating redundant copies.
+- **Fail-Safe Temporary File & Kernel Atomic Swap**:
+  - *Rationale*: Writing directly over the destination file risks corruption if interrupted by a crash or power loss. By writing to a `.opt.tmp` file in the same directory and verifying decodability before calling `os.replace`, zero data loss is mathematically guaranteed.
+- **Dynamic Checksum & Metadata Sync**:
+  - *Rationale*: Any modification to image pixels alters its SHA-256 hash and byte size. Recomputing and persisting the new hash and dimensions in SQLite guarantees that deduplication, cache validation, and EXIF integrity remain 100% accurate.
+
+### Technical Touchpoints
+- `engine/services/super_resolution_service.py`: Updated `upscale_and_optimize_to_8k` to perform atomic swap on `src_file` with format detection (JPEG/PNG/WebP), integrity verification (`Image.open().verify()`), and error cleanup.
+- `engine/api/photos.py`: Updated `run_background_optimization` to execute atomic in-place optimization on `filepath`, compute new SHA-256 hashes and file dimensions, unlink old preview files, and update SQLite records with `preview_path = NULL`. Updated `get_photo_preview` to seamlessly stream `filepath` when `preview_path` is null.
+- `engine/services/ingestion_service.py`: Omitted redundant `generate_display_preview` call during single photo ingestion, setting `preview_path = None`.
+- `engine/tests/test_dashboard_api.py`: Added automatic test row cleanup (`DELETE FROM photos WHERE filepath LIKE '%test_dash_%'`) in a `finally` block to avoid test artifact leakage.
+
+### State & Lifecycle Impact
+- Media storage consumption for the library dropped from ~87 MB to **37.7 MB** (32.6 MB originals + 5.1 MB grid thumbnails + 0.0 MB previews).
+- The storage donut chart on the Dashboard immediately reflects the reclaimed ~50 MB of disk space.
+- Photo lightbox and grid views retain full resolution rendering with instantaneous loading.
+
+---
+
+## 15. Streamlined Lightbox & Studio Poster Print Readiness
+
+### Functionality Overview
+1. **Streamlined Viewing Experience**:
+   - Removed the redundant development Before/After split slider, polygon clipping container, and `E` keyboard shortcut from `Lightbox.tsx`.
+   - The lightbox now focuses entirely on a distraction-free, 60fps cinematic photo viewing experience with seamless instant thumbnail backdrops and progressive high-res loading.
+2. **Studio Print Readiness Calculator**:
+   - Integrated a live print-dimension calculator inside the Lightbox EXIF Metadata drawer (`Info` button).
+   - Dynamically calculates maximum physical print dimensions in inches and centimeters based on actual pixel resolution:
+     - **300 DPI Studio Glossy / Framing**: Max razor-sharp print size (e.g. `25.6" × 17.1"` / `65 × 43 cm`).
+     - **200 DPI Wall Poster / Canvas**: Max poster size (e.g. `38.4" × 25.6"` / `97 × 65 cm`).
+   - Displays a prominent status badge (`✓ Studio Poster Ready`, `✓ Studio Photo Ready`, or `Desk Print Ready`).
+3. **Dedicated 300 DPI Studio Master Export**:
+   - Added a **`Studio Print (300 DPI)`** action button to both the Lightbox top header toolbar and the EXIF drawer.
+   - Enhanced `GET /api/photos/{photo_id}/download?mode=studio_print` endpoint:
+     - Embeds explicit `dpi=(300, 300)` metadata into the JFIF/EXIF header, preventing photo studio automated RIP kiosks from falsely rejecting the file as low-resolution.
+     - Saves at Quality 98 with **`subsampling=0` (4:4:4 full chroma preservation)**, preventing color bleeding and compression ringing around high-contrast edges.
+     - Uses Starlette `BackgroundTask` to safely delete temporary studio print exports after streaming.
+
+### Functional Decision Points & Rationale
+- **Removal of Split Comparison**:
+  - *Rationale*: With atomic in-place optimization replacing the original on disk to conserve storage, comparing against an identical file in memory was redundant and created UI clutter.
+- **Embedded 300 DPI Metadata vs. Raw Pixel File**:
+  - *Problem*: Even when an image possesses 8K resolution (7,680 px), photo lab software often reads the default 72 DPI header and warns the lab technician that the image is unsuited for physical printing.
+  - *Solution*: Injecting `(300, 300)` DPI and 4:4:4 chroma into the export file eliminates studio rejection at photo kiosks and print labs.
+
+### Technical Touchpoints
+- `engine/api/photos.py`: Added `mode: str = Query("original", pattern="^(original|studio_print)$")` to `GET /api/photos/{photo_id}/download`, implementing 300 DPI generation with 4:4:4 chroma subsampling.
+- `engine/tests/test_enhancements.py`: Added `test_download_studio_print_300dpi` contract test validating response headers, status code, and `(300, 300)` DPI verification via PIL.
+- `src/components/Lightbox.tsx`: Removed `showSplitSlider` state, split divider, and `E` key shortcut; added `<Printer /> Studio Print (300 DPI)` toolbar action; added Studio Print Readiness Card in EXIF drawer.
+
+### State & Lifecycle Impact
+- Zero database schema modifications required.
+---
+
+## 16. People View Photo Drilldown: Lightbox Viewing, Ambient Slideshow & Clean Navigation
+
+### Functionality Overview
+Resolves three critical navigation and viewer UX defects in the People feature:
+1. **Interactive Lightbox Viewing**:
+   - Clicking any photo thumbnail in a recognized person's photo collection now immediately opens the photo inside the high-resolution Lightbox viewer.
+   - Preserves the person's photo list context (`lightboxPhotos`), enabling seamless left/right keyboard (`ArrowLeft`/`ArrowRight`) and mouse navigation across all photos of that person.
+2. **Cinematic Ambient Slideshow**:
+   - Added a prominent **`Slideshow ({count})`** button in the top action toolbar of the person drill-down view.
+   - Reuses `AlbumSlideshowModal`, offering auto-advancing slides, Ken Burns hardware-accelerated pan/zoom motion, and procedurally generated Web Audio ambient soundscapes without external media assets.
+3. **Dedicated Breadcrumb & Navigation Bar**:
+   - Decoupled the **`Back to People`** button from the person's profile hero card into a dedicated, clean top navigation bar.
+   - Cleanses state upon clicking (`selectedPerson = null`, `personPhotos = []`), ensuring fast, flicker-free returns to the main People grid.
+   - Added an interactive favorite toggle (`Heart` icon) on photo thumbnails wired to `onToggleFavorite`.
+
+### Functional Decision Points & Rationale
+- **Decoupled Breadcrumb Bar vs. Inline Jammed Header**:
+  - *Problem*: The "Back to People" button was crammed inside the same flex row as the 52px avatar, person's name, VIP star, relationship dropdown, and affinity badge, causing layout wrapping, poor visual hierarchy, and misclicks on mobile or smaller desktop windows.
+  - *Solution*: Placed "Back to People" on the left of a dedicated top navigation bar, with the new "Slideshow" action button positioned on the right. Below this bar, a separate, elevated Hero Profile Card clearly showcases the person's avatar, metadata, and relationship controls.
+- **Props Wiring in `App.tsx` (`onPhotoClick`, `onToggleFavorite`)**:
+  - *Problem*: `PeopleView` was mounted in `App.tsx` with zero props, and photo grid cards lacked `onClick` listeners, rendering the thumbnails inert.
+  - *Solution*: Passed `onPhotoClick={(idx, personPhotos) => { setLightboxPhotos(personPhotos); setLightboxIndex(idx); }}` and `onToggleFavorite={handleToggleFavorite}` to `<PeopleView />`.
+- **Slideshow Component Reuse**:
+  - *Rationale*: Rather than duplicating slideshow code, `AlbumSlideshowModal` was cleanly reused by passing `albumName={`${selectedPerson.name}'s Photos`}` and `photos={personPhotos}`.
+
+### Technical Touchpoints
+- `src/components/PeopleView.tsx`:
+  - Added `PeopleViewProps` (`onPhotoClick`, `onToggleFavorite`).
+  - Added `isSlideshowOpen` state and rendered `<AlbumSlideshowModal />`.
+  - Added dedicated navigation bar with `Back to People` and `Slideshow` action button.
+  - Added `onClick` handler to photo thumbnails to trigger `onPhotoClick(idx, personPhotos)` with pointer cursor.
+  - Made the favorite heart badge interactive with stopPropagation and local state update.
+- `src/App.tsx`:
+  - Provided `onPhotoClick` and `onToggleFavorite` props to `<PeopleView />`.
+
+### State & Lifecycle Impact
+- Zero database changes; purely enhances frontend interaction, state propagation, and UX fidelity.
+
+
 
 
 

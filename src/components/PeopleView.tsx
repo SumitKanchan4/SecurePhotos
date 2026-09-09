@@ -14,10 +14,12 @@ import {
   UserX,
   RotateCcw,
   Search,
-  X
+  X,
+  Play,
 } from "lucide-react";
 import { PersonItem, UnlabeledClusterItem, FaceScanStatus, PhotoItem } from "../types";
 import { useAppStore } from "../store/useAppStore";
+import { AlbumSlideshowModal } from "./AlbumSlideshowModal";
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
@@ -57,7 +59,15 @@ const CLOSE_RELATIONSHIPS = new Set([
   "Wife", "Husband", "Partner", "Son", "Daughter", "Mother", "Father", "Brother", "Sister",
 ]);
 
-export const PeopleView: React.FC = () => {
+export interface PeopleViewProps {
+  onPhotoClick?: (idx: number, photos: PhotoItem[]) => void;
+  onToggleFavorite?: (photoId: number) => void;
+}
+
+export const PeopleView: React.FC<PeopleViewProps> = ({
+  onPhotoClick,
+  onToggleFavorite,
+}) => {
   const [people, setPeople] = useState<PersonItem[]>([]);
   const [unlabeledClusters, setUnlabeledClusters] = useState<UnlabeledClusterItem[]>([]);
   const [scanStatus, setScanStatus] = useState<FaceScanStatus>({
@@ -87,6 +97,7 @@ export const PeopleView: React.FC = () => {
   const [personPhotos, setPersonPhotos] = useState<PhotoItem[]>([]);
   const [loadingPhotos, setLoadingPhotos] = useState<boolean>(false);
   const [updatingPerson, setUpdatingPerson] = useState<boolean>(false);
+  const [isSlideshowOpen, setIsSlideshowOpen] = useState<boolean>(false);
 
   // Load recognized people
   const fetchPeople = useCallback(async () => {
@@ -357,118 +368,164 @@ export const PeopleView: React.FC = () => {
       {/* View: Individual Person Photos Drill-Down */}
       {selectedPerson ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          {/* Header */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "16px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          {/* Dedicated Navigation & Action Bar */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
+            <button
+              onClick={() => {
+                setSelectedPerson(null);
+                setPersonPhotos([]);
+              }}
+              className="clickable"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "8px 16px",
+                borderRadius: "var(--radius-sm)",
+                backgroundColor: "var(--bg-surface-elevated)",
+                border: "1px solid var(--border-subtle)",
+                color: "var(--text-primary)",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <ArrowLeft size={16} />
+              Back to People
+            </button>
+
+            {personPhotos.length > 0 && (
               <button
-                onClick={() => setSelectedPerson(null)}
+                onClick={() => setIsSlideshowOpen(true)}
                 className="clickable"
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "6px",
-                  padding: "8px 14px",
+                  gap: "8px",
+                  padding: "8px 16px",
                   borderRadius: "var(--radius-sm)",
-                  backgroundColor: "var(--bg-surface-elevated)",
-                  border: "1px solid var(--border-subtle)",
-                  color: "var(--text-primary)",
+                  backgroundColor: "var(--accent-primary)",
+                  border: "none",
+                  color: "#ffffff",
                   fontSize: "13px",
                   fontWeight: 600,
+                  cursor: "pointer",
+                  boxShadow: "0 2px 8px rgba(99, 102, 241, 0.25)",
                 }}
               >
-                <ArrowLeft size={16} />
-                Back to People
+                <Play size={14} fill="currentColor" />
+                Slideshow ({personPhotos.length})
               </button>
+            )}
+          </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <div
-                  style={{
-                    width: "52px",
-                    height: "52px",
-                    borderRadius: "var(--radius-full)",
-                    overflow: "hidden",
-                    border: "2px solid var(--accent-primary)",
-                    backgroundColor: "var(--bg-surface-elevated)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {selectedPerson.cover_face_id ? (
-                    <img
-                      src={`${API_BASE}/people/faces/${selectedPerson.cover_face_id}/crop`}
-                      alt={selectedPerson.name}
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    />
-                  ) : (
-                    <Users size={26} style={{ color: "var(--accent-primary)" }} />
-                  )}
-                </div>
+          {/* Person Profile Banner / Hero */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "16px",
+              padding: "16px 20px",
+              backgroundColor: "var(--bg-surface-elevated)",
+              borderRadius: "var(--radius-md)",
+              border: "1px solid var(--border-subtle)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+              <div
+                style={{
+                  width: "56px",
+                  height: "56px",
+                  borderRadius: "var(--radius-full)",
+                  overflow: "hidden",
+                  border: "2px solid var(--accent-primary)",
+                  backgroundColor: "var(--bg-surface)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                {selectedPerson.cover_face_id ? (
+                  <img
+                    src={`${API_BASE}/people/faces/${selectedPerson.cover_face_id}/crop`}
+                    alt={selectedPerson.name}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <Users size={28} style={{ color: "var(--accent-primary)" }} />
+                )}
+              </div>
 
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <h1 style={{ fontSize: "20px", fontWeight: 700 }}>{selectedPerson.name}</h1>
-                    {/* Interactive VIP Toggle */}
-                    <button
-                      onClick={() => handleUpdatePerson(selectedPerson.id, { is_close_one: !selectedPerson.is_close_one })}
-                      title={selectedPerson.is_close_one ? "Close One (High Priority)" : "Mark as Close One (VIP)"}
-                      className="clickable"
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        padding: "2px",
-                        color: selectedPerson.is_close_one ? "var(--accent-warning)" : "var(--text-muted)",
-                      }}
-                    >
-                      <Star size={18} fill={selectedPerson.is_close_one ? "var(--accent-warning)" : "none"} />
-                    </button>
-                  </div>
-                  <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-                    {personPhotos.length} {personPhotos.length === 1 ? "photo" : "photos"} found in your library
-                  </p>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <h1 style={{ fontSize: "20px", fontWeight: 700, margin: 0 }}>{selectedPerson.name}</h1>
+                  {/* Interactive VIP Toggle */}
+                  <button
+                    onClick={() => handleUpdatePerson(selectedPerson.id, { is_close_one: !selectedPerson.is_close_one })}
+                    title={selectedPerson.is_close_one ? "Close One (High Priority)" : "Mark as Close One (VIP)"}
+                    className="clickable"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      padding: "2px",
+                      color: selectedPerson.is_close_one ? "var(--accent-warning)" : "var(--text-muted)",
+                    }}
+                  >
+                    <Star size={18} fill={selectedPerson.is_close_one ? "var(--accent-warning)" : "none"} />
+                  </button>
                 </div>
+                <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px", margin: 0 }}>
+                  {personPhotos.length} {personPhotos.length === 1 ? "photo" : "photos"} found in your library
+                </p>
               </div>
             </div>
 
             {/* Granular Relationship Customizer */}
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <Tag size={15} style={{ color: "var(--text-muted)" }} />
-              <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500 }}>
-                Relationship:
-              </span>
-              <select
-                value={selectedPerson.relationship_type || "Friend"}
-                disabled={updatingPerson}
-                onChange={(e) => handleUpdatePerson(selectedPerson.id, { relationship_type: e.target.value })}
-                style={{
-                  padding: "7px 12px",
-                  borderRadius: "var(--radius-sm)",
-                  backgroundColor: "var(--bg-surface)",
-                  border: "1px solid var(--border-highlight)",
-                  color: "var(--text-primary)",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  outline: "none",
-                  cursor: "pointer",
-                }}
-              >
-                {RELATIONSHIP_OPTIONS.map((rel) => (
-                  <option key={rel} value={rel}>{rel}</option>
-                ))}
-              </select>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Tag size={15} style={{ color: "var(--text-muted)" }} />
+                <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500 }}>
+                  Relationship:
+                </span>
+                <select
+                  value={selectedPerson.relationship_type || "Friend"}
+                  disabled={updatingPerson}
+                  onChange={(e) => handleUpdatePerson(selectedPerson.id, { relationship_type: e.target.value })}
+                  style={{
+                    padding: "7px 12px",
+                    borderRadius: "var(--radius-sm)",
+                    backgroundColor: "var(--bg-surface)",
+                    border: "1px solid var(--border-highlight)",
+                    color: "var(--text-primary)",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    outline: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  {RELATIONSHIP_OPTIONS.map((rel) => (
+                    <option key={rel} value={rel}>{rel}</option>
+                  ))}
+                </select>
+              </div>
 
               {/* Affinity Score */}
               <div
                 style={{
-                  padding: "4px 10px",
+                  padding: "5px 12px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: selectedPerson.is_close_one ? "rgba(16, 185, 129, 0.12)" : "var(--bg-surface-elevated)",
+                  backgroundColor: selectedPerson.is_close_one ? "rgba(16, 185, 129, 0.12)" : "var(--bg-surface)",
                   color: selectedPerson.is_close_one ? "var(--accent-success)" : "var(--text-muted)",
                   fontSize: "11px",
                   fontWeight: 600,
+                  border: "1px solid var(--border-subtle)",
                 }}
               >
                 Affinity: {Math.round(selectedPerson.affinity_score)}/100
@@ -494,10 +551,11 @@ export const PeopleView: React.FC = () => {
                 gap: "12px",
               }}
             >
-              {personPhotos.map((photo) => (
+              {personPhotos.map((photo, idx) => (
                 <div
                   key={photo.id}
                   className="clickable"
+                  onClick={() => onPhotoClick?.(idx, personPhotos)}
                   style={{
                     aspectRatio: "1",
                     borderRadius: "var(--radius-md)",
@@ -505,6 +563,7 @@ export const PeopleView: React.FC = () => {
                     position: "relative",
                     backgroundColor: "var(--bg-surface)",
                     border: "1px solid var(--border-subtle)",
+                    cursor: "pointer",
                   }}
                 >
                   <img
@@ -520,27 +579,47 @@ export const PeopleView: React.FC = () => {
                     onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.04)")}
                     onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1.0)")}
                   />
-                  {photo.is_favorite && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: "8px",
-                        right: "8px",
-                        backgroundColor: "rgba(0,0,0,0.6)",
-                        borderRadius: "50%",
-                        padding: "4px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <Heart size={14} fill="#ef4444" color="#ef4444" />
-                    </div>
-                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onToggleFavorite) {
+                        onToggleFavorite(photo.id);
+                        setPersonPhotos((prev) =>
+                          prev.map((p) => (p.id === photo.id ? { ...p, is_favorite: !p.is_favorite } : p))
+                        );
+                      }
+                    }}
+                    className="clickable"
+                    title={photo.is_favorite ? "Remove from Favorites" : "Add to Favorites"}
+                    style={{
+                      position: "absolute",
+                      top: "8px",
+                      right: "8px",
+                      backgroundColor: "rgba(0,0,0,0.6)",
+                      borderRadius: "50%",
+                      padding: "6px",
+                      display: photo.is_favorite ? "flex" : "none",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "none",
+                      cursor: "pointer",
+                      transition: "transform 0.15s ease",
+                    }}
+                  >
+                    <Heart size={14} fill={photo.is_favorite ? "#ef4444" : "none"} color={photo.is_favorite ? "#ef4444" : "#ffffff"} />
+                  </button>
                 </div>
               ))}
             </div>
           )}
+
+          {/* Cinematic Slideshow Modal */}
+          <AlbumSlideshowModal
+            isOpen={isSlideshowOpen}
+            albumName={`${selectedPerson.name}'s Photos`}
+            photos={personPhotos}
+            onClose={() => setIsSlideshowOpen(false)}
+          />
         </div>
       ) : (
         /* Main View: People Gallery & Unlabeled Clusters */
