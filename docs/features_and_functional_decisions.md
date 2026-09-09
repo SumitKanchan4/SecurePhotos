@@ -772,21 +772,20 @@ To maximize viewport room for unlabeled face cluster tagging while providing an 
 ## 16. People View Photo Drilldown: Apple Photos Cinematic Hero, Ambient Slideshow & Chronological Timeline
 
 ### Functionality Overview
-Elevates the individual person photo viewing experience from an administrative boxy layout into a modern, magazine-grade **Apple Photos-inspired Cinematic Hero**:
+Elevates the individual person photo viewing experience from an administrative boxy layout into a modern, magazine-grade **Apple Photos-inspired Cinematic Experience**:
 1. **Interactive Lightbox Viewing**:
    - Clicking any photo thumbnail opens the high-resolution Lightbox viewer with global index tracking across that person's library.
    - Enables smooth left/right navigation (`ArrowLeft`/`ArrowRight`) across all of that person's photos.
 2. **Cinematic Ambient Slideshow**:
    - Prominent **`Play Slideshow ({count})`** button styled with vibrant indigo-to-violet gradient and glowing ambient elevation.
    - Integrates `AlbumSlideshowModal` with hardware-accelerated Ken Burns motion and real-time Web Audio procedural soundscapes.
-3. **Floating Glassmorphic Sticky Navigation**:
-   - Sticky top bar (`backdrop-filter: blur(20px)`) housing a sleek `← People` button and the `Play Slideshow` action.
+3. **Unified 56px Compact Glassmorphic Header**:
+   - Merged the previously stacked navigation bar and hero container into a single, space-efficient 56px sticky bar (`backdrop-filter: blur(20px)`), reclaiming over 140px of vertical screen real estate on laptops and smaller displays.
+   - Houses the `← People` button, a 42px circular halo avatar, person's name with inline VIP Close One toggle (`★`), and clean non-technical subtitle (`{count} photos • {yearsRange}`).
+   - Right side houses the interactive `[ 🏷️ Relationship: Spouse ▾ ]` popover pill and `Play Slideshow` action button.
    - Cleanses state (`selectedPerson = null`, `personPhotos = []`, `personFilter = 'all'`, `isRelationshipPopoverOpen = false`) upon exiting.
-4. **Ambient Portrait Hero Banner**:
-   - Borderless hero container with radial purple/indigo backdrop lighting.
-   - 68px halo avatar with glowing border shadow (`box-shadow: 0 0 20px rgba(99, 102, 241, 0.4)`).
-   - Display typography (24px bold) with an interactive VIP Close One toggle (`★`).
-   - Subtitle telemetry: Photo count, years range (e.g. `2023–2024`), and affinity percentage score.
+4. **Removal of Technical "Affinity" Jargon**:
+   - Eliminated the internal machine learning score ("Affinity 0%") from user view, keeping the subtitle natural and human-friendly (e.g. `2 photos • 2021`).
 5. **Modern Interactive Relationship Popover Pill**:
    - Replaced the clunky raw `<select>` dropdown with an interactive pill `[ 🏷️ Relationship: Family ▾ ]`.
    - Clicking opens a sleek floating popover chip menu with active checkmarks, eliminating administrative form visual noise.
@@ -797,18 +796,18 @@ Elevates the individual person photo viewing experience from an administrative b
    - Sticky section headers with sub-item counts and responsive 190px cards with smooth elevation transitions.
 
 ### Functional Decision Points & Rationale
-- **Elimination of "Admin/CRM Syndrome"**:
-  - *Problem*: Enclosing person metadata inside a gray border card with a raw `<select>` element made the gallery feel like an administrative dashboard rather than an emotional photo album.
-  - *Solution*: Designed a borderless ambient gradient hero with an interactive popover chip selector and typography-first hierarchy matching Apple Photos and Google Photos.
-- **Timeline Clusters vs. Flat Wall of Squares**:
-  - *Problem*: Dumping dozens of photos into a uniform square grid loses chronological context and emotional pacing.
-  - *Solution*: Built a high-performance `useMemo` timeline cluster grouping photos by Month & Year based on `photo.taken_at`.
+- **Single Unified Header vs. Stacked Multi-Block Layout**:
+  - *Problem*: Stacking a top navigation bar above a large portrait hero card consumed ~250px (nearly 40% of the viewport) before photos were visible on laptops and smaller windows.
+  - *Solution*: Merged navigation, avatar, title, VIP badge, relationship selector, and slideshow trigger into a single 56px glassmorphic bar, saving ~140px and bringing photos into immediate view.
+- **Elimination of Internal AI Metrics ("Affinity %")**:
+  - *Problem*: The social affinity score is an internal heuristic used to determine story inclusion. Exposing "Affinity 0%" to end users (e.g. "Spouse • Affinity 0%") caused confusion and appeared as a defect.
+  - *Solution*: Replaced it with clean temporal and count metadata (`{count} photos • {yearsRange}`).
 
 ### Technical Touchpoints
 - `src/components/PeopleView.tsx`:
+  - Unified single-bar sticky header merging `ArrowLeft`, 42px avatar, name, VIP toggle, relationship popover, and slideshow trigger.
   - Added `useMemo` timeline grouper, year extraction, and multi-mode filter (`all`, `favorites`, `year`).
   - Added `isRelationshipPopoverOpen` and floating popover chip menu.
-  - Added glassmorphic sticky top navigation bar.
   - Added timeline group mapping with sticky headers and responsive cards.
 - `src/App.tsx`:
   - Provided `onPhotoClick` and `onToggleFavorite` props to `<PeopleView />`.

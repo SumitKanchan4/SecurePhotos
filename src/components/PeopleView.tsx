@@ -429,8 +429,8 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
     <div style={{ flex: 1, overflowY: "auto", padding: "24px 32px", display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* View: Individual Person Photos Drill-Down */}
       {selectedPerson ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          {/* Glassmorphic Sticky Navigation Bar */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {/* Unified Compact Glassmorphic Header Bar */}
           <div
             style={{
               display: "flex",
@@ -438,8 +438,8 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
               justifyContent: "space-between",
               flexWrap: "wrap",
               gap: "12px",
-              padding: "10px 16px",
-              backgroundColor: "rgba(23, 23, 23, 0.75)",
+              padding: "8px 16px",
+              backgroundColor: "rgba(23, 23, 23, 0.85)",
               backdropFilter: "blur(20px)",
               WebkitBackdropFilter: "blur(20px)",
               borderRadius: "var(--radius-lg)",
@@ -449,86 +449,57 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
               zIndex: 20,
             }}
           >
-            <button
-              onClick={() => {
-                setSelectedPerson(null);
-                setPersonPhotos([]);
-                setPersonFilter("all");
-                setIsRelationshipPopoverOpen(false);
-              }}
-              className="clickable"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "8px 16px",
-                borderRadius: "var(--radius-full)",
-                backgroundColor: "rgba(255, 255, 255, 0.06)",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                color: "var(--text-primary)",
-                fontSize: "13px",
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-            >
-              <ArrowLeft size={16} />
-              People
-            </button>
-
-            {personPhotos.length > 0 && (
+            {/* Left: Back Button + Avatar + Name & Subtitle */}
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
               <button
-                onClick={() => setIsSlideshowOpen(true)}
+                onClick={() => {
+                  setSelectedPerson(null);
+                  setPersonPhotos([]);
+                  setPersonFilter("all");
+                  setIsRelationshipPopoverOpen(false);
+                }}
                 className="clickable"
+                title="Back to People"
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "8px",
-                  padding: "8px 20px",
+                  gap: "6px",
+                  padding: "6px 12px",
                   borderRadius: "var(--radius-full)",
-                  background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
-                  border: "none",
-                  color: "#ffffff",
-                  fontSize: "13px",
+                  backgroundColor: "rgba(255, 255, 255, 0.06)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  color: "var(--text-primary)",
+                  fontSize: "12px",
                   fontWeight: 600,
                   cursor: "pointer",
-                  boxShadow: "0 4px 14px rgba(99, 102, 241, 0.35)",
-                  transition: "all 0.2s ease",
+                  transition: "all 0.15s ease",
+                  flexShrink: 0,
                 }}
               >
-                <Play size={14} fill="currentColor" />
-                Play Slideshow ({personPhotos.length})
+                <ArrowLeft size={14} />
+                <span>People</span>
               </button>
-            )}
-          </div>
 
-          {/* Ambient Portrait Hero Banner */}
-          <div
-            style={{
-              position: "relative",
-              overflow: "visible",
-              borderRadius: "var(--radius-lg)",
-              padding: "28px 28px",
-              background: "radial-gradient(ellipse at 15% 50%, rgba(99, 102, 241, 0.15), transparent 70%), linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(0, 0, 0, 0.2) 100%)",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: "20px",
-            }}
-          >
-            {/* Left: Avatar & Typography */}
-            <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+              <div
+                style={{
+                  width: "1px",
+                  height: "22px",
+                  backgroundColor: "rgba(255, 255, 255, 0.1)",
+                  margin: "0 2px",
+                  flexShrink: 0,
+                }}
+              />
+
+              {/* Compact 42px Halo Avatar */}
               <div
                 style={{
                   position: "relative",
-                  width: "68px",
-                  height: "68px",
+                  width: "42px",
+                  height: "42px",
                   borderRadius: "var(--radius-full)",
                   overflow: "hidden",
-                  border: "3px solid #6366f1",
-                  boxShadow: "0 0 20px rgba(99, 102, 241, 0.4)",
+                  border: "2px solid #6366f1",
+                  boxShadow: "0 0 12px rgba(99, 102, 241, 0.35)",
                   backgroundColor: "var(--bg-surface)",
                   display: "flex",
                   alignItems: "center",
@@ -543,13 +514,14 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
                 ) : (
-                  <Users size={32} style={{ color: "var(--accent-primary)" }} />
+                  <Users size={20} style={{ color: "var(--accent-primary)" }} />
                 )}
               </div>
 
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                  <h1 style={{ fontSize: "24px", fontWeight: 800, margin: 0, letterSpacing: "-0.02em" }}>
+              {/* Name, VIP Toggle & Clean Non-Technical Subtitle */}
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <h1 style={{ fontSize: "18px", fontWeight: 700, margin: 0, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>
                     {selectedPerson.name}
                   </h1>
                   {/* Interactive VIP Toggle */}
@@ -564,103 +536,129 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
-                      padding: "4px 10px",
-                      gap: "5px",
+                      padding: "2px 8px",
+                      gap: "4px",
                       color: selectedPerson.is_close_one ? "var(--accent-warning)" : "var(--text-muted)",
                       fontSize: "11px",
                       fontWeight: 600,
                     }}
                   >
-                    <Star size={12} fill={selectedPerson.is_close_one ? "var(--accent-warning)" : "none"} />
+                    <Star size={11} fill={selectedPerson.is_close_one ? "var(--accent-warning)" : "none"} />
                     <span>{selectedPerson.is_close_one ? "Close One" : "Mark VIP"}</span>
                   </button>
                 </div>
 
-                {/* Subtitle Telemetry */}
-                <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "6px", margin: 0 }}>
+                {/* Clean Human-Friendly Subtitle (No Affinity 0% Jargon) */}
+                <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px", margin: 0 }}>
                   {personPhotos.length} {personPhotos.length === 1 ? "photo" : "photos"}
                   {yearsRange ? ` • ${yearsRange}` : ""}
-                  {` • Affinity ${Math.round(selectedPerson.affinity_score)}%`}
                 </p>
               </div>
             </div>
 
-            {/* Right: Modern Relationship Popover Pill */}
-            <div style={{ position: "relative" }}>
-              <button
-                onClick={() => setIsRelationshipPopoverOpen((prev) => !prev)}
-                className="clickable"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  padding: "8px 16px",
-                  borderRadius: "var(--radius-full)",
-                  backgroundColor: "rgba(255, 255, 255, 0.08)",
-                  border: "1px solid rgba(255, 255, 255, 0.12)",
-                  color: "var(--text-primary)",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                <Tag size={14} style={{ color: "var(--accent-primary)" }} />
-                <span>Relationship: <strong>{selectedPerson.relationship_type || "Friend"}</strong></span>
-                <ChevronDown size={14} style={{ opacity: 0.7 }} />
-              </button>
-
-              {/* Popover Dropdown Menu */}
-              {isRelationshipPopoverOpen && (
-                <div
+            {/* Right: Relationship Popover Pill + Slideshow Button */}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+              <div style={{ position: "relative" }}>
+                <button
+                  onClick={() => setIsRelationshipPopoverOpen((prev) => !prev)}
+                  className="clickable"
                   style={{
-                    position: "absolute",
-                    top: "calc(100% + 8px)",
-                    right: 0,
-                    backgroundColor: "var(--bg-surface-elevated)",
-                    border: "1px solid var(--border-highlight)",
-                    borderRadius: "var(--radius-md)",
-                    padding: "6px",
-                    boxShadow: "0 12px 32px rgba(0, 0, 0, 0.6)",
-                    zIndex: 30,
-                    minWidth: "190px",
                     display: "flex",
-                    flexDirection: "column",
-                    gap: "2px",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "7px 12px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "rgba(255, 255, 255, 0.08)",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    color: "var(--text-primary)",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
                   }}
                 >
-                  {RELATIONSHIP_OPTIONS.map((rel) => {
-                    const isSelected = (selectedPerson.relationship_type || "Friend") === rel;
-                    return (
-                      <button
-                        key={rel}
-                        disabled={updatingPerson}
-                        onClick={() => {
-                          handleUpdatePerson(selectedPerson.id, { relationship_type: rel });
-                          setIsRelationshipPopoverOpen(false);
-                        }}
-                        className="clickable"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          padding: "8px 12px",
-                          borderRadius: "var(--radius-sm)",
-                          backgroundColor: isSelected ? "rgba(99, 102, 241, 0.15)" : "transparent",
-                          color: isSelected ? "var(--accent-primary)" : "var(--text-primary)",
-                          fontSize: "12px",
-                          fontWeight: isSelected ? 600 : 500,
-                          border: "none",
-                          cursor: "pointer",
-                          textAlign: "left",
-                          width: "100%",
-                        }}
-                      >
-                        <span>{rel}</span>
-                        {isSelected && <Check size={14} />}
-                      </button>
-                    );
-                  })}
-                </div>
+                  <Tag size={13} style={{ color: "var(--accent-primary)" }} />
+                  <span>Relationship: <strong>{selectedPerson.relationship_type || "Friend"}</strong></span>
+                  <ChevronDown size={13} style={{ opacity: 0.7 }} />
+                </button>
+
+                {/* Popover Dropdown Menu */}
+                {isRelationshipPopoverOpen && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 6px)",
+                      right: 0,
+                      backgroundColor: "var(--bg-surface-elevated)",
+                      border: "1px solid var(--border-highlight)",
+                      borderRadius: "var(--radius-md)",
+                      padding: "6px",
+                      boxShadow: "0 12px 32px rgba(0, 0, 0, 0.6)",
+                      zIndex: 30,
+                      minWidth: "180px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "2px",
+                    }}
+                  >
+                    {RELATIONSHIP_OPTIONS.map((rel) => {
+                      const isSelected = (selectedPerson.relationship_type || "Friend") === rel;
+                      return (
+                        <button
+                          key={rel}
+                          disabled={updatingPerson}
+                          onClick={() => {
+                            handleUpdatePerson(selectedPerson.id, { relationship_type: rel });
+                            setIsRelationshipPopoverOpen(false);
+                          }}
+                          className="clickable"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "7px 12px",
+                            borderRadius: "var(--radius-sm)",
+                            backgroundColor: isSelected ? "rgba(99, 102, 241, 0.15)" : "transparent",
+                            color: isSelected ? "var(--accent-primary)" : "var(--text-primary)",
+                            fontSize: "12px",
+                            fontWeight: isSelected ? 600 : 500,
+                            border: "none",
+                            cursor: "pointer",
+                            textAlign: "left",
+                            width: "100%",
+                          }}
+                        >
+                          <span>{rel}</span>
+                          {isSelected && <Check size={14} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {personPhotos.length > 0 && (
+                <button
+                  onClick={() => setIsSlideshowOpen(true)}
+                  className="clickable"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "7px 16px",
+                    borderRadius: "var(--radius-full)",
+                    background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+                    border: "none",
+                    color: "#ffffff",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    boxShadow: "0 3px 12px rgba(99, 102, 241, 0.35)",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <Play size={13} fill="currentColor" />
+                  Play Slideshow ({personPhotos.length})
+                </button>
               )}
             </div>
           </div>
