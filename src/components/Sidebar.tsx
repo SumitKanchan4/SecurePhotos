@@ -1,5 +1,6 @@
 import React from "react";
 import { 
+  LayoutDashboard,
   Images, 
   FolderHeart, 
   Users, 
@@ -22,15 +23,20 @@ interface NavItem {
 }
 
 export const Sidebar: React.FC = () => {
-  const { activeTab, setActiveTab, totalPhotosCount, isDriveConnected, activeVolume, prerequisites } = useAppStore();
+  const { activeTab, setActiveTab, isDriveConnected, activeVolume, prerequisites } = useAppStore();
 
   const navItems: NavItem[] = [
     { 
+      id: "dashboard", 
+      label: "Dashboard", 
+      icon: <LayoutDashboard size={17} /> 
+    },
+    { 
       id: "photos", 
       label: "Photos", 
-      icon: <Images size={17} />, 
-      badge: totalPhotosCount > 0 ? totalPhotosCount.toLocaleString() : undefined 
+      icon: <Images size={17} /> 
     },
+
     { id: "albums", label: "Albums", icon: <FolderHeart size={17} /> },
     { id: "people", label: "People", icon: <Users size={17} /> },
     { id: "documents", label: "Documents", icon: <FileText size={17} /> },

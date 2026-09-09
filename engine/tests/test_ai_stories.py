@@ -50,3 +50,8 @@ async def test_stories_and_people_apis():
         res_people = await client.get("/api/people")
         assert res_people.status_code == 200
         assert isinstance(res_people.json(), list)
+
+        res_generate = await client.post("/api/stories/generate")
+        assert res_generate.status_code == 200
+        assert isinstance(res_generate.json(), list)
+

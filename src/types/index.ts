@@ -129,3 +129,64 @@ export interface TimelineYearsData {
   years: TimelineYearItem[];
 }
 
+export interface MediaCounts {
+  images: number;
+  videos: number;
+  documents: number;
+  favorites: number;
+  albums: number;
+  people: number;
+  total_media: number;
+}
+
+export interface AppStorageStats {
+  total_bytes: number;
+  media_bytes: number;         // Photos, videos, proxies & thumbnails combined
+  app_system_bytes: number;    // Database, search indices & AI models
+  originals_bytes: number;
+  thumbnails_bytes: number;
+  previews_bytes: number;
+  database_bytes: number;
+  models_bytes: number;
+}
+
+export interface DriveStorageStats {
+  drive_letter: string;
+  volume_name: string;
+  drive_type: string;
+  is_internal: boolean;
+  total_bytes: number;
+  free_bytes: number;
+  app_consumed_bytes: number;
+  system_other_bytes: number;
+  other_files_bytes: number;
+  disclaimer: string;
+}
+
+
+export interface DashboardOverview {
+  media_counts: MediaCounts;
+  app_storage: AppStorageStats;
+  drive_storage: DriveStorageStats;
+}
+
+export interface StorySlide {
+  photo_id: number;
+  filename: string;
+  taken_at?: string;
+  year_label: string;
+  transition_type: string;
+  focal_x: number;
+  focal_y: number;
+}
+
+export interface StoryModel {
+  id: number;
+  title: string;
+  story_type: string;
+  vibe_mood: string;
+  music_track_path: string;
+  cover_photo_id?: number | null;
+  slides: StorySlide[];
+}
+

@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { VolumeInfo, SystemHealth, SystemPrerequisites } from "../types";
 
 export type NavTab = 
+  | "dashboard"
   | "photos" 
   | "albums" 
   | "people" 
@@ -10,6 +11,7 @@ export type NavTab =
   | "vault" 
   | "trash" 
   | "settings";
+
 
 interface AppState {
   theme: "dark" | "light";
@@ -43,7 +45,7 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set) => ({
   theme: "dark",
-  activeTab: "photos",
+  activeTab: "dashboard",
   searchQuery: "",
   selectedPhotoIds: new Set<number>(),
   activeVolume: null,
