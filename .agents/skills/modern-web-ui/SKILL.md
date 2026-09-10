@@ -71,3 +71,40 @@ Avoid arbitrary Tailwind classes or inline styles. All styles must map to the CS
 - **Micro-Animations**:
   - Lightbox zoom in/out with CSS transform `scale(0.95) -> scale(1)` over `180ms ease-out`.
   - Smooth card hover lift (`transform: translateY(-2px)`).
+
+---
+
+## 4. Mandatory Unified Header & Drilldown Design Standard
+
+Whenever designing, building, or refactoring drill-down views (e.g. Album Detail, Person Detail, Category Detail, Vault views) or major view headers, **ALWAYS adhere strictly to this design standard**:
+
+### A. Balanced 3-Column Layout
+Never use a simple `justify-content: space-between` with asymmetrical items that causes the title to drift off-center. Always use a balanced 3-column flex layout:
+1. **Left Column (`flex: 1`, `justifyContent: "flex-start"`, `minWidth: "120px"`)**:
+   - Navigation / Back button styled as a frosted pill (`var(--radius-full)`):
+     - Background: `rgba(255, 255, 255, 0.06)`, border: `1px solid rgba(255, 255, 255, 0.1)`.
+     - Icon + label (e.g. `<ArrowLeft size={14} /> <span>All Albums</span>`).
+2. **Center Column (`flex: "0 1 auto"`, `display: "flex"`, `alignItems: "center"`, `justifyContent: "center"`, `gap: "10px"`)**:
+   - **Display Title**:
+     - Modern geometric font: `var(--font-display)` (**Plus Jakarta Sans**, fallback Inter).
+     - Size: `22px`–`24px`, weight: `800` (bold), tracking: `letterSpacing: "-0.03em"`.
+     - Color: `#ffffff` with subtle text shadow `0 2px 10px rgba(0, 0, 0, 0.35)`.
+   - **Inline Frosted Capsule Count Badge**:
+     - Placed on the **same horizontal baseline** right next to the title (never stacked as an awkward subtitle).
+     - Style: `padding: "3px 10px"`, `borderRadius: "var(--radius-full)"`, `backgroundColor: "rgba(255, 255, 255, 0.08)"`, `border: "1px solid rgba(255, 255, 255, 0.12)"`, `backdropFilter: "blur(8px)"`, `fontSize: "12px"`, `fontWeight: 600`, `color: "var(--text-secondary)"`.
+3. **Right Column (`flex: 1`, `display: "flex"`, `alignItems: "center"`, `justifyContent: "flex-end"`, `gap: "10px"`, `minWidth: "120px"`)**:
+   - Primary and secondary actions styled with pill geometry (`var(--radius-full)`).
+   - Slideshow trigger: Vibrant gradient `linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)` with ambient glow `0 3px 12px rgba(99, 102, 241, 0.35)`.
+   - Secondary actions (Add, Filter, Delete): Frosted glass or primary pills.
+
+### B. Glassmorphic Container Specifications (Dual-Theme macOS Pure Liquid Glass)
+- **Background**: `var(--glass-surface)` (Theme-reactive: `rgba(255, 255, 255, 0.78)` in Light mode / `rgba(18, 20, 29, 0.82)` in Dark mode). NEVER hardcode dark `rgba(23, 23, 23, ...)`.
+- **Backdrop Blur**: `backdropFilter: "blur(24px)"`, `WebkitBackdropFilter: "blur(24px)"`.
+- **Border**: `1px solid var(--glass-border)`.
+- **Corner Curvature**: `borderRadius: "var(--radius-lg)"` (18px floating bar).
+- **Elevation**: `boxShadow: "var(--glass-shadow)"`.
+- **Title Color**: `color: "var(--text-primary)"` (Crisp dark in Light mode / white in Dark mode).
+- **Badge**: `backgroundColor: "var(--glass-badge-bg)"`, `border: "1px solid var(--glass-badge-border)"`.
+- **Dimensions & Spacing**: `minHeight: "56px"`, `padding: "10px 20px"`.
+- **Positioning**: `position: "sticky"`, `top: 0`, `zIndex: 20`, `flexShrink: 0`.
+

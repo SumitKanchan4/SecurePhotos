@@ -13,10 +13,16 @@ trigger: always_on
 - **CRITICAL**: When the user is asking questions, exploring ideas, suggesting changes, or discussing architectures, **DO NOT start implementation, generate feature code, or alter project structure without explicit user confirmation and approval.**
 - Always clarify requirements, outline the plan, and wait for the user to say "Proceed" or approve before making modifications.
 
-## 2. Clean Architecture & Zero-Debt Policy
+## 2. Clean Architecture, Zero-Debt Policy & Design Standards
 - Keep code clean, decoupled, and modular.
 - Do not mix presentation, business logic, and database operations in single files.
 - Adhere strictly to the project's specialized skills (`modern-web-ui`, `local-slm-engineering`, `sqlite-vector-search`, `zero-trust-crypto`, `enterprise-standards-and-docs`).
+- **CRITICAL UI/UX STANDARD**: All view headers and drill-down toolbars (Albums, People, Categories, Vault, etc.) MUST strictly comply with Section 4 of `modern-web-ui`:
+  1. Balanced 3-Column flex layout (`flex: 1` Left / `flex: 0 1 auto` Center / `flex: 1` Right).
+  2. Centered modern display title (`22px`–`24px` Plus Jakarta Sans, `fontWeight: 800`, `letterSpacing: -0.03em`).
+  3. Inline frosted capsule count badge (`[ N photos ]`) on the exact same horizontal baseline (no awkward stacked subtitles).
+  4. Dual-theme frosted liquid glass floating container (`backgroundColor: "var(--glass-surface)"`, `backdropFilter: "blur(24px)"`, `WebkitBackdropFilter: "blur(24px)"`, `border: "1px solid var(--glass-border)"`, `borderRadius: "var(--radius-lg)"`, `boxShadow: "var(--glass-shadow)"`, `color: "var(--text-primary)"`). STRICTLY FORBIDDEN to hardcode dark `rgba(23, 23, 23, ...)` or static dark backgrounds in headers.
+  5. Pill geometry (`var(--radius-full)`) on all navigation, action, and filter buttons (`backgroundColor: "var(--glass-pill-bg)"`, `border: "1px solid var(--glass-border)"`).
 
 ## 3. High Code Quality, Comments & Tests
 - All code must feature Google-style docstrings (Python) / JSDoc (Frontend).
@@ -34,12 +40,17 @@ trigger: always_on
 ## 5. Mandatory Token Efficiency & MCP Optimization (`codegraph` & `headroom`)
 - **CRITICAL**: Maximize context efficiency and reduce token costs by prioritizing MCP tools:
   1. **`codegraph_explore` (MCP)**:
-     - Always use `codegraph_explore` as the primary discovery tool when surveying features, tracing call paths, understanding component hierarchies, or checking the blast radius of changes before editing.
+     - Always use `codegraph_explore` as the **first** discovery tool when surveying features, locating symbols, tracing call paths, understanding component hierarchies, or checking the blast radius of changes before editing.
+     - **NEVER** run multi-slice `view_file` loops across a large file to find a function or component — use `codegraph_explore` first to pinpoint the exact line range, then read only that slice.
      - Avoid repetitive, expensive grep-and-read loops across multiple files when `codegraph_explore` can return the exact symbols and caller trees in a single capped call.
   2. **`headroom_compress` (MCP)**:
-     - Proactively compress large verbose outputs, lengthy build/test logs, massive JSON schemas, or big text blobs using `headroom_compress` before processing them.
-     - Use `headroom_retrieve` on demand when specific details from compressed content are required.
+     - **IMMEDIATELY** compress large verbose outputs using `headroom_compress` **before processing** them. This applies to:
+       - Pytest / test run logs (even a single run can be 150+ lines)
+       - Large database query results (long lists of rows, full table dumps)
+       - Massive JSON schemas or API responses
+       - Any text blob exceeding ~50 lines
+     - Use `headroom_retrieve` **on demand** when specific details from compressed content are required — do NOT decompress everything upfront.
+     - **NEVER** let repeated full pytest logs, full file dumps, or verbose query results accumulate in the context window raw across multiple tool calls.
   3. **Context Hygiene**:
      - Never read whole large files when a sliced range suffices. Always use `StartLine` and `EndLine` in `view_file` to keep the context window compact and cost-effective.
-
-
+     - When running pytest multiple times in a session, compress each run's output immediately — do not accumulate raw logs.

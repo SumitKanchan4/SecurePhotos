@@ -834,11 +834,353 @@ Harmonizes individual photo thumbnail scaling across all core photo viewing surf
 - `src/components/AlbumsView.tsx`: Standardized album photo grid to `repeat(auto-fill, minmax(185px, 1fr))` with `10px` gap.
 - `src/components/PeopleView.tsx`: Standardized people photo grid to `repeat(auto-fill, minmax(185px, 1fr))` with `10px` gap.
 
+---
+
+## 18. Centered Glassmorphic Header for Album Detail View
+
+### Functionality Overview
+Harmonizes the Album Detail viewing experience (`AlbumsView.tsx`) with the modern glassmorphism design language established in People Detail (`PeopleView.tsx`):
+1. **Enlarged Plus Jakarta Sans Title & Inline Frosted Capsule Badge**:
+   - The album name is rendered in modern geometric display typography (**Plus Jakarta Sans**, `fontSize: 22px`, `fontWeight: 800`, `letterSpacing: -0.03em`, crisp `#ffffff` with subtle text shadow).
+   - The photo count (`X photos`) is positioned on the **same horizontal baseline** right next to the title inside a frosted capsule badge (`backgroundColor: rgba(255, 255, 255, 0.08)`, `border: 1px solid rgba(255, 255, 255, 0.12)`, `backdropFilter: blur(8px)`, `borderRadius: var(--radius-full)`).
+   - Eliminates vertical awkwardness and achieves an elegant, balanced single-line horizontal center layout.
+   - Built on a balanced 3-column flex layout (`flex: 1` Left, `flex: 0 1 auto` Center, `flex: 1` Right) to ensure true horizontal alignment regardless of button widths on either flank.
+2. **Unified Frosted Glass Theme (Matching People Detail)**:
+   - Header container upgraded to a floating glassmorphic bar:
+     - `backgroundColor: "rgba(23, 23, 23, 0.85)"`
+     - `backdropFilter: "blur(20px)"` and `-webkit-backdrop-filter: "blur(20px)"`
+     - Border highlight: `1px solid rgba(255, 255, 255, 0.08)`
+     - Soft elevation shadow: `box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25)`
+     - Floating rounded bar: `borderRadius: "var(--radius-lg)"` with sticky positioning (`position: sticky; top: 0; z-index: 20`, `minHeight: 56px`, `padding: 10px 20px`).
+3. **Pill-Shaped Action Buttons**:
+   - **`← All Albums` Navigation**: Pill-shaped button (`borderRadius: "var(--radius-full)"`, `backgroundColor: "rgba(255, 255, 255, 0.06)"`, `border: "1px solid rgba(255, 255, 255, 0.1)"`).
+   - **`Slideshow`**: Pill-shaped with vibrant gradient (`linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)`) and glowing elevation shadow (`0 3px 12px rgba(99, 102, 241, 0.35)`).
+   - **`Add Photos`**: Pill-shaped primary accent button (`borderRadius: "var(--radius-full)"`).
+   - **`Delete Album`**: Pill-shaped danger glass button (`backgroundColor: "rgba(239, 68, 68, 0.12)"`, `border: "1px solid rgba(239, 68, 68, 0.25)"`).
+
+### Functional Decision Points & Rationale
+- **Single-Line Baseline with Inline Capsule Badge vs. Stacked Subtitle**:
+  - *Problem*: Stacking a small `11px` photo count underneath an 18px title created vertical clumsiness in a horizontal floating glass bar and left excessive unused horizontal space.
+  - *Solution*: Scaling the title to 22px Plus Jakarta Sans and placing the photo count in an inline frosted capsule chip aligns all elements along a unified horizontal baseline, creating a high-end feel inspired by Apple Photos and Linear.
+- **3-Column Flex Structure (`flex: 1` / `flex: 0 1 auto` / `flex: 1`) vs. Simple Justify-Between**:
+  - *Problem*: In a standard `justify-content: space-between` layout, differing widths between the left navigation button and right action cluster causes the center title to tilt off-center towards whichever side has fewer buttons.
+  - *Solution*: Giving both flanking containers `flex: 1` guarantees the title and photo count remain strictly centered in the viewport.
+- **Glassmorphic Consistency Across Core Navigation Tabs**:
+  - *Problem*: The previous album detail header was a flat solid bar (`var(--bg-sidebar)`), contrasting with the modern floating frosted glass headers in `PeopleView.tsx`.
+  - *Solution*: Adopting the identical glassmorphic tokens creates a seamless, cohesive aesthetic throughout the application.
+
+### Technical Touchpoints
+- `index.html`: Loaded Google Font `Plus Jakarta Sans` (`wght@500;600;700;800`).
+- `src/index.css`: Added `--font-display: 'Plus Jakarta Sans', 'Inter', ...` token.
+- `src/components/AlbumsView.tsx`: Updated Album Detail header to floating glass container, applied 3-column flex centering with 22px Plus Jakarta Sans title and inline frosted capsule photo count badge, upgraded navigation and action buttons to pill shape with gradient accents.
+- `src/components/PeopleView.tsx`: Updated Person Detail drill-down header to balanced 3-column layout with 22px Plus Jakarta Sans name, inline frosted capsule count badge (`[ N photos • YearRange ]`), halo avatar on the left, and pill action buttons on the right.
+- `src/components/DocumentsView.tsx`: Upgraded header to floating glass bar with centered 22px Plus Jakarta Sans title, inline capsule document count badge, category pill filters on the left, and OCR search pill on the right.
+- `src/components/TrashView.tsx`: Upgraded header to floating glass bar with centered 22px Plus Jakarta Sans title, inline capsule item count badge, Select All pill on the left, and pill-shaped Restore / Empty Trash actions on the right.
+- `src/components/VaultView.tsx`: Upgraded active vault header to floating glass bar with centered 22px Plus Jakarta Sans title, inline capsule count badge, in-memory unlock status badge on the left, and pill action buttons on the right.
+
+### State & Lifecycle Impact
+- Zero database or API changes required; pure UI/UX styling and cross-app layout harmonization.
+
+### Cross-App Design Standard Mandate
+- Formally established as the mandatory design pattern codified in `.agents/skills/modern-web-ui/SKILL.md` (Section 4) and `.agents/rules/strict-approval-and-standards.md` (Rule 2).
+- Every existing and newly created view/drill-down (Albums, People, Categories, Vault, Stories, Documents) strictly adheres to the balanced 3-column layout, 22–24px Plus Jakarta Sans title, inline frosted capsule count badge, and floating `blur(20px)` glass container.
+
+---
+
+## 19. macOS Pure Liquid Glass Dual-Theme Design System & Semantic Glass Tokenization
+
+### Functionality Overview
+Elevates the entire application to an ultra-premium, cohesive **macOS Pure Liquid Glass** aesthetic with 100% theme adaptivity across Dark Titanium and Light Titanium modes:
+1. **Universal Semantic Glass Design Tokens**:
+   - Replaced fragile hardcoded dark values (`rgba(23, 23, 23, 0.85)`, `rgba(255, 255, 255, 0.08)`, `#ffffff`) with dual-mode CSS custom properties in `src/index.css`:
+     - `--glass-surface`: `rgba(18, 20, 29, 0.82)` (Dark) / `rgba(255, 255, 255, 0.78)` (Light)
+     - `--glass-border`: `rgba(255, 255, 255, 0.09)` (Dark) / `rgba(0, 0, 0, 0.08)` (Light)
+     - `--glass-border-highlight`: `rgba(255, 255, 255, 0.18)` (Dark) / `rgba(0, 0, 0, 0.16)` (Light)
+     - `--glass-pill-bg`: `rgba(255, 255, 255, 0.06)` (Dark) / `rgba(0, 0, 0, 0.05)` (Light)
+     - `--glass-pill-hover`: `rgba(255, 255, 255, 0.10)` (Dark) / `rgba(0, 0, 0, 0.09)` (Light)
+     - `--glass-pill-active`: `rgba(255, 255, 255, 0.15)` (Dark) / `rgba(0, 0, 0, 0.12)` (Light)
+     - `--glass-badge-bg`: `rgba(255, 255, 255, 0.07)` (Dark) / `rgba(0, 0, 0, 0.05)` (Light)
+     - `--glass-badge-border`: `rgba(255, 255, 255, 0.10)` (Dark) / `rgba(0, 0, 0, 0.08)` (Light)
+     - `--glass-action-bg`: `rgba(255, 255, 255, 0.10)` (Dark) / `rgba(0, 0, 0, 0.07)` (Light)
+     - `--glass-shadow`: Deep ambient glass shadow adapting seamlessly between dark drop shadows and crisp light elevation.
+2. **Elimination of Artificial Purple Gradients**:
+   - Eliminated repetitive AI purple gradients (`linear-gradient(135deg, #6366f1, #8b5cf6)`) across interactive buttons and slideshow actions.
+   - Standardized on monochromatic high-contrast frosted glass action pills (`var(--glass-action-bg)` with `var(--glass-action-border)` and `var(--text-primary)`), matching macOS Sequoia and native Apple Photos controls.
+3. **Atomic Center Identity Profile Unit (`PeopleView.tsx`)**:
+   - Fixed broken control placement where the person's avatar was stranded on the left while the title was centered.
+   - Unified the 38px circular portrait avatar, display name, VIP gold star, and inline frosted photo count badge into an atomic centered flex component (`flex: "0 1 auto"`), while maintaining clean flanking columns (`flex: 1` back button on the left, relationship selector and slideshow on the right).
+4. **App-Wide Cohesive Glass Architecture**:
+   - **`TitleBar.tsx`**: Liquid glass surface with 24px backdrop blur, tokenized search input pill.
+   - **`Sidebar.tsx`**: Liquid glass backdrop blur, active navigation pills using `var(--glass-pill-active)` and highlight border.
+   - **`AlbumsView.tsx`**: Detail header fully tokenized with liquid glass container, pill navigation, and monochromatic slideshow button.
+   - **`DocumentsView.tsx`**: Category pills, OCR search bar, and title bar tokenized with liquid glass.
+   - **`TrashView.tsx`**: Select All and Restore pills tokenized with liquid glass.
+   - **`VaultView.tsx`**: In-memory status badges and Privacy Shield toggle pills tokenized with liquid glass.
+   - **`App.tsx` Toolbar & Ribbon**: Timeline year ribbons and batch action toolbar converted to liquid glass pills.
+   - **`.glass-panel` Utility**: Refactored in `index.css` with `backdrop-filter: blur(20px)` and theme-reactive glass surface.
+
+### Functional Decision Points & Rationale
+- **Monochromatic Neutral Glass vs. Vibrant Colored Gradients**:
+  - *Rationale*: Vibrant colored gradients draw excessive visual weight away from personal photos. Neutral frosted glass provides high legibility, timeless luxury, and lets the photography take center stage.
+- **Atomic Profile Unit vs. Split Avatar-Title Layout**:
+  - *Rationale*: A person's avatar and name represent a single mental entity. Disconnecting them across negative space breaks visual association. Unifying them in the center creates an elegant profile masthead.
+- **Theme-Reactive Semantic Tokens vs. Hardcoded RGBA**:
+  - *Rationale*: Hardcoded `rgba(23, 23, 23, 0.85)` or `#ffffff` broke immediately when toggling to Light Titanium mode, resulting in unreadable white-on-white text or dark patches on light backgrounds. Semantic tokens switch automatically and smoothly via CSS custom properties.
+
+### Technical Touchpoints
+- `src/index.css`: Added dual-theme semantic glass tokens under `[data-theme="dark"]` and `[data-theme="light"]`; enhanced `.glass-panel`, `.glass-pill`, and `.glass-badge`.
+- `src/components/TitleBar.tsx`: Applied `var(--glass-surface)`, `var(--glass-border)`, and `var(--glass-pill-bg)`.
+- `src/components/Sidebar.tsx`: Applied `var(--bg-sidebar)` with `backdrop-filter: blur(24px)` and `var(--glass-pill-active)`.
+- `src/components/PeopleView.tsx`: Integrated atomic center profile unit; tokenized quick filters and slideshow action.
+- `src/components/AlbumsView.tsx`: Converted header to `var(--glass-surface)` and tokenized action pills.
+- `src/components/DocumentsView.tsx`: Converted header, category pills, and OCR search to liquid glass tokens.
+- `src/components/TrashView.tsx`: Converted header and action pills to liquid glass tokens.
+- `src/components/VaultView.tsx`: Converted header and action pills to liquid glass tokens.
+- `src/App.tsx`: Converted batch action toolbar and timeline year ribbon to liquid glass pills.
+
+### State & Lifecycle Impact
+- Zero database or API changes; universal CSS and presentation layer harmonization providing instant, flawless dark/light theme switching and cohesive visual luxury.
+
+---
+
+## 20. Dual-Theme Lightbox Studio Viewer (macOS Pure Liquid Glass)
+
+### Functionality Overview
+Eliminates the legacy hardcoded dark canvas in `Lightbox.tsx`, allowing the primary photo viewing modal to adapt instantaneously to the user's active theme:
+1. **Light Titanium Alabaster Glass Canvas**:
+   - In Light mode, Lightbox renders a soft, frosted alabaster glass backdrop (`var(--lightbox-backdrop): rgba(245, 247, 250, 0.96)` with `backdrop-filter: blur(28px)`).
+   - Top toolbar transforms into frosted white liquid glass (`var(--lightbox-toolbar-bg): rgba(255, 255, 255, 0.88)` with `blur(24px)`).
+   - Navigation chevrons render in high-contrast frosted pills (`var(--lightbox-nav-bg)` with `var(--lightbox-nav-border)`, `color: #0f172a`, and subtle elevation shadow).
+   - Photos display clean elevation drop shadows (`var(--shadow-lightbox)`) against the light studio canvas, matching Apple Photos on macOS Sequoia.
+2. **Dark Titanium Obsidian Glass Canvas**:
+   - In Dark mode, Lightbox retains a deep obsidian glass backdrop (`rgba(5, 6, 10, 0.96)` with `blur(28px)`), frosted dark toolbar (`rgba(14, 16, 23, 0.85)`), and crisp light chevrons.
+3. **Pill-Shaped Action Buttons & Floating Status Badges**:
+   - Standardized `Download`, `Print Ready`, `Like`, `Trash`, `Info`, and `Close` buttons with pill geometry (`borderRadius: var(--radius-full)`) and theme-reactive glass tokens (`var(--glass-pill-bg)`).
+   - Floating AI enhancement progress pill and thumbnail loading overlays adapt to `var(--glass-surface)` with `var(--text-primary)`.
+
+### Functional Decision Points & Rationale
+- **Alabaster Frosted Glass vs. Pure White**:
+  - *Problem*: A solid `#ffffff` background in light mode creates blinding glare when viewing darker photos.
+  - *Solution*: A frosted alabaster tint (`rgba(245, 247, 250, 0.96)`) maintains high-key elegance while softening contrast, allowing the photograph's dynamic range and colors to stand out.
+- **Dedicated Lightbox Tokens (`--lightbox-*`)**:
+  - *Rationale*: Modals and lightboxes require higher opacity (`~0.96`) than floating page headers (`~0.82`) to prevent distracting underlying grid text from bleeding through while preserving depth.
+
+### Technical Touchpoints
+- `src/index.css`: Defined `--lightbox-backdrop`, `--lightbox-toolbar-bg`, `--lightbox-nav-bg`, `--lightbox-nav-border`, and `--lightbox-nav-color` across `[data-theme="dark"]` and `[data-theme="light"]`.
+- `src/components/Lightbox.tsx`: Converted root backdrop, top toolbar, navigation buttons, status pill, loading overlay, and action buttons to liquid glass tokens.
 
 
 
 
+---
 
+## 21. Minimalist Profile Masthead, Single-Line Multi-Decade Timeline Ribbon & Streamlined Actions
 
+### Functionality Overview
+1. **Redundant Header Badge Removal & Centered Masthead Focus**:
+   - Removed the redundant `[ 2 photos • 2021 ]` capsule badge from the center header of the person photo drill-down view (`PeopleView.tsx`).
+   - The center masthead is now clean, uncluttered, and focused purely on personal identity: `[ 38px Circular Avatar ] [ Display Name ] [ ★ VIP Toggle ]`.
+2. **Single-Line Multi-Decade Timeline Ribbon (20-Year Non-Wrapping Architecture)**:
+   - In collections spanning multiple decades (tested up to a 20-year span, 2005–2024), year filter chips previously wrapped across 3–4 stacked lines when using `flexWrap: "wrap"`, severely pushing photos down the screen.
+   - Converted the quick filter row into an elegant, single-line horizontal scrolling ribbon:
+     - `overflowX: "auto"`, `whiteSpace: "nowrap"`, `scrollbarWidth: "none"`, `-ms-overflow-style: "none"`, `WebkitOverflowScrolling: "touch"`.
+     - `onWheel` event listener converting vertical mouse scroll wheel input to horizontal scrolling (`scrollLeft += deltaY`), providing frictionless navigation across decades on desktop mouse/trackpad.
+     - Each filter chip has `flexShrink: 0`, ensuring chips never squish or wrap regardless of how many years are present.
+3. **Streamlined Relationship Action**:
+   - Replaced the bulky "Relationship" heading with an interactive, compact icon pill `[ HeartHandshake / Users ] [ Relationship Name ] [ ChevronDown ]`.
+   - Tooltip: `"Click to change relationship"`.
+   - Polished the Slideshow action pill to a clean, understated monochromatic glass button.
 
+### Functional Decision Points & Rationale
+- **Badge Removal vs. Retention**:
+   - *Problem*: Having `[ 2 photos • 2021 ]` directly above the year filter chips (`All`, `Favorites`, `2021`, etc.) created visual duplication and clutter in the header.
+   - *Solution*: Removed the badge entirely, letting the timeline filter ribbon indicate the active year scope and photo count dynamically.
+- **Horizontal Scrolling Ribbon vs. Multi-Line Wrapping**:
+   - *Problem*: As users accumulate photos of family members over 15–20 years, wrapped chips occupy 120px+ of vertical space, breaking the layout.
+   - *Solution*: A fixed 36px height horizontal scrolling ribbon keeps the interface compact, clean, and consistent across all screens, with native mouse-wheel delta translation.
+
+### Technical Touchpoints
+- `src/components/PeopleView.tsx`: Removed badge from header masthead; removed unused `yearsRange` computation; added horizontal scroll ribbon container with `onWheel` delta handler and `scrollbarWidth: "none"`.
+- `data/database/securephotos.db`: Seeded 19 historical sample photos spanning 2005–2024 linked to Akriti (`person_id = 32`) to demonstrate and validate multi-decade horizontal scrolling.
+
+---
+
+## 22. Hybrid Multi-Year & Continuous Range Timeline Architecture (Shift-Click, Cmd-Click, Range Popover & Edge Fade Chevrons)
+
+### Functionality Overview
+To eliminate multi-decade timeline scrolling fatigue and provide fluid multi-year analysis:
+1. **Dynamic Edge Fade & Floating Scroll Chevrons (`ChevronLeft` / `ChevronRight`)**:
+   - The timeline ribbon monitors container scroll position (`scrollLeft`, `scrollWidth`, `clientWidth`).
+   - When earlier years overflow to the left or later years overflow to the right, floating frosted liquid glass chevron buttons (`ChevronLeft` / `ChevronRight`) dynamically appear on the edges with smooth 240px jump scrolling.
+   - Smooth bidirectional CSS gradient masks (`linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent)`) fade overflowing items into the background, providing immediate visual affordance that more decades exist.
+2. **Native Power-User Multi-Selection & Range Selection**:
+   - **Single-Click**: Selects that individual year (or toggles back to 'All' if already active).
+   - **Shift + Click (Continuous Range)**: Clicking year $A$ and then Shift-clicking year $B$ selects all intermediate years inclusive ($A \dots B$).
+   - **Ctrl / Cmd + Click (Disjoint Multi-Select)**: Toggles non-contiguous years (e.g. comparing 2018 and 2024).
+   - Selected year chips glow with `var(--glass-pill-active)` and `var(--glass-border-highlight)` with elevated drop shadow.
+3. **`[ 📅 Range ▾ ]` Frosted Popover Capsule**:
+   - A dedicated pill placed directly beside `Favorites`.
+   - **Dynamic Summary State**: When a multi-year range is active, the pill dynamically reflects the span (e.g. `📅 2012–2020` or `📅 3 Yrs`) with an inline one-click `✕` clear button.
+   - **Popover Menu Features**:
+     - **Quick Presets**: `"Last 3 Yrs"`, `"Last 5 Yrs"`, `"2020s"`, `"2010s"`, `"2000s"`.
+     - **Custom Span Steppers**: Chronologically sorted `From: [ YYYY ▾ ]` to `To: [ YYYY ▾ ]` with `"Apply Range"`.
+     - Dismissable on outside click or Escape.
+4. **Valid Sample Photo Proxies & Zero-Broken-Image Policy**:
+   - Sample historical photos in `securephotos.db` point `thumbnail_path` and `preview_path` to valid local WebP proxies, eliminating broken image placeholders during multi-decade exploration.
+
+### Functional Decision Points & Rationale
+- **Hybrid Approach (Keyboard Shortcuts + Visual Popover)**:
+   - *Rationale*: Power users expect desktop conventions (Shift-click range and Cmd-click multi-select), while mouse-only or touch users need a 100% discoverable UI affordance (`[ 📅 Range ▾ ]` popover). Combining both delivers unmatched versatility without clutter.
+- **Pinned Controls Architecture & Zero-Clipping Popover**:
+   - *Problem*: In CSS, any parent with `overflow-x: auto` and `mask-image` creates an implicit vertical clipping box (`overflow-y: auto/hidden`), rendering any absolute dropdown popovers invisible inside the 36px ribbon height. Furthermore, scrolling years pushed `All` and `Favorites` off-screen.
+   - *Solution*: Separated the toolbar into two distinct zones:
+     1. **Pinned Filter Group**: Contains `All`, `Favorites`, and the `[ 📅 Range ▾ ]` popover button in an unclipped (`overflow: visible`, `zIndex: 100`) container.
+     2. **Decoupled Scrollable Years Track**: Connected via a subtle vertical glass separator, allowing timeline years to scroll freely while keeping primary controls and dropdown menus 100% visible at all times.
+
+- `src/components/PeopleView.tsx`: Integrated `useRef` ribbon tracking, `checkRibbonScroll`, `scrollRibbon`, `handleYearClick`, Shift/Ctrl range logic, dynamic `rangeSummary`, pinned filter group, and `range-popover-container`.
+- `src/App.tsx`: Replaced technical engineering jargon (`"8K ULTRA Optimization: Processing SAMPLE_SPAN_2024.jpg (19/19) • 100%"`) and idle placeholder with clean, user-friendly copy (`"Optimizing photo quality (N of Total)"` / `"Finishing enhancements..."` with hover tooltip for active filename) and theme-reactive glass tokens.
+- `data/database/securephotos.db`: Updated `thumbnail_path` and `preview_path` for `SAMPLE_SPAN_%` photos.
+
+---
+
+## 23. Decoupled Dashboard, Cinema Stories Hub & Dual-Theme Header Harmonization
+
+### Functionality Overview
+Resolves view duplication and aligns the workspace with user-centric media workflows, strict dual-theme liquid glass standards, and intuitive sidebar navigation:
+1. **Default Opening Screen & Logical Tab Hierarchy**:
+   - The opening application screen defaults to **Photos** (`activeTab: "photos"`), placing personal photography front-and-center upon launch rather than an analytical dashboard.
+   - **Sidebar Hierarchy Reordering**:
+     1. 📸 **Photos** (Primary media collection)
+     2. ✨ **Stories** (Curated milestone reels & slideshows)
+     3. 📁 **Albums** (User & smart albums)
+     4. 👥 **People** (Faces & close-ones tagging)
+     5. 📄 **Documents** (OCR receipts & invoices)
+     6. 🔒 **Encrypted Vault** (Zero-trust private safe)
+     --- *(Visual Glass Divider)*
+     7. 📊 **Dashboard** (Storage allocation & photographic intelligence)
+     8. 🗑️ **Trash** (Soft-delete recovery)
+     9. ⚙️ **Settings** (Preferences, runtime health & Engine Architecture / About)
+2. **Strict Dual-Theme Header Rule Enforcement (`var(--glass-surface)`)**:
+   - Fixed a critical theming bug where floating headers used hardcoded `rgba(23, 23, 23, 0.85)` with `color: var(--text-primary)`, creating a pitch-black box with dark unreadable text in Light Titanium mode.
+   - Formally updated `.agents/rules/strict-approval-and-standards.md` (Rule 2) and `.agents/skills/modern-web-ui/SKILL.md` (Section 4): **Strictly forbids** hardcoded `rgba(23, 23, 23, ...)` in headers. All headers must strictly consume theme-reactive `var(--glass-surface)`, `border: 1px solid var(--glass-border)`, `boxShadow: var(--glass-shadow)`, and `var(--glass-badge-bg)`.
+3. **Contextual User Media Storage Footprint ([DashboardView.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/DashboardView.tsx))**:
+   - Replaced internal engineering metrics ("On-Device AI Models & Weights: 606 MB", "SQLite Database & Vector Indices: 668 KB", "High-Resolution Previews") with contextual, user-centric categories:
+     - 📸 **Photos & Images**
+     - 🎥 **Videos**
+     - ✨ **Curated Stories & Memories**
+     - ⚡ **Thumbnails & Instant Cache** (with explanatory note that cache preserves 60fps scrolling without re-reading disks).
+4. **Relocation of Engine Architecture & Security Telemetry ([SettingsView.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/SettingsView.tsx))**:
+   - Moved the technical "Engine Architecture & Security Telemetry" cards (SQLite Vector Engine, Zero-Trust AES-256-GCM Cryptography, and Local SLM Intelligence) out of the user dashboard and into **Settings $\to$ Section 5: Engine Architecture & Security Specifications (About)**.
+5. **Unified Photographic Intelligence & Memory Velocity on Dashboard**:
+   - Integrated library-wide photographic analytics directly into `DashboardView.tsx`:
+     - **Frequent Companions**: Top captured people with avatars, relationship badges, and quick jump to People tab.
+     - **Lighting & Solar Rhythms**: Distribution across Morning, Afternoon, Golden Hour, and Night.
+     - **Optics & Gear Profile**: Cameras and phones extracted from EXIF metadata.
+     - **Archive Span & Velocity**: Chronological moments captured across decades and years.
+6. **Dedicated Cinema Stories Studio ([StoriesView.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/StoriesView.tsx))**:
+   - Focuses purely on AI nostalgia reels, Ken Burns spotlight previews, vibe soundtracks, milestone collections ("Through the Years", "Year in Review"), and automated montage playback.
+
+### Functional Decision Points & Rationale
+- **Photos-First Launch vs Dashboard Landing**:
+  - *Rationale*: Users launch a photo manager to see their photographs, not a disk pie chart. Standardizing on `activeTab: "photos"` mirrors industry-leading native desktop applications (Apple Photos, Lightroom).
+- **Contextual Media Breakdown vs Technical Model Footprint**:
+  - *Rationale*: End users care about how many gigabytes their photos and videos take up. Showing on-device neural model sizes creates confusion and clutter. Internal architecture specs belong in the About/Settings area.
+- **Rule Codification Against Hardcoded Dark Header Values**:
+  - *Rationale*: Hardcoded `rgba(23, 23, 23, 0.85)` in skills and rules caused repeated light-mode visual breakage. Codifying `var(--glass-surface)` in both rule and skill documentation guarantees permanent dual-theme consistency across all current and future views.
+
+### Technical Touchpoints
+- `.agents/rules/strict-approval-and-standards.md`: Updated Rule 2 to enforce `var(--glass-surface)` and forbid static dark header colors.
+- `.agents/skills/modern-web-ui/SKILL.md`: Updated Section 4 container specifications with dual-theme semantic glass tokens.
+- `src/store/useAppStore.ts`: Updated initial state to `activeTab: "photos"`.
+- `src/components/Sidebar.tsx`: Reordered navigation items logically and added a subtle glass divider before Dashboard.
+- `src/components/DashboardView.tsx`: Applied dual-theme header tokens, contextual media storage footprint, and photographic intelligence bento cards.
+- `src/components/SettingsView.tsx`: Added Section 5 (Engine Architecture & Security Specifications / About).
+- `src/components/StoriesView.tsx`: Applied dual-theme header tokens and dedicated cinema montage layout.
+- `engine/api/stories.py` & `engine/services/stories_service.py`: Added `GET /api/stories/insights` and `_safe_float` unpack for SQLite packed floats.
+
+### State & Lifecycle Impact
+- Zero database schema migrations required; 100% theme adaptive, instantaneous view transitions, and full test suite passing (`53 passed in pytest`, `tsc --noEmit 0 errors`).
+
+---
+
+## 24. Universal Liquid Glass Header Harmonization & Decoupled Category Ribbon Architecture
+
+### Functionality Overview
+Eliminates remaining blunt, flat row headers across root views, achieving 100% app-wide visual harmony with the macOS Liquid Glass design system, and decouples document tags into an extensible scrolling ribbon:
+1. **Liquid Glass Floating Header for Albums Root ([AlbumsView.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/AlbumsView.tsx))**:
+   - Replaced the plain, blunt `Albums (3)` row and rectangular blue button with the Section 4 compliant floating liquid glass toolbar:
+     - **Container**: Floating rounded bar (`var(--glass-surface)`, `blur(24px)`, `border: 1px solid var(--glass-border)`, `borderRadius: var(--radius-lg)`, `boxShadow: var(--glass-shadow)`).
+     - **Balanced 3-Column Layout**:
+       - Left (`flex: 1`): Indicator capsule `[ 📁 Album Collections ]`.
+       - Center (`flex: 0 1 auto`): Modern display title `Albums` (22px Plus Jakarta Sans, `fontWeight: 800`) with inline frosted count badge `[ N Albums ]` along the horizontal baseline.
+       - Right (`flex: 1`): Pill action button `+ New Album` (`var(--radius-full)`).
+2. **Liquid Glass Floating Header for Photos Root ([App.tsx](file:///c:/Sumit/Code/SecurePhotos/src/App.tsx))**:
+   - Replaced the flat row with bottom line with the Section 4 compliant floating liquid glass toolbar:
+     - **Container**: Floating rounded bar (`var(--glass-surface)`, `blur(24px)`, `border: 1px solid var(--glass-border)`, `borderRadius: var(--radius-lg)`, `boxShadow: var(--glass-shadow)`).
+     - **Balanced 3-Column Layout**:
+       - Left (`flex: 1`): Live AI optimization progress pill `[ ⚡ Optimizing photo quality (N of Total) ]` when active, or `[ 📸 Library Collection ]` status badge.
+       - Center (`flex: 0 1 auto`): Modern display title `Photos` (22px Plus Jakarta Sans, `fontWeight: 800`) with inline frosted count badge `[ N photos ]`.
+       - Right (`flex: 1`): Batch action pills when items are selected (`Collage`, `Download`, `Add to Album`, `Vault`, `Trash`, `Clear`), or `Import Media` and `Sync` pills when selection is idle.
+3. **Decoupled Category Ribbon in Documents ([DocumentsView.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/DocumentsView.tsx))**:
+   - **Header Redesign**: Removed cramped category pills from inside the 3-column header bar. Replaced with `[ 📄 OCR Document Vault ]` indicator on the left, centered 22px Plus Jakarta Sans title with inline capsule count badge, and pill OCR search input on the right.
+   - **Dedicated Horizontal Scrolling Ribbon**: Positioned below the header, modeled after the multi-decade ribbon in People view:
+     - Single-line horizontal scrolling (`overflowX: "auto"`, `whiteSpace: "nowrap"`, `scrollbarWidth: "none"`).
+     - Mouse-wheel delta translation (`scrollLeft += deltaY`) on `onWheel` listener.
+     - Extensible tags: `All Documents`, `Receipts & Bills`, `Passports & IDs`, `Tax & Financial`, `Medical & Health`, `Legal & Contracts`, `Warranties & Manuals`.
+     - Supports unbounded category expansion with zero layout shifts or vertical clutter.
+4. **Liquid Glass Floating Header for People & Family Root ([PeopleView.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/PeopleView.tsx))**:
+   - Replaced the blunt, flat `People & Family` header row and rectangular buttons with the Section 4 compliant floating liquid glass toolbar:
+     - **Container**: Floating rounded bar (`var(--glass-surface)`, `blur(24px)`, `border: 1px solid var(--glass-border)`, `borderRadius: var(--radius-lg)`, `boxShadow: var(--glass-shadow)`).
+     - **Balanced 3-Column Layout**:
+       - Left (`flex: 1`): Indicator capsule `[ 👥 Face Intelligence ]`.
+       - Center (`flex: 0 1 auto`): Modern display title `People & Family` (22px Plus Jakarta Sans, `fontWeight: 800`) with inline frosted count badge `[ N People ]` along the horizontal baseline.
+       - Right (`flex: 1`): Full pill action buttons for `↺ Reset Faces` and `↻ Scan Faces` (`var(--radius-full)`, `var(--glass-pill-bg)`).
+
+### Functional Decision Points & Rationale
+- **Universal Floating Glass Standard Across All Views**:
+  - *Problem*: Having floating liquid glass headers in drill-downs (People Detail, Album Detail, Vault) while root views (Photos, Albums, People) used blunt flat border-bottom rows created jarring visual inconsistency.
+  - *Solution*: Universalizing the floating 3-column liquid glass bar across every primary view makes the application feel cohesive, finished, and unmistakably premium.
+- **Decoupling Document Tags from the Header Container**:
+  - *Problem*: Jamming category tags inside the left column of the 3-column header squeezed the center title off-center and left no room for additional tags as document categorization grows.
+  - *Solution*: Decoupling tags into a dedicated horizontal scrolling ribbon preserves the clean 3-column header balance while allowing the taxonomy of labels to grow infinitely without vertical space penalty.
+
+### Technical Touchpoints
+- `src/components/AlbumsView.tsx`: Upgraded root albums gallery header to floating 3-column liquid glass toolbar.
+- `src/App.tsx`: Upgraded root photos gallery header to floating 3-column liquid glass toolbar.
+- `src/components/DocumentsView.tsx`: Upgraded header to balanced 3-column liquid glass toolbar and added separate horizontal scrolling category ribbon with `onWheel` translation.
+- `src/components/PeopleView.tsx`: Upgraded root people gallery header to balanced 3-column floating liquid glass toolbar with baseline capsule count and pill action buttons.
+
+### State & Lifecycle Impact
+- Zero database or backend API modifications; pure presentation layer elevation adhering strictly to Rule 2 and Section 4 of `modern-web-ui`.
+
+---
+
+## 25. Test Data Cleanup, Missing-File Optimization Guard & Photos Timeline Scroll Chevrons
+
+### Functionality Overview
+1. **Purge of Synthetic Test Photos from Database**:
+   - Removed 19 leftover `SAMPLE_SPAN_*` dummy photo records that were inserted during multi-year timeline testing. These records had `is_optimized = 0` and non-existent `filepath` values (`sample_2005_IMG_14.jpg` etc.), causing the background 8K optimization worker to endlessly attempt processing on phantom files.
+   - Database now contains only 22 genuine user photos.
+2. **Missing-File Optimization Guard ([photos.py](file:///c:/Sumit/Code/SecurePhotos/engine/api/photos.py))**:
+   - Added an `else` branch in `run_background_optimization()` for the `if target_file.exists()` check. When a photo's `filepath` does not exist on disk, the worker now logs a warning and marks it `is_optimized = 1` instead of silently skipping and leaving it in an infinite retry loop.
+3. **Photos Timeline Scroll Chevrons with Edge Fade Masks ([App.tsx](file:///c:/Sumit/Code/SecurePhotos/src/App.tsx))**:
+   - Upgraded the Photos timeline ribbon from a flat `overflowX: auto` strip (no scroll indicators) to a structured layout matching the People Detail year ribbon:
+     - **Left Pinned Group**: `TIMELINE:` label and `All` pill permanently visible, separated from scrollable track by a glass divider.
+     - **Scrollable Track**: `ref={timelineRibbonRef}` with `onScroll` and `onWheel` (`scrollLeft += deltaY`) handlers for smooth mouse-wheel horizontal scrolling.
+     - **Left & Right Chevrons**: Frosted glass circular buttons (`ChevronLeft` / `ChevronRight`) that appear dynamically when the track overflows in either direction.
+     - **Edge Fade Masks**: `maskImage: linear-gradient(...)` / `WebkitMaskImage` applied to smoothly fade year chips at scroll boundaries.
+
+### Functional Decision Points & Rationale
+- **Why mark missing files as optimized?**: Without this guard, any orphan database entry with a non-existent `filepath` would cause the optimization worker to spin through its entire queue on every application launch, wasting CPU cycles and showing misleading progress banners to the user.
+- **Why add chevrons to the Photos timeline?**: The People Detail view already had this scroll navigation pattern. The Photos timeline had many year pills (2005–2024) that extended beyond the visible area with no affordance for discovering off-screen chips. The chevrons provide consistent UX parity across both ribbons.
+
+### Technical Touchpoints
+- `data/database/securephotos.db`: Purged 19 `SAMPLE_SPAN_*` rows via `DELETE FROM photos WHERE filename LIKE 'SAMPLE_SPAN_%'`.
+- `engine/api/photos.py`: Added `else` branch in `run_background_optimization()` to mark missing-file entries as `is_optimized = 1`.
+- `src/App.tsx`: Added `useRef`, `useCallback`, scroll state (`canScrollLeft`, `canScrollRight`), `checkTimelineScroll()`, `scrollTimeline()`, `ChevronLeft`/`ChevronRight` imports, glass divider, edge fade masks, and chevron buttons.
+
+### State & Lifecycle Impact
+- Eliminates phantom optimization loops and misleading progress banners caused by orphan database entries.
+- Provides scroll navigation parity between Photos and People Detail timeline ribbons.
+- Full test suite: 53/53 passed. TypeScript: 0 errors.
 
