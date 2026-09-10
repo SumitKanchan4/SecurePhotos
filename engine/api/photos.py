@@ -193,6 +193,14 @@ async def run_background_optimization():
                             await conn.commit()
                         finally:
                             await conn.close()
+                    else:
+                        logger.warning(f"Target file does not exist on disk, marking optimized: {filepath}")
+                        conn = await get_db_connection()
+                        try:
+                            await conn.execute("UPDATE photos SET is_optimized = 1 WHERE id = ?;", (photo_id,))
+                            await conn.commit()
+                        finally:
+                            await conn.close()
 
                 except Exception as err:
                     logger.warning(f"Could not optimize photo {filename}: {err}")
