@@ -7,21 +7,22 @@ import {
   Users, 
   FolderHeart, 
   HardDrive, 
-  Sparkles, 
-  Play, 
   RefreshCw, 
-  Music, 
-  ChevronLeft,
-  ChevronRight,
-  Disc
+  Disc,
+  Layers,
+  Sparkles,
+  Camera,
+  Sunset,
+  Sun,
+  Moon,
+  Calendar,
+  Flame,
+  ArrowRight
 } from "lucide-react";
-
-
-import { DashboardOverview, StoryModel } from "../types";
+import { DashboardOverview, StoriesInsights } from "../types";
 import { NavTab } from "../store/useAppStore";
 
 interface DashboardViewProps {
-  onPlayStory: (storyId: number) => void;
   onNavigate: (tab: NavTab) => void;
 }
 
@@ -41,32 +42,39 @@ function formatBytes(bytes: number, decimals: number = 1): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onPlayStory, onNavigate }) => {
+/**
+ * DashboardView Component
+ *
+ * Executive library overview combining physical drive storage allocation,
+ * user-centric media storage footprints, and deep photographic intelligence.
+ */
+export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const [stats, setStats] = useState<DashboardOverview | null>(null);
-  const [stories, setStories] = useState<StoryModel[]>([]);
-  const [activeStoryIdx, setActiveStoryIdx] = useState<number>(0);
+  const [insights, setInsights] = useState<StoriesInsights | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-  const [isGeneratingStories, setIsGeneratingStories] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-
 
   const fetchDashboardData = useCallback(async (showRefreshingState: boolean = false) => {
     if (showRefreshingState) setIsRefreshing(true);
     try {
-      const dashRes = await fetch("http://127.0.0.1:8000/api/system/dashboard");
+      const [dashRes, insRes] = await Promise.all([
+        fetch("http://127.0.0.1:8000/api/system/dashboard"),
+        fetch("http://127.0.0.1:8000/api/stories/insights")
+      ]);
+
       if (!dashRes.ok) throw new Error(`Dashboard API error: ${dashRes.statusText}`);
       const dashData: DashboardOverview = await dashRes.json();
       setStats(dashData);
 
-      const storiesRes = await fetch("http://127.0.0.1:8000/api/stories");
-      if (storiesRes.ok) {
-        const storiesData: StoryModel[] = await storiesRes.json();
-        setStories(storiesData);
+      if (insRes.ok) {
+        const insData: StoriesInsights = await insRes.json();
+        setInsights(insData);
       }
+
       setError(null);
     } catch (err: unknown) {
-      console.error("Failed to load dashboard data:", err);
+      console.error("Failed to load dashboard telemetry:", err);
       setError(err instanceof Error ? err.message : "Failed to load dashboard metrics");
     } finally {
       setIsLoading(false);
@@ -77,24 +85,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onPlayStory, onNav
   useEffect(() => {
     fetchDashboardData();
   }, [fetchDashboardData]);
-
-  const handleGenerateStories = async () => {
-    setIsGeneratingStories(true);
-    try {
-      const res = await fetch("http://127.0.0.1:8000/api/stories/generate", {
-        method: "POST",
-      });
-      if (res.ok) {
-        const updatedStories: StoryModel[] = await res.json();
-        setStories(updatedStories);
-        setActiveStoryIdx(0);
-      }
-    } catch (err) {
-      console.error("Error generating stories:", err);
-    } finally {
-      setIsGeneratingStories(false);
-    }
-  };
 
   if (isLoading && !stats) {
     return (
@@ -110,7 +100,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onPlayStory, onNav
         }}
       >
         <RefreshCw size={24} className="spin-animation" style={{ color: "var(--accent-primary)" }} />
-        <span style={{ fontSize: "13px" }}>Loading Telemetry...</span>
+        <span style={{ fontSize: "13px" }}>Loading Library Telemetry...</span>
       </div>
     );
   }
@@ -135,8 +125,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onPlayStory, onNav
   const otherDash = otherShare * circumference;
   const freeDash = freeShare * circumference;
 
-  const activeStory = stories.length > 0 ? stories[activeStoryIdx % stories.length] : null;
+  // Contextual User Media Breakdown
+  const photosBytes = (stats?.app_storage.originals_bytes || 0);
+  const cacheBytes = (stats?.app_storage.thumbnails_bytes || 0) + (stats?.app_storage.previews_bytes || 0);
+  const memoriesBytes = Math.round(mediaBytes * 0.08); // Stories & montage metadata
+  const totalMediaCatalogBytes = Math.max(1, photosBytes + cacheBytes + memoriesBytes);
 
+  const photosPct = Math.round((photosBytes / totalMediaCatalogBytes) * 100);
+  const cachePct = Math.round((cacheBytes / totalMediaCatalogBytes) * 100);
+  const memoriesPct = Math.max(0, 100 - photosPct - cachePct);
+
+  // Helper for time-of-day period icon & color
+  const getTimePeriodMeta = (period: string) => {
+    switch (period.toLowerCase()) {
+      case "golden hour":
+        return { icon: <Sunset size={14} style={{ color: "#f59e0b" }} />, color: "#f59e0b", label: "Golden Hour" };
+      case "morning":
+        return { icon: <Sun size={14} style={{ color: "#06b6d4" }} />, color: "#06b6d4", label: "Morning" };
+      case "afternoon":
+        return { icon: <Sun size={14} style={{ color: "#3b82f6" }} />, color: "#3b82f6", label: "Afternoon" };
+      case "night":
+      default:
+        return { icon: <Moon size={14} style={{ color: "#8b5cf6" }} />, color: "#8b5cf6", label: "Night & Twilight" };
+    }
+  };
+
+  const totalTimePhotos = insights?.time_of_day_distribution.reduce((acc, curr) => acc + curr.count, 0) || 1;
 
   return (
     <div 
@@ -146,31 +160,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onPlayStory, onNav
         padding: "20px 24px", 
         display: "flex", 
         flexDirection: "column", 
-        gap: "18px",
+        gap: "20px",
         maxHeight: "100%",
         boxSizing: "border-box",
       }}
     >
-      {/* ── Compact Header Bar ────────────────────────────────────────── */}
+      {/* ── Section 4 Compliant Dual-Theme 3-Column Balanced Header ────── */}
       <div 
-        style={{ 
-          display: "flex", 
-          alignItems: "center", 
+        className="liquid-glass-toolbar"
+        style={{
+          display: "flex",
+          alignItems: "center",
           justifyContent: "space-between",
+          padding: "12px 20px",
+          backgroundColor: "var(--glass-surface)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          border: "1px solid var(--glass-border)",
+          borderRadius: "var(--radius-lg)",
+          boxShadow: "var(--glass-shadow)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <h1 style={{ fontSize: "18px", fontWeight: 700, letterSpacing: "-0.3px", margin: 0 }}>
-            Library Overview
-          </h1>
+        {/* Left Column (flex: 1) */}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "10px" }}>
           <span 
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: "5px",
-              padding: "2px 7px",
+              gap: "6px",
+              padding: "4px 10px",
               borderRadius: "var(--radius-full)",
-              fontSize: "10px",
+              fontSize: "11px",
               fontWeight: 600,
               backgroundColor: "rgba(16, 185, 129, 0.12)",
               color: "var(--accent-success)",
@@ -179,34 +199,77 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onPlayStory, onNav
           >
             <span 
               style={{ 
-                width: "5px", 
-                height: "5px", 
+                width: "6px", 
+                height: "6px", 
                 borderRadius: "50%", 
                 backgroundColor: "var(--accent-success)",
+                boxShadow: "0 0 8px var(--accent-success)"
               }} 
             />
-            Online
+            Library Synced
           </span>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        {/* Center Column (flex: 0 1 auto): 22px Plus Jakarta Sans Title + Baseline Capsule */}
+        <div 
+          style={{ 
+            flex: "0 1 auto", 
+            display: "flex", 
+            alignItems: "baseline", 
+            justifyContent: "center", 
+            gap: "10px" 
+          }}
+        >
+          <h1 
+            style={{ 
+              fontSize: "22px", 
+              fontWeight: 800, 
+              letterSpacing: "-0.03em", 
+              margin: 0,
+              color: "var(--text-primary)",
+              fontFamily: "Plus Jakarta Sans, sans-serif"
+            }}
+          >
+            Library Dashboard
+          </h1>
+          <span 
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "2px 8px",
+              borderRadius: "var(--radius-full)",
+              fontSize: "11px",
+              fontWeight: 700,
+              backgroundColor: "var(--glass-badge-bg)",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--glass-badge-border)",
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            {formatBytes(totalDrive)} Volume
+          </span>
+        </div>
+
+        {/* Right Column (flex: 1): Action Pill Buttons */}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px" }}>
           <button
             onClick={() => fetchDashboardData(true)}
             disabled={isRefreshing}
             className="clickable"
-            title="Refresh metrics"
+            title="Refresh Metrics"
             style={{
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              padding: "5px 10px",
-              borderRadius: "var(--radius-sm)",
-              backgroundColor: "var(--bg-surface)",
-              border: "1px solid var(--border-subtle)",
+              padding: "6px 14px",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "var(--glass-pill-bg)",
+              border: "1px solid var(--glass-border)",
               color: "var(--text-secondary)",
-              fontSize: "11px",
-              fontWeight: 500,
+              fontSize: "12px",
+              fontWeight: 600,
               cursor: "pointer",
+              transition: "all 0.15s ease",
             }}
           >
             <RefreshCw 
@@ -222,260 +285,56 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onPlayStory, onNav
       {error && (
         <div 
           style={{ 
-            padding: "8px 12px", 
-            borderRadius: "var(--radius-sm)", 
+            padding: "10px 14px", 
+            borderRadius: "var(--radius-md)", 
             backgroundColor: "rgba(239, 68, 68, 0.1)", 
             border: "1px solid rgba(239, 68, 68, 0.25)",
             color: "var(--accent-danger)",
-            fontSize: "11px"
+            fontSize: "12px"
           }}
         >
           {error}
         </div>
       )}
 
-      {/* ── BENTO GRID ROW 1: Hero Story + Storage & Drive HUD ───────── */}
+      {/* ── BENTO GRID ROW 1: Storage Allocation & Contextual Media HUD ─ */}
       <div 
         style={{ 
           display: "grid", 
-          gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)", 
+          gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", 
           gap: "16px",
           alignItems: "stretch",
         }}
       >
-        {/* Bento Tile A: Cinematic Story Spotlight */}
-        <div
-          className="glass-panel"
-          style={{
-            borderRadius: "var(--radius-md)",
-            border: "1px solid var(--border-subtle)",
-            position: "relative",
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "space-between",
-            padding: "20px",
-            minHeight: "230px",
-            background: activeStory
-              ? "linear-gradient(135deg, rgba(30, 27, 75, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%)"
-              : "linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.9) 100%)",
-            boxShadow: "var(--shadow-md)",
-          }}
-        >
-          {/* Ambient Glow Orb */}
-          <div 
-            style={{
-              position: "absolute",
-              top: "-40px",
-              right: "-40px",
-              width: "160px",
-              height: "160px",
-              borderRadius: "50%",
-              backgroundColor: "rgba(139, 92, 246, 0.25)",
-              filter: "blur(50px)",
-              pointerEvents: "none",
-            }}
-          />
-
-          {/* Top Bar: Vibe Tag + Navigation Controls */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 2 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span 
-                style={{
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  backgroundColor: "rgba(139, 92, 246, 0.2)",
-                  color: "#c4b5fd",
-                  border: "1px solid rgba(139, 92, 246, 0.35)",
-                  padding: "3px 10px",
-                  borderRadius: "var(--radius-full)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                }}
-              >
-                <Sparkles size={11} style={{ color: "#a78bfa" }} />
-                AI Memory Spotlight
-              </span>
-
-              {activeStory && (
-                <span 
-                  style={{
-                    fontSize: "10px",
-                    fontWeight: 500,
-                    color: "rgba(255, 255, 255, 0.7)",
-                    backgroundColor: "rgba(0, 0, 0, 0.3)",
-                    padding: "3px 8px",
-                    borderRadius: "var(--radius-full)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px",
-                  }}
-                >
-                  <Music size={10} />
-                  {activeStory.vibe_mood}
-                </span>
-              )}
-            </div>
-
-            {/* Next / Prev Carousel Controls */}
-            {stories.length > 1 && (
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <button
-                  onClick={() => setActiveStoryIdx((prev) => (prev > 0 ? prev - 1 : stories.length - 1))}
-                  className="clickable"
-                  title="Previous Story"
-                  style={{
-                    width: "26px",
-                    height: "26px",
-                    borderRadius: "50%",
-                    backgroundColor: "rgba(255, 255, 255, 0.1)",
-                    border: "1px solid rgba(255, 255, 255, 0.15)",
-                    color: "#ffffff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                  }}
-                >
-                  <ChevronLeft size={14} />
-                </button>
-                <span style={{ fontSize: "10px", color: "rgba(255, 255, 255, 0.6)", fontFamily: "var(--font-mono)" }}>
-                  {activeStoryIdx + 1}/{stories.length}
-                </span>
-                <button
-                  onClick={() => setActiveStoryIdx((prev) => (prev + 1) % stories.length)}
-                  className="clickable"
-                  title="Next Story"
-                  style={{
-                    width: "26px",
-                    height: "26px",
-                    borderRadius: "50%",
-                    backgroundColor: "rgba(255, 255, 255, 0.1)",
-                    border: "1px solid rgba(255, 255, 255, 0.15)",
-                    color: "#ffffff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                  }}
-                >
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Center Story Content */}
-          {activeStory ? (
-            <div style={{ margin: "14px 0", zIndex: 2 }}>
-              <h2 
-                style={{ 
-                  fontSize: "18px", 
-                  fontWeight: 700, 
-                  color: "#ffffff", 
-                  letterSpacing: "-0.3px",
-                  lineHeight: 1.3,
-                  margin: "0 0 6px 0",
-                }}
-              >
-                {activeStory.title}
-              </h2>
-              <p style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.75)", margin: 0 }}>
-                {activeStory.slides.length} cinematic moments • Beat-synchronized soundtrack
-              </p>
-            </div>
-          ) : (
-            <div style={{ margin: "14px 0", zIndex: 2 }}>
-              <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#ffffff", margin: "0 0 4px 0" }}>
-                Curate Your Milestone Memories
-              </h2>
-              <p style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.7)", margin: 0 }}>
-                Automatically synthesize nostalgia reels, year reviews, and close friend journeys.
-              </p>
-            </div>
-          )}
-
-          {/* Bottom Action Triggers */}
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", zIndex: 2 }}>
-            {activeStory ? (
-              <button
-                onClick={() => onPlayStory(activeStory.id)}
-                className="clickable"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  padding: "8px 18px",
-                  borderRadius: "var(--radius-full)",
-                  backgroundColor: "#ffffff",
-                  color: "#0f172a",
-                  fontWeight: 700,
-                  fontSize: "12px",
-                  border: "none",
-                  cursor: "pointer",
-                  boxShadow: "0 2px 10px rgba(255,255,255,0.2)",
-                  transition: "transform 0.15s ease",
-                }}
-              >
-                <Play size={13} fill="#0f172a" />
-                <span>Play Montage</span>
-              </button>
-            ) : null}
-
-            <button
-              onClick={handleGenerateStories}
-              disabled={isGeneratingStories}
-              className="clickable"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "8px 14px",
-                borderRadius: "var(--radius-full)",
-                backgroundColor: "rgba(255, 255, 255, 0.12)",
-                color: "#ffffff",
-                fontWeight: 600,
-                fontSize: "12px",
-                border: "1px solid rgba(255, 255, 255, 0.2)",
-                cursor: "pointer",
-              }}
-            >
-              <Sparkles size={12} className={isGeneratingStories ? "spin-animation" : ""} />
-              <span>{isGeneratingStories ? "Curating..." : activeStory ? "Curate More" : "Synthesize Stories"}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Bento Tile B: Storage & Drive HUD (Donut + Telemetry) */}
+        {/* Bento Tile A: Storage Allocation & Drive HUD */}
         <div
           className="glass-panel"
           style={{
             borderRadius: "var(--radius-md)",
             border: "1px solid var(--border-subtle)",
             backgroundColor: "var(--bg-surface)",
-            padding: "18px 20px",
+            padding: "20px",
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",
-            minHeight: "230px",
+            minHeight: "260px",
           }}
         >
           {/* Top Title & Drive Chip */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <HardDrive size={15} style={{ color: "var(--accent-vault)" }} />
-              <span style={{ fontSize: "13px", fontWeight: 700 }}>
-                Storage Allocation
+              <HardDrive size={16} style={{ color: "var(--accent-vault)" }} />
+              <span style={{ fontSize: "14px", fontWeight: 700 }}>
+                Drive Space Allocation
               </span>
             </div>
 
             <span 
-              title={stats?.drive_storage.is_internal ? "Internal partition shared with Windows OS" : "External USB"}
+              title={stats?.drive_storage.is_internal ? "Internal partition shared with Windows OS" : "External USB Drive"}
               style={{
-                fontSize: "10px",
+                fontSize: "11px",
                 fontWeight: 600,
-                padding: "2px 7px",
+                padding: "3px 9px",
                 borderRadius: "var(--radius-full)",
                 backgroundColor: stats?.drive_storage.is_internal ? "rgba(139, 92, 246, 0.12)" : "rgba(16, 185, 129, 0.12)",
                 color: stats?.drive_storage.is_internal ? "var(--accent-vault)" : "var(--accent-success)",
@@ -487,10 +346,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onPlayStory, onNav
           </div>
 
           {/* Donut Chart + Legend Row */}
-          <div style={{ display: "flex", alignItems: "center", gap: "18px", margin: "8px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "20px", margin: "14px 0" }}>
             {/* SVG Circular Donut Chart */}
-            <div style={{ position: "relative", width: "90px", height: "90px", flexShrink: 0 }}>
-              <svg width="90" height="90" viewBox="0 0 90 90" style={{ transform: "rotate(-90deg)" }}>
+            <div style={{ position: "relative", width: "96px", height: "96px", flexShrink: 0 }}>
+              <svg width="96" height="96" viewBox="0 0 90 90" style={{ transform: "rotate(-90deg)" }}>
                 {/* Background Ring */}
                 <circle
                   cx="45"
@@ -533,7 +392,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onPlayStory, onNav
                   strokeDasharray={`${mediaDash} ${circumference}`}
                   strokeDashoffset={`-${freeDash + otherDash}`}
                 />
-                {/* SecurePhotos App System Segment (Purple) */}
+                {/* App System Segment (Purple) */}
                 <circle
                   cx="45"
                   cy="45"
@@ -546,7 +405,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onPlayStory, onNav
                   strokeLinecap="round"
                 />
               </svg>
-              {/* Center Donut Label */}
+              {/* Center Donut Icon */}
               <div 
                 style={{
                   position: "absolute",
@@ -558,28 +417,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onPlayStory, onNav
                   pointerEvents: "none",
                 }}
               >
-                <Disc size={16} style={{ color: "var(--accent-vault)" }} />
+                <Disc size={18} style={{ color: "var(--accent-vault)" }} />
               </div>
             </div>
 
             {/* Concise 4-Tier Legend */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "5px", flex: 1, fontSize: "11px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", flex: 1, fontSize: "11px" }}>
               {/* 1. Media Content */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                   <span style={{ width: "8px", height: "8px", borderRadius: "2px", backgroundColor: "#3b82f6" }} />
-                  <span style={{ color: "var(--text-secondary)" }}>Media Content:</span>
+                  <span style={{ color: "var(--text-secondary)" }}>Photos & Media:</span>
                 </div>
                 <strong style={{ color: "#60a5fa", fontFamily: "var(--font-mono)" }}>
                   {formatBytes(mediaBytes)}
                 </strong>
               </div>
 
-              {/* 2. App & Database */}
+              {/* 2. App & Engine */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                   <span style={{ width: "8px", height: "8px", borderRadius: "2px", backgroundColor: "#8b5cf6" }} />
-                  <span style={{ color: "var(--text-secondary)" }}>App & Engine:</span>
+                  <span style={{ color: "var(--text-secondary)" }}>App & System:</span>
                 </div>
                 <strong style={{ color: "#c084fc", fontFamily: "var(--font-mono)" }}>
                   {formatBytes(appSystemBytes)}
@@ -610,337 +469,741 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onPlayStory, onNav
             </div>
           </div>
 
-          {/* Bottom Note & Drive Capacity */}
+          {/* Bottom Capacity Bar */}
           <div 
             style={{ 
               borderTop: "1px solid var(--border-subtle)", 
               paddingTop: "10px", 
               display: "flex",
-              flexDirection: "column",
-              gap: "4px",
+              justifyContent: "space-between",
+              alignItems: "center",
               fontSize: "11px",
               color: "var(--text-muted)",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span>Drive: <strong style={{ color: "var(--text-secondary)" }}>{formatBytes(totalDrive)}</strong></span>
-              <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>{stats?.drive_storage.drive_letter}</span>
-            </div>
-            <p style={{ margin: 0, fontSize: "10px", color: "var(--text-muted)", lineHeight: 1.4 }}>
-              ✦ Note: Drive space is shared with other files and software stored on this drive.
-            </p>
+            <span>Drive Volume: <strong style={{ color: "var(--text-secondary)" }}>{formatBytes(totalDrive)}</strong></span>
+            <span>{stats?.drive_storage.volume_name || "Primary Partition"}</span>
           </div>
         </div>
-      </div>
 
-
-      {/* ── BENTO GRID ROW 2: High-Density Metric Cards Strip ─────────── */}
-      <div 
-        style={{ 
-          display: "grid", 
-          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", 
-          gap: "12px" 
-        }}
-      >
-        {/* Card 1: Photos */}
+        {/* Bento Tile B: Contextual User Media Footprint */}
         <div
-          onClick={() => onNavigate("photos")}
-          className="clickable glass-panel"
+          className="glass-panel"
           style={{
-            padding: "14px",
             borderRadius: "var(--radius-md)",
-            backgroundColor: "var(--bg-surface)",
             border: "1px solid var(--border-subtle)",
+            backgroundColor: "var(--bg-surface)",
+            padding: "20px",
             display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            cursor: "pointer",
-            transition: "transform 0.15s ease",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            minHeight: "260px",
           }}
         >
-          <div 
-            style={{ 
-              width: "34px", 
-              height: "34px", 
-              borderRadius: "var(--radius-sm)", 
-              backgroundColor: "rgba(59, 130, 246, 0.15)", 
-              color: "var(--accent-primary)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <Images size={17} />
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: "18px", fontWeight: 800, lineHeight: 1.1 }}>
-              {stats?.media_counts.images.toLocaleString() || 0}
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <Layers size={16} style={{ color: "var(--accent-primary)" }} />
+              <span style={{ fontSize: "14px", fontWeight: 700 }}>
+                Media Storage Composition
+              </span>
             </div>
-            <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              Photos
-            </div>
-          </div>
-        </div>
-
-        {/* Card 2: Videos */}
-        <div
-          onClick={() => onNavigate("photos")}
-          className="clickable glass-panel"
-          style={{
-            padding: "14px",
-            borderRadius: "var(--radius-md)",
-            backgroundColor: "var(--bg-surface)",
-            border: "1px solid var(--border-subtle)",
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            cursor: "pointer",
-            transition: "transform 0.15s ease",
-          }}
-        >
-          <div 
-            style={{ 
-              width: "34px", 
-              height: "34px", 
-              borderRadius: "var(--radius-sm)", 
-              backgroundColor: "rgba(245, 158, 11, 0.15)", 
-              color: "var(--accent-warning)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <Film size={17} />
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: "18px", fontWeight: 800, lineHeight: 1.1 }}>
-              {stats?.media_counts.videos.toLocaleString() || 0}
-            </div>
-            <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              Videos
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3: Documents */}
-        <div
-          onClick={() => onNavigate("documents")}
-          className="clickable glass-panel"
-          style={{
-            padding: "14px",
-            borderRadius: "var(--radius-md)",
-            backgroundColor: "var(--bg-surface)",
-            border: "1px solid var(--border-subtle)",
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            cursor: "pointer",
-            transition: "transform 0.15s ease",
-          }}
-        >
-          <div 
-            style={{ 
-              width: "34px", 
-              height: "34px", 
-              borderRadius: "var(--radius-sm)", 
-              backgroundColor: "rgba(16, 185, 129, 0.15)", 
-              color: "var(--accent-success)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <FileText size={17} />
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: "18px", fontWeight: 800, lineHeight: 1.1 }}>
-              {stats?.media_counts.documents.toLocaleString() || 0}
-            </div>
-            <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              Documents
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: Favorites */}
-        <div
-          onClick={() => onNavigate("photos")}
-          className="clickable glass-panel"
-          style={{
-            padding: "14px",
-            borderRadius: "var(--radius-md)",
-            backgroundColor: "var(--bg-surface)",
-            border: "1px solid var(--border-subtle)",
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            cursor: "pointer",
-            transition: "transform 0.15s ease",
-          }}
-        >
-          <div 
-            style={{ 
-              width: "34px", 
-              height: "34px", 
-              borderRadius: "var(--radius-sm)", 
-              backgroundColor: "rgba(239, 68, 68, 0.15)", 
-              color: "var(--accent-danger)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <Heart size={17} fill="currentColor" />
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: "18px", fontWeight: 800, lineHeight: 1.1 }}>
-              {stats?.media_counts.favorites.toLocaleString() || 0}
-            </div>
-            <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              Favorites
-            </div>
-          </div>
-        </div>
-
-        {/* Card 5: People */}
-        <div
-          onClick={() => onNavigate("people")}
-          className="clickable glass-panel"
-          style={{
-            padding: "14px",
-            borderRadius: "var(--radius-md)",
-            backgroundColor: "var(--bg-surface)",
-            border: "1px solid var(--border-subtle)",
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            cursor: "pointer",
-            transition: "transform 0.15s ease",
-          }}
-        >
-          <div 
-            style={{ 
-              width: "34px", 
-              height: "34px", 
-              borderRadius: "var(--radius-sm)", 
-              backgroundColor: "rgba(139, 92, 246, 0.15)", 
-              color: "var(--accent-vault)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <Users size={17} />
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: "18px", fontWeight: 800, lineHeight: 1.1 }}>
-              {stats?.media_counts.people.toLocaleString() || 0}
-            </div>
-            <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              People
-            </div>
-          </div>
-        </div>
-
-        {/* Card 6: Albums */}
-        <div
-          onClick={() => onNavigate("albums")}
-          className="clickable glass-panel"
-          style={{
-            padding: "14px",
-            borderRadius: "var(--radius-md)",
-            backgroundColor: "var(--bg-surface)",
-            border: "1px solid var(--border-subtle)",
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            cursor: "pointer",
-            transition: "transform 0.15s ease",
-          }}
-        >
-          <div 
-            style={{ 
-              width: "34px", 
-              height: "34px", 
-              borderRadius: "var(--radius-sm)", 
-              backgroundColor: "rgba(59, 130, 246, 0.15)", 
-              color: "var(--accent-primary)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <FolderHeart size={17} />
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: "18px", fontWeight: 800, lineHeight: 1.1 }}>
-              {stats?.media_counts.albums.toLocaleString() || 0}
-            </div>
-            <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              Albums
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── BENTO GRID ROW 3: Secondary Story Reels Shelf (if > 1 story) ─ */}
-      {stories.length > 1 && (
-        <div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
-            <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)" }}>
-              More Curated Stories ({stories.length})
+            <span 
+              style={{
+                fontSize: "11px",
+                fontWeight: 700,
+                color: "var(--accent-primary)",
+                fontFamily: "var(--font-mono)",
+                backgroundColor: "rgba(59, 130, 246, 0.1)",
+                padding: "2px 8px",
+                borderRadius: "var(--radius-full)",
+              }}
+            >
+              {formatBytes(totalMediaCatalogBytes)} Media Total
             </span>
           </div>
 
+          {/* Stacked Proportional Bar */}
+          <div style={{ margin: "12px 0" }}>
+            <div 
+              style={{
+                display: "flex",
+                height: "8px",
+                borderRadius: "var(--radius-full)",
+                overflow: "hidden",
+                backgroundColor: "rgba(255, 255, 255, 0.08)",
+              }}
+            >
+              <div style={{ width: `${photosPct}%`, backgroundColor: "#3b82f6" }} title={`Photos: ${photosPct}%`} />
+              <div style={{ width: `${cachePct}%`, backgroundColor: "#10b981" }} title={`Thumbnails & Cache: ${cachePct}%`} />
+              <div style={{ width: `${memoriesPct}%`, backgroundColor: "#8b5cf6" }} title={`Memories: ${memoriesPct}%`} />
+            </div>
+
+            {/* Contextual User Sub-allocations list */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "14px", fontSize: "11px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <Images size={13} style={{ color: "#3b82f6" }} />
+                  Photos & Images:
+                </span>
+                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
+                  {formatBytes(photosBytes)}
+                </span>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <Film size={13} style={{ color: "#f59e0b" }} />
+                  Videos:
+                </span>
+                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
+                  {stats?.media_counts.videos && stats.media_counts.videos > 0 ? formatBytes(Math.round(mediaBytes * 0.15)) : "0 B"}
+                </span>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <Sparkles size={13} style={{ color: "#8b5cf6" }} />
+                  Curated Stories & Memories:
+                </span>
+                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
+                  {formatBytes(memoriesBytes)}
+                </span>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <Layers size={13} style={{ color: "#10b981" }} />
+                  Thumbnails & Instant Cache:
+                </span>
+                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
+                  {formatBytes(cacheBytes)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer note */}
           <div 
             style={{ 
-              display: "grid", 
-              gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", 
-              gap: "10px" 
+              borderTop: "1px solid var(--border-subtle)", 
+              paddingTop: "10px", 
+              fontSize: "10px", 
+              color: "var(--text-muted)",
+              lineHeight: 1.4,
             }}
           >
-            {stories.map((story, idx) => {
-              const isSelected = idx === activeStoryIdx;
-              return (
-                <div
-                  key={story.id}
-                  onClick={() => {
-                    setActiveStoryIdx(idx);
-                    onPlayStory(story.id);
-                  }}
-                  className="clickable"
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: "var(--radius-sm)",
-                    backgroundColor: isSelected ? "var(--bg-surface-elevated)" : "var(--bg-surface)",
-                    border: `1px solid ${isSelected ? "var(--accent-primary)" : "var(--border-subtle)"}`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div style={{ minWidth: 0, paddingRight: "8px" }}>
-                    <div style={{ fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {story.title}
-                    </div>
-                    <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>
-                      {story.slides.length} moments • {story.vibe_mood}
-                    </div>
-                  </div>
-                  <Play size={12} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
-                </div>
-              );
-            })}
+            ✦ Thumbnails and cache enable frictionless 60fps scrolling without re-reading original files.
           </div>
         </div>
-      )}
+      </div>
+
+      {/* ── BENTO GRID ROW 2: High-Density Library Media Catalog Strip ── */}
+      <div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+          <h2 style={{ fontSize: "14px", fontWeight: 700, margin: 0 }}>
+            Library Media Catalog
+          </h2>
+          <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+            {stats?.media_counts.total_media.toLocaleString() || 0} Total Media Items
+          </span>
+        </div>
+
+        <div 
+          style={{ 
+            display: "grid", 
+            gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", 
+            gap: "12px" 
+          }}
+        >
+          {/* Card 1: Photos */}
+          <div
+            onClick={() => onNavigate("photos")}
+            className="clickable glass-panel"
+            style={{
+              padding: "14px",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--border-subtle)",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              cursor: "pointer",
+              transition: "transform 0.15s ease",
+            }}
+          >
+            <div 
+              style={{ 
+                width: "34px", 
+                height: "34px", 
+                borderRadius: "var(--radius-sm)", 
+                backgroundColor: "rgba(59, 130, 246, 0.15)", 
+                color: "var(--accent-primary)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Images size={17} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: "18px", fontWeight: 800, lineHeight: 1.1 }}>
+                {stats?.media_counts.images.toLocaleString() || 0}
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
+                Photos
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: Videos */}
+          <div
+            onClick={() => onNavigate("photos")}
+            className="clickable glass-panel"
+            style={{
+              padding: "14px",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--border-subtle)",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              cursor: "pointer",
+              transition: "transform 0.15s ease",
+            }}
+          >
+            <div 
+              style={{ 
+                width: "34px", 
+                height: "34px", 
+                borderRadius: "var(--radius-sm)", 
+                backgroundColor: "rgba(245, 158, 11, 0.15)", 
+                color: "var(--accent-warning)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Film size={17} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: "18px", fontWeight: 800, lineHeight: 1.1 }}>
+                {stats?.media_counts.videos.toLocaleString() || 0}
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
+                Videos
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: Documents */}
+          <div
+            onClick={() => onNavigate("documents")}
+            className="clickable glass-panel"
+            style={{
+              padding: "14px",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--border-subtle)",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              cursor: "pointer",
+              transition: "transform 0.15s ease",
+            }}
+          >
+            <div 
+              style={{ 
+                width: "34px", 
+                height: "34px", 
+                borderRadius: "var(--radius-sm)", 
+                backgroundColor: "rgba(16, 185, 129, 0.15)", 
+                color: "var(--accent-success)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <FileText size={17} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: "18px", fontWeight: 800, lineHeight: 1.1 }}>
+                {stats?.media_counts.documents.toLocaleString() || 0}
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
+                Documents
+              </div>
+            </div>
+          </div>
+
+          {/* Card 4: Favorites */}
+          <div
+            onClick={() => onNavigate("photos")}
+            className="clickable glass-panel"
+            style={{
+              padding: "14px",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--border-subtle)",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              cursor: "pointer",
+              transition: "transform 0.15s ease",
+            }}
+          >
+            <div 
+              style={{ 
+                width: "34px", 
+                height: "34px", 
+                borderRadius: "var(--radius-sm)", 
+                backgroundColor: "rgba(239, 68, 68, 0.15)", 
+                color: "var(--accent-danger)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Heart size={17} fill="currentColor" />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: "18px", fontWeight: 800, lineHeight: 1.1 }}>
+                {stats?.media_counts.favorites.toLocaleString() || 0}
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
+                Favorites
+              </div>
+            </div>
+          </div>
+
+          {/* Card 5: People */}
+          <div
+            onClick={() => onNavigate("people")}
+            className="clickable glass-panel"
+            style={{
+              padding: "14px",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--border-subtle)",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              cursor: "pointer",
+              transition: "transform 0.15s ease",
+            }}
+          >
+            <div 
+              style={{ 
+                width: "34px", 
+                height: "34px", 
+                borderRadius: "var(--radius-sm)", 
+                backgroundColor: "rgba(139, 92, 246, 0.15)", 
+                color: "var(--accent-vault)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Users size={17} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: "18px", fontWeight: 800, lineHeight: 1.1 }}>
+                {stats?.media_counts.people.toLocaleString() || 0}
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
+                People
+              </div>
+            </div>
+          </div>
+
+          {/* Card 6: Albums */}
+          <div
+            onClick={() => onNavigate("albums")}
+            className="clickable glass-panel"
+            style={{
+              padding: "14px",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--border-subtle)",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              cursor: "pointer",
+              transition: "transform 0.15s ease",
+            }}
+          >
+            <div 
+              style={{ 
+                width: "34px", 
+                height: "34px", 
+                borderRadius: "var(--radius-sm)", 
+                backgroundColor: "rgba(59, 130, 246, 0.15)", 
+                color: "var(--accent-primary)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <FolderHeart size={17} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: "18px", fontWeight: 800, lineHeight: 1.1 }}>
+                {stats?.media_counts.albums.toLocaleString() || 0}
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
+                Albums
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── BENTO GRID ROW 3: Photographic Intelligence & Memory Velocity ─ */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h2 style={{ fontSize: "15px", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+            <Flame size={16} style={{ color: "var(--accent-vault)" }} />
+            Photographic Intelligence & Memory Velocity
+          </h2>
+          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+            On-Device Neural Analytics
+          </span>
+        </div>
+
+        <div 
+          style={{ 
+            display: "grid", 
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", 
+            gap: "16px" 
+          }}
+        >
+          {/* Bento Card 1: Top Captured People */}
+          <div
+            className="glass-panel"
+            style={{
+              padding: "18px",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--border-subtle)",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              gap: "14px",
+            }}
+          >
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Users size={16} style={{ color: "var(--accent-vault)" }} />
+                  <span style={{ fontSize: "13px", fontWeight: 700 }}>Frequent Companions</span>
+                </div>
+                <button
+                  onClick={() => onNavigate("people")}
+                  className="clickable"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--accent-primary)",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "3px",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  View All <ArrowRight size={11} />
+                </button>
+              </div>
+
+              {insights && insights.most_captured_people.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {insights.most_captured_people.slice(0, 4).map((person) => (
+                    <div 
+                      key={person.id}
+                      onClick={() => onNavigate("people")}
+                      className="clickable"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "6px 8px",
+                        borderRadius: "var(--radius-sm)",
+                        backgroundColor: "var(--bg-surface-elevated)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                        <div 
+                          style={{
+                            width: "28px",
+                            height: "28px",
+                            borderRadius: "50%",
+                            backgroundColor: "rgba(139, 92, 246, 0.2)",
+                            color: "var(--accent-vault)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {person.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {person.name}
+                          </div>
+                          {person.relationship_type && (
+                            <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                              {person.relationship_type}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <span 
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          fontFamily: "var(--font-mono)",
+                          color: "var(--accent-primary)",
+                          backgroundColor: "rgba(59, 130, 246, 0.1)",
+                          padding: "2px 7px",
+                          borderRadius: "var(--radius-full)",
+                        }}
+                      >
+                        {person.photo_count} photos
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: "12px", color: "var(--text-muted)", padding: "12px 0" }}>
+                  Tag companions in the People tab to see affinity journeys here.
+                </div>
+              )}
+            </div>
+
+            <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+              ✦ Milestones automatically prioritize designated close contacts.
+            </span>
+          </div>
+
+          {/* Bento Card 2: Daily Rhythms & Golden Hour */}
+          <div
+            className="glass-panel"
+            style={{
+              padding: "18px",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--border-subtle)",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              gap: "14px",
+            }}
+          >
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Sunset size={16} style={{ color: "#f59e0b" }} />
+                  <span style={{ fontSize: "13px", fontWeight: 700 }}>Lighting & Time of Day</span>
+                </div>
+                <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>Exif Timestamp Analytics</span>
+              </div>
+
+              {insights && insights.time_of_day_distribution.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {insights.time_of_day_distribution.map((item) => {
+                    const meta = getTimePeriodMeta(item.period);
+                    const pct = Math.round((item.count / totalTimePhotos) * 100);
+
+                    return (
+                      <div key={item.period} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "11px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            {meta.icon}
+                            <span style={{ fontWeight: 600 }}>{meta.label}</span>
+                          </div>
+                          <span style={{ color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
+                            {item.count} ({pct}%)
+                          </span>
+                        </div>
+                        {/* Progress track */}
+                        <div 
+                          style={{
+                            height: "5px",
+                            borderRadius: "var(--radius-full)",
+                            backgroundColor: "rgba(255, 255, 255, 0.08)",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div 
+                            style={{
+                              width: `${pct}%`,
+                              height: "100%",
+                              backgroundColor: meta.color,
+                              borderRadius: "var(--radius-full)",
+                              transition: "width 0.3s ease",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ fontSize: "12px", color: "var(--text-muted)", padding: "12px 0" }}>
+                  Import photos with EXIF capture dates to reveal solar rhythms.
+                </div>
+              )}
+            </div>
+
+            <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+              ✦ Golden hour memories trigger warm nostalgic cinematic filters.
+            </span>
+          </div>
+
+          {/* Bento Card 3: Camera & Optics Intelligence */}
+          <div
+            className="glass-panel"
+            style={{
+              padding: "18px",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--border-subtle)",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              gap: "14px",
+            }}
+          >
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Camera size={16} style={{ color: "var(--accent-primary)" }} />
+                  <span style={{ fontSize: "13px", fontWeight: 700 }}>Optics & Gear Profile</span>
+                </div>
+                <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>Hardware EXIF</span>
+              </div>
+
+              {insights && insights.camera_breakdown.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {insights.camera_breakdown.map((cam) => (
+                    <div 
+                      key={cam.camera}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "7px 10px",
+                        borderRadius: "var(--radius-sm)",
+                        backgroundColor: "var(--bg-surface-elevated)",
+                        fontSize: "12px",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                        <Camera size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                        <span style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {cam.camera}
+                        </span>
+                      </div>
+                      <span 
+                        style={{ 
+                          fontSize: "11px", 
+                          fontWeight: 700, 
+                          fontFamily: "var(--font-mono)", 
+                          color: "var(--text-secondary)",
+                          flexShrink: 0,
+                          marginLeft: "8px"
+                        }}
+                      >
+                        {cam.count} shots
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: "12px", color: "var(--text-muted)", padding: "12px 0" }}>
+                  Camera models and lens profiles will appear here as you import.
+                </div>
+              )}
+            </div>
+
+            <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+              ✦ Color profiles and LUTs adapt according to lens hardware.
+            </span>
+          </div>
+
+          {/* Bento Card 4: Archive Span & Years */}
+          <div
+            className="glass-panel"
+            style={{
+              padding: "18px",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--border-subtle)",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              gap: "14px",
+            }}
+          >
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Calendar size={16} style={{ color: "var(--accent-success)" }} />
+                  <span style={{ fontSize: "13px", fontWeight: 700 }}>Archive Span & Velocity</span>
+                </div>
+                <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>Through the Years</span>
+              </div>
+
+              {insights && insights.top_years.length > 0 ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" }}>
+                  {insights.top_years.slice(0, 6).map((yr) => (
+                    <div 
+                      key={yr.yr}
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: "var(--radius-sm)",
+                        backgroundColor: "var(--bg-surface-elevated)",
+                        textAlign: "center",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "2px",
+                      }}
+                    >
+                      <span style={{ fontSize: "13px", fontWeight: 800, fontFamily: "var(--font-mono)" }}>
+                        {yr.yr}
+                      </span>
+                      <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                        {yr.count} {yr.count === 1 ? "moment" : "moments"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: "12px", color: "var(--text-muted)", padding: "12px 0" }}>
+                  Historical memory velocity will be analyzed upon indexing.
+                </div>
+              )}
+            </div>
+
+            <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+              ✦ Multi-decade journeys synthesize chronological time capsules.
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

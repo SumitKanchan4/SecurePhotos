@@ -11,7 +11,11 @@ import {
   RefreshCw,
   CheckCircle2,
   Download,
-  Terminal
+  Terminal,
+  Database,
+  ShieldCheck,
+  Cpu,
+  Info
 } from "lucide-react";
 import { check, Update } from "@tauri-apps/plugin-updater";
 import { invoke } from "@tauri-apps/api/core";
@@ -549,6 +553,146 @@ export const SettingsView: React.FC = () => {
               {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
               Switch to {theme === "dark" ? "Light Titanium" : "Dark Obsidian"}
             </button>
+          </div>
+        </div>
+
+        {/* Section 5: Engine Architecture & Zero-Trust Security (About) */}
+        <div 
+          className="glass-panel"
+          style={{
+            borderRadius: "var(--radius-md)",
+            backgroundColor: "var(--bg-surface)",
+            border: "1px solid var(--border-subtle)",
+            padding: "20px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <Info size={18} style={{ color: "var(--accent-primary)" }} />
+              <div>
+                <h3 style={{ fontSize: "14px", fontWeight: 700, margin: 0 }}>Engine Architecture & Security Specifications</h3>
+                <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: "2px 0 0 0" }}>
+                  SecurePhotos v0.1.0 • Built on Zero-Trust Local-First Architecture
+                </p>
+              </div>
+            </div>
+            <span 
+              style={{
+                fontSize: "10px",
+                fontWeight: 700,
+                color: "var(--accent-success)",
+                backgroundColor: "rgba(16, 185, 129, 0.12)",
+                border: "1px solid rgba(16, 185, 129, 0.25)",
+                padding: "3px 9px",
+                borderRadius: "var(--radius-full)",
+              }}
+            >
+              Zero-Trust Compliant
+            </span>
+          </div>
+
+          <div 
+            style={{ 
+              display: "grid", 
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", 
+              gap: "14px" 
+            }}
+          >
+            {/* Spec 1: SQLite Storage Engine */}
+            <div 
+              style={{ 
+                padding: "14px", 
+                borderRadius: "var(--radius-sm)", 
+                backgroundColor: "var(--bg-surface-elevated)", 
+                border: "1px solid var(--border-subtle)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Database size={15} style={{ color: "var(--accent-primary)" }} />
+                <span style={{ fontSize: "12px", fontWeight: 700 }}>SQLite Vector Engine</span>
+              </div>
+              <p style={{ fontSize: "11px", color: "var(--text-secondary)", margin: 0, lineHeight: 1.4 }}>
+                Operating in WAL mode with composite B-Tree indexes and FTS5 full-text indexing for millisecond response times.
+              </p>
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "auto" }}>
+                <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(59, 130, 246, 0.1)", color: "var(--accent-primary)", fontWeight: 600 }}>
+                  WAL Mode
+                </span>
+                <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(59, 130, 246, 0.1)", color: "var(--accent-primary)", fontWeight: 600 }}>
+                  FTS5 Search
+                </span>
+                <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(59, 130, 246, 0.1)", color: "var(--accent-primary)", fontWeight: 600 }}>
+                  Zero N+1
+                </span>
+              </div>
+            </div>
+
+            {/* Spec 2: Zero-Trust Cryptography */}
+            <div 
+              style={{ 
+                padding: "14px", 
+                borderRadius: "var(--radius-sm)", 
+                backgroundColor: "var(--bg-surface-elevated)", 
+                border: "1px solid var(--border-subtle)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <ShieldCheck size={15} style={{ color: "var(--accent-success)" }} />
+                <span style={{ fontSize: "12px", fontWeight: 700 }}>Zero-Trust Cryptography</span>
+              </div>
+              <p style={{ fontSize: "11px", color: "var(--text-secondary)", margin: 0, lineHeight: 1.4 }}>
+                Vault items are encrypted at rest using AES-256-GCM chunked streaming with Argon2id key derivation and zero-disk plaintext leaks.
+              </p>
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "auto" }}>
+                <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(16, 185, 129, 0.1)", color: "var(--accent-success)", fontWeight: 600 }}>
+                  AES-256-GCM
+                </span>
+                <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(16, 185, 129, 0.1)", color: "var(--accent-success)", fontWeight: 600 }}>
+                  Argon2id KDF
+                </span>
+                <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(16, 185, 129, 0.1)", color: "var(--accent-success)", fontWeight: 600 }}>
+                  RFC 6238 TOTP
+                </span>
+              </div>
+            </div>
+
+            {/* Spec 3: Local SLM Intelligence */}
+            <div 
+              style={{ 
+                padding: "14px", 
+                borderRadius: "var(--radius-sm)", 
+                backgroundColor: "var(--bg-surface-elevated)", 
+                border: "1px solid var(--border-subtle)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Cpu size={15} style={{ color: "var(--accent-vault)" }} />
+                <span style={{ fontSize: "12px", fontWeight: 700 }}>Local SLM Intelligence</span>
+              </div>
+              <p style={{ fontSize: "11px", color: "var(--text-secondary)", margin: 0, lineHeight: 1.4 }}>
+                Face embeddings, semantic clustering, and document OCR execute 100% on your local machine with zero external cloud telemetry.
+              </p>
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "auto" }}>
+                <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(139, 92, 246, 0.1)", color: "var(--accent-vault)", fontWeight: 600 }}>
+                  Local Clustering
+                </span>
+                <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(139, 92, 246, 0.1)", color: "var(--accent-vault)", fontWeight: 600 }}>
+                  Micro-quantized
+                </span>
+                <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(139, 92, 246, 0.1)", color: "var(--accent-vault)", fontWeight: 600 }}>
+                  Zero Cloud Egress
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
