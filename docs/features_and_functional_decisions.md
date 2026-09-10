@@ -1184,3 +1184,21 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - Provides scroll navigation parity between Photos and People Detail timeline ribbons.
 - Full test suite: 53/53 passed. TypeScript: 0 errors.
 
+---
+
+## 26. Timeline Pill Count Clutter Elimination & Single Source of Truth
+
+### Functionality Overview
+- Streamlined the Photos timeline filter ribbon by removing inner photo count badges from both the pinned `All` pill and the dynamic year pills (`{item.year}`).
+- Each filter pill now presents clean, focused typography (`All`, `2021`, etc.) without micro-capsule count chips inside the button body.
+
+### Functional Decision Points & Rationale
+- **Single Source of Truth for Photo Counts**: The Section 4 compliant floating liquid glass header (`Photos [ N photos ]`) already dynamically updates its baseline capsule badge immediately upon selecting any timeline year or filter.
+- **Elimination of Visual Redundancy & Clutter**: Displaying count capsules within both the header and every single timeline pill created redundant visual noise (e.g., `[ 22 photos ]` in the header immediately above `All [ 22 ]` and `2021 [ 22 ]`). Removing the chip counts achieves clean, sleek aesthetics aligned with `modern-web-ui`.
+
+### Technical Touchpoints
+- `src/App.tsx`: Removed the `{timelineData.total_count > 0 && (...)}` badge from the `All` button and `{item.count.toLocaleString()}` badge from the year mapping loop.
+
+### State & Lifecycle Impact
+- Zero state, API, or database impact. Filtering logic, scroll chevrons, and active pill highlights remain 100% intact.
+

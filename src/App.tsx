@@ -761,19 +761,6 @@ export const App: React.FC = () => {
                     }}
                   >
                     <span>All</span>
-                    {timelineData.total_count > 0 && (
-                      <span 
-                        style={{ 
-                          fontSize: "10px", 
-                          backgroundColor: "var(--glass-badge-bg)",
-                          border: "1px solid var(--glass-badge-border)",
-                          padding: "1px 6px",
-                          borderRadius: "var(--radius-full)",
-                        }}
-                      >
-                        {timelineData.total_count.toLocaleString()}
-                      </span>
-                    )}
                   </button>
                 </div>
 
@@ -873,17 +860,6 @@ export const App: React.FC = () => {
                             }}
                           >
                             <span>{item.year}</span>
-                            <span 
-                              style={{ 
-                                fontSize: "10px", 
-                                backgroundColor: "var(--glass-badge-bg)",
-                                border: "1px solid var(--glass-badge-border)",
-                                padding: "1px 6px",
-                                borderRadius: "var(--radius-full)",
-                              }}
-                            >
-                              {item.count.toLocaleString()}
-                            </span>
                           </button>
                         );
                       })}
