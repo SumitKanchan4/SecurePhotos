@@ -267,7 +267,7 @@ async def tag_medoid_cluster(payload: TagClusterRequest) -> dict:
             existing = await cursor.fetchone()
 
         close_relationships = {
-            "Spouse", "Child", "Parent", "Sibling", "Extended Family",
+            "Spouse", "Child", "Parent", "Sibling", "Family", "Extended Family",
             "Wife", "Husband", "Partner", "Son", "Daughter", "Mother", "Father", "Brother", "Sister",
         }
         new_rel = (payload.relationship_type or "Friend").strip()
@@ -428,7 +428,7 @@ async def update_person(person_id: int, payload: UpdatePersonRequest) -> PersonR
 
         # Auto-promote close family and spouse to Close One (VIP)
         close_relationships = {
-            "Spouse", "Child", "Parent", "Sibling", "Extended Family",
+            "Spouse", "Child", "Parent", "Sibling", "Family", "Extended Family",
             # Backwards-compatible aliases
             "Wife", "Husband", "Partner", "Son", "Daughter", "Mother", "Father", "Brother", "Sister",
         }

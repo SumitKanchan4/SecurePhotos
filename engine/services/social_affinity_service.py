@@ -111,7 +111,7 @@ async def refresh_all_social_affinities() -> int:
                 intimate_cnt = int_row[0] if int_row else 0
 
             close_relationships = {
-                "Spouse", "Child", "Parent", "Sibling", "Extended Family",
+                "Spouse", "Child", "Parent", "Sibling", "Family", "Extended Family",
                 # Backwards-compatible aliases
                 "Wife", "Husband", "Partner", "Son", "Daughter", "Mother", "Father", "Brother", "Sister",
             }

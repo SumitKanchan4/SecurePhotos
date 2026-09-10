@@ -1202,3 +1202,27 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 ### State & Lifecycle Impact
 - Zero state, API, or database impact. Filtering logic, scroll chevrons, and active pill highlights remain 100% intact.
 
+---
+
+## 27. Relationship Terminology Simplification: "Extended Family" to "Family"
+
+### Functionality Overview
+- Simplified the relationship categorization by renaming `"Extended Family"` to `"Family"` across the People & Family interface (tagging dropdown, cluster association, relationship picker, priority sorting, and VIP auto-promotion).
+- Preserved full backwards compatibility so that any historical or existing `"Extended Family"` records in the database continue to map to priority level 6 and retain Close One (VIP) status.
+
+### Functional Decision Points & Rationale
+- **Concise, Natural Language**: In everyday use, users categorize relatives beyond immediate nuclear members simply as "Family" rather than formal clinical labels like "Extended Family".
+- **Visual Brevity in UI Chips**: The shorter `"Family"` label fits cleanly into compact relationship tags, dropdown items, and card subtitles without wrapping or horizontal overflow.
+- **Backwards Compatibility**: Both `"Family"` and `"Extended Family"` are maintained in `CLOSE_RELATIONSHIPS` and backend sets, ensuring zero breaking changes for existing databases.
+
+### Technical Touchpoints
+- `src/components/PeopleView.tsx`: Updated `RELATIONSHIP_OPTIONS` to include `"Family"` and updated `RELATION_PRIORITY` and `CLOSE_RELATIONSHIPS` sets with `"Family"`.
+- `engine/api/people.py`: Added `"Family"` to `close_relationships` sets in `tag_cluster` and `update_person` endpoints.
+- `engine/services/social_affinity_service.py`: Added `"Family"` to `close_relationships` set for affinity calculation.
+- `engine/tests/test_people.py`: Updated cluster retagging test to assert `"Family"` relationship and VIP promotion.
+
+### State & Lifecycle Impact
+- Auto-promotes any person tagged with `"Family"` to Close One (`is_close_one = 1`) by default.
+- Backwards compatible with legacy database rows.
+- Full test suite: 53/53 passed. TypeScript: 0 errors.
+

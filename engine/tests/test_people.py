@@ -174,14 +174,14 @@ async def test_people_api_workflow():
             assert updated_alex["relationship_type"] == "Spouse"
             assert updated_alex["is_close_one"] is True
 
-            # Test tagging an existing person with new relationship 'Extended Family'
+            # Test tagging an existing person with new relationship 'Family'
             retag_res = await client.post(
                 "/api/people/tag-cluster",
                 json={
                     "cluster_id": target_cluster,
                     "name": "Alex Test Person",
-                    "relationship_type": "Extended Family",
-                    "is_close_one": False,  # Should auto-promote to True for Extended Family
+                    "relationship_type": "Family",
+                    "is_close_one": False,  # Should auto-promote to True for Family
                 },
             )
             assert retag_res.status_code == 200
@@ -191,7 +191,7 @@ async def test_people_api_workflow():
             # Verify relationship was updated in DB
             people_retag = (await client.get("/api/people")).json()
             alex_retag = [p for p in people_retag if p["name"] == "Alex Test Person"][0]
-            assert alex_retag["relationship_type"] == "Extended Family"
+            assert alex_retag["relationship_type"] == "Family"
             assert alex_retag["is_close_one"] is True
         finally:
             # Mandatory test teardown: cleanly remove test person and mock face
