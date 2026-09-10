@@ -60,9 +60,11 @@ export const TitleBar: React.FC = () => {
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "0 12px",
-        backgroundColor: "var(--bg-sidebar)",
-        borderBottom: "1px solid var(--border-subtle)",
+        padding: "0 14px",
+        backgroundColor: "var(--glass-surface)",
+        backdropFilter: "blur(24px)",
+        WebkitBackdropFilter: "blur(24px)",
+        borderBottom: "1px solid var(--glass-border)",
         userSelect: "none",
         zIndex: 100,
       }}
@@ -83,7 +85,7 @@ export const TitleBar: React.FC = () => {
         >
           <ShieldCheck size={16} />
         </div>
-        <span style={{ fontWeight: 600, fontSize: "13px", letterSpacing: "0.2px" }}>
+        <span style={{ fontWeight: 700, fontSize: "13px", letterSpacing: "-0.01em", color: "var(--text-primary)" }}>
           SecurePhotos <span style={{ color: "var(--accent-primary)", fontSize: "11px", fontWeight: 700 }}>0.1.0</span>
         </span>
 
@@ -94,10 +96,12 @@ export const TitleBar: React.FC = () => {
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              padding: "2px 8px",
+              padding: "3px 10px",
               borderRadius: "var(--radius-full)",
               fontSize: "11px",
+              fontWeight: 600,
               backgroundColor: isDriveConnected ? "rgba(16, 185, 129, 0.12)" : "rgba(239, 68, 68, 0.12)",
+              border: isDriveConnected ? "1px solid rgba(16, 185, 129, 0.25)" : "1px solid rgba(239, 68, 68, 0.25)",
               color: isDriveConnected ? "var(--accent-success)" : "var(--accent-danger)",
               marginLeft: "12px",
             }}
@@ -114,10 +118,10 @@ export const TitleBar: React.FC = () => {
           style={{
             display: "flex",
             alignItems: "center",
-            backgroundColor: "var(--bg-surface)",
-            borderRadius: "var(--radius-md)",
-            border: "1px solid var(--border-subtle)",
-            padding: "4px 10px",
+            backgroundColor: "var(--glass-pill-bg)",
+            borderRadius: "var(--radius-full)",
+            border: "1px solid var(--glass-pill-border)",
+            padding: "4px 12px",
             gap: "8px",
           }}
         >

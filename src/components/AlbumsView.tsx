@@ -363,19 +363,31 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   // ──────────────────────────────────────────────────────────────────────────
   if (activeAlbumId !== null && activeAlbumMeta) {
     return (
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-        {/* Header Toolbar */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", padding: "16px 24px 0", gap: "16px", position: "relative" }}>
+        {/* Unified Compact Glassmorphic Header Bar */}
         <div
           style={{
-            padding: "16px 24px",
-            borderBottom: "1px solid var(--border-subtle)",
-            backgroundColor: "var(--bg-sidebar)",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "12px",
+            padding: "10px 20px",
+            minHeight: "56px",
+            backgroundColor: "var(--glass-surface)",
+            backdropFilter: "blur(24px)",
+            WebkitBackdropFilter: "blur(24px)",
+            borderRadius: "var(--radius-lg)",
+            border: "1px solid var(--glass-border)",
+            boxShadow: "var(--glass-shadow)",
+            position: "sticky",
+            top: 0,
+            zIndex: 20,
+            flexShrink: 0,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+          {/* Left Column: All Albums Navigation */}
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-start", minWidth: "120px" }}>
             <button
               onClick={() => {
                 setActiveAlbumId(null);
@@ -386,51 +398,101 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                 loadAlbums();
               }}
               className="clickable"
+              title="Back to All Albums"
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",
-                padding: "6px 12px",
-                borderRadius: "var(--radius-sm)",
-                backgroundColor: "var(--bg-surface)",
-                border: "1px solid var(--border-subtle)",
+                padding: "6px 14px",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "var(--glass-pill-bg)",
+                border: "1px solid var(--glass-pill-border)",
                 color: "var(--text-primary)",
                 fontSize: "12px",
                 fontWeight: 600,
                 cursor: "pointer",
+                transition: "all 0.15s ease",
+                flexShrink: 0,
               }}
             >
               <ArrowLeft size={14} />
-              All Albums
+              <span>All Albums</span>
             </button>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <h2 style={{ fontSize: "17px", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "6px" }}>
-                  {activeAlbumId === -1 && <Heart size={18} fill="#ef4444" stroke="#ef4444" />}
-                  {activeAlbumMeta.name}
-                </h2>
-                {activeAlbumId !== -1 && (
-                  <button
-                    onClick={() => handleToggleFavorite(activeAlbumMeta.id)}
-                    style={{
-                      background: "transparent",
-                      border: "none",
-                      color: activeAlbumMeta.is_favorite ? "var(--accent-danger, #ef4444)" : "var(--text-muted)",
-                      cursor: "pointer",
-                      padding: "2px",
-                    }}
-                  >
-                    <Heart size={16} fill={activeAlbumMeta.is_favorite ? "currentColor" : "none"} />
-                  </button>
+          </div>
+
+          {/* Center Column: Centered Album Title & Inline Frosted Photo Count Badge */}
+          <div style={{ flex: "0 1 auto", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <h2
+                style={{
+                  fontSize: "22px",
+                  fontWeight: 800,
+                  fontFamily: "var(--font-display, var(--font-sans))",
+                  letterSpacing: "-0.03em",
+                  color: "var(--text-primary)",
+                  margin: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {activeAlbumId === -1 && (
+                  <Heart
+                    size={20}
+                    fill="#ef4444"
+                    stroke="#ef4444"
+                    style={{ filter: "drop-shadow(0 0 8px rgba(239, 68, 68, 0.5))" }}
+                  />
                 )}
-              </div>
-              <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: "2px 0 0" }}>
-                {albumPhotos.length} {albumPhotos.length === 1 ? "photo" : "photos"}
-              </p>
+                <span>{activeAlbumMeta.name}</span>
+              </h2>
+              {activeAlbumId !== -1 && (
+                <button
+                  onClick={() => handleToggleFavorite(activeAlbumMeta.id)}
+                  title={activeAlbumMeta.is_favorite ? "Favorited Album" : "Mark as Favorite"}
+                  className="clickable"
+                  style={{
+                    background: activeAlbumMeta.is_favorite ? "rgba(239, 68, 68, 0.18)" : "var(--glass-pill-bg)",
+                    border: activeAlbumMeta.is_favorite ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid var(--glass-pill-border)",
+                    borderRadius: "var(--radius-full)",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "5px",
+                    color: activeAlbumMeta.is_favorite ? "var(--accent-danger, #ef4444)" : "var(--text-muted)",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <Heart size={15} fill={activeAlbumMeta.is_favorite ? "currentColor" : "none"} />
+                </button>
+              )}
+            </div>
+
+            {/* Inline Frosted Capsule Badge for Photo Count */}
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "3px 10px",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "var(--glass-badge-bg)",
+                border: "1px solid var(--glass-badge-border)",
+                backdropFilter: "blur(8px)",
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "var(--text-secondary)",
+                whiteSpace: "nowrap",
+                letterSpacing: "0.01em",
+              }}
+            >
+              <span>{albumPhotos.length} {albumPhotos.length === 1 ? "photo" : "photos"}</span>
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {/* Right Column: Actions (Slideshow, Add Photos, Delete Album) */}
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", minWidth: "120px" }}>
             {albumPhotos.length > 0 && (
               <button
                 onClick={() => setIsSlideshowOpen(true)}
@@ -439,19 +501,21 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   display: "flex",
                   alignItems: "center",
                   gap: "6px",
-                  padding: "7px 14px",
-                  borderRadius: "var(--radius-sm)",
-                  backgroundColor: "var(--bg-surface)",
-                  border: "1px solid var(--border-subtle)",
+                  padding: "7px 16px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "var(--glass-action-bg)",
+                  border: "1px solid var(--glass-action-border)",
                   color: "var(--text-primary)",
                   fontSize: "12px",
                   fontWeight: 600,
                   cursor: "pointer",
+                  boxShadow: "var(--glass-shadow)",
+                  transition: "all 0.2s ease",
                 }}
                 title="Play full-screen cinematic slideshow with ambient music"
               >
                 <Play size={13} fill="currentColor" />
-                Slideshow
+                <span>Slideshow</span>
               </button>
             )}
 
@@ -465,17 +529,19 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     alignItems: "center",
                     gap: "6px",
                     padding: "7px 16px",
-                    borderRadius: "var(--radius-sm)",
+                    borderRadius: "var(--radius-full)",
                     backgroundColor: "var(--accent-primary)",
                     border: "none",
                     color: "#ffffff",
                     fontSize: "12px",
                     fontWeight: 600,
                     cursor: "pointer",
+                    boxShadow: "0 2px 8px rgba(99, 102, 241, 0.25)",
+                    transition: "all 0.15s ease",
                   }}
                 >
                   <Plus size={14} />
-                  Add Photos
+                  <span>Add Photos</span>
                 </button>
                 <button
                   onClick={() => handleDeleteAlbum(activeAlbumMeta.id)}
@@ -484,18 +550,20 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     display: "flex",
                     alignItems: "center",
                     gap: "6px",
-                    padding: "7px 12px",
-                    borderRadius: "var(--radius-sm)",
-                    backgroundColor: "var(--bg-surface)",
-                    border: "1px solid var(--border-subtle)",
+                    padding: "7px 14px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "rgba(239, 68, 68, 0.12)",
+                    border: "1px solid rgba(239, 68, 68, 0.25)",
                     color: "var(--accent-danger, #ef4444)",
                     fontSize: "12px",
+                    fontWeight: 500,
                     cursor: "pointer",
+                    transition: "all 0.15s ease",
                   }}
                   title="Delete this album (Photos will remain safe in your library)"
                 >
                   <Trash2 size={14} />
-                  Delete Album
+                  <span>Delete Album</span>
                 </button>
               </>
             )}
@@ -503,7 +571,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
         </div>
 
         {/* Photos Grid or Empty State */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "0 0 20px 0" }}>
           {isDetailLoading ? (
             <div style={{ padding: "60px", textAlign: "center", color: "var(--text-muted)" }}>
               <Loader2 size={28} className="spin" style={{ margin: "0 auto 12px" }} />
@@ -1013,40 +1081,113 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   // ──────────────────────────────────────────────────────────────────────────
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
-      {/* Header & Actions */}
+      {/* Header & Actions (macOS Liquid Glass Floating Toolbar) */}
       <div 
-        style={{ 
-          display: "flex", 
-          alignItems: "center", 
-          justifyContent: "space-between", 
-          marginBottom: "20px" 
+        className="liquid-glass-toolbar"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "12px 20px",
+          marginBottom: "20px",
+          backgroundColor: "var(--glass-surface)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          border: "1px solid var(--glass-border)",
+          borderRadius: "var(--radius-lg)",
+          boxShadow: "var(--glass-shadow)",
+          position: "sticky",
+          top: 0,
+          zIndex: 20,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <FolderHeart size={20} style={{ color: "var(--accent-primary)" }} />
-          <h2 style={{ fontSize: "18px", fontWeight: 700, margin: 0 }}>Albums ({albums.length})</h2>
+        {/* Left Column (flex: 1) */}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "10px" }}>
+          <span 
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "4px 10px",
+              borderRadius: "var(--radius-full)",
+              fontSize: "11px",
+              fontWeight: 600,
+              backgroundColor: "rgba(59, 130, 246, 0.12)",
+              color: "var(--accent-primary)",
+              border: "1px solid rgba(59, 130, 246, 0.25)",
+            }}
+          >
+            <FolderHeart size={12} style={{ color: "var(--accent-primary)" }} />
+            Album Collections
+          </span>
         </div>
 
-        <button
-          onClick={() => setIsCreatingAlbum(true)}
-          className="clickable"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            padding: "8px 16px",
-            borderRadius: "var(--radius-sm)",
-            backgroundColor: "var(--accent-primary)",
-            border: "none",
-            color: "#ffffff",
-            fontSize: "12px",
-            fontWeight: 600,
-            cursor: "pointer",
+        {/* Center Column (flex: 0 1 auto): 22px Plus Jakarta Sans Title + Baseline Capsule */}
+        <div 
+          style={{ 
+            flex: "0 1 auto", 
+            display: "flex", 
+            alignItems: "baseline", 
+            justifyContent: "center", 
+            gap: "10px" 
           }}
         >
-          <Plus size={15} />
-          New Album
-        </button>
+          <h1 
+            style={{ 
+              fontSize: "22px", 
+              fontWeight: 800, 
+              letterSpacing: "-0.03em", 
+              margin: 0,
+              color: "var(--text-primary)",
+              fontFamily: "Plus Jakarta Sans, sans-serif"
+            }}
+          >
+            Albums
+          </h1>
+          <span 
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "2px 8px",
+              borderRadius: "var(--radius-full)",
+              fontSize: "11px",
+              fontWeight: 700,
+              backgroundColor: "var(--glass-badge-bg)",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--glass-badge-border)",
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            {albums.length} {albums.length === 1 ? "Album" : "Albums"}
+          </span>
+        </div>
+
+        {/* Right Column (flex: 1): Action Pill Buttons */}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px" }}>
+          <button
+            onClick={() => setIsCreatingAlbum(true)}
+            className="clickable"
+            title="Create a new album"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "6px 16px",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "var(--accent-primary)",
+              color: "#ffffff",
+              fontSize: "12px",
+              fontWeight: 700,
+              border: "none",
+              cursor: "pointer",
+              boxShadow: "0 2px 10px rgba(59, 130, 246, 0.3)",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <Plus size={14} />
+            <span>New Album</span>
+          </button>
+        </div>
       </div>
 
       {/* New Album Creation Banner */}

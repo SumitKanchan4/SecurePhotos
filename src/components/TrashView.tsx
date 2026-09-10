@@ -133,30 +133,31 @@ export const TrashView: React.FC = () => {
   };
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
-      {/* Header */}
+    <div style={{ flex: 1, overflowY: "auto", padding: "16px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+      {/* Unified Compact Glassmorphic Header Bar */}
       <div 
         style={{ 
           display: "flex", 
           alignItems: "center", 
           justifyContent: "space-between", 
-          marginBottom: "20px" 
+          flexWrap: "wrap",
+          gap: "12px",
+          padding: "10px 20px",
+          minHeight: "56px",
+          backgroundColor: "var(--glass-surface)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          borderRadius: "var(--radius-lg)",
+          border: "1px solid var(--glass-border)",
+          boxShadow: "var(--glass-shadow)",
+          position: "sticky",
+          top: 0,
+          zIndex: 20,
+          flexShrink: 0,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <Trash2 size={22} style={{ color: "var(--accent-danger, #ef4444)" }} />
-          <div>
-            <h2 style={{ fontSize: "18px", fontWeight: 700, margin: 0 }}>
-              Trash ({trashedItems.length})
-            </h2>
-            <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: "2px 0 0" }}>
-              Items are retained for 30 days before being permanently purged from disk
-            </p>
-          </div>
-        </div>
-
-        {/* Action Controls */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        {/* Left Column: Select Controls */}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-start", gap: "10px", minWidth: "120px" }}>
           {trashedItems.length > 0 && (
             <button
               onClick={handleSelectAll}
@@ -165,21 +166,65 @@ export const TrashView: React.FC = () => {
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",
-                padding: "7px 12px",
-                borderRadius: "var(--radius-sm)",
-                backgroundColor: "var(--bg-surface)",
-                border: "1px solid var(--border-subtle)",
-                color: "var(--text-secondary)",
+                padding: "6px 14px",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "var(--glass-pill-bg)",
+                border: "1px solid var(--glass-pill-border)",
+                color: "var(--text-primary)",
                 fontSize: "12px",
-                fontWeight: 500,
+                fontWeight: 600,
                 cursor: "pointer",
+                transition: "all 0.15s ease",
               }}
             >
               {selectedIds.size === trashedItems.length ? <CheckSquare size={14} /> : <Square size={14} />}
-              {selectedIds.size === trashedItems.length ? "Deselect All" : "Select All"}
+              <span>{selectedIds.size === trashedItems.length ? "Deselect All" : "Select All"}</span>
             </button>
           )}
+        </div>
 
+        {/* Center Column: Centered Title & Inline Frosted Capsule Badge */}
+        <div style={{ flex: "0 1 auto", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <Trash2 size={20} style={{ color: "var(--accent-danger, #ef4444)" }} />
+            <h2
+              style={{
+                fontSize: "22px",
+                fontWeight: 800,
+                fontFamily: "var(--font-display, var(--font-sans))",
+                letterSpacing: "-0.03em",
+                color: "var(--text-primary)",
+                margin: 0,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Trash
+            </h2>
+          </div>
+
+          {/* Inline Frosted Capsule Badge for Item Count */}
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "3px 10px",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "var(--glass-badge-bg)",
+              border: "1px solid var(--glass-badge-border)",
+              backdropFilter: "blur(8px)",
+              fontSize: "12px",
+              fontWeight: 600,
+              color: "var(--text-secondary)",
+              whiteSpace: "nowrap",
+              letterSpacing: "0.01em",
+            }}
+          >
+            <span>{trashedItems.length} {trashedItems.length === 1 ? "item" : "items"}</span>
+          </div>
+        </div>
+
+        {/* Right Column: Action Controls */}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", minWidth: "120px" }}>
           {selectedIds.size > 0 && (
             <>
               <button
@@ -190,18 +235,20 @@ export const TrashView: React.FC = () => {
                   display: "flex",
                   alignItems: "center",
                   gap: "6px",
-                  padding: "7px 14px",
-                  borderRadius: "var(--radius-sm)",
-                  backgroundColor: "var(--accent-primary)",
-                  border: "none",
-                  color: "#ffffff",
+                  padding: "7px 16px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "var(--glass-action-bg)",
+                  border: "1px solid var(--glass-action-border)",
+                  color: "var(--text-primary)",
                   fontSize: "12px",
                   fontWeight: 600,
                   cursor: "pointer",
+                  boxShadow: "var(--glass-shadow)",
+                  transition: "all 0.15s ease",
                 }}
               >
-                <RotateCcw size={14} />
-                Restore Selected ({selectedIds.size})
+                <RotateCcw size={13} />
+                <span>Restore ({selectedIds.size})</span>
               </button>
 
               <button
@@ -213,17 +260,18 @@ export const TrashView: React.FC = () => {
                   alignItems: "center",
                   gap: "6px",
                   padding: "7px 14px",
-                  borderRadius: "var(--radius-sm)",
-                  backgroundColor: "transparent",
-                  border: "1px solid rgba(239, 68, 68, 0.4)",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "rgba(239, 68, 68, 0.12)",
+                  border: "1px solid rgba(239, 68, 68, 0.25)",
                   color: "var(--accent-danger, #ef4444)",
                   fontSize: "12px",
-                  fontWeight: 600,
+                  fontWeight: 500,
                   cursor: "pointer",
+                  transition: "all 0.15s ease",
                 }}
               >
-                <Trash2 size={14} />
-                Delete Selected Permanently
+                <Trash2 size={13} />
+                <span>Delete Selected</span>
               </button>
             </>
           )}
@@ -238,17 +286,18 @@ export const TrashView: React.FC = () => {
                 alignItems: "center",
                 gap: "6px",
                 padding: "7px 16px",
-                borderRadius: "var(--radius-sm)",
-                backgroundColor: "var(--accent-danger, #ef4444)",
-                border: "none",
-                color: "#ffffff",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "rgba(239, 68, 68, 0.14)",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+                color: "var(--accent-danger, #ef4444)",
                 fontSize: "12px",
                 fontWeight: 600,
                 cursor: "pointer",
+                transition: "all 0.15s ease",
               }}
             >
-              {isActionInProgress ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
-              Empty Trash Permanently
+              {isActionInProgress ? <Loader2 size={13} className="spin" /> : <Trash2 size={13} />}
+              <span>Empty Trash</span>
             </button>
           )}
         </div>

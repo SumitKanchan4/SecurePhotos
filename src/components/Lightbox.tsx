@@ -156,8 +156,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
       style={{
         position: "fixed",
         inset: 0,
-        backgroundColor: "rgba(5, 6, 10, 0.97)",
-        backdropFilter: "blur(24px)",
+        backgroundColor: "var(--lightbox-backdrop)",
+        backdropFilter: "blur(28px)",
+        WebkitBackdropFilter: "blur(28px)",
         display: "flex",
         flexDirection: "column",
         zIndex: 3000,
@@ -167,12 +168,14 @@ export const Lightbox: React.FC<LightboxProps> = ({
       {/* Lightbox Top Header Toolbar */}
       <div 
         style={{
-          height: "50px",
+          height: "52px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           padding: "0 16px",
-          backgroundColor: "rgba(14, 16, 23, 0.85)",
+          backgroundColor: "var(--lightbox-toolbar-bg)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
           borderBottom: "1px solid var(--border-subtle)",
           zIndex: 10,
         }}
@@ -191,8 +194,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 fontWeight: 700,
                 color: "#ffffff",
                 backgroundColor: "var(--accent-primary)",
-                padding: "2px 6px",
-                borderRadius: "var(--radius-xs)",
+                padding: "2px 8px",
+                borderRadius: "var(--radius-full)",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "3px",
@@ -210,7 +213,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
             onClick={handleZoomOut} 
             disabled={zoom <= 1}
             className="clickable" 
-            style={{ background: "transparent", border: "none", color: "var(--text-secondary)", padding: "4px" }}
+            style={{ background: "transparent", border: "none", color: "var(--text-primary)", padding: "4px", opacity: zoom <= 1 ? 0.4 : 1 }}
           >
             <ZoomOut size={16} />
           </button>
@@ -221,7 +224,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
             onClick={handleZoomIn} 
             disabled={zoom >= 4}
             className="clickable" 
-            style={{ background: "transparent", border: "none", color: "var(--text-secondary)", padding: "4px" }}
+            style={{ background: "transparent", border: "none", color: "var(--text-primary)", padding: "4px", opacity: zoom >= 4 ? 0.4 : 1 }}
           >
             <ZoomIn size={16} />
           </button>
@@ -237,18 +240,18 @@ export const Lightbox: React.FC<LightboxProps> = ({
             className="clickable"
             title={isFavorite ? "Remove from Favorites (F)" : "Add to Favorites (F)"}
             style={{
-              background: isFavorite ? "rgba(239, 68, 68, 0.15)" : "transparent",
-              borderRadius: "var(--radius-xs)",
-              border: isFavorite ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid transparent",
-              color: isFavorite ? "var(--accent-danger)" : "var(--text-secondary)",
-              padding: "4px 8px",
+              background: isFavorite ? "rgba(239, 68, 68, 0.15)" : "var(--glass-pill-bg)",
+              borderRadius: "var(--radius-full)",
+              border: isFavorite ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid var(--glass-pill-border)",
+              color: isFavorite ? "var(--accent-danger)" : "var(--text-primary)",
+              padding: "4px 10px",
               display: "flex",
               alignItems: "center",
               gap: "5px",
               cursor: "pointer",
             }}
           >
-            <Heart size={16} fill={isFavorite ? "var(--accent-danger)" : "none"} />
+            <Heart size={15} fill={isFavorite ? "var(--accent-danger)" : "none"} />
             <span style={{ fontSize: "11px", fontWeight: 600 }}>{isFavorite ? "Liked" : "Like"}</span>
           </button>
 
@@ -258,18 +261,18 @@ export const Lightbox: React.FC<LightboxProps> = ({
             className="clickable"
             title="Download image file to your computer"
             style={{
-              background: "transparent",
-              borderRadius: "var(--radius-xs)",
-              border: "1px solid var(--border-subtle)",
-              color: "var(--text-secondary)",
-              padding: "4px 8px",
+              background: "var(--glass-pill-bg)",
+              borderRadius: "var(--radius-full)",
+              border: "1px solid var(--glass-pill-border)",
+              color: "var(--text-primary)",
+              padding: "4px 10px",
               display: "flex",
               alignItems: "center",
               gap: "5px",
               cursor: "pointer",
             }}
           >
-            <Download size={15} />
+            <Download size={14} />
             <span style={{ fontSize: "11px", fontWeight: 600 }}>Download</span>
           </button>
 
@@ -280,10 +283,10 @@ export const Lightbox: React.FC<LightboxProps> = ({
             title="Download print-ready photo for studio printing, posters, and framing"
             style={{
               background: "rgba(59, 130, 246, 0.12)",
-              borderRadius: "var(--radius-xs)",
+              borderRadius: "var(--radius-full)",
               border: "1px solid rgba(59, 130, 246, 0.35)",
               color: "var(--accent-primary)",
-              padding: "4px 10px",
+              padding: "4px 12px",
               display: "flex",
               alignItems: "center",
               gap: "5px",
@@ -301,22 +304,23 @@ export const Lightbox: React.FC<LightboxProps> = ({
             className="clickable"
             title="Move to Trash (Delete / Backspace)"
             style={{
-              background: "transparent",
-              border: "none",
+              background: "var(--glass-pill-bg)",
+              borderRadius: "var(--radius-full)",
+              border: "1px solid var(--glass-pill-border)",
               color: "var(--text-secondary)",
-              padding: "4px",
+              padding: "5px 8px",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              transition: "color 0.15s ease",
+              transition: "all 0.15s ease",
             }}
             onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent-danger)")}
             onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-secondary)")}
           >
             {isDeleting ? (
-              <Loader2 size={16} className="spin" style={{ color: "var(--accent-danger)" }} />
+              <Loader2 size={15} className="spin" style={{ color: "var(--accent-danger)" }} />
             ) : (
-              <Trash2 size={16} />
+              <Trash2 size={15} />
             )}
           </button>
 
@@ -325,14 +329,18 @@ export const Lightbox: React.FC<LightboxProps> = ({
             onClick={() => setShowInfo(!showInfo)}
             className="clickable"
             style={{
-              background: showInfo ? "var(--accent-primary)" : "transparent",
-              border: "none",
-              color: showInfo ? "#ffffff" : "var(--text-secondary)",
-              padding: "4px 8px",
-              borderRadius: "var(--radius-xs)",
+              background: showInfo ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+              border: showInfo ? "1px solid var(--accent-primary)" : "1px solid var(--glass-pill-border)",
+              color: showInfo ? "#ffffff" : "var(--text-primary)",
+              padding: "5px 10px",
+              borderRadius: "var(--radius-full)",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
             }}
           >
-            <Info size={16} />
+            <Info size={15} />
+            <span style={{ fontSize: "11px", fontWeight: 600 }}>Info</span>
           </button>
 
           {/* Close Lightbox */}
@@ -340,14 +348,18 @@ export const Lightbox: React.FC<LightboxProps> = ({
             onClick={onClose}
             className="clickable"
             style={{
-              background: "transparent",
-              border: "none",
+              background: "var(--glass-pill-bg)",
+              border: "1px solid var(--glass-pill-border)",
+              borderRadius: "var(--radius-full)",
               color: "var(--text-primary)",
-              padding: "4px",
-              marginLeft: "8px",
+              padding: "5px",
+              marginLeft: "4px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
       </div>
@@ -362,19 +374,20 @@ export const Lightbox: React.FC<LightboxProps> = ({
               top: "16px",
               left: "50%",
               transform: "translateX(-50%)",
-              backgroundColor: "rgba(14, 16, 23, 0.94)",
-              backdropFilter: "blur(12px)",
-              border: isOptimizingThis ? "1px solid var(--accent-primary)" : "1px solid var(--border-subtle)",
+              backgroundColor: "var(--glass-surface)",
+              backdropFilter: "blur(20px)",
+              WebkitBackdropFilter: "blur(20px)",
+              border: isOptimizingThis ? "1px solid var(--accent-primary)" : "1px solid var(--glass-border)",
               padding: "8px 18px",
               borderRadius: "var(--radius-full)",
-              color: "#ffffff",
+              color: "var(--text-primary)",
               fontSize: "12px",
               fontWeight: 600,
               display: "flex",
               alignItems: "center",
               gap: "8px",
               zIndex: 100,
-              boxShadow: "0 4px 24px rgba(0,0,0,0.7)",
+              boxShadow: "var(--glass-shadow)",
             }}
           >
             {isOptimizingThis ? (
@@ -406,13 +419,16 @@ export const Lightbox: React.FC<LightboxProps> = ({
               width: "44px",
               height: "44px",
               borderRadius: "var(--radius-full)",
-              backgroundColor: "rgba(20, 23, 34, 0.75)",
-              border: "1px solid var(--border-highlight)",
-              color: "#ffffff",
+              backgroundColor: "var(--lightbox-nav-bg)",
+              backdropFilter: "blur(16px)",
+              WebkitBackdropFilter: "blur(16px)",
+              border: "1px solid var(--lightbox-nav-border)",
+              color: "var(--lightbox-nav-color)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               zIndex: 20,
+              boxShadow: "var(--glass-shadow)",
             }}
           >
             <ChevronLeft size={24} />
@@ -425,19 +441,22 @@ export const Lightbox: React.FC<LightboxProps> = ({
             className="clickable"
             style={{
               position: "absolute",
-              right: showInfo ? "320px" : "20px",
+              right: showInfo ? "360px" : "20px",
               top: "50%",
               transform: "translateY(-50%)",
               width: "44px",
               height: "44px",
               borderRadius: "var(--radius-full)",
-              backgroundColor: "rgba(20, 23, 34, 0.75)",
-              border: "1px solid var(--border-highlight)",
-              color: "#ffffff",
+              backgroundColor: "var(--lightbox-nav-bg)",
+              backdropFilter: "blur(16px)",
+              WebkitBackdropFilter: "blur(16px)",
+              border: "1px solid var(--lightbox-nav-border)",
+              color: "var(--lightbox-nav-color)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               zIndex: 20,
+              boxShadow: "var(--glass-shadow)",
               transition: "right 0.2s ease",
             }}
           >
@@ -501,7 +520,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 transition: zoom === 1 ? "transform 0.15s ease, opacity 0.25s ease" : "none",
                 opacity: isPreviewLoaded ? 1 : 0.4,
                 borderRadius: "var(--radius-sm)",
-                boxShadow: "0 8px 32px rgba(0, 0, 0, 0.6)",
+                boxShadow: "var(--shadow-lightbox)",
                 cursor: zoom > 1 ? "grab" : "default",
               }}
             />
@@ -514,12 +533,15 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   display: "flex",
                   alignItems: "center",
                   gap: "8px",
-                  padding: "8px 14px",
+                  padding: "8px 16px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: "rgba(0, 0, 0, 0.7)",
-                  color: "#ffffff",
+                  backgroundColor: "var(--glass-surface)",
+                  border: "1px solid var(--glass-border)",
+                  color: "var(--text-primary)",
                   fontSize: "12px",
-                  backdropFilter: "blur(8px)",
+                  backdropFilter: "blur(16px)",
+                  WebkitBackdropFilter: "blur(16px)",
+                  boxShadow: "var(--glass-shadow)",
                 }}
               >
                 <Loader2 size={16} className="spin" style={{ color: "var(--accent-primary)" }} />

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { 
   FileText, 
   Search, 
@@ -22,6 +22,7 @@ interface DocumentItem {
 export const DocumentsView: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const categoryRibbonRef = useRef<HTMLDivElement>(null);
 
   const [documents] = useState<DocumentItem[]>([]);
 
@@ -34,95 +35,189 @@ export const DocumentsView: React.FC = () => {
   });
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
-      {/* Header */}
+    <div style={{ flex: 1, overflowY: "auto", padding: "16px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+      {/* Unified Compact Glassmorphic Header Bar */}
       <div 
+        className="liquid-glass-toolbar"
         style={{ 
           display: "flex", 
           alignItems: "center", 
           justifyContent: "space-between", 
-          marginBottom: "16px" 
+          gap: "12px",
+          padding: "12px 20px",
+          minHeight: "56px",
+          backgroundColor: "var(--glass-surface)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          borderRadius: "var(--radius-lg)",
+          border: "1px solid var(--glass-border)",
+          boxShadow: "var(--glass-shadow)",
+          position: "sticky",
+          top: 0,
+          zIndex: 20,
+          flexShrink: 0,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <FileText size={20} style={{ color: "var(--accent-primary)" }} />
-          <div>
-            <h2 style={{ fontSize: "18px", fontWeight: 700 }}>Documents & Receipts ({documents.length})</h2>
-            <p style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-              OCR-scanned text indexed in SQLite FTS5 • Isolated from standard photo timeline
-            </p>
+        {/* Left Column: Vault Indicator */}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-start", gap: "10px", minWidth: "120px" }}>
+          <span 
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "4px 10px",
+              borderRadius: "var(--radius-full)",
+              fontSize: "11px",
+              fontWeight: 600,
+              backgroundColor: "rgba(16, 185, 129, 0.12)",
+              color: "var(--accent-success)",
+              border: "1px solid rgba(16, 185, 129, 0.25)",
+            }}
+          >
+            <FileCheck2 size={12} style={{ color: "var(--accent-success)" }} />
+            OCR Document Vault
+          </span>
+        </div>
+
+        {/* Center Column: Centered Title & Inline Frosted Capsule Badge */}
+        <div 
+          style={{ 
+            flex: "0 1 auto", 
+            display: "flex", 
+            alignItems: "baseline", 
+            justifyContent: "center", 
+            gap: "10px", 
+            minWidth: 0 
+          }}
+        >
+          <h1
+            style={{
+              fontSize: "22px",
+              fontWeight: 800,
+              fontFamily: "Plus Jakarta Sans, sans-serif",
+              letterSpacing: "-0.03em",
+              color: "var(--text-primary)",
+              margin: 0,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Documents & Receipts
+          </h1>
+
+          {/* Inline Frosted Capsule Badge for Document Count */}
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "2px 8px",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "var(--glass-badge-bg)",
+              border: "1px solid var(--glass-badge-border)",
+              fontFamily: "var(--font-mono)",
+              fontSize: "11px",
+              fontWeight: 700,
+              color: "var(--text-secondary)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {filteredDocs.length} {filteredDocs.length === 1 ? "document" : "documents"}
+          </span>
+        </div>
+
+        {/* Right Column: OCR Search Bar */}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", minWidth: "160px" }}>
+          <div 
+            style={{
+              width: "100%",
+              maxWidth: "240px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "6px 14px",
+              backgroundColor: "var(--glass-pill-bg)",
+              borderRadius: "var(--radius-full)",
+              border: "1px solid var(--glass-border)",
+            }}
+          >
+            <Search size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+            <input
+              type="text"
+              placeholder="Search OCR text..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                flex: 1,
+                background: "transparent",
+                border: "none",
+                color: "var(--text-primary)",
+                fontSize: "12px",
+                outline: "none",
+                minWidth: 0,
+              }}
+            />
           </div>
         </div>
       </div>
 
-      {/* Filter Toolbar & OCR Search */}
+      {/* Dedicated Category Tags Horizontal Ribbon (with mouse wheel scroll) */}
       <div 
+        ref={categoryRibbonRef}
+        onWheel={(e) => {
+          if (categoryRibbonRef.current) {
+            categoryRibbonRef.current.scrollLeft += e.deltaY;
+          }
+        }}
         style={{
           display: "flex",
           alignItems: "center",
-          gap: "12px",
-          marginBottom: "20px",
-          flexWrap: "wrap",
+          gap: "8px",
+          overflowX: "auto",
+          whiteSpace: "nowrap",
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
+          WebkitOverflowScrolling: "touch",
+          padding: "2px 0",
         }}
       >
-        {/* Category Pills */}
-        <div style={{ display: "flex", gap: "6px" }}>
-          {[
-            { id: "all", label: "All Documents" },
-            { id: "receipt", label: "Receipts & Invoices" },
-            { id: "identity", label: "Passports & IDs" },
-            { id: "tax", label: "Tax & Financial" },
-            { id: "medical", label: "Medical & Health" },
-          ].map((cat) => (
+        {[
+          { id: "all", label: "All Documents" },
+          { id: "receipt", label: "Receipts & Bills" },
+          { id: "identity", label: "Passports & IDs" },
+          { id: "tax", label: "Tax & Financial" },
+          { id: "medical", label: "Medical & Health" },
+          { id: "legal", label: "Legal & Contracts" },
+          { id: "warranty", label: "Warranties & Manuals" },
+        ].map((cat) => {
+          const isSelected = activeCategory === cat.id;
+          return (
             <button
               key={cat.id}
               onClick={() => setActiveCategory(cat.id)}
               className="clickable"
               style={{
+                flexShrink: 0,
                 padding: "6px 14px",
                 borderRadius: "var(--radius-full)",
-                border: "none",
-                backgroundColor: activeCategory === cat.id ? "var(--accent-primary)" : "var(--bg-surface)",
-                color: activeCategory === cat.id ? "#ffffff" : "var(--text-secondary)",
+                border: isSelected 
+                  ? "1px solid var(--glass-border-highlight)" 
+                  : "1px solid var(--glass-border)",
+                backgroundColor: isSelected 
+                  ? "var(--glass-pill-active)" 
+                  : "var(--glass-pill-bg)",
+                color: isSelected 
+                  ? "var(--text-primary)" 
+                  : "var(--text-secondary)",
                 fontSize: "12px",
-                fontWeight: activeCategory === cat.id ? 600 : 400,
+                fontWeight: isSelected ? 600 : 500,
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+                boxShadow: isSelected ? "var(--glass-shadow)" : "none",
               }}
             >
               {cat.label}
             </button>
-          ))}
-        </div>
-
-        {/* OCR Search Bar */}
-        <div 
-          style={{
-            flex: 1,
-            minWidth: "220px",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "6px 12px",
-            backgroundColor: "var(--bg-surface)",
-            borderRadius: "var(--radius-sm)",
-            border: "1px solid var(--border-subtle)",
-          }}
-        >
-          <Search size={14} style={{ color: "var(--text-muted)" }} />
-          <input
-            type="text"
-            placeholder="Search OCR extracted text (e.g. Order #, Total $, SSN)..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              flex: 1,
-              background: "transparent",
-              border: "none",
-              color: "var(--text-primary)",
-              fontSize: "12px",
-              outline: "none",
-            }}
-          />
-        </div>
+          );
+        })}
       </div>
 
       {filteredDocs.length === 0 ? (

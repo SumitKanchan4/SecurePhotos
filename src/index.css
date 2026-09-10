@@ -2,14 +2,30 @@
    🎨 SecurePhotos 2.0 — Enterprise CSS Design Token System
    ═════════════════════════════════════════════════════════════════════════ */
 
-/* 🌙 DARK THEME (Default) — Deep Obsidian & Electric Blue Accents */
+/* 🌙 DARK THEME (Default) — Deep Liquid Obsidian Glass */
 [data-theme="dark"], :root {
   /* Backgrounds */
-  --bg-app: #090a0f;
-  --bg-sidebar: #0e1017;
-  --bg-surface: #141722;
-  --bg-surface-elevated: #1b2030;
-  --bg-surface-glass: rgba(20, 23, 34, 0.75);
+  --bg-app: #08090d;
+  --bg-sidebar: rgba(13, 15, 22, 0.85);
+  --bg-surface: #12151e;
+  --bg-surface-elevated: #171b26;
+  --bg-surface-glass: rgba(18, 21, 30, 0.72);
+  
+  /* Liquid Glass System */
+  --glass-surface: rgba(18, 21, 30, 0.75);
+  --glass-surface-solid: #12151e;
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-highlight: rgba(255, 255, 255, 0.14);
+  --glass-pill-bg: rgba(255, 255, 255, 0.06);
+  --glass-pill-hover: rgba(255, 255, 255, 0.11);
+  --glass-pill-border: rgba(255, 255, 255, 0.10);
+  --glass-pill-active: rgba(255, 255, 255, 0.18);
+  --glass-badge-bg: rgba(255, 255, 255, 0.08);
+  --glass-badge-border: rgba(255, 255, 255, 0.12);
+  --glass-action-bg: rgba(255, 255, 255, 0.10);
+  --glass-action-hover: rgba(255, 255, 255, 0.16);
+  --glass-action-border: rgba(255, 255, 255, 0.16);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
   
   /* Borders & Dividers */
   --border-subtle: rgba(255, 255, 255, 0.07);
@@ -37,16 +53,39 @@
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.65);
   --shadow-lightbox: 0 24px 64px rgba(0, 0, 0, 0.85);
+
+  /* Lightbox & Studio Viewer System */
+  --lightbox-backdrop: rgba(5, 6, 10, 0.96);
+  --lightbox-toolbar-bg: rgba(14, 16, 23, 0.85);
+  --lightbox-nav-bg: rgba(20, 23, 34, 0.75);
+  --lightbox-nav-border: rgba(255, 255, 255, 0.14);
+  --lightbox-nav-color: #f8fafc;
 }
 
-/* ☀️ LIGHT THEME — Crisp Titanium, Frosted Glass & Saturated Accents */
+/* ☀️ LIGHT THEME — Crisp Titanium Alabaster Glass */
 [data-theme="light"] {
   /* Backgrounds */
-  --bg-app: #f8fafc;
-  --bg-sidebar: #f1f5f9;
+  --bg-app: #f1f3f8;
+  --bg-sidebar: rgba(243, 245, 249, 0.85);
   --bg-surface: #ffffff;
   --bg-surface-elevated: #ffffff;
-  --bg-surface-glass: rgba(255, 255, 255, 0.82);
+  --bg-surface-glass: rgba(255, 255, 255, 0.75);
+
+  /* Liquid Glass System */
+  --glass-surface: rgba(255, 255, 255, 0.78);
+  --glass-surface-solid: #ffffff;
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-border-highlight: rgba(0, 0, 0, 0.14);
+  --glass-pill-bg: rgba(0, 0, 0, 0.04);
+  --glass-pill-hover: rgba(0, 0, 0, 0.08);
+  --glass-pill-border: rgba(0, 0, 0, 0.08);
+  --glass-pill-active: rgba(0, 0, 0, 0.12);
+  --glass-badge-bg: rgba(0, 0, 0, 0.05);
+  --glass-badge-border: rgba(0, 0, 0, 0.08);
+  --glass-action-bg: rgba(0, 0, 0, 0.07);
+  --glass-action-hover: rgba(0, 0, 0, 0.11);
+  --glass-action-border: rgba(0, 0, 0, 0.12);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
 
   /* Borders & Dividers */
   --border-subtle: rgba(15, 23, 42, 0.08);
@@ -56,7 +95,7 @@
   /* Typography Colors */
   --text-primary: #0f172a;
   --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --text-muted: #64748b;
   --text-inverse: #ffffff;
 
   /* Accent Colors */
@@ -74,6 +113,13 @@
   --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
   --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
   --shadow-lightbox: 0 24px 64px rgba(15, 23, 42, 0.25);
+
+  /* Lightbox & Studio Viewer System */
+  --lightbox-backdrop: rgba(245, 247, 250, 0.96);
+  --lightbox-toolbar-bg: rgba(255, 255, 255, 0.88);
+  --lightbox-nav-bg: rgba(255, 255, 255, 0.85);
+  --lightbox-nav-border: rgba(0, 0, 0, 0.10);
+  --lightbox-nav-color: #0f172a;
 }
 
 /* 📏 GEOMETRY & TYPOGRAPHY TOKENS (Universal) */
@@ -85,6 +131,7 @@
   --radius-full: 9999px;
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
 
   --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -157,10 +204,36 @@ html, body, #root {
    ✨ UTILITY & GLASSMORPHISM CLASSES
    ═════════════════════════════════════════════════════════════════════════ */
 .glass-panel {
-  background: var(--bg-surface-glass);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--border-subtle);
+  background: var(--glass-surface);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-pill {
+  background-color: var(--glass-pill-bg);
+  border: 1px solid var(--glass-pill-border);
+  color: var(--text-primary);
+  border-radius: var(--radius-full);
+  transition: all var(--transition-fast);
+}
+.glass-pill:hover {
+  background-color: var(--glass-pill-hover);
+  border-color: var(--glass-border-highlight);
+}
+.glass-pill.active {
+  background-color: var(--glass-pill-active);
+  border-color: var(--glass-border-highlight);
+}
+
+.glass-badge {
+  background-color: var(--glass-badge-bg);
+  border: 1px solid var(--glass-badge-border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-full);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .clickable {

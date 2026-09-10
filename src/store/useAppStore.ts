@@ -45,7 +45,7 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set) => ({
   theme: "dark",
-  activeTab: "dashboard",
+  activeTab: "photos",
   searchQuery: "",
   selectedPhotoIds: new Set<number>(),
   activeVolume: null,

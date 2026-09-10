@@ -84,42 +84,96 @@ export const VaultView: React.FC<VaultViewProps> = ({ onUnlockRequest, onPhotoCl
   }
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
-      {/* Vault Active Header */}
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", padding: "16px 24px 0", gap: "16px" }}>
+      {/* Unified Compact Glassmorphic Header Bar */}
       <div 
-        style={{
-          padding: "12px 20px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          borderBottom: "1px solid var(--border-subtle)",
-          backgroundColor: "rgba(139, 92, 246, 0.08)",
+        style={{ 
+          display: "flex", 
+          alignItems: "center", 
+          justifyContent: "space-between", 
+          flexWrap: "wrap",
+          gap: "12px",
+          padding: "10px 20px",
+          minHeight: "56px",
+          backgroundColor: "var(--glass-surface)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          borderRadius: "var(--radius-lg)",
+          border: "1px solid var(--glass-border)",
+          boxShadow: "var(--glass-shadow)",
+          position: "sticky",
+          top: 0,
+          zIndex: 20,
+          flexShrink: 0,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        {/* Left Column: Security Status Badge & Timer */}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-start", gap: "10px", minWidth: "120px" }}>
           <div 
             style={{
-              padding: "4px 8px",
+              padding: "4px 10px",
               borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--accent-vault)",
-              color: "#ffffff",
+              backgroundColor: "rgba(139, 92, 246, 0.15)",
+              border: "1px solid rgba(139, 92, 246, 0.35)",
+              color: "var(--accent-vault)",
               fontSize: "11px",
               fontWeight: 700,
               display: "flex",
               alignItems: "center",
-              gap: "4px",
+              gap: "5px",
+              letterSpacing: "0.02em",
             }}
           >
-            <ShieldCheck size={12} />
-            UNLOCKED (IN-MEMORY)
+            <ShieldCheck size={13} />
+            <span>UNLOCKED</span>
           </div>
-          <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
-            <Clock size={12} /> Auto-locks after 30s idle
+          <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
+            <Clock size={12} /> Auto-locks (30s)
           </span>
         </div>
 
-        {/* Vault Actions */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        {/* Center Column: Centered Title & Inline Frosted Capsule Badge */}
+        <div style={{ flex: "0 1 auto", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <Lock size={18} style={{ color: "var(--accent-vault)" }} />
+            <h2
+              style={{
+                fontSize: "22px",
+                fontWeight: 800,
+                fontFamily: "var(--font-display, var(--font-sans))",
+                letterSpacing: "-0.03em",
+                color: "var(--text-primary)",
+                margin: 0,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Encrypted Vault
+            </h2>
+          </div>
+
+          {/* Inline Frosted Capsule Badge for Photo Count */}
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "3px 10px",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "var(--glass-badge-bg)",
+              border: "1px solid var(--glass-badge-border)",
+              backdropFilter: "blur(8px)",
+              fontSize: "12px",
+              fontWeight: 600,
+              color: "var(--text-secondary)",
+              whiteSpace: "nowrap",
+              letterSpacing: "0.01em",
+            }}
+          >
+            <span>{vaultPhotos.length} {vaultPhotos.length === 1 ? "photo" : "photos"}</span>
+          </div>
+        </div>
+
+        {/* Right Column: Vault Actions */}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", minWidth: "120px" }}>
           <button
             onClick={() => setIsPrivacyShieldActive(!isPrivacyShieldActive)}
             className="clickable"
@@ -127,16 +181,19 @@ export const VaultView: React.FC<VaultViewProps> = ({ onUnlockRequest, onPhotoCl
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              padding: "6px 12px",
-              borderRadius: "var(--radius-sm)",
-              backgroundColor: isPrivacyShieldActive ? "var(--accent-primary)" : "var(--bg-surface)",
-              border: "1px solid var(--border-subtle)",
-              color: isPrivacyShieldActive ? "#ffffff" : "var(--text-secondary)",
+              padding: "6px 14px",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: isPrivacyShieldActive ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+              border: isPrivacyShieldActive ? "1px solid var(--glass-border-highlight)" : "1px solid var(--glass-pill-border)",
+              color: isPrivacyShieldActive ? "#ffffff" : "var(--text-primary)",
               fontSize: "12px",
+              fontWeight: 500,
+              cursor: "pointer",
+              transition: "all 0.15s ease",
             }}
           >
-            <EyeOff size={14} />
-            {isPrivacyShieldActive ? "Disable Privacy Shield" : "Privacy Shield"}
+            <EyeOff size={13} />
+            <span>{isPrivacyShieldActive ? "Shield On" : "Privacy Shield"}</span>
           </button>
 
           <button
@@ -149,17 +206,19 @@ export const VaultView: React.FC<VaultViewProps> = ({ onUnlockRequest, onPhotoCl
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              padding: "6px 14px",
-              borderRadius: "var(--radius-sm)",
-              backgroundColor: "var(--accent-danger)",
-              border: "none",
-              color: "#ffffff",
+              padding: "6px 16px",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "rgba(239, 68, 68, 0.14)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              color: "var(--accent-danger, #ef4444)",
               fontSize: "12px",
               fontWeight: 600,
+              cursor: "pointer",
+              transition: "all 0.15s ease",
             }}
           >
-            <Lock size={14} />
-            Lock Vault Now (L)
+            <Lock size={13} />
+            <span>Lock Vault (L)</span>
           </button>
         </div>
       </div>

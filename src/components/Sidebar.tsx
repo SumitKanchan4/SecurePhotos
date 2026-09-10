@@ -20,6 +20,7 @@ interface NavItem {
   icon: React.ReactNode;
   badge?: string;
   isVault?: boolean;
+  hasDividerBefore?: boolean;
 }
 
 export const Sidebar: React.FC = () => {
@@ -27,23 +28,52 @@ export const Sidebar: React.FC = () => {
 
   const navItems: NavItem[] = [
     { 
-      id: "dashboard", 
-      label: "Dashboard", 
-      icon: <LayoutDashboard size={17} /> 
-    },
-    { 
       id: "photos", 
       label: "Photos", 
       icon: <Images size={17} /> 
     },
-
-    { id: "albums", label: "Albums", icon: <FolderHeart size={17} /> },
-    { id: "people", label: "People", icon: <Users size={17} /> },
-    { id: "documents", label: "Documents", icon: <FileText size={17} /> },
-    { id: "stories", label: "Stories & Insights", icon: <Sparkles size={17} /> },
-    { id: "vault", label: "Encrypted Vault", icon: <Lock size={17} />, isVault: true },
-    { id: "trash", label: "Trash", icon: <Trash2 size={17} /> },
-    { id: "settings", label: "Settings", icon: <Settings size={17} /> },
+    { 
+      id: "stories", 
+      label: "Stories", 
+      icon: <Sparkles size={17} /> 
+    },
+    { 
+      id: "albums", 
+      label: "Albums", 
+      icon: <FolderHeart size={17} /> 
+    },
+    { 
+      id: "people", 
+      label: "People", 
+      icon: <Users size={17} /> 
+    },
+    { 
+      id: "documents", 
+      label: "Documents", 
+      icon: <FileText size={17} /> 
+    },
+    { 
+      id: "vault", 
+      label: "Encrypted Vault", 
+      icon: <Lock size={17} />, 
+      isVault: true 
+    },
+    { 
+      id: "dashboard", 
+      label: "Dashboard", 
+      icon: <LayoutDashboard size={17} />,
+      hasDividerBefore: true 
+    },
+    { 
+      id: "trash", 
+      label: "Trash", 
+      icon: <Trash2 size={17} /> 
+    },
+    { 
+      id: "settings", 
+      label: "Settings", 
+      icon: <Settings size={17} /> 
+    },
   ];
 
   return (
@@ -51,37 +81,50 @@ export const Sidebar: React.FC = () => {
       style={{
         width: "220px",
         backgroundColor: "var(--bg-sidebar)",
-        borderRight: "1px solid var(--border-subtle)",
+        backdropFilter: "blur(24px)",
+        WebkitBackdropFilter: "blur(24px)",
+        borderRight: "1px solid var(--glass-border)",
         display: "flex",
         flexDirection: "column",
         justifyContent: "space-between",
-        padding: "12px 8px",
+        padding: "14px 10px",
         userSelect: "none",
       }}
     >
       {/* Navigation List */}
-      <nav style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+      <nav style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
         {navItems.map((item) => {
           const isActive = activeTab === item.id;
           return (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
+            <React.Fragment key={item.id}>
+              {item.hasDividerBefore && (
+                <div 
+                  style={{ 
+                    height: "1px", 
+                    backgroundColor: "var(--glass-border)", 
+                    margin: "6px 8px",
+                  }} 
+                />
+              )}
+              <button
+                onClick={() => setActiveTab(item.id)}
               className="clickable"
               style={{
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                padding: "8px 12px",
-                borderRadius: "var(--radius-sm)",
-                border: "none",
+                padding: "9px 14px",
+                borderRadius: "var(--radius-md)",
+                border: isActive 
+                  ? (item.isVault ? "1px solid rgba(139, 92, 246, 0.35)" : "1px solid var(--glass-border-highlight)")
+                  : "1px solid transparent",
                 background: isActive 
-                  ? (item.isVault ? "var(--accent-vault-glow)" : "var(--accent-glow)")
+                  ? (item.isVault ? "rgba(139, 92, 246, 0.15)" : "var(--glass-pill-active)")
                   : "transparent",
                 color: isActive 
-                  ? (item.isVault ? "var(--accent-vault)" : "var(--accent-primary)")
+                  ? (item.isVault ? "var(--accent-vault)" : "var(--text-primary)")
                   : "var(--text-secondary)",
-                fontWeight: isActive ? 600 : 400,
+                fontWeight: isActive ? 600 : 450,
                 fontSize: "13px",
                 textAlign: "left",
                 transition: "all var(--transition-fast)",
@@ -107,8 +150,9 @@ export const Sidebar: React.FC = () => {
                 </span>
               )}
             </button>
-          );
-        })}
+          </React.Fragment>
+        );
+      })}
       </nav>
 
       {/* Bottom Status Card */}
