@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { 
   Lock, 
   Plus, 
@@ -9,6 +9,9 @@ import {
   Calendar,
   FolderPlus,
   Download,
+  Images,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
@@ -21,6 +24,7 @@ import { VaultView } from "./components/VaultView";
 import { StoriesCarousel } from "./components/StoriesCarousel";
 import { StoryPlayerModal } from "./components/StoryPlayerModal";
 import { DashboardView } from "./components/DashboardView";
+import { StoriesView } from "./components/StoriesView";
 import { PeopleView } from "./components/PeopleView";
 import { AlbumsView } from "./components/AlbumsView";
 import { DocumentsView } from "./components/DocumentsView";
@@ -63,6 +67,29 @@ export const App: React.FC = () => {
   const [optimizationProgress, setOptimizationProgress] = useState<OptimizationProgress | null>(null);
   const [timelineData, setTimelineData] = useState<TimelineYearsData>({ total_count: 0, years: [] });
   const hasRegeneratedThumbnailsRef = useRef(false);
+  const timelineRibbonRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkTimelineScroll = useCallback(() => {
+    const el = timelineRibbonRef.current;
+    if (!el) return;
+    const hasOverflow = el.scrollWidth > el.clientWidth + 2;
+    setCanScrollLeft(hasOverflow && el.scrollLeft > 4);
+    setCanScrollRight(hasOverflow && el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
+  }, []);
+
+  const scrollTimeline = (offset: number) => {
+    const el = timelineRibbonRef.current;
+    if (!el) return;
+    el.scrollBy({ left: offset, behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    checkTimelineScroll();
+    window.addEventListener("resize", checkTimelineScroll);
+    return () => window.removeEventListener("resize", checkTimelineScroll);
+  }, [timelineData, checkTimelineScroll]);
 
   const loadTimelineYears = async () => {
     try {
@@ -358,9 +385,8 @@ export const App: React.FC = () => {
           }}
         >
           {activeTab === "dashboard" ? (
-            /* Unified Executive Dashboard & Stories Hub */
+            /* System & Storage Telemetry Dashboard */
             <DashboardView 
-              onPlayStory={(id) => setActiveStoryId(id)}
               onNavigate={(tab) => setActiveTab(tab)}
             />
           ) : activeTab === "vault" ? (
@@ -398,8 +424,8 @@ export const App: React.FC = () => {
             /* Settings & Preferences */
             <SettingsView />
           ) : activeTab === "stories" ? (
-            /* Unified Executive Dashboard & Stories Hub */
-            <DashboardView 
+            /* Dedicated Stories & Photographic Intelligence Hub */
+            <StoriesView 
               onPlayStory={(id) => setActiveStoryId(id)}
               onNavigate={(tab) => setActiveTab(tab)}
             />
@@ -410,66 +436,117 @@ export const App: React.FC = () => {
               {/* Stories Highlight Bar on Home View */}
               {photos.length > 0 && <StoriesCarousel onPlayStory={(id) => setActiveStoryId(id)} />}
 
-              {/* View Header Toolbar */}
+              {/* macOS Liquid Glass Floating Header Toolbar */}
               <div 
+                className="liquid-glass-toolbar"
                 style={{
-                  padding: "12px 20px 8px 20px",
+                  margin: "14px 20px 8px 20px",
+                  padding: "12px 20px",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  borderBottom: "1px solid var(--border-subtle)",
+                  backgroundColor: "var(--glass-surface)",
+                  backdropFilter: "blur(24px)",
+                  WebkitBackdropFilter: "blur(24px)",
+                  border: "1px solid var(--glass-border)",
+                  borderRadius: "var(--radius-lg)",
+                  boxShadow: "var(--glass-shadow)",
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 20,
+                  flexShrink: 0,
                 }}
               >
-                <div>
-                  <h1 style={{ fontSize: "18px", fontWeight: 700, textTransform: "capitalize", letterSpacing: "-0.3px" }}>
-                    All Photos & Videos
-                  </h1>
-                  {photos.length === 0 ? (
-                    <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-                      No photos yet • Import a folder to begin
-                    </p>
-                  ) : optimizationProgress?.is_active ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "4px" }}>
-                      <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-                        {photos.length.toLocaleString()} media items
-                      </span>
+                {/* Left Column (flex: 1): Status / Live Optimization Badge */}
+                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "10px", minWidth: "120px" }}>
+                  {optimizationProgress?.is_active ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <span 
+                        title={optimizationProgress.active_filename ? `Processing: ${optimizationProgress.active_filename}` : undefined}
                         style={{
                           display: "inline-flex",
                           alignItems: "center",
                           gap: "6px",
-                          padding: "3px 10px",
+                          padding: "4px 10px",
                           borderRadius: "var(--radius-full)",
-                          backgroundColor: "rgba(59, 130, 246, 0.12)",
-                          border: "1px solid rgba(59, 130, 246, 0.35)",
+                          backgroundColor: "var(--glass-badge-bg)",
+                          border: "1px solid var(--glass-badge-border)",
                           fontSize: "11px",
                           color: "var(--accent-primary)",
                           fontWeight: 600,
                         }}
                       >
                         <Loader2 size={12} className="spin" />
-                        8K ULTRA Optimization: Processing {optimizationProgress.active_filename || "media"} ({optimizationProgress.completed_count}/{optimizationProgress.total_count}) • {optimizationProgress.item_progress}%
+                        {optimizationProgress.completed_count >= optimizationProgress.total_count
+                          ? `Finishing enhancements (${optimizationProgress.completed_count} of ${optimizationProgress.total_count})`
+                          : `Optimizing photo quality (${optimizationProgress.completed_count + 1} of ${optimizationProgress.total_count})`}
                       </span>
-                      <div style={{ width: "80px", height: "4px", backgroundColor: "var(--bg-surface-elevated)", borderRadius: "2px", overflow: "hidden" }}>
-                        <div 
-                          style={{ 
-                            height: "100%", 
-                            width: `${optimizationProgress.item_progress}%`, 
-                            backgroundColor: "var(--accent-primary)", 
-                            transition: "width 0.2s ease" 
-                          }} 
-                        />
-                      </div>
                     </div>
                   ) : (
-                    <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-                      8K ULTRA Space-Saver Active
-                    </p>
+                    <span 
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "4px 10px",
+                        borderRadius: "var(--radius-full)",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        backgroundColor: "rgba(59, 130, 246, 0.12)",
+                        color: "var(--accent-primary)",
+                        border: "1px solid rgba(59, 130, 246, 0.25)",
+                      }}
+                    >
+                      <Images size={12} style={{ color: "var(--accent-primary)" }} />
+                      Library Collection
+                    </span>
                   )}
                 </div>
 
-                {/* Selection & Batch Action Toolbar */}
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                {/* Center Column (flex: 0 1 auto): 22px Plus Jakarta Sans Title + Baseline Capsule */}
+                <div 
+                  style={{ 
+                    flex: "0 1 auto", 
+                    display: "flex", 
+                    alignItems: "baseline", 
+                    justifyContent: "center", 
+                    gap: "10px",
+                    minWidth: 0,
+                  }}
+                >
+                  <h1 
+                    style={{ 
+                      fontSize: "22px", 
+                      fontWeight: 800, 
+                      letterSpacing: "-0.03em", 
+                      margin: 0,
+                      color: "var(--text-primary)",
+                      fontFamily: "Plus Jakarta Sans, sans-serif",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Photos
+                  </h1>
+                  <span 
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "2px 8px",
+                      borderRadius: "var(--radius-full)",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      backgroundColor: "var(--glass-badge-bg)",
+                      color: "var(--text-secondary)",
+                      border: "1px solid var(--glass-badge-border)",
+                      fontFamily: "var(--font-mono)",
+                    }}
+                  >
+                    {photos.length.toLocaleString()} {photos.length === 1 ? "photo" : "photos"}
+                  </span>
+                </div>
+
+                {/* Right Column (flex: 1): Selection & Batch Action Toolbar */}
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px", minWidth: "120px" }}>
                   {selectedCount > 0 ? (
                     <>
                       <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--accent-primary)", marginRight: "6px" }}>
@@ -490,10 +567,10 @@ export const App: React.FC = () => {
                           display: "flex",
                           alignItems: "center",
                           gap: "6px",
-                          padding: "6px 12px",
-                          borderRadius: "var(--radius-sm)",
-                          backgroundColor: "var(--bg-surface)",
-                          border: "1px solid var(--border-subtle)",
+                          padding: "6px 14px",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "var(--glass-pill-bg)",
+                          border: "1px solid var(--glass-pill-border)",
                           color: selectedCount >= 2 && selectedCount <= 9 ? "var(--text-primary)" : "var(--text-muted)",
                           fontSize: "12px",
                           fontWeight: 500,
@@ -512,10 +589,10 @@ export const App: React.FC = () => {
                           display: "flex",
                           alignItems: "center",
                           gap: "6px",
-                          padding: "6px 12px",
-                          borderRadius: "var(--radius-sm)",
-                          backgroundColor: "var(--bg-surface)",
-                          border: "1px solid var(--border-subtle)",
+                          padding: "6px 14px",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "var(--glass-pill-bg)",
+                          border: "1px solid var(--glass-pill-border)",
                           color: "var(--text-primary)",
                           fontSize: "12px",
                           fontWeight: 500,
@@ -531,10 +608,10 @@ export const App: React.FC = () => {
                           display: "flex",
                           alignItems: "center",
                           gap: "6px",
-                          padding: "6px 12px",
-                          borderRadius: "var(--radius-sm)",
-                          backgroundColor: "var(--bg-surface)",
-                          border: "1px solid var(--border-subtle)",
+                          padding: "6px 14px",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "var(--glass-pill-bg)",
+                          border: "1px solid var(--glass-pill-border)",
                           color: "var(--text-primary)",
                           fontSize: "12px",
                           fontWeight: 500,
@@ -550,11 +627,11 @@ export const App: React.FC = () => {
                           display: "flex",
                           alignItems: "center",
                           gap: "6px",
-                          padding: "6px 12px",
-                          borderRadius: "var(--radius-sm)",
-                          backgroundColor: "var(--accent-vault)",
-                          border: "none",
-                          color: "#ffffff",
+                          padding: "6px 14px",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "rgba(139, 92, 246, 0.15)",
+                          border: "1px solid rgba(139, 92, 246, 0.35)",
+                          color: "var(--accent-vault)",
                           fontSize: "12px",
                           fontWeight: 600,
                         }}
@@ -569,10 +646,10 @@ export const App: React.FC = () => {
                           display: "flex",
                           alignItems: "center",
                           gap: "6px",
-                          padding: "6px 12px",
-                          borderRadius: "var(--radius-sm)",
-                          backgroundColor: "var(--bg-surface)",
-                          border: "1px solid var(--border-subtle)",
+                          padding: "6px 14px",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "rgba(239, 68, 68, 0.12)",
+                          border: "1px solid rgba(239, 68, 68, 0.25)",
                           color: "var(--accent-danger, #ef4444)",
                           fontSize: "12px",
                           fontWeight: 600,
@@ -586,10 +663,10 @@ export const App: React.FC = () => {
                         onClick={clearSelection}
                         className="clickable"
                         style={{
-                          padding: "6px 10px",
-                          borderRadius: "var(--radius-sm)",
-                          backgroundColor: "var(--bg-surface)",
-                          border: "1px solid var(--border-subtle)",
+                          padding: "6px 12px",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "var(--glass-pill-bg)",
+                          border: "1px solid var(--glass-pill-border)",
                           color: "var(--text-secondary)",
                           fontSize: "12px",
                         }}
@@ -605,10 +682,10 @@ export const App: React.FC = () => {
                           display: "flex",
                           alignItems: "center",
                           gap: "6px",
-                          padding: "6px 12px",
-                          borderRadius: "var(--radius-sm)",
-                          backgroundColor: "var(--bg-surface)",
-                          border: "1px solid var(--border-subtle)",
+                          padding: "6px 14px",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "var(--glass-pill-bg)",
+                          border: "1px solid var(--glass-pill-border)",
                           color: "var(--text-primary)",
                           fontSize: "12px",
                           fontWeight: 500,
@@ -624,13 +701,14 @@ export const App: React.FC = () => {
                           display: "flex",
                           alignItems: "center",
                           gap: "6px",
-                          padding: "6px 14px",
-                          borderRadius: "var(--radius-sm)",
+                          padding: "6px 16px",
+                          borderRadius: "var(--radius-full)",
                           backgroundColor: "var(--accent-primary)",
                           border: "none",
                           color: "#ffffff",
                           fontSize: "12px",
                           fontWeight: 600,
+                          boxShadow: "0 2px 10px rgba(59, 130, 246, 0.25)",
                         }}
                       >
                         <Plus size={15} />
@@ -641,99 +719,207 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Scalable Data-Driven Timeline Year Filter Ribbon */}
+              {/* Scalable Data-Driven Timeline Year Filter Ribbon with Chevrons & Edge Fade */}
               <div 
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "8px",
-                  padding: "6px 20px",
+                  gap: "10px",
+                  padding: "8px 20px",
                   fontSize: "12px",
                   borderBottom: "1px solid var(--border-subtle)",
-                  backgroundColor: "var(--bg-sidebar)",
-                  overflowX: "auto",
-                  whiteSpace: "nowrap",
-                  scrollbarWidth: "none",
+                  backgroundColor: "var(--glass-surface)",
+                  backdropFilter: "blur(20px)",
+                  WebkitBackdropFilter: "blur(20px)",
+                  position: "relative",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "5px", color: "var(--text-muted)", fontWeight: 600, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px", flexShrink: 0, marginRight: "4px" }}>
-                  <Calendar size={13} style={{ color: "var(--accent-primary)" }} />
-                  <span>Timeline:</span>
-                </div>
+                {/* Left Pinned Action Group (Timeline label + All Years pill) */}
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "5px", color: "var(--text-muted)", fontWeight: 600, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px", marginRight: "2px" }}>
+                    <Calendar size={13} style={{ color: "var(--accent-primary)" }} />
+                    <span>Timeline:</span>
+                  </div>
 
-                {/* All Years Pill */}
-                <button
-                  className="clickable"
-                  onClick={() => setActiveYear("All Years")}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    background: activeYear === "All Years" ? "var(--accent-primary)" : "rgba(255, 255, 255, 0.04)",
-                    color: activeYear === "All Years" ? "#ffffff" : "var(--text-secondary)",
-                    border: activeYear === "All Years" ? "1px solid transparent" : "1px solid var(--border-subtle)",
-                    padding: "3px 10px",
-                    borderRadius: "var(--radius-full)",
-                    fontSize: "11px",
-                    fontWeight: activeYear === "All Years" ? 600 : 500,
-                    flexShrink: 0,
-                    transition: "all 0.15s ease",
-                  }}
-                >
-                  <span>All</span>
-                  {timelineData.total_count > 0 && (
-                    <span 
-                      style={{ 
-                        fontSize: "10px", 
-                        opacity: activeYear === "All Years" ? 0.9 : 0.6,
-                        backgroundColor: activeYear === "All Years" ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.06)",
-                        padding: "1px 5px",
-                        borderRadius: "10px",
-                      }}
-                    >
-                      {timelineData.total_count.toLocaleString()}
-                    </span>
-                  )}
-                </button>
-
-                {/* Dynamic Active Years Pills (Only years with photos) */}
-                {timelineData.years.map((item) => {
-                  const isActive = activeYear === item.year;
-                  return (
-                    <button
-                      key={item.year}
-                      className="clickable"
-                      onClick={() => setActiveYear(item.year)}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        background: isActive ? "var(--accent-primary)" : "rgba(255, 255, 255, 0.04)",
-                        color: isActive ? "#ffffff" : "var(--text-secondary)",
-                        border: isActive ? "1px solid transparent" : "1px solid var(--border-subtle)",
-                        padding: "3px 10px",
-                        borderRadius: "var(--radius-full)",
-                        fontSize: "11px",
-                        fontWeight: isActive ? 600 : 500,
-                        flexShrink: 0,
-                        transition: "all 0.15s ease",
-                      }}
-                    >
-                      <span>{item.year}</span>
+                  {/* All Years Pill */}
+                  <button
+                    className="clickable"
+                    onClick={() => setActiveYear("All Years")}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      background: activeYear === "All Years" ? "var(--glass-pill-active)" : "var(--glass-pill-bg)",
+                      color: activeYear === "All Years" ? "var(--text-primary)" : "var(--text-secondary)",
+                      border: activeYear === "All Years" ? "1px solid var(--glass-border-highlight)" : "1px solid var(--glass-pill-border)",
+                      padding: "4px 12px",
+                      borderRadius: "var(--radius-full)",
+                      fontSize: "11px",
+                      fontWeight: activeYear === "All Years" ? 600 : 500,
+                      flexShrink: 0,
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <span>All</span>
+                    {timelineData.total_count > 0 && (
                       <span 
                         style={{ 
                           fontSize: "10px", 
-                          opacity: isActive ? 0.9 : 0.6,
-                          backgroundColor: isActive ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.06)",
-                          padding: "1px 5px",
-                          borderRadius: "10px",
+                          backgroundColor: "var(--glass-badge-bg)",
+                          border: "1px solid var(--glass-badge-border)",
+                          padding: "1px 6px",
+                          borderRadius: "var(--radius-full)",
                         }}
                       >
-                        {item.count.toLocaleString()}
+                        {timelineData.total_count.toLocaleString()}
                       </span>
-                    </button>
-                  );
-                })}
+                    )}
+                  </button>
+                </div>
+
+                {/* Subtle Vertical Glass Divider */}
+                {timelineData.years.length > 0 && (
+                  <div style={{ width: "1px", height: "18px", backgroundColor: "var(--glass-border-highlight)", flexShrink: 0 }} />
+                )}
+
+                {/* Scrollable Years Track with Chevrons and Edge Fade */}
+                {timelineData.years.length > 0 && (
+                  <div style={{ position: "relative", flex: 1, minWidth: 0, display: "flex", alignItems: "center" }}>
+                    {/* Left Scroll Chevron */}
+                    {canScrollLeft && (
+                      <button
+                        onClick={() => scrollTimeline(-240)}
+                        className="clickable"
+                        title="Scroll earlier years"
+                        style={{
+                          position: "absolute",
+                          left: "2px",
+                          zIndex: 10,
+                          width: "28px",
+                          height: "28px",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "var(--glass-surface)",
+                          backdropFilter: "blur(16px)",
+                          WebkitBackdropFilter: "blur(16px)",
+                          border: "1px solid var(--glass-border-highlight)",
+                          boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "var(--text-primary)",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        <ChevronLeft size={15} />
+                      </button>
+                    )}
+
+                    {/* Scrollable Track */}
+                    <div 
+                      ref={timelineRibbonRef}
+                      onScroll={checkTimelineScroll}
+                      onWheel={(e) => {
+                        if (e.deltaY !== 0) {
+                          e.currentTarget.scrollLeft += e.deltaY;
+                          checkTimelineScroll();
+                        }
+                      }}
+                      style={{ 
+                        display: "flex", 
+                        alignItems: "center", 
+                        gap: "8px", 
+                        overflowX: "auto", 
+                        whiteSpace: "nowrap", 
+                        scrollbarWidth: "none", 
+                        padding: "4px 8px", 
+                        width: "100%",
+                        maskImage: canScrollLeft && canScrollRight
+                          ? "linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent)"
+                          : canScrollRight
+                          ? "linear-gradient(to right, black calc(100% - 32px), transparent)"
+                          : canScrollLeft
+                          ? "linear-gradient(to right, transparent, black 32px)"
+                          : "none",
+                        WebkitMaskImage: canScrollLeft && canScrollRight
+                          ? "linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent)"
+                          : canScrollRight
+                          ? "linear-gradient(to right, black calc(100% - 32px), transparent)"
+                          : canScrollLeft
+                          ? "linear-gradient(to right, transparent, black 32px)"
+                          : "none",
+                      }}
+                    >
+                      {timelineData.years.map((item) => {
+                        const isActive = activeYear === item.year;
+                        return (
+                          <button
+                            key={item.year}
+                            className="clickable"
+                            onClick={() => setActiveYear(item.year)}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              background: isActive ? "var(--glass-pill-active)" : "var(--glass-pill-bg)",
+                              color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                              border: isActive ? "1px solid var(--glass-border-highlight)" : "1px solid var(--glass-pill-border)",
+                              padding: "4px 12px",
+                              borderRadius: "var(--radius-full)",
+                              fontSize: "11px",
+                              fontWeight: isActive ? 600 : 500,
+                              flexShrink: 0,
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            <span>{item.year}</span>
+                            <span 
+                              style={{ 
+                                fontSize: "10px", 
+                                backgroundColor: "var(--glass-badge-bg)",
+                                border: "1px solid var(--glass-badge-border)",
+                                padding: "1px 6px",
+                                borderRadius: "var(--radius-full)",
+                              }}
+                            >
+                              {item.count.toLocaleString()}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Right Scroll Chevron */}
+                    {canScrollRight && (
+                      <button
+                        onClick={() => scrollTimeline(240)}
+                        className="clickable"
+                        title="Scroll later years"
+                        style={{
+                          position: "absolute",
+                          right: "2px",
+                          zIndex: 10,
+                          width: "28px",
+                          height: "28px",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "var(--glass-surface)",
+                          backdropFilter: "blur(16px)",
+                          WebkitBackdropFilter: "blur(16px)",
+                          border: "1px solid var(--glass-border-highlight)",
+                          boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "var(--text-primary)",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        <ChevronRight size={15} />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* 60 FPS Virtualized Grid / Empty State */}

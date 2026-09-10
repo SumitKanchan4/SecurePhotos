@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { 
   Users, 
   Sparkles,
@@ -17,6 +17,9 @@ import {
   X,
   Play,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
 } from "lucide-react";
 import { PersonItem, UnlabeledClusterItem, FaceScanStatus, PhotoItem } from "../types";
 import { useAppStore } from "../store/useAppStore";
@@ -100,7 +103,15 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
   const [updatingPerson, setUpdatingPerson] = useState<boolean>(false);
   const [isSlideshowOpen, setIsSlideshowOpen] = useState<boolean>(false);
   const [personFilter, setPersonFilter] = useState<string>("all");
+  const [selectedYears, setSelectedYears] = useState<string[]>([]);
+  const [lastClickedYear, setLastClickedYear] = useState<string | null>(null);
+  const [isRangePopoverOpen, setIsRangePopoverOpen] = useState<boolean>(false);
+  const [customRangeFrom, setCustomRangeFrom] = useState<string>("");
+  const [customRangeTo, setCustomRangeTo] = useState<string>("");
   const [isRelationshipPopoverOpen, setIsRelationshipPopoverOpen] = useState<boolean>(false);
+  const ribbonRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState<boolean>(false);
+  const [canScrollRight, setCanScrollRight] = useState<boolean>(false);
 
   // Load recognized people
   const fetchPeople = useCallback(async () => {
@@ -259,6 +270,10 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
   const handleSelectPerson = async (person: PersonItem) => {
     setSelectedPerson(person);
     setLoadingPhotos(true);
+    setPersonFilter("all");
+    setSelectedYears([]);
+    setLastClickedYear(null);
+    setIsRangePopoverOpen(false);
     try {
       const res = await fetch(`${API_BASE}/people/${person.id}/photos`);
       if (res.ok) {
@@ -359,11 +374,10 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
   );
 
   // Computed values for selectedPerson drill-down
-  const { availableYears, yearsRange, favCount, timelineGroups } = useMemo(() => {
+  const { availableYears, favCount, timelineGroups } = useMemo(() => {
     if (!selectedPerson || personPhotos.length === 0) {
       return {
         availableYears: [] as string[],
-        yearsRange: "",
         favCount: 0,
         timelineGroups: [] as [string, PhotoItem[]][],
       };
@@ -379,13 +393,19 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
       }
     }
     const years = Array.from(yearsSet).sort((a, b) => b.localeCompare(a));
-    const range = years.length === 0 ? "" : years.length === 1 ? years[0] : `${years[years.length - 1]}–${years[0]}`;
 
-    // Filter by personFilter ('all' | 'favorites' | specific year)
+    // Filter by personFilter ('all' | 'favorites' | 'years')
     let filtered = personPhotos;
     if (personFilter === "favorites") {
       filtered = personPhotos.filter((p) => p.is_favorite);
-    } else if (personFilter !== "all") {
+    } else if (personFilter === "years" && selectedYears.length > 0) {
+      const yearSet = new Set(selectedYears);
+      filtered = personPhotos.filter((p) => {
+        if (!p.taken_at) return false;
+        const yr = p.taken_at.slice(0, 4);
+        return yearSet.has(yr);
+      });
+    } else if (personFilter !== "all" && personFilter !== "years") {
       filtered = personPhotos.filter((p) => p.taken_at && p.taken_at.startsWith(personFilter));
     }
 
@@ -411,11 +431,107 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
 
     return {
       availableYears: years,
-      yearsRange: range,
       favCount: favorites,
       timelineGroups: Array.from(groupsMap.entries()),
     };
-  }, [selectedPerson, personPhotos, personFilter]);
+  }, [selectedPerson, personPhotos, personFilter, selectedYears]);
+
+  // Is a multi-year or custom range active?
+  const isMultiYearActive = personFilter === "years" && selectedYears.length > 1;
+
+  // Format a friendly range summary for the pill button (e.g. "2012–2020" or "3 Yrs")
+  const rangeSummary = useMemo(() => {
+    if (!isMultiYearActive) return null;
+    const numYears = selectedYears.map(Number).sort((a, b) => a - b);
+    const minYr = numYears[0];
+    const maxYr = numYears[numYears.length - 1];
+    const isContiguous = numYears.length === maxYr - minYr + 1;
+    if (isContiguous) {
+      return `${minYr}–${maxYr}`;
+    }
+    return `${selectedYears.length} Yrs`;
+  }, [isMultiYearActive, selectedYears]);
+
+  // Close Range Popover on outside click
+  useEffect(() => {
+    if (!isRangePopoverOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("#range-popover-container")) {
+        setIsRangePopoverOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isRangePopoverOpen]);
+
+  // Check whether the horizontal ribbon has overflow left/right for chevrons & edge mask
+  const checkRibbonScroll = useCallback(() => {
+    if (!ribbonRef.current) return;
+    const { scrollLeft, scrollWidth, clientWidth } = ribbonRef.current;
+    setCanScrollLeft(scrollLeft > 6);
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 6);
+  }, []);
+
+  useEffect(() => {
+    checkRibbonScroll();
+    const el = ribbonRef.current;
+    if (!el) return;
+    const handleResize = () => checkRibbonScroll();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [checkRibbonScroll, availableYears, selectedPerson]);
+
+  const scrollRibbon = (offset: number) => {
+    if (!ribbonRef.current) return;
+    ribbonRef.current.scrollBy({ left: offset, behavior: "smooth" });
+  };
+
+  // Year click handler supporting single-click, Shift-click (range), and Ctrl/Cmd-click (multi-select)
+  const handleYearClick = (year: string, e: React.MouseEvent) => {
+    setIsRangePopoverOpen(false);
+
+    if (e.shiftKey && lastClickedYear && availableYears.includes(lastClickedYear)) {
+      // Shift-click: select contiguous range between lastClickedYear and year
+      const idx1 = availableYears.indexOf(lastClickedYear);
+      const idx2 = availableYears.indexOf(year);
+      const start = Math.min(idx1, idx2);
+      const end = Math.max(idx1, idx2);
+      const range = availableYears.slice(start, end + 1);
+      setSelectedYears(range);
+      setPersonFilter("years");
+    } else if (e.metaKey || e.ctrlKey) {
+      // Ctrl/Cmd-click: toggle this year in/out of selection
+      if (personFilter !== "years") {
+        setPersonFilter("years");
+        setSelectedYears([year]);
+      } else {
+        if (selectedYears.includes(year)) {
+          const next = selectedYears.filter((y) => y !== year);
+          if (next.length === 0) {
+            setPersonFilter("all");
+            setSelectedYears([]);
+          } else {
+            setSelectedYears(next);
+          }
+        } else {
+          setSelectedYears([...selectedYears, year]);
+        }
+      }
+      setLastClickedYear(year);
+    } else {
+      // Single click:
+      if (personFilter === "years" && selectedYears.length === 1 && selectedYears[0] === year) {
+        setPersonFilter("all");
+        setSelectedYears([]);
+        setLastClickedYear(null);
+      } else {
+        setPersonFilter("years");
+        setSelectedYears([year]);
+        setLastClickedYear(year);
+      }
+    }
+  };
 
   if (isLoading) {
     return (
@@ -438,24 +554,30 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
               justifyContent: "space-between",
               flexWrap: "wrap",
               gap: "12px",
-              padding: "8px 16px",
-              backgroundColor: "rgba(23, 23, 23, 0.85)",
-              backdropFilter: "blur(20px)",
-              WebkitBackdropFilter: "blur(20px)",
+              padding: "10px 20px",
+              minHeight: "56px",
+              backgroundColor: "var(--glass-surface)",
+              backdropFilter: "blur(24px)",
+              WebkitBackdropFilter: "blur(24px)",
               borderRadius: "var(--radius-lg)",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
+              border: "1px solid var(--glass-border)",
+              boxShadow: "var(--glass-shadow)",
               position: "sticky",
               top: 0,
               zIndex: 20,
+              flexShrink: 0,
             }}
           >
-            {/* Left: Back Button + Avatar + Name & Subtitle */}
-            <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
+            {/* Left Column: Back Button */}
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-start", minWidth: "100px" }}>
               <button
                 onClick={() => {
                   setSelectedPerson(null);
                   setPersonPhotos([]);
                   setPersonFilter("all");
+                  setSelectedYears([]);
+                  setLastClickedYear(null);
+                  setIsRangePopoverOpen(false);
                   setIsRelationshipPopoverOpen(false);
                 }}
                 className="clickable"
@@ -464,10 +586,10 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                   display: "flex",
                   alignItems: "center",
                   gap: "6px",
-                  padding: "6px 12px",
+                  padding: "6px 14px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: "rgba(255, 255, 255, 0.06)",
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  backgroundColor: "var(--glass-pill-bg)",
+                  border: "1px solid var(--glass-pill-border)",
                   color: "var(--text-primary)",
                   fontSize: "12px",
                   fontWeight: 600,
@@ -479,27 +601,19 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                 <ArrowLeft size={14} />
                 <span>People</span>
               </button>
+            </div>
 
-              <div
-                style={{
-                  width: "1px",
-                  height: "22px",
-                  backgroundColor: "rgba(255, 255, 255, 0.1)",
-                  margin: "0 2px",
-                  flexShrink: 0,
-                }}
-              />
-
-              {/* Compact 42px Halo Avatar */}
+            {/* Center Column: UNIFIED IDENTITY GROUP (Avatar + Name + VIP Star + Inline Count Badge) */}
+            <div style={{ flex: "0 1 auto", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", minWidth: 0 }}>
+              {/* Compact 38px Halo Avatar */}
               <div
                 style={{
                   position: "relative",
-                  width: "42px",
-                  height: "42px",
+                  width: "38px",
+                  height: "38px",
                   borderRadius: "var(--radius-full)",
                   overflow: "hidden",
-                  border: "2px solid #6366f1",
-                  boxShadow: "0 0 12px rgba(99, 102, 241, 0.35)",
+                  border: "1px solid var(--glass-border-highlight)",
                   backgroundColor: "var(--bg-surface)",
                   display: "flex",
                   alignItems: "center",
@@ -514,69 +628,76 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
                 ) : (
-                  <Users size={20} style={{ color: "var(--accent-primary)" }} />
+                  <Users size={18} style={{ color: "var(--accent-primary)" }} />
                 )}
               </div>
 
-              {/* Name, VIP Toggle & Clean Non-Technical Subtitle */}
-              <div style={{ minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <h1 style={{ fontSize: "18px", fontWeight: 700, margin: 0, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>
-                    {selectedPerson.name}
-                  </h1>
-                  {/* Interactive VIP Star Toggle */}
-                  <button
-                    onClick={() => handleUpdatePerson(selectedPerson.id, { is_close_one: !selectedPerson.is_close_one })}
-                    title={selectedPerson.is_close_one ? "Favorited (Close One)" : "Mark as Favorite"}
-                    className="clickable"
-                    style={{
-                      background: selectedPerson.is_close_one ? "rgba(245, 158, 11, 0.18)" : "rgba(255, 255, 255, 0.06)",
-                      border: selectedPerson.is_close_one ? "1px solid rgba(245, 158, 11, 0.4)" : "1px solid rgba(255, 255, 255, 0.08)",
-                      borderRadius: "var(--radius-full)",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      padding: "5px",
-                      color: selectedPerson.is_close_one ? "var(--accent-warning)" : "var(--text-muted)",
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    <Star size={14} fill={selectedPerson.is_close_one ? "var(--accent-warning)" : "none"} />
-                  </button>
-                </div>
+              {/* Name & Star */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <h2
+                  style={{
+                    fontSize: "22px",
+                    fontWeight: 800,
+                    fontFamily: "var(--font-display, var(--font-sans))",
+                    letterSpacing: "-0.03em",
+                    color: "var(--text-primary)",
+                    margin: 0,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {selectedPerson.name}
+                </h2>
 
-                {/* Clean Human-Friendly Subtitle (No Affinity 0% Jargon) */}
-                <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px", margin: 0 }}>
-                  {personPhotos.length} {personPhotos.length === 1 ? "photo" : "photos"}
-                  {yearsRange ? ` • ${yearsRange}` : ""}
-                </p>
+                {/* Interactive VIP Star Toggle */}
+                <button
+                  onClick={() => handleUpdatePerson(selectedPerson.id, { is_close_one: !selectedPerson.is_close_one })}
+                  title={selectedPerson.is_close_one ? "Favorited (Close One)" : "Mark as Favorite"}
+                  className="clickable"
+                  style={{
+                    background: selectedPerson.is_close_one ? "rgba(245, 158, 11, 0.18)" : "var(--glass-pill-bg)",
+                    border: selectedPerson.is_close_one ? "1px solid rgba(245, 158, 11, 0.4)" : "1px solid var(--glass-pill-border)",
+                    borderRadius: "var(--radius-full)",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "5px",
+                    color: selectedPerson.is_close_one ? "var(--accent-warning)" : "var(--text-muted)",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <Star size={14} fill={selectedPerson.is_close_one ? "var(--accent-warning)" : "none"} />
+                </button>
               </div>
             </div>
 
-            {/* Right: Relationship Popover Pill + Slideshow Button */}
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+            {/* Right Column: Relationship Popover Pill + Monochromatic Slideshow Button */}
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", minWidth: "120px" }}>
               <div style={{ position: "relative" }}>
                 <button
                   onClick={() => setIsRelationshipPopoverOpen((prev) => !prev)}
                   className="clickable"
+                  title="Click to change relationship"
                   style={{
-                    display: "flex",
+                    display: "inline-flex",
                     alignItems: "center",
                     gap: "6px",
-                    padding: "7px 12px",
+                    padding: "7px 14px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(255, 255, 255, 0.08)",
-                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    backgroundColor: "var(--glass-pill-bg)",
+                    border: "1px solid var(--glass-pill-border)",
                     color: "var(--text-primary)",
                     fontSize: "12px",
                     fontWeight: 600,
                     cursor: "pointer",
+                    transition: "all 0.15s ease",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
                   }}
                 >
-                  <Tag size={13} style={{ color: "var(--accent-primary)" }} />
-                  <span>Relationship: <strong>{selectedPerson.relationship_type || "Friend"}</strong></span>
-                  <ChevronDown size={13} style={{ opacity: 0.7 }} />
+                  <Tag size={13} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
+                  <span>{selectedPerson.relationship_type || "Friend"}</span>
+                  <ChevronDown size={12} style={{ opacity: 0.7, flexShrink: 0 }} />
                 </button>
 
                 {/* Popover Dropdown Menu */}
@@ -590,7 +711,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                       border: "1px solid var(--border-highlight)",
                       borderRadius: "var(--radius-md)",
                       padding: "6px",
-                      boxShadow: "0 12px 32px rgba(0, 0, 0, 0.6)",
+                      boxShadow: "0 12px 32px rgba(0, 0, 0, 0.4)",
                       zIndex: 30,
                       minWidth: "180px",
                       display: "flex",
@@ -615,7 +736,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                             justifyContent: "space-between",
                             padding: "7px 12px",
                             borderRadius: "var(--radius-sm)",
-                            backgroundColor: isSelected ? "rgba(99, 102, 241, 0.15)" : "transparent",
+                            backgroundColor: isSelected ? "var(--glass-pill-active)" : "transparent",
                             color: isSelected ? "var(--accent-primary)" : "var(--text-primary)",
                             fontSize: "12px",
                             fontWeight: isSelected ? 600 : 500,
@@ -639,90 +760,530 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                   onClick={() => setIsSlideshowOpen(true)}
                   className="clickable"
                   style={{
-                    display: "flex",
+                    display: "inline-flex",
                     alignItems: "center",
                     gap: "6px",
                     padding: "7px 16px",
                     borderRadius: "var(--radius-full)",
-                    background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
-                    border: "none",
-                    color: "#ffffff",
+                    backgroundColor: "var(--glass-action-bg)",
+                    border: "1px solid var(--glass-action-border)",
+                    color: "var(--text-primary)",
                     fontSize: "12px",
                     fontWeight: 600,
                     cursor: "pointer",
-                    boxShadow: "0 3px 12px rgba(99, 102, 241, 0.35)",
-                    transition: "all 0.2s ease",
+                    transition: "all 0.15s ease",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
                   }}
+                  title="Play Slideshow"
                 >
-                  <Play size={13} fill="currentColor" />
-                  Play Slideshow ({personPhotos.length})
+                  <Play size={13} fill="currentColor" style={{ flexShrink: 0 }} />
+                  <span>Slideshow</span>
                 </button>
               )}
             </div>
           </div>
 
-          {/* Quick Filter Strip (All, Favorites, Years) */}
+          {/* Quick Filter Strip: Pinned Actions (All, Favorites, Range Popover) + Scrollable Years Ribbon */}
           {personPhotos.length > 0 && (
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <button
-                onClick={() => setPersonFilter("all")}
-                className="clickable"
-                style={{
-                  padding: "6px 14px",
-                  borderRadius: "var(--radius-full)",
-                  backgroundColor: personFilter === "all" ? "var(--accent-primary)" : "var(--bg-surface-elevated)",
-                  color: personFilter === "all" ? "#ffffff" : "var(--text-muted)",
-                  border: "1px solid var(--border-subtle)",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                All ({personPhotos.length})
-              </button>
-
-              {favCount > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%", position: "relative", zIndex: 15 }}>
+              {/* Left Pinned Action Group (never clipped, overflow visible for popover) */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0, position: "relative" }}>
+                {/* All Filter Pill */}
                 <button
-                  onClick={() => setPersonFilter("favorites")}
+                  onClick={() => {
+                    setPersonFilter("all");
+                    setSelectedYears([]);
+                    setLastClickedYear(null);
+                    setIsRangePopoverOpen(false);
+                  }}
                   className="clickable"
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    padding: "6px 14px",
+                    padding: "5px 14px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: personFilter === "favorites" ? "rgba(239, 68, 68, 0.18)" : "var(--bg-surface-elevated)",
-                    color: personFilter === "favorites" ? "#ef4444" : "var(--text-muted)",
-                    border: personFilter === "favorites" ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid var(--border-subtle)",
+                    backgroundColor: personFilter === "all" ? "var(--glass-pill-active)" : "var(--glass-pill-bg)",
+                    color: personFilter === "all" ? "var(--text-primary)" : "var(--text-secondary)",
+                    border: personFilter === "all" ? "1px solid var(--glass-border-highlight)" : "1px solid var(--glass-pill-border)",
                     fontSize: "12px",
-                    fontWeight: 600,
+                    fontWeight: personFilter === "all" ? 600 : 500,
                     cursor: "pointer",
+                    transition: "all 0.15s ease",
+                    flexShrink: 0,
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  <Heart size={12} fill={personFilter === "favorites" ? "#ef4444" : "none"} />
-                  Favorites ({favCount})
+                  All ({personPhotos.length})
                 </button>
+
+                {/* Favorites Filter Pill */}
+                {favCount > 0 && (
+                  <button
+                    onClick={() => {
+                      setPersonFilter("favorites");
+                      setSelectedYears([]);
+                      setLastClickedYear(null);
+                      setIsRangePopoverOpen(false);
+                    }}
+                    className="clickable"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "5px 14px",
+                      borderRadius: "var(--radius-full)",
+                      backgroundColor: personFilter === "favorites" ? "rgba(239, 68, 68, 0.15)" : "var(--glass-pill-bg)",
+                      color: personFilter === "favorites" ? "#ef4444" : "var(--text-secondary)",
+                      border: personFilter === "favorites" ? "1px solid rgba(239, 68, 68, 0.35)" : "1px solid var(--glass-pill-border)",
+                      fontSize: "12px",
+                      fontWeight: personFilter === "favorites" ? 600 : 500,
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                      flexShrink: 0,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <Heart size={12} fill={personFilter === "favorites" ? "#ef4444" : "none"} />
+                    <span>Favorites ({favCount})</span>
+                  </button>
+                )}
+
+                {/* Range & Multi-Year Selector Popover Button (in unclipped container) */}
+                {availableYears.length > 1 && (
+                  <div id="range-popover-container" style={{ position: "relative", flexShrink: 0 }}>
+                    <button
+                      onClick={() => {
+                        if (!isRangePopoverOpen) {
+                          if (availableYears.length > 0) {
+                            if (!customRangeFrom) setCustomRangeFrom(availableYears[availableYears.length - 1]);
+                            if (!customRangeTo) setCustomRangeTo(availableYears[0]);
+                          }
+                        }
+                        setIsRangePopoverOpen((prev) => !prev);
+                      }}
+                      className="clickable"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "5px 13px",
+                        borderRadius: "var(--radius-full)",
+                        backgroundColor: isMultiYearActive ? "var(--glass-pill-active)" : "var(--glass-pill-bg)",
+                        color: isMultiYearActive ? "var(--accent-primary)" : "var(--text-secondary)",
+                        border: isMultiYearActive ? "1px solid var(--glass-border-highlight)" : "1px solid var(--glass-pill-border)",
+                        fontSize: "12px",
+                        fontWeight: isMultiYearActive ? 600 : 500,
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                        flexShrink: 0,
+                        whiteSpace: "nowrap",
+                      }}
+                      title={isMultiYearActive ? `Selected: ${rangeSummary}. Click to adjust or clear.` : "Select a range or multiple years"}
+                    >
+                      <Calendar size={13} style={{ flexShrink: 0 }} />
+                      <span>{rangeSummary || "Range"}</span>
+                      {isMultiYearActive ? (
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPersonFilter("all");
+                            setSelectedYears([]);
+                            setLastClickedYear(null);
+                            setIsRangePopoverOpen(false);
+                          }}
+                          title="Clear range filter"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: "2px",
+                            borderRadius: "50%",
+                            backgroundColor: "rgba(255, 255, 255, 0.12)",
+                            marginLeft: "2px",
+                          }}
+                        >
+                          <X size={11} />
+                        </span>
+                      ) : (
+                        <ChevronDown size={11} style={{ opacity: 0.7 }} />
+                      )}
+                    </button>
+
+                    {/* Range Popover Floating Window */}
+                    {isRangePopoverOpen && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: "calc(100% + 8px)",
+                          left: 0,
+                          backgroundColor: "var(--bg-surface-elevated)",
+                          backdropFilter: "blur(28px)",
+                          WebkitBackdropFilter: "blur(28px)",
+                          border: "1px solid var(--border-highlight)",
+                          borderRadius: "var(--radius-lg)",
+                          padding: "16px",
+                          boxShadow: "0 18px 48px rgba(0, 0, 0, 0.5)",
+                          zIndex: 100,
+                          minWidth: "300px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "14px",
+                        }}
+                      >
+                        {/* Popover Header */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)" }}>
+                            Filter by Year Range
+                          </span>
+                          <button
+                            onClick={() => setIsRangePopoverOpen(false)}
+                            className="clickable"
+                            style={{
+                              background: "none",
+                              border: "none",
+                              color: "var(--text-muted)",
+                              cursor: "pointer",
+                              padding: "2px",
+                              display: "flex",
+                              alignItems: "center",
+                            }}
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+
+                        {/* Quick Presets */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                          <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            Quick Presets
+                          </span>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                            <button
+                              onClick={() => {
+                                setSelectedYears(availableYears.slice(0, 3));
+                                setPersonFilter("years");
+                                setIsRangePopoverOpen(false);
+                              }}
+                              className="clickable"
+                              style={{
+                                padding: "4px 10px",
+                                borderRadius: "var(--radius-full)",
+                                backgroundColor: "var(--glass-pill-bg)",
+                                border: "1px solid var(--glass-pill-border)",
+                                color: "var(--text-primary)",
+                                fontSize: "11px",
+                                fontWeight: 500,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Last 3 Yrs
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedYears(availableYears.slice(0, 5));
+                                setPersonFilter("years");
+                                setIsRangePopoverOpen(false);
+                              }}
+                              className="clickable"
+                              style={{
+                                padding: "4px 10px",
+                                borderRadius: "var(--radius-full)",
+                                backgroundColor: "var(--glass-pill-bg)",
+                                border: "1px solid var(--glass-pill-border)",
+                                color: "var(--text-primary)",
+                                fontSize: "11px",
+                                fontWeight: 500,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Last 5 Yrs
+                            </button>
+                            {availableYears.some((y) => y.startsWith("202")) && (
+                              <button
+                                onClick={() => {
+                                  setSelectedYears(availableYears.filter((y) => y.startsWith("202")));
+                                  setPersonFilter("years");
+                                  setIsRangePopoverOpen(false);
+                                }}
+                                className="clickable"
+                                style={{
+                                  padding: "4px 10px",
+                                  borderRadius: "var(--radius-full)",
+                                  backgroundColor: "var(--glass-pill-bg)",
+                                  border: "1px solid var(--glass-pill-border)",
+                                  color: "var(--text-primary)",
+                                  fontSize: "11px",
+                                  fontWeight: 500,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                2020s
+                              </button>
+                            )}
+                            {availableYears.some((y) => y.startsWith("201")) && (
+                              <button
+                                onClick={() => {
+                                  setSelectedYears(availableYears.filter((y) => y.startsWith("201")));
+                                  setPersonFilter("years");
+                                  setIsRangePopoverOpen(false);
+                                }}
+                                className="clickable"
+                                style={{
+                                  padding: "4px 10px",
+                                  borderRadius: "var(--radius-full)",
+                                  backgroundColor: "var(--glass-pill-bg)",
+                                  border: "1px solid var(--glass-pill-border)",
+                                  color: "var(--text-primary)",
+                                  fontSize: "11px",
+                                  fontWeight: 500,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                2010s
+                              </button>
+                            )}
+                            {availableYears.some((y) => y.startsWith("200")) && (
+                              <button
+                                onClick={() => {
+                                  setSelectedYears(availableYears.filter((y) => y.startsWith("200")));
+                                  setPersonFilter("years");
+                                  setIsRangePopoverOpen(false);
+                                }}
+                                className="clickable"
+                                style={{
+                                  padding: "4px 10px",
+                                  borderRadius: "var(--radius-full)",
+                                  backgroundColor: "var(--glass-pill-bg)",
+                                  border: "1px solid var(--glass-pill-border)",
+                                  color: "var(--text-primary)",
+                                  fontSize: "11px",
+                                  fontWeight: 500,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                2000s
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Custom From / To Span */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                          <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            Custom Span
+                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <select
+                              value={customRangeFrom || availableYears[availableYears.length - 1]}
+                              onChange={(e) => setCustomRangeFrom(e.target.value)}
+                              style={{
+                                flex: 1,
+                                padding: "6px 8px",
+                                borderRadius: "var(--radius-sm)",
+                                backgroundColor: "var(--bg-surface)",
+                                border: "1px solid var(--border-subtle)",
+                                color: "var(--text-primary)",
+                                fontSize: "12px",
+                                outline: "none",
+                              }}
+                            >
+                              {[...availableYears].reverse().map((y) => (
+                                <option key={`from-${y}`} value={y}>{y}</option>
+                              ))}
+                            </select>
+                            <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>to</span>
+                            <select
+                              value={customRangeTo || availableYears[0]}
+                              onChange={(e) => setCustomRangeTo(e.target.value)}
+                              style={{
+                                flex: 1,
+                                padding: "6px 8px",
+                                borderRadius: "var(--radius-sm)",
+                                backgroundColor: "var(--bg-surface)",
+                                border: "1px solid var(--border-subtle)",
+                                color: "var(--text-primary)",
+                                fontSize: "12px",
+                                outline: "none",
+                              }}
+                            >
+                              {availableYears.map((y) => (
+                                <option key={`to-${y}`} value={y}>{y}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <button
+                            onClick={() => {
+                              const fromYr = customRangeFrom || availableYears[availableYears.length - 1];
+                              const toYr = customRangeTo || availableYears[0];
+                              const min = Math.min(Number(fromYr), Number(toYr));
+                              const max = Math.max(Number(fromYr), Number(toYr));
+                              const range = availableYears.filter((y) => Number(y) >= min && Number(y) <= max);
+                              if (range.length > 0) {
+                                setSelectedYears(range);
+                                setPersonFilter("years");
+                              }
+                              setIsRangePopoverOpen(false);
+                            }}
+                            className="clickable"
+                            style={{
+                              marginTop: "4px",
+                              padding: "6px 12px",
+                              borderRadius: "var(--radius-sm)",
+                              backgroundColor: "var(--accent-primary)",
+                              color: "#ffffff",
+                              border: "none",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              textAlign: "center",
+                            }}
+                          >
+                            Apply Range
+                          </button>
+                        </div>
+
+                        {/* Tip */}
+                        <div style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: 1.4, borderTop: "1px solid var(--border-subtle)", paddingTop: "8px" }}>
+                          💡 <strong>Pro Tip:</strong> Hold <strong>Shift</strong> to click a range or <strong>Ctrl/Cmd</strong> to select multiple years directly on the chips below.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Subtle Vertical Glass Divider */}
+              {availableYears.length > 0 && (
+                <div style={{ width: "1px", height: "20px", backgroundColor: "var(--glass-border-highlight)", flexShrink: 0 }} />
               )}
 
-              {availableYears.map((year) => (
-                <button
-                  key={year}
-                  onClick={() => setPersonFilter(year)}
-                  className="clickable"
-                  style={{
-                    padding: "6px 14px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: personFilter === year ? "var(--accent-primary)" : "var(--bg-surface-elevated)",
-                    color: personFilter === year ? "#ffffff" : "var(--text-muted)",
-                    border: "1px solid var(--border-subtle)",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {year}
-                </button>
-              ))}
+              {/* Scrollable Years Ribbon (with Chevrons & Edge Fade Mask) */}
+              {availableYears.length > 0 && (
+                <div style={{ position: "relative", flex: 1, minWidth: 0, display: "flex", alignItems: "center" }}>
+                  {/* Left Scroll Chevron */}
+                  {canScrollLeft && (
+                    <button
+                      onClick={() => scrollRibbon(-240)}
+                      className="clickable"
+                      title="Scroll earlier years"
+                      style={{
+                        position: "absolute",
+                        left: "2px",
+                        zIndex: 10,
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "var(--radius-full)",
+                        backgroundColor: "var(--glass-surface)",
+                        backdropFilter: "blur(16px)",
+                        WebkitBackdropFilter: "blur(16px)",
+                        border: "1px solid var(--glass-border-highlight)",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--text-primary)",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <ChevronLeft size={15} />
+                    </button>
+                  )}
+
+                  {/* Scrollable Track */}
+                  <div 
+                    ref={ribbonRef}
+                    onScroll={checkRibbonScroll}
+                    onWheel={(e) => {
+                      if (e.deltaY !== 0) {
+                        e.currentTarget.scrollLeft += e.deltaY;
+                        checkRibbonScroll();
+                      }
+                    }}
+                    style={{ 
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: "8px", 
+                      overflowX: "auto", 
+                      whiteSpace: "nowrap",
+                      scrollbarWidth: "none",
+                      padding: "4px 8px 8px 8px",
+                      width: "100%",
+                      maskImage: canScrollLeft && canScrollRight
+                        ? "linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent)"
+                        : canScrollRight
+                        ? "linear-gradient(to right, black calc(100% - 32px), transparent)"
+                        : canScrollLeft
+                        ? "linear-gradient(to right, transparent, black 32px)"
+                        : "none",
+                      WebkitMaskImage: canScrollLeft && canScrollRight
+                        ? "linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent)"
+                        : canScrollRight
+                        ? "linear-gradient(to right, black calc(100% - 32px), transparent)"
+                        : canScrollLeft
+                        ? "linear-gradient(to right, transparent, black 32px)"
+                        : "none",
+                    }}
+                  >
+                    {availableYears.map((year) => {
+                      const isSelected = personFilter === "years" && selectedYears.includes(year);
+                      return (
+                        <button
+                          key={year}
+                          onClick={(e) => handleYearClick(year, e)}
+                          className="clickable"
+                          title={`Click to filter ${year} • Shift-click for range • Ctrl-click for multi-select`}
+                          style={{
+                            padding: "5px 13px",
+                            borderRadius: "var(--radius-full)",
+                            backgroundColor: isSelected ? "var(--glass-pill-active)" : "var(--glass-pill-bg)",
+                            color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
+                            border: isSelected ? "1px solid var(--glass-border-highlight)" : "1px solid var(--glass-pill-border)",
+                            fontSize: "12px",
+                            fontWeight: isSelected ? 600 : 500,
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                            flexShrink: 0,
+                            whiteSpace: "nowrap",
+                            boxShadow: isSelected ? "0 0 10px rgba(255, 255, 255, 0.08)" : "none",
+                          }}
+                        >
+                          {year}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Right Scroll Chevron */}
+                  {canScrollRight && (
+                    <button
+                      onClick={() => scrollRibbon(240)}
+                      className="clickable"
+                      title="Scroll later years"
+                      style={{
+                        position: "absolute",
+                        right: "2px",
+                        zIndex: 10,
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "var(--radius-full)",
+                        backgroundColor: "var(--glass-surface)",
+                        backdropFilter: "blur(16px)",
+                        WebkitBackdropFilter: "blur(16px)",
+                        border: "1px solid var(--glass-border-highlight)",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--text-primary)",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <ChevronRight size={15} />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -740,7 +1301,12 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
             <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)" }}>
               <p style={{ fontSize: "14px" }}>No photos match the selected filter.</p>
               <button
-                onClick={() => setPersonFilter("all")}
+                onClick={() => {
+                  setPersonFilter("all");
+                  setSelectedYears([]);
+                  setLastClickedYear(null);
+                  setIsRangePopoverOpen(false);
+                }}
                 className="clickable"
                 style={{
                   marginTop: "8px",
@@ -868,20 +1434,90 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
       ) : (
         /* Main View: People Gallery & Unlabeled Clusters */
         <>
-          {/* Header Bar: Title on Left, Action Buttons on Right */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <Users size={22} style={{ color: "var(--accent-primary)" }} />
-                <h1 style={{ fontSize: "20px", fontWeight: 700 }}>People & Family</h1>
-              </div>
-              <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "3px" }}>
-                Group and organize photos of people in your library • 100% Private & On-Device
-              </p>
+          {/* Header & Actions (macOS Liquid Glass Floating Toolbar) */}
+          <div 
+            className="liquid-glass-toolbar"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "12px 20px",
+              minHeight: "56px",
+              backgroundColor: "var(--glass-surface)",
+              backdropFilter: "blur(24px)",
+              WebkitBackdropFilter: "blur(24px)",
+              border: "1px solid var(--glass-border)",
+              borderRadius: "var(--radius-lg)",
+              boxShadow: "var(--glass-shadow)",
+              position: "sticky",
+              top: 0,
+              zIndex: 20,
+            }}
+          >
+            {/* Left Column (flex: 1): Context Badge */}
+            <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "10px" }}>
+              <span 
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "4px 10px",
+                  borderRadius: "var(--radius-full)",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  backgroundColor: "rgba(139, 92, 246, 0.12)",
+                  color: "var(--accent-vault, #8b5cf6)",
+                  border: "1px solid rgba(139, 92, 246, 0.25)",
+                }}
+              >
+                <Users size={13} style={{ color: "var(--accent-vault, #8b5cf6)" }} />
+                Face Intelligence
+              </span>
             </div>
 
-            {/* Actions: Reset Faces + Scan Library */}
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {/* Center Column (flex: 0 1 auto): 22px Plus Jakarta Sans Title + Baseline Capsule */}
+            <div 
+              style={{ 
+                flex: "0 1 auto", 
+                display: "flex", 
+                alignItems: "baseline", 
+                justifyContent: "center", 
+                gap: "10px" 
+              }}
+            >
+              <h1 
+                style={{ 
+                  fontSize: "22px", 
+                  fontWeight: 800, 
+                  letterSpacing: "-0.03em", 
+                  margin: 0,
+                  color: "var(--text-primary)",
+                  fontFamily: "Plus Jakarta Sans, sans-serif",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                People & Family
+              </h1>
+              <span 
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "2px 8px",
+                  borderRadius: "var(--radius-full)",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  backgroundColor: "var(--glass-badge-bg)",
+                  color: "var(--text-secondary)",
+                  border: "1px solid var(--glass-badge-border)",
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                {people.length} {people.length === 1 ? "Person" : "People"}
+              </span>
+            </div>
+
+            {/* Right Column (flex: 1): Action Pill Buttons */}
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px" }}>
               {/* Reset Faces Button */}
               <button
                 onClick={handleResetFaces}
@@ -889,32 +1525,32 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                 className="clickable"
                 title="Reset all face identification and clusters to start over fresh"
                 style={{
-                  display: "flex",
+                  display: "inline-flex",
                   alignItems: "center",
                   gap: "6px",
-                  padding: "7px 13px",
-                  borderRadius: "var(--radius-sm)",
-                  backgroundColor: "var(--bg-surface-elevated)",
-                  border: "1px solid var(--border-highlight)",
-                  color: "var(--text-primary)",
+                  padding: "6px 14px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "var(--glass-pill-bg)",
+                  border: "1px solid var(--glass-border)",
+                  color: "var(--text-secondary)",
                   fontSize: "12px",
                   fontWeight: 600,
                   cursor: scanStatus.is_scanning || isResetting ? "default" : "pointer",
                   opacity: scanStatus.is_scanning || isResetting ? 0.6 : 1,
-                  transition: "all 0.15s ease",
-                  boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+                  transition: "all 0.2s ease",
+                  boxShadow: "var(--glass-shadow)",
                 }}
                 onMouseEnter={(e) => {
                   if (!scanStatus.is_scanning && !isResetting) {
                     e.currentTarget.style.color = "var(--accent-danger, #ef4444)";
-                    e.currentTarget.style.borderColor = "var(--accent-danger, #ef4444)";
+                    e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.4)";
                     e.currentTarget.style.backgroundColor = "rgba(239, 68, 68, 0.08)";
                   }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.color = "var(--text-primary)";
-                  e.currentTarget.style.borderColor = "var(--border-highlight)";
-                  e.currentTarget.style.backgroundColor = "var(--bg-surface-elevated)";
+                  e.currentTarget.style.color = "var(--text-secondary)";
+                  e.currentTarget.style.borderColor = "var(--glass-border)";
+                  e.currentTarget.style.backgroundColor = "var(--glass-pill-bg)";
                 }}
               >
                 <RotateCcw size={13} className={isResetting ? "spinning" : ""} />
@@ -928,19 +1564,20 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                 className="clickable"
                 title="Scan library photos for faces"
                 style={{
-                  display: "flex",
+                  display: "inline-flex",
                   alignItems: "center",
                   gap: "7px",
-                  padding: "7px 15px",
-                  borderRadius: "var(--radius-sm)",
-                  backgroundColor: scanStatus.is_scanning ? "var(--bg-surface-elevated)" : "var(--accent-primary)",
-                  border: "1px solid var(--border-highlight)",
-                  color: "#ffffff",
+                  padding: "6px 16px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: scanStatus.is_scanning ? "var(--glass-pill-bg)" : "var(--accent-primary)",
+                  border: "1px solid var(--glass-border)",
+                  color: scanStatus.is_scanning ? "var(--text-secondary)" : "#ffffff",
                   fontSize: "12px",
                   fontWeight: 600,
                   opacity: scanStatus.is_scanning ? 0.7 : 1,
                   cursor: scanStatus.is_scanning ? "default" : "pointer",
-                  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.15)",
+                  transition: "all 0.2s ease",
+                  boxShadow: scanStatus.is_scanning ? "none" : "0 2px 8px rgba(59, 130, 246, 0.35)",
                 }}
               >
                 <RefreshCw size={13} className={scanStatus.is_scanning ? "spinning" : ""} />
