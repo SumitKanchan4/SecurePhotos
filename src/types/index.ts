@@ -190,3 +190,29 @@ export interface StoryModel {
   slides: StorySlide[];
 }
 
+export interface StoriesInsights {
+  total_stories: number;
+  most_captured_people: Array<{
+    id: number;
+    name: string;
+    relationship_type?: string;
+    is_close_one: boolean;
+    photo_count: number;
+  }>;
+  photos_by_month: Array<{
+    month: string;
+    count: number;
+  }>;
+  time_of_day_distribution: Array<{
+    period: string;
+    count: number;
+  }>;
+  camera_breakdown: Array<{
+    camera: string;
+    count: number;
+  }>;
+  top_years: Array<{
+    yr: string;
+    count: number;
+  }>;
+}

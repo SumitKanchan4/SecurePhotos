@@ -14,6 +14,8 @@ from pydantic import BaseModel
 
 from engine.database import get_db_connection
 
+import struct
+
 logger = logging.getLogger("securephotos.stories_service")
 
 # Bundled local royalty-free ambient vibe sound tracks
@@ -23,6 +25,27 @@ VIBE_TRACKS = {
     "upbeat": "audio/vibes/summer_sunshine_lofi.mp3",
     "cinematic": "audio/vibes/epic_journey_strings.mp3",
 }
+
+
+def _safe_float(val: object, default: float = 0.5) -> float:
+    """Safely coerces int, float, str, or binary struct bytes to float."""
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, bytes):
+        try:
+            if len(val) == 4:
+                return float(struct.unpack("<f", val)[0])
+            elif len(val) == 8:
+                return float(struct.unpack("<d", val)[0])
+        except Exception:
+            return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
 
 
 class StorySlide(BaseModel):
@@ -84,8 +107,8 @@ async def generate_through_the_years_story(person_id: int) -> Optional[StoryMode
                 taken_at=r["taken_at"],
                 year_label=r["yr"],
                 transition_type="zoom_in",
-                focal_x=r["box_x"] or 0.5,
-                focal_y=r["box_y"] or 0.5,
+                focal_x=_safe_float(r["box_x"]),
+                focal_y=_safe_float(r["box_y"]),
             )
             for r in rows
         ]
