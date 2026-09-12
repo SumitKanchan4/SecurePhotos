@@ -263,7 +263,7 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
             bottom: "7px",
             left: "7px",
             zIndex: isHovered ? 1 : 3,
-            display: "flex",
+            display: isHovered ? "none" : "flex",
             alignItems: "center",
             gap: "4px",
             padding: "2px 7px",
@@ -460,7 +460,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
       style={{
         flex: 1,
         overflowY: "auto",
-        padding: "16px",
+        padding: "16px 16px 88px 16px",
         height: "100%",
         position: "relative",
       }}

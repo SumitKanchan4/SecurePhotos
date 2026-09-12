@@ -1435,9 +1435,51 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - `src/components/DashboardView.tsx`:
   - Added `activeSubView: "overview" | "duplicates" | "video-optimizer"` and Bento Row 1.6 card.
 
+---
+
+## 32. Jira-Style Floating Bottom Batch Action Dock & Multi-Select Architecture
+
+### Functionality Overview
+- **Zero Top-Header Shift / Jitter**:
+  - Eliminates the previous design where multi-selection actions were crammed into the top header's right column.
+  - The top navigation header remains strictly compliant with Section 4 of `modern-web-ui`: Left optimization/library badge, Centered modern title `Photos [ N photos ]`, and Right `[ Sync Folder ]` + `[ Import Media ]` action pills.
+- **Jira / Linear / Figma-Style Floating Bottom Action Dock**:
+  - When the user selects one or more items (`selectedCount > 0`), a frosted liquid-glass action island smoothly slides up from the bottom center of the viewport (`bottom: 24px, left: 50%, transform: translateX(-50%)`, `zIndex: 40`).
+  - **Ergonomic Action Cluster**:
+    1. **Selection Counter Badge**: `<CheckSquare size={13} /> {selectedCount} selected`.
+    2. **Select All / Deselect All Toggle**: Allows 1-click batch selection or clearing of all items in view.
+    3. **Create Collage Pill**: Dynamically displayed ONLY when 2–9 photos are selected and **no videos are selected** (`canCreateCollage`), preventing invalid video collage requests.
+    4. **Download Pill**: Batched download of selected items.
+    5. **Add to Album Pill**: Opens modal to group selected items into new or existing albums.
+    6. **Move to Vault Pill**: Zero-trust encryption into Private Vault.
+    7. **Move to Trash Pill**: Soft-deletes selected items to 30-Day Trash with explicit count feedback.
+    8. **Dismiss Button (`<X />`)**: Closes the dock and clears selection (also mapped to `Escape` key).
+- **Video Card Hover Cleanliness**:
+  - The `▶ VIDEO` duration pill on grid cards now dynamically hides during card hover (`display: isHovered ? "none" : "flex"`), matching high-res photo badge behavior.
+  - Eliminates visual collisions where the hover scrim's filename and dimensions overlapped the video pill.
+- **Scroll Clearance**:
+  - Added `88px` bottom padding to `PhotoGrid` scroll container, ensuring the bottom-most row of photos can be scrolled fully into view without being obscured by the floating dock.
+
+### Functional Decision Points & Rationale
+- **Floating Bottom Action Dock vs Morphing Top Header**:
+  - *Decision*: Adopted a Jira/Linear-style floating bottom action bar instead of mutating the top header.
+  - *Rationale*: Top headers have fixed width constraints shared with title and navigation. Placing 6 batch actions on top overflows in standard 1000px–1200px desktop windows and causes layout thrashing. A floating bottom dock provides dedicated horizontal space, is closer to the user's mouse cursor while selecting cards, and delivers a premium modern web application feel.
+- **Dynamic Suppression of Collage on Video Selection**:
+  - *Decision*: Suppress the `Create Collage` button when any video is included in the selection.
+  - *Rationale*: Collages are 4K static raster canvases rendered using Pillow; submitting video files to the collage generator produces errors. Hiding it for videos keeps the toolbar compact and error-free.
+
+### Technical Touchpoints
+- `src/App.tsx`:
+  - Main header restored to static Section 4 layout with `[ Sync Folder ]` and `[ Import Media ]`.
+  - Added `selectedPhotosList`, `hasVideoSelected`, and `canCreateCollage` memoized selectors.
+  - Added floating bottom batch action dock with smooth slide-up animation (`transform: translateX(-50%) translateY(...)`, `opacity`).
+- `src/components/PhotoGrid.tsx`:
+  - Updated video tag `display: isHovered ? "none" : "flex"` to eliminate hover text collisions.
+  - Added `padding: "16px 16px 88px 16px"` to container for bottom dock clearance.
+
 ### State & Lifecycle Impact
-- Photos SQLite table: Ingestion and optimization updates `filepath`, `filename`, `file_size`, `width`, `height`, `mime_type`, `is_enhanced`, and `is_optimized`.
-- 30-Day Trash: Replaced files are safely retained in `.trash/` timestamped folders, enabling manual or automated recovery.
+- React state `selectedPhotoIds`: Selecting items smoothly animates the dock into view; clicking `X`, pressing `Esc`, or completing batch operations (Trash, Vault, Album) immediately resets selection and slides the dock out of view.
+
 
 
 

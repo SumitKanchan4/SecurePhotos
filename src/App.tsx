@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { 
   Lock, 
   Plus, 
@@ -12,6 +12,8 @@ import {
   Images,
   ChevronLeft,
   ChevronRight,
+  X,
+  CheckSquare,
 } from "lucide-react";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
@@ -375,6 +377,16 @@ export const App: React.FC = () => {
 
   const selectedCount = selectedPhotoIds.size;
 
+  const selectedPhotosList = useMemo(
+    () => photos.filter((p) => selectedPhotoIds.has(p.id)),
+    [photos, selectedPhotoIds]
+  );
+  const hasVideoSelected = useMemo(
+    () => selectedPhotosList.some((p) => p.mime_type?.startsWith("video/")),
+    [selectedPhotosList]
+  );
+  const canCreateCollage = selectedCount >= 2 && selectedCount <= 9 && !hasVideoSelected;
+
   return (
     <div 
       style={{ 
@@ -400,7 +412,8 @@ export const App: React.FC = () => {
             display: "flex", 
             flexDirection: "column", 
             backgroundColor: "var(--bg-app)",
-            overflow: "hidden" 
+            overflow: "hidden",
+            position: "relative",
           }}
         >
           {activeTab === "dashboard" ? (
@@ -591,177 +604,48 @@ export const App: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Right Column (flex: 1): Selection & Batch Action Toolbar */}
+                {/* Right Column (flex: 1): Global Action Pills */}
                 <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px", minWidth: "120px" }}>
-                  {selectedCount > 0 ? (
-                    <>
-                      <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--accent-primary)", marginRight: "6px" }}>
-                        {selectedCount} selected
-                      </span>
-                      <button
-                        onClick={() => setIsCollageModalOpen(true)}
-                        disabled={selectedCount < 2 || selectedCount > 9}
-                        className="clickable"
-                        title={
-                          selectedCount < 2
-                            ? "Select at least 2 photos to create a collage"
-                            : selectedCount > 9
-                            ? "Collages support up to 9 photos"
-                            : "Create 4K Collage (2-9 photos)"
-                        }
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "6px 14px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "var(--glass-pill-bg)",
-                          border: "1px solid var(--glass-pill-border)",
-                          color: selectedCount >= 2 && selectedCount <= 9 ? "var(--text-primary)" : "var(--text-muted)",
-                          fontSize: "12px",
-                          fontWeight: 500,
-                          opacity: selectedCount >= 2 && selectedCount <= 9 ? 1 : 0.6,
-                          cursor: selectedCount >= 2 && selectedCount <= 9 ? "pointer" : "not-allowed",
-                        }}
-                      >
-                        <LayoutGrid size={14} />
-                        Create Collage {selectedCount >= 2 && selectedCount <= 9 ? `(${selectedCount})` : ""}
-                      </button>
-                      <button
-                        onClick={handleBatchDownload}
-                        className="clickable"
-                        title="Download selected photos to your computer"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "6px 14px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "var(--glass-pill-bg)",
-                          border: "1px solid var(--glass-pill-border)",
-                          color: "var(--text-primary)",
-                          fontSize: "12px",
-                          fontWeight: 500,
-                        }}
-                      >
-                        <Download size={14} />
-                        Download
-                      </button>
-                      <button
-                        onClick={() => setIsAddToAlbumModalOpen(true)}
-                        className="clickable"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "6px 14px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "var(--glass-pill-bg)",
-                          border: "1px solid var(--glass-pill-border)",
-                          color: "var(--text-primary)",
-                          fontSize: "12px",
-                          fontWeight: 500,
-                        }}
-                      >
-                        <FolderPlus size={14} />
-                        Add to Album
-                      </button>
-                      <button
-                        onClick={() => setIsVaultUnlockModalOpen(true)}
-                        className="clickable"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "6px 14px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "rgba(139, 92, 246, 0.15)",
-                          border: "1px solid rgba(139, 92, 246, 0.35)",
-                          color: "var(--accent-vault)",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                        }}
-                      >
-                        <Lock size={14} />
-                        Move to Vault (L)
-                      </button>
-                      <button
-                        onClick={handleBatchDelete}
-                        className="clickable"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "6px 14px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "rgba(239, 68, 68, 0.12)",
-                          border: "1px solid rgba(239, 68, 68, 0.25)",
-                          color: "var(--accent-danger, #ef4444)",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                        }}
-                        title="Move selected photos to trash"
-                      >
-                        <Trash2 size={14} />
-                        Move to Trash
-                      </button>
-                      <button
-                        onClick={clearSelection}
-                        className="clickable"
-                        style={{
-                          padding: "6px 12px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "var(--glass-pill-bg)",
-                          border: "1px solid var(--glass-pill-border)",
-                          color: "var(--text-secondary)",
-                          fontSize: "12px",
-                        }}
-                      >
-                        Clear
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        className="clickable"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "6px 14px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "var(--glass-pill-bg)",
-                          border: "1px solid var(--glass-pill-border)",
-                          color: "var(--text-primary)",
-                          fontSize: "12px",
-                          fontWeight: 500,
-                        }}
-                      >
-                        <FolderSync size={14} />
-                        Sync Folder
-                      </button>
-                      <button
-                        onClick={() => setIsImportModalOpen(true)}
-                        className="clickable"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "6px 16px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "var(--accent-primary)",
-                          border: "none",
-                          color: "#ffffff",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          boxShadow: "0 2px 10px rgba(59, 130, 246, 0.25)",
-                        }}
-                      >
-                        <Plus size={15} />
-                        Import Media
-                      </button>
-                    </>
-                  )}
+                  <button
+                    className="clickable"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "6px 14px",
+                      borderRadius: "var(--radius-full)",
+                      backgroundColor: "var(--glass-pill-bg)",
+                      border: "1px solid var(--glass-pill-border)",
+                      color: "var(--text-primary)",
+                      fontSize: "12px",
+                      fontWeight: 500,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <FolderSync size={14} />
+                    Sync Folder
+                  </button>
+                  <button
+                    onClick={() => setIsImportModalOpen(true)}
+                    className="clickable"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "6px 16px",
+                      borderRadius: "var(--radius-full)",
+                      backgroundColor: "var(--accent-primary)",
+                      border: "none",
+                      color: "#ffffff",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      boxShadow: "0 2px 10px rgba(59, 130, 246, 0.25)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <Plus size={15} />
+                    Import Media
+                  </button>
                 </div>
               </div>
 
@@ -955,6 +839,238 @@ export const App: React.FC = () => {
                 onImportClick={() => setIsImportModalOpen(true)}
                 onToggleFavorite={handleToggleFavorite}
               />
+
+              {/* ── Jira/Linear-Style Floating Bottom Batch Action Dock ──────────── */}
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "24px",
+                  left: "50%",
+                  transform: `translateX(-50%) ${selectedCount > 0 ? "translateY(0)" : "translateY(80px)"}`,
+                  opacity: selectedCount > 0 ? 1 : 0,
+                  pointerEvents: selectedCount > 0 ? "auto" : "none",
+                  transition: "transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease",
+                  zIndex: 40,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "8px 16px",
+                  backgroundColor: "var(--glass-surface)",
+                  backdropFilter: "blur(24px)",
+                  WebkitBackdropFilter: "blur(24px)",
+                  border: "1px solid var(--glass-border)",
+                  borderRadius: "var(--radius-full)",
+                  boxShadow: "0 16px 40px rgba(0, 0, 0, 0.45), 0 0 1px rgba(255, 255, 255, 0.2)",
+                  maxWidth: "calc(100% - 48px)",
+                  overflowX: "auto",
+                }}
+              >
+                {/* Selection Count Capsule */}
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "4px 12px",
+                    borderRadius: "var(--radius-full)",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    backgroundColor: "rgba(59, 130, 246, 0.15)",
+                    color: "var(--accent-primary)",
+                    border: "1px solid rgba(59, 130, 246, 0.3)",
+                    fontFamily: "var(--font-mono)",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  <CheckSquare size={13} />
+                  {selectedCount} selected
+                </span>
+
+                {/* Select All / Deselect All Toggle */}
+                <button
+                  onClick={() => {
+                    if (selectedCount === photos.length) {
+                      clearSelection();
+                    } else {
+                      const allIds = new Set(photos.map((p) => p.id));
+                      useAppStore.setState({ selectedPhotoIds: allIds });
+                    }
+                  }}
+                  className="clickable"
+                  title={selectedCount === photos.length ? "Deselect all items" : "Select all items in current view"}
+                  style={{
+                    padding: "5px 12px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "var(--glass-pill-bg)",
+                    border: "1px solid var(--glass-pill-border)",
+                    color: "var(--text-secondary)",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  {selectedCount === photos.length ? "Deselect All" : "Select All"}
+                </button>
+
+                {/* Subtle Vertical Glass Divider */}
+                <div style={{ width: "1px", height: "20px", backgroundColor: "var(--glass-border)", margin: "0 2px", flexShrink: 0 }} />
+
+                {/* Create Collage (Photos only, 2 to 9 items) */}
+                {canCreateCollage && (
+                  <button
+                    onClick={() => setIsCollageModalOpen(true)}
+                    className="clickable"
+                    title="Create 4K Collage (2-9 photos)"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "6px 14px",
+                      borderRadius: "var(--radius-full)",
+                      backgroundColor: "var(--glass-pill-bg)",
+                      border: "1px solid var(--glass-pill-border)",
+                      color: "var(--text-primary)",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <LayoutGrid size={14} />
+                    <span>Create Collage ({selectedCount})</span>
+                  </button>
+                )}
+
+                {/* Download Selected */}
+                <button
+                  onClick={handleBatchDownload}
+                  className="clickable"
+                  title="Download selected items to Downloads folder"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "6px 14px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "var(--glass-pill-bg)",
+                    border: "1px solid var(--glass-pill-border)",
+                    color: "var(--text-primary)",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                    cursor: "pointer",
+                  }}
+                >
+                  <Download size={14} />
+                  <span>Download</span>
+                </button>
+
+                {/* Add to Album */}
+                <button
+                  onClick={() => setIsAddToAlbumModalOpen(true)}
+                  className="clickable"
+                  title="Add selected items to an album"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "6px 14px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "var(--glass-pill-bg)",
+                    border: "1px solid var(--glass-pill-border)",
+                    color: "var(--text-primary)",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                    cursor: "pointer",
+                  }}
+                >
+                  <FolderPlus size={14} />
+                  <span>Add to Album</span>
+                </button>
+
+                {/* Move to Vault (L) */}
+                <button
+                  onClick={() => setIsVaultUnlockModalOpen(true)}
+                  className="clickable"
+                  title="Encrypt and move selected items into Private Zero-Trust Vault"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "6px 14px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "rgba(139, 92, 246, 0.15)",
+                    border: "1px solid rgba(139, 92, 246, 0.35)",
+                    color: "var(--accent-vault)",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                    cursor: "pointer",
+                  }}
+                >
+                  <Lock size={14} />
+                  <span>Move to Vault</span>
+                </button>
+
+                {/* Move to Trash */}
+                <button
+                  onClick={handleBatchDelete}
+                  className="clickable"
+                  title="Move selected items to 30-Day Trash"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "6px 14px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "rgba(239, 68, 68, 0.15)",
+                    border: "1px solid rgba(239, 68, 68, 0.3)",
+                    color: "var(--accent-danger, #ef4444)",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                    cursor: "pointer",
+                  }}
+                >
+                  <Trash2 size={14} />
+                  <span>Move to Trash ({selectedCount})</span>
+                </button>
+
+                {/* Subtle Vertical Glass Divider */}
+                <div style={{ width: "1px", height: "20px", backgroundColor: "var(--glass-border)", margin: "0 2px", flexShrink: 0 }} />
+
+                {/* Close / Deselect Button */}
+                <button
+                  onClick={clearSelection}
+                  className="clickable"
+                  title="Clear selection (Esc)"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: "28px",
+                    height: "28px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "var(--glass-pill-bg)",
+                    border: "1px solid var(--glass-pill-border)",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                    flexShrink: 0,
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
             </>
           )}
         </main>
