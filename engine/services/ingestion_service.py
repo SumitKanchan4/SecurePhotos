@@ -212,103 +212,102 @@ def extract_exif_metadata(filepath: Path) -> Dict[str, any]:
         metadata["height"] = v_meta.get("height")
         if v_meta.get("taken_at"):
             metadata["taken_at"] = v_meta.get("taken_at")
-        return metadata
+    else:
+        try:
+            with Image.open(filepath) as img:
+                # Transpose orientation to ensure accurate width and height
+                transposed = ImageOps.exif_transpose(img)
+                if transposed:
+                    metadata["width"], metadata["height"] = transposed.size
+                else:
+                    metadata["width"], metadata["height"] = img.size
+                
+                exif_raw = img.getexif()
+                if exif_raw:
+                    # 1. Root IFD0 (Make, Model, DateTime)
+                    root = {ExifTags.TAGS.get(k, k): v for k, v in exif_raw.items()}
+                    metadata["camera_make"] = str(root.get("Make", "")).strip() or None
+                    metadata["camera_model"] = str(root.get("Model", "")).strip() or None
 
-    try:
-        with Image.open(filepath) as img:
-            # Transpose orientation to ensure accurate width and height
-            transposed = ImageOps.exif_transpose(img)
-            if transposed:
-                metadata["width"], metadata["height"] = transposed.size
-            else:
-                metadata["width"], metadata["height"] = img.size
-            
-            exif_raw = img.getexif()
-            if exif_raw:
-                # 1. Root IFD0 (Make, Model, DateTime)
-                root = {ExifTags.TAGS.get(k, k): v for k, v in exif_raw.items()}
-                metadata["camera_make"] = str(root.get("Make", "")).strip() or None
-                metadata["camera_model"] = str(root.get("Model", "")).strip() or None
+                    dt_str = root.get("DateTimeOriginal") or root.get("DateTime")
+                    if dt_str:
+                        try:
+                            dt = datetime.datetime.strptime(str(dt_str), "%Y:%m:%d %H:%M:%S")
+                            metadata["taken_at"] = dt.isoformat()
+                        except ValueError:
+                            pass
 
-                dt_str = root.get("DateTimeOriginal") or root.get("DateTime")
-                if dt_str:
-                    try:
-                        dt = datetime.datetime.strptime(str(dt_str), "%Y:%m:%d %H:%M:%S")
-                        metadata["taken_at"] = dt.isoformat()
-                    except ValueError:
-                        pass
+                    # 2. EXIF Sub-IFD (Optics, Exposure, ISO, Shutter, Aperture)
+                    exif_sub = exif_raw.get_ifd(ExifTags.IFD.Exif)
+                    if exif_sub:
+                        sub_tags = {ExifTags.TAGS.get(k, k): v for k, v in exif_sub.items()}
+                        
+                        if not metadata["taken_at"]:
+                            dto = sub_tags.get("DateTimeOriginal") or sub_tags.get("DateTimeDigitized")
+                            if dto:
+                                try:
+                                    metadata["taken_at"] = datetime.datetime.strptime(str(dto), "%Y:%m:%d %H:%M:%S").isoformat()
+                                except ValueError:
+                                    pass
 
-                # 2. EXIF Sub-IFD (Optics, Exposure, ISO, Shutter, Aperture)
-                exif_sub = exif_raw.get_ifd(ExifTags.IFD.Exif)
-                if exif_sub:
-                    sub_tags = {ExifTags.TAGS.get(k, k): v for k, v in exif_sub.items()}
-                    
-                    if not metadata["taken_at"]:
-                        dto = sub_tags.get("DateTimeOriginal") or sub_tags.get("DateTimeDigitized")
-                        if dto:
+                        # ISO
+                        iso = sub_tags.get("ISOSpeedRatings") or sub_tags.get("PhotographicSensitivity")
+                        if iso:
                             try:
-                                metadata["taken_at"] = datetime.datetime.strptime(str(dto), "%Y:%m:%d %H:%M:%S").isoformat()
-                            except ValueError:
+                                metadata["iso"] = int(iso[0]) if isinstance(iso, (tuple, list)) else int(iso)
+                            except (ValueError, TypeError):
                                 pass
 
-                    # ISO
-                    iso = sub_tags.get("ISOSpeedRatings") or sub_tags.get("PhotographicSensitivity")
-                    if iso:
-                        try:
-                            metadata["iso"] = int(iso[0]) if isinstance(iso, (tuple, list)) else int(iso)
-                        except (ValueError, TypeError):
-                            pass
+                        # Aperture (FNumber)
+                        fnum = sub_tags.get("FNumber")
+                        if fnum:
+                            try:
+                                metadata["aperture"] = round(float(fnum), 2)
+                            except (ValueError, TypeError):
+                                pass
 
-                    # Aperture (FNumber)
-                    fnum = sub_tags.get("FNumber")
-                    if fnum:
-                        try:
-                            metadata["aperture"] = round(float(fnum), 2)
-                        except (ValueError, TypeError):
-                            pass
+                        # Shutter Speed (ExposureTime)
+                        exp_time = sub_tags.get("ExposureTime")
+                        if exp_time:
+                            try:
+                                val = float(exp_time)
+                                if 0 < val < 1.0:
+                                    metadata["shutter_speed"] = f"1/{int(round(1.0 / val))} sec."
+                                else:
+                                    metadata["shutter_speed"] = f"{round(val, 2)} sec."
+                            except (ValueError, TypeError):
+                                metadata["shutter_speed"] = str(exp_time)
 
-                    # Shutter Speed (ExposureTime)
-                    exp_time = sub_tags.get("ExposureTime")
-                    if exp_time:
-                        try:
-                            val = float(exp_time)
-                            if 0 < val < 1.0:
-                                metadata["shutter_speed"] = f"1/{int(round(1.0 / val))} sec."
-                            else:
-                                metadata["shutter_speed"] = f"{round(val, 2)} sec."
-                        except (ValueError, TypeError):
-                            metadata["shutter_speed"] = str(exp_time)
+                        # Focal Length
+                        fl = sub_tags.get("FocalLength")
+                        if fl:
+                            try:
+                                metadata["focal_length"] = round(float(fl), 2)
+                            except (ValueError, TypeError):
+                                pass
 
-                    # Focal Length
-                    fl = sub_tags.get("FocalLength")
-                    if fl:
-                        try:
-                            metadata["focal_length"] = round(float(fl), 2)
-                        except (ValueError, TypeError):
-                            pass
+                    # 3. GPS Sub-IFD (Coordinates)
+                    gps_ifd = exif_raw.get_ifd(ExifTags.IFD.GPSInfo)
+                    if gps_ifd:
+                        gps = {ExifTags.GPSTAGS.get(k, k): v for k, v in gps_ifd.items()}
+                        lat_val = gps.get("GPSLatitude")
+                        lat_ref = gps.get("GPSLatitudeRef")
+                        lon_val = gps.get("GPSLongitude")
+                        lon_ref = gps.get("GPSLongitudeRef")
 
-                # 3. GPS Sub-IFD (Coordinates)
-                gps_ifd = exif_raw.get_ifd(ExifTags.IFD.GPSInfo)
-                if gps_ifd:
-                    gps = {ExifTags.GPSTAGS.get(k, k): v for k, v in gps_ifd.items()}
-                    lat_val = gps.get("GPSLatitude")
-                    lat_ref = gps.get("GPSLatitudeRef")
-                    lon_val = gps.get("GPSLongitude")
-                    lon_ref = gps.get("GPSLongitudeRef")
+                        lat = _convert_gps_to_degrees(lat_val)
+                        if lat is not None and lat_ref == "S":
+                            lat = -lat
 
-                    lat = _convert_gps_to_degrees(lat_val)
-                    if lat is not None and lat_ref == "S":
-                        lat = -lat
+                        lon = _convert_gps_to_degrees(lon_val)
+                        if lon is not None and lon_ref == "W":
+                            lon = -lon
 
-                    lon = _convert_gps_to_degrees(lon_val)
-                    if lon is not None and lon_ref == "W":
-                        lon = -lon
+                        metadata["latitude"] = lat
+                        metadata["longitude"] = lon
 
-                    metadata["latitude"] = lat
-                    metadata["longitude"] = lon
-
-    except Exception as e:
-        logger.debug(f"Could not parse EXIF for {filepath}: {e}")
+        except Exception as e:
+            logger.debug(f"Could not parse EXIF for {filepath}: {e}")
 
     # Tier 2: If no EXIF date found, attempt regex extraction from filename
     if not metadata["taken_at"]:
@@ -405,11 +404,14 @@ async def ingest_single_photo(
     if mode == "managed":
         dest_path = get_hierarchical_destination_path(metadata["taken_at"], source_path.name, file_hash=file_hash)
         
-        # Avoid filename collisions in same day folder
-        if dest_path.exists() and dest_path != source_path:
+        # Avoid filename collisions in same day folder or database unique filepath constraint
+        async with conn.execute("SELECT id FROM photos WHERE filepath = ?;", (str(dest_path.resolve()),)) as cursor:
+            fp_exists_in_db = bool(await cursor.fetchone())
+
+        if (dest_path.exists() and dest_path != source_path) or fp_exists_in_db:
             stem = source_path.stem
             suffix = source_path.suffix
-            dest_path = dest_path.parent / f"{stem}_{file_hash[:6]}{suffix}"
+            dest_path = dest_path.parent / f"{stem}_{file_hash[:8]}{suffix}"
 
         # Atomic Two-Phase Commit (.tmp -> fsync -> os.replace)
         temp_dest = dest_path.parent / f".{dest_path.name}.tmp"

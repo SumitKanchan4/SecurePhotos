@@ -175,6 +175,12 @@ async def test_video_ingestion_and_api_workflow(sample_video_clip, tmp_path):
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1.5. Test GET /api/photos/{photo_id}/thumbnail (verify 200 OK image/webp, no PIL 500 crash)
+        thumb_res = await client.get(f"/api/photos/{photo_id}/thumbnail")
+        assert thumb_res.status_code == 200
+        assert thumb_res.headers["content-type"] == "image/webp"
+        assert len(thumb_res.content) > 0
+
         # 2. Test GET /api/videos/summary
         sum_res = await client.get("/api/videos/summary")
         assert sum_res.status_code == 200
@@ -208,8 +214,29 @@ async def test_video_ingestion_and_api_workflow(sample_video_clip, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_video_whatsapp_filename_date_extraction(tmp_path):
+    """Verifies that WhatsApp video naming patterns (VID-YYYYMMDD-WA...) extract taken_at correctly."""
+    ffmpeg = get_ffmpeg_path()
+    if not ffmpeg:
+        pytest.skip("FFmpeg not available")
+
+    wa_clip = tmp_path / "VID-20260816-WA0002.mp4"
+    subprocess.run([
+        ffmpeg, "-y",
+        "-f", "lavfi", "-i", "testsrc=duration=0.5:size=160x120:rate=10",
+        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+        str(wa_clip)
+    ], capture_output=True, check=True)
+
+    from engine.services.ingestion_service import extract_exif_metadata
+    meta = extract_exif_metadata(wa_clip)
+    assert meta["taken_at"] is not None
+    assert meta["taken_at"].startswith("2026-08-16")
+
+
+@pytest.mark.asyncio
 async def test_video_compression_workflow(tmp_path):
-    """Verifies that high-bitrate video compression reduces size and saves original in trash."""
+    """Verifies video compression and atomic trash backup."""
     ffmpeg = get_ffmpeg_path()
     if not ffmpeg:
         pytest.skip("FFmpeg not available")

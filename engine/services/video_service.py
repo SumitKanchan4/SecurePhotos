@@ -226,11 +226,11 @@ def generate_video_thumbnail(
 
     try:
         res = subprocess.run(cmd_thumb, capture_output=True, timeout=10)
-        if res.returncode != 0:
-            # If seeking to 1.0s failed (very short clip < 1s), retry seeking to 0.0s
-            cmd_thumb[2] = "0.0"
+        if res.returncode != 0 or not os.path.exists(thumb_path) or os.path.getsize(thumb_path) == 0:
+            # If seeking to timestamp_sec failed or produced an empty file (e.g. short clip), retry seeking to 0.0s
+            cmd_thumb[3] = "0.0"
             res = subprocess.run(cmd_thumb, capture_output=True, timeout=10)
-            if res.returncode != 0:
+            if res.returncode != 0 or not os.path.exists(thumb_path) or os.path.getsize(thumb_path) == 0:
                 logger.warning(f"Failed to generate video thumbnail for {video_path}: {res.stderr.decode('utf-8', 'ignore')}")
                 return False
     except Exception as e:
@@ -251,7 +251,10 @@ def generate_video_thumbnail(
             preview_path,
         ]
         try:
-            subprocess.run(cmd_prev, capture_output=True, timeout=10)
+            res_prev = subprocess.run(cmd_prev, capture_output=True, timeout=10)
+            if res_prev.returncode != 0 or not os.path.exists(preview_path) or os.path.getsize(preview_path) == 0:
+                cmd_prev[3] = "0.0"
+                subprocess.run(cmd_prev, capture_output=True, timeout=10)
         except Exception as e:
             logger.warning(f"Preview extraction exception: {e}")
 

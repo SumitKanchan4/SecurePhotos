@@ -1563,8 +1563,47 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - `src/components/ImportModal.tsx`: Complete overhaul with hero dropzone, dual file/folder selection, safe copy defaults, destination info tooltip, and liquid-glass styling.
 
 ### State & Lifecycle Impact
-- Zero breaking changes to existing directory imports; `/api/photos/import` cleanly handles both payload shapes.
-- Automated tests passing: 66/66 backend tests, 0 TypeScript errors, Vite bundle cleanly compiled.
+- Automated tests passing: 67/67 backend tests, 0 TypeScript errors, Vite bundle cleanly compiled.
+
+---
+
+## 35. Video Ingestion Resilience, Video Thumbnail Serving & Filename Date Fallback
+
+### Functionality Overview
+1. **Zero-Crash Video Thumbnail Serving**:
+   - In `engine/api/photos.py`, `get_photo_thumbnail(photo_id)` previously called PIL's `Image.open` unconditionally on `row["filepath"]`, resulting in `PIL.UnidentifiedImageError` and an HTTP 500 crash whenever a video's thumbnail was requested.
+   - The endpoint now queries `mime_type`. For video items, it directly serves the generated WebP micro-thumbnail without touching PIL.
+   - If a thumbnail is missing or empty (0 bytes), it calls `video_service.generate_video_thumbnail(src_path, thumb_path)` to generate it on demand via FFmpeg.
+   - Micro-thumbnail and preview paths are safely resolved against `settings.data_dir` if stored as relative strings.
+2. **WhatsApp & Filename Regex Date Fallback for Videos**:
+   - In `engine/services/ingestion_service.py`, `extract_exif_metadata` previously had an early `return metadata` if `filepath.suffix` was a video format.
+   - For videos lacking internal container `creation_time` tags (e.g. WhatsApp videos like `VID-20260816-WA0002.mp4`), the date was left `None`, incorrectly sharding them into `originals/undated/` instead of their capture date directory.
+   - Video metadata extraction now falls through to Tier 2 (`parse_date_from_filename`) and Tier 3 (`parse_date_from_directory`), properly filing WhatsApp/Telegram videos into date-sharded folders (`originals/YYYY/MM/DD/`).
+3. **FFmpeg Zero-Byte Seek Recovery & Argument Alignment**:
+   - In `engine/services/video_service.py`, fixed an argument indexing defect where `cmd_thumb[2]` was being modified instead of `cmd_thumb[3]` (`-ss timestamp`).
+   - Added zero-byte file verification: if seeking to 1.0s produces an empty file (common for very short <2s clips), it automatically retries seeking at `0.0s`.
+4. **Native Drag & Drop in Tauri Import Studio**:
+   - In `src/components/ImportModal.tsx`, integrated `getCurrentWebview().onDragDropEvent` from `@tauri-apps/api/webview` to receive full absolute filesystem paths when media files or folders are dropped into the modal.
+   - Enhanced toast messaging to surface descriptive backend error details rather than generic failure alerts.
+
+### Functional Decision Points & Rationale
+- **MIME-Aware Thumbnail Serving**:
+  - *Decision*: Route thumbnail requests based on `mime_type` instead of assuming all media can be parsed by PIL.
+  - *Rationale*: PIL only supports static raster image formats. Calling `Image.open` on MP4/MOV files causes fatal unhandled exceptions that break UI grids and lightboxes.
+- **Unified Date Inference Across Photos and Videos**:
+  - *Decision*: Allow videos to use the multi-tier date fallback heuristic.
+  - *Rationale*: WhatsApp and mobile messaging apps routinely strip container EXIF metadata during compression, encoding timestamp information exclusively into the filename.
+
+### Technical Touchpoints
+- `engine/api/photos.py`: MIME-type check in `get_photo_thumbnail`, relative path resolution, descriptive import errors.
+- `engine/services/ingestion_service.py`: Removed early return for videos in `extract_exif_metadata`, added DB collision check for unique filepath constraint.
+- `engine/services/video_service.py`: Fixed argument index for timestamp seeking, added 0-byte output retry at `0.0s`.
+- `src/components/ImportModal.tsx`: Added Tauri v2 webview drag-and-drop listener, path validation, and descriptive toasts.
+- `engine/tests/test_videos.py`: Added `GET /api/photos/{id}/thumbnail` verification test and WhatsApp video date parsing test.
+
+### State & Lifecycle Impact
+- 100% automated test pass rate across 67 backend tests.
+- Zero TypeScript compiler errors; Vite bundle built in 6.01s.
 
 
 

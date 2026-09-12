@@ -199,11 +199,13 @@ async def test_whatsapp_extraction_and_undated_api_filter():
 @pytest.mark.asyncio
 async def test_import_endpoint_file_paths():
     """Verifies that /api/photos/import accepts explicit file_paths list."""
+    import time
+    ts = time.time_ns()
     with tempfile.TemporaryDirectory() as tmpdir:
-        f1 = Path(tmpdir) / "test_import_f1.jpg"
-        f2 = Path(tmpdir) / "test_import_f2.jpg"
-        create_dummy_image(f1, 640, 480, color=(10, 20, 30))
-        create_dummy_image(f2, 640, 480, color=(40, 50, 60))
+        f1 = Path(tmpdir) / f"test_import_f1_{ts}.jpg"
+        f2 = Path(tmpdir) / f"test_import_f2_{ts}.jpg"
+        create_dummy_image(f1, 640, 480, color=(10, 20, (ts % 200)))
+        create_dummy_image(f2, 640, 480, color=(40, 50, ((ts + 50) % 200)))
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://testserver") as client:

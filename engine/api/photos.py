@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from engine.database import get_db_connection
+from engine.config import settings
 from engine.services.ingestion_service import ingest_single_photo
 
 logger = logging.getLogger("securephotos.api.photos")
@@ -422,11 +423,11 @@ async def get_timeline_years() -> TimelineYearsResponse:
 
 @router.get("/{photo_id}/thumbnail")
 async def get_photo_thumbnail(photo_id: int):
-    """Streams the 512px Retina WebP micro-thumbnail for a photo."""
+    """Streams the 512px Retina WebP micro-thumbnail for a photo or video."""
     conn = await get_db_connection()
     try:
         async with conn.execute(
-            "SELECT filepath, file_hash, thumbnail_path, is_encrypted FROM photos WHERE id = ?;", (photo_id,)
+            "SELECT filepath, file_hash, thumbnail_path, mime_type, is_encrypted FROM photos WHERE id = ?;", (photo_id,)
         ) as cursor:
             row = await cursor.fetchone()
     finally:
@@ -438,16 +439,23 @@ async def get_photo_thumbnail(photo_id: int):
     if row["is_encrypted"]:
         raise HTTPException(status_code=403, detail="Encrypted thumbnail requires vault authentication")
 
-    thumb_path = Path(row["thumbnail_path"])
+    raw_thumb = Path(row["thumbnail_path"])
+    thumb_path = raw_thumb if raw_thumb.is_absolute() else (settings.data_dir / raw_thumb)
 
-    # Auto-upgrade or regenerate if missing or older low-res thumbnail
-    if row["filepath"]:
+    is_video = bool(row["mime_type"] and row["mime_type"].startswith("video/"))
+
+    # Auto-upgrade or regenerate if missing or 0 bytes on disk
+    if (not thumb_path.exists() or thumb_path.stat().st_size == 0) and row["filepath"]:
         src_path = Path(row["filepath"])
         if src_path.exists():
-            from engine.services.thumbnail_service import generate_micro_thumbnail
-            thumb_path, _, _ = generate_micro_thumbnail(src_path, file_hash=row["file_hash"], size=1024)
+            if is_video:
+                from engine.services.video_service import generate_video_thumbnail
+                generate_video_thumbnail(str(src_path), str(thumb_path))
+            else:
+                from engine.services.thumbnail_service import generate_micro_thumbnail
+                thumb_path, _, _ = generate_micro_thumbnail(src_path, file_hash=row["file_hash"], size=1024)
 
-    if not thumb_path.exists():
+    if not thumb_path.exists() or thumb_path.stat().st_size == 0:
         raise HTTPException(status_code=404, detail="Thumbnail file missing on disk")
 
     return FileResponse(
@@ -477,8 +485,17 @@ async def get_photo_preview(photo_id: int):
     if row["is_encrypted"]:
         raise HTTPException(status_code=403, detail="Encrypted photo requires vault authentication")
 
-    # Seamless fallback to filepath
-    preview_file = Path(row["preview_path"]) if row["preview_path"] and Path(row["preview_path"]).exists() else Path(row["filepath"])
+    # Seamless fallback to filepath, resolving relative preview path against data_dir
+    preview_file = None
+    if row["preview_path"]:
+        raw_prev = Path(row["preview_path"])
+        p_prev = raw_prev if raw_prev.is_absolute() else (settings.data_dir / raw_prev)
+        if p_prev.exists():
+            preview_file = p_prev
+
+    if not preview_file:
+        preview_file = Path(row["filepath"])
+
     if not preview_file.exists():
         raise HTTPException(status_code=404, detail="Photo file missing on disk")
 
@@ -848,6 +865,8 @@ async def import_folder(payload: ImportRequest, background_tasks: BackgroundTask
             p = Path(fp)
             if p.exists() and p.is_file():
                 files_to_process.append(p)
+            else:
+                logger.warning("Specified file path could not be located on disk: %s", fp)
 
     # 2. Add files from directory if provided
     if payload.source_directory:
@@ -858,6 +877,11 @@ async def import_folder(payload: ImportRequest, background_tasks: BackgroundTask
                     files_to_process.append(file_path)
 
     if not files_to_process:
+        if payload.file_paths and not payload.source_directory:
+            raise HTTPException(
+                status_code=400,
+                detail="Selected file paths could not be located on disk. Ensure absolute filesystem paths are provided.",
+            )
         raise HTTPException(status_code=400, detail="No valid media files or source directory provided")
 
     conn = await get_db_connection()
@@ -877,7 +901,8 @@ async def import_folder(payload: ImportRequest, background_tasks: BackgroundTask
                 imported += 1
             else:
                 skipped += 1
-        except Exception:
+        except Exception as err:
+            logger.error("Failed to ingest %s: %s", file_path, err, exc_info=True)
             skipped += 1
 
     await conn.close()

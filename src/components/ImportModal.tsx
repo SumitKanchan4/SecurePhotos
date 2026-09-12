@@ -65,6 +65,46 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
 
   if (!isOpen) return null;
 
+  // Native Tauri drag-and-drop listener for full filesystem paths
+  useEffect(() => {
+    if (!isOpen) return;
+    let unlisten: (() => void) | null = null;
+    try {
+      import("@tauri-apps/api/webview").then(({ getCurrentWebview }) => {
+        getCurrentWebview().onDragDropEvent((event) => {
+          if (event.payload.type === "over") {
+            setIsDragging(true);
+          } else if (event.payload.type === "drop") {
+            setIsDragging(false);
+            const droppedPaths = event.payload.paths;
+            if (droppedPaths && droppedPaths.length > 0) {
+              // If single dropped item without file extension, treat as directory
+              if (droppedPaths.length === 1 && !droppedPaths[0].match(/\.[a-zA-Z0-9]+$/)) {
+                setSelectedFolder(droppedPaths[0]);
+                setSelectedFiles([]);
+              } else {
+                setSelectedFiles(droppedPaths);
+                setSelectedFolder(null);
+              }
+            }
+          } else {
+            setIsDragging(false);
+          }
+        }).then((fn) => {
+          unlisten = fn;
+        }).catch((err) => {
+          console.warn("Tauri drag-drop listener registration failed:", err);
+        });
+      });
+    } catch (err) {
+      console.warn("Tauri getCurrentWebview not available:", err);
+    }
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [isOpen]);
+
   // Handle selecting multiple individual files (images/videos)
   const handleSelectFiles = async () => {
     if (isBrowsing || isImporting) return;
@@ -91,12 +131,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       // In desktop environments (WebView2/Electron), file object may contain local path
-      const path = (f as any).path || f.name;
-      filePaths.push(path);
+      const path = (f as any).path;
+      if (path) {
+        filePaths.push(path);
+      }
     }
     if (filePaths.length > 0) {
       setSelectedFiles(filePaths);
       setSelectedFolder(null);
+    } else {
+      showToast("To select files, please restart the desktop app to activate the native file picker.", "warning");
     }
   };
 
@@ -146,11 +190,15 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
       const filePaths: string[] = [];
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
-        const path = (f as any).path || f.name;
-        filePaths.push(path);
+        const path = (f as any).path;
+        if (path) {
+          filePaths.push(path);
+        }
       }
-      setSelectedFiles(filePaths);
-      setSelectedFolder(null);
+      if (filePaths.length > 0) {
+        setSelectedFiles(filePaths);
+        setSelectedFolder(null);
+      }
     }
   };
 
@@ -197,13 +245,24 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
         setImportProgress(100);
         setTimeout(() => {
           setIsImporting(false);
-          showToast(`Successfully imported ${data.imported || 0} media item(s)`, "success");
+          if (data.imported > 0) {
+            showToast(`Successfully imported ${data.imported} media item(s)`, "success");
+          } else if (data.skipped > 0) {
+            showToast(`All ${data.skipped} item(s) are already in your library.`, "info");
+          } else {
+            showToast("No new media items to import.", "info");
+          }
           onImportComplete?.();
           onClose();
         }, 500);
       } else {
         setIsImporting(false);
-        showToast("Import failed or no supported media found.", "warning");
+        let errorMsg = "Import failed or no supported media found.";
+        try {
+          const errData = await res.json();
+          if (errData?.detail) errorMsg = errData.detail;
+        } catch {}
+        showToast(errorMsg, "warning");
       }
     } catch {
       // Fallback in simulated environment
