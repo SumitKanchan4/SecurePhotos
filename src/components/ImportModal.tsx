@@ -571,7 +571,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                       border: "1px solid rgba(16, 185, 129, 0.3)",
                     }}
                   >
-                    Recommended
+                    Safe Copy
                   </span>
                 </div>
                 <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: 1.4 }}>
@@ -579,7 +579,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                 </p>
               </div>
 
-              {/* Option 2: Move & Free Up Space (Opt-in) */}
+              {/* Option 2: Move & Free Up Space (Recommended) */}
               <div
                 onClick={() => setCleanupMode("move")}
                 className="clickable"
@@ -589,14 +589,14 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                   gap: "6px",
                   padding: "12px 14px",
                   borderRadius: "var(--radius-md)",
-                  backgroundColor: cleanupMode === "move" ? "rgba(239, 68, 68, 0.12)" : "rgba(255, 255, 255, 0.02)",
-                  border: cleanupMode === "move" ? "1.5px solid var(--accent-danger, #ef4444)" : "1px solid var(--glass-border)",
+                  backgroundColor: cleanupMode === "move" ? "rgba(59, 130, 246, 0.12)" : "rgba(255, 255, 255, 0.02)",
+                  border: cleanupMode === "move" ? "1.5px solid var(--accent-primary)" : "1px solid var(--glass-border)",
                   cursor: "pointer",
                   transition: "all 0.15s ease",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 700, fontSize: "12px", color: cleanupMode === "move" ? "var(--accent-danger, #ef4444)" : "var(--text-primary)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 700, fontSize: "12px", color: cleanupMode === "move" ? "var(--accent-primary)" : "var(--text-primary)" }}>
                     <ArrowRightLeft size={13} />
                     <span>Move & Free Space</span>
                   </div>
@@ -606,16 +606,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                       fontWeight: 700,
                       padding: "2px 6px",
                       borderRadius: "var(--radius-full)",
-                      backgroundColor: "rgba(239, 68, 68, 0.15)",
-                      color: "#ef4444",
-                      border: "1px solid rgba(239, 68, 68, 0.3)",
+                      backgroundColor: "rgba(59, 130, 246, 0.15)",
+                      color: "var(--accent-primary)",
+                      border: "1px solid rgba(59, 130, 246, 0.3)",
                     }}
                   >
-                    Deletes Source
+                    Recommended
                   </span>
                 </div>
                 <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: 1.4 }}>
-                  Deletes source files only after SHA-256 verification. Ideal for camera SD cards.
+                  Deletes source files only after SHA-256 verification. Frees device space.
                 </p>
               </div>
             </div>

@@ -1539,10 +1539,10 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - **Elimination of Database Plumbing Jargon**:
   - Removed technical engineering text (*"Sharding Format: originals/YYYY/MM/DD/ (< 500 files/dir)"*) and raw drive serials from the dialog.
   - Replaced with a subtle, elegant library destination footnote: `Library Storage: Local Storage (C:)` with an interactive `(i)` tooltip explaining automated chronological capture-date organization.
-- **Critical Data Loss Protection & Safe Copy Default**:
-  - The previous implementation dangerously defaulted to `cleanupMode: "move"` (deleting source files upon import).
-  - Corrected to **"Keep Originals (Safe Copy)"** as the strict default (`delete_source: false`).
-  - Source file deletion is now an explicit, transparent opt-in card styled with an amber warning badge (`⚠️ Deletes Source - ideal for camera SD cards/USB`).
+- **Critical Data Loss Protection & Confident Ingestion Defaults**:
+  - The default pre-selection is strictly **"Keep Originals"** (`delete_source: false`), preventing accidental loss of source files during standard imports.
+  - **"Move & Free Space"** is designated with the **"Recommended"** badge, reflecting high architectural confidence in SecurePhotos' atomic SHA-256 two-phase commit while empowering users to free space on SD cards and digital cameras.
+  - Keeps user control intuitive and transparent with zero hidden deletion risks.
 - **Automated Intelligence Reassurance**:
   - Replaced superfluous checkboxes for deduplication and 8K proxy generation with automated system guarantees: `✓ Auto-deduplication active` • `✓ Visual quality preservation`.
 - **Liquid Glass Aesthetic Parity**:
