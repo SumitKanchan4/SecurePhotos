@@ -11,7 +11,7 @@ import {
   ShieldCheck, 
   TrendingDown
 } from "lucide-react";
-import { VideoCandidate, VideoSummary, PhotoItem } from "../types";
+import { VideoCandidate, VideoSummary, VideoOptimizationProgress, PhotoItem } from "../types";
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
@@ -54,6 +54,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
   const [isBatchProcessing, setIsBatchProcessing] = useState<boolean>(false);
   const [targetHeights, setTargetHeights] = useState<Record<number, number>>({});
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [videoProgress, setVideoProgress] = useState<VideoOptimizationProgress | null>(null);
 
   // Load summary and candidates from API
   const fetchData = useCallback(async () => {
@@ -83,6 +84,26 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Poll video optimization progress in real-time
+  useEffect(() => {
+    let wasActive = false;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/videos/optimization-progress`);
+        if (res.ok) {
+          const data: VideoOptimizationProgress = await res.json();
+          setVideoProgress(data);
+          if (wasActive && !data.is_active) {
+            fetchData();
+            onRefreshTelemetry?.();
+          }
+          wasActive = data.is_active;
+        }
+      } catch {}
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [fetchData, onRefreshTelemetry]);
 
   // Filter candidates by tab
   const compressibleVideos = useMemo(() => {
@@ -370,7 +391,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
           {activeTab === "compress" && (
             <button
               onClick={handleCompressAll}
-              disabled={compressibleVideos.length === 0 || isBatchProcessing}
+              disabled={compressibleVideos.length === 0 || isBatchProcessing || videoProgress?.is_active}
               className="clickable"
               title="Automatically transcode all heavy videos to visually lossless H.265"
               style={{
@@ -379,18 +400,29 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
                 gap: "6px",
                 padding: "7px 16px",
                 borderRadius: "var(--radius-full)",
-                backgroundColor: compressibleVideos.length > 0 ? "var(--accent-primary)" : "var(--glass-pill-bg)",
-                border: `1px solid ${compressibleVideos.length > 0 ? "transparent" : "var(--glass-border)"}`,
-                color: compressibleVideos.length > 0 ? "#ffffff" : "var(--text-muted)",
+                backgroundColor:
+                  compressibleVideos.length > 0 && !videoProgress?.is_active
+                    ? "var(--accent-primary)"
+                    : "var(--glass-pill-bg)",
+                border: `1px solid ${compressibleVideos.length > 0 && !videoProgress?.is_active ? "transparent" : "var(--glass-border)"}`,
+                color: compressibleVideos.length > 0 && !videoProgress?.is_active ? "#ffffff" : "var(--text-muted)",
                 fontSize: "12px",
                 fontWeight: 700,
-                cursor: compressibleVideos.length === 0 || isBatchProcessing ? "not-allowed" : "pointer",
-                boxShadow: compressibleVideos.length > 0 ? "0 2px 10px var(--accent-glow)" : "none",
+                cursor: compressibleVideos.length === 0 || isBatchProcessing || videoProgress?.is_active ? "not-allowed" : "pointer",
+                boxShadow: compressibleVideos.length > 0 && !videoProgress?.is_active ? "0 2px 10px var(--accent-glow)" : "none",
                 transition: "all 0.15s ease",
               }}
             >
-              <Zap size={13} className={isBatchProcessing ? "spin-animation" : ""} />
-              <span>{isBatchProcessing ? "Compressing All..." : `Compress All (~${formatBytes(totalCompressibleSavings)})`}</span>
+              <Zap size={13} className={isBatchProcessing || videoProgress?.is_active ? "spin-animation" : ""} />
+              <span>
+                {videoProgress?.is_active
+                  ? videoProgress.total_count > 1
+                    ? `Optimizing (${videoProgress.completed_count + 1} of ${videoProgress.total_count})...`
+                    : "Optimizing..."
+                  : isBatchProcessing
+                  ? "Compressing All..."
+                  : `Compress All (~${formatBytes(totalCompressibleSavings)})`}
+              </span>
             </button>
           )}
         </div>
@@ -437,11 +469,27 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
           </div>
         </div>
 
-        {statusMessage && (
+        {videoProgress?.is_active ? (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontWeight: 700, color: "var(--accent-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+              <RefreshCw size={12} className="spin-animation" />
+              <span>
+                {videoProgress.total_count > 1
+                  ? `Optimizing video (${videoProgress.completed_count + 1} of ${videoProgress.total_count}): ${videoProgress.active_filename || "Transcoding"}`
+                  : `Optimizing video: ${videoProgress.active_filename || "Transcoding"}`}
+              </span>
+            </span>
+            {(videoProgress.total_reclaimed_bytes ?? 0) > 0 && (
+              <span style={{ color: "var(--accent-success, #10b981)", fontWeight: 600 }}>
+                (Reclaimed {formatBytes(videoProgress.total_reclaimed_bytes ?? 0)} so far)
+              </span>
+            )}
+          </div>
+        ) : statusMessage ? (
           <span style={{ fontWeight: 600, color: "var(--text-primary)", fontStyle: "italic" }}>
             {statusMessage}
           </span>
-        )}
+        ) : null}
       </div>
 
       {/* ── Main Scrollable Workspace ──────────────────────────────────────── */}
@@ -490,7 +538,9 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
               }}
             >
               {compressibleVideos.map((video) => {
-                const isProcessing = processingIds.has(video.id) || isBatchProcessing;
+                const isThisVideoActive = videoProgress?.is_active && videoProgress.active_video_id === video.id;
+                const isProcessing = processingIds.has(video.id) || isBatchProcessing || isThisVideoActive;
+                const isBatchQueued = videoProgress?.is_active && !isThisVideoActive;
                 const thumbUrl = `http://127.0.0.1:8000/api/photos/${video.id}/thumbnail`;
 
                 return (
@@ -500,10 +550,10 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
                       display: "flex",
                       backgroundColor: "var(--glass-surface)",
                       borderRadius: "var(--radius-lg)",
-                      border: "1px solid var(--glass-border)",
+                      border: isThisVideoActive ? "1px solid var(--accent-primary)" : "1px solid var(--glass-border)",
                       overflow: "hidden",
-                      boxShadow: "var(--glass-shadow)",
-                      transition: "transform 0.15s ease, border-color 0.15s ease",
+                      boxShadow: isThisVideoActive ? "0 0 12px var(--accent-glow)" : "var(--glass-shadow)",
+                      transition: "transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
                     }}
                   >
                     {/* Video Thumbnail Preview */}
@@ -637,7 +687,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
                       {/* Compress Button */}
                       <button
                         onClick={() => handleCompressVideo(video.id)}
-                        disabled={isProcessing}
+                        disabled={isProcessing || isBatchQueued}
                         className="clickable"
                         style={{
                           marginTop: "8px",
@@ -647,17 +697,25 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
                           gap: "6px",
                           padding: "6px 12px",
                           borderRadius: "var(--radius-full)",
-                          backgroundColor: isProcessing ? "var(--glass-pill-bg)" : "var(--accent-primary)",
+                          backgroundColor: isProcessing
+                            ? "var(--glass-pill-bg)"
+                            : isBatchQueued
+                            ? "var(--glass-pill-bg)"
+                            : "var(--accent-primary)",
                           border: "1px solid var(--glass-border)",
-                          color: isProcessing ? "var(--text-muted)" : "#ffffff",
+                          color: isProcessing
+                            ? "var(--accent-primary)"
+                            : isBatchQueued
+                            ? "var(--text-muted)"
+                            : "#ffffff",
                           fontSize: "11px",
                           fontWeight: 700,
-                          cursor: isProcessing ? "not-allowed" : "pointer",
+                          cursor: isProcessing || isBatchQueued ? "not-allowed" : "pointer",
                           transition: "all 0.15s ease",
                         }}
                       >
                         <Zap size={11} className={isProcessing ? "spin-animation" : ""} />
-                        <span>{isProcessing ? "Compressing..." : "Compress (H.265)"}</span>
+                        <span>{isProcessing ? "Compressing..." : isBatchQueued ? "Queued" : "Compress (H.265)"}</span>
                       </button>
                     </div>
                   </div>
@@ -700,7 +758,9 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
               }}
             >
               {vintageVideos.map((video) => {
-                const isProcessing = processingIds.has(video.id);
+                const isThisVideoActive = videoProgress?.is_active && videoProgress.active_video_id === video.id;
+                const isProcessing = processingIds.has(video.id) || isThisVideoActive;
+                const isBatchQueued = videoProgress?.is_active && !isThisVideoActive;
                 const thumbUrl = `http://127.0.0.1:8000/api/photos/${video.id}/thumbnail`;
                 const targetH = targetHeights[video.id] || 720;
 
@@ -711,9 +771,10 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
                       display: "flex",
                       backgroundColor: "var(--glass-surface)",
                       borderRadius: "var(--radius-lg)",
-                      border: "1px solid var(--glass-border)",
+                      border: isThisVideoActive ? "1px solid var(--accent-primary)" : "1px solid var(--glass-border)",
                       overflow: "hidden",
-                      boxShadow: "var(--glass-shadow)",
+                      boxShadow: isThisVideoActive ? "0 0 12px var(--accent-glow)" : "var(--glass-shadow)",
+                      transition: "transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
                     }}
                   >
                     {/* Thumbnail Preview */}
@@ -836,7 +897,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
                       {/* Enhance Button */}
                       <button
                         onClick={() => handleEnhanceVideo(video.id)}
-                        disabled={isProcessing}
+                        disabled={isProcessing || isBatchQueued}
                         className="clickable"
                         style={{
                           marginTop: "8px",
@@ -846,17 +907,25 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
                           gap: "6px",
                           padding: "6px 12px",
                           borderRadius: "var(--radius-full)",
-                          backgroundColor: isProcessing ? "var(--glass-pill-bg)" : "var(--accent-primary)",
+                          backgroundColor: isProcessing
+                            ? "var(--glass-pill-bg)"
+                            : isBatchQueued
+                            ? "var(--glass-pill-bg)"
+                            : "var(--accent-primary)",
                           border: "1px solid var(--glass-border)",
-                          color: isProcessing ? "var(--text-muted)" : "#ffffff",
+                          color: isProcessing
+                            ? "var(--accent-primary)"
+                            : isBatchQueued
+                            ? "var(--text-muted)"
+                            : "#ffffff",
                           fontSize: "11px",
                           fontWeight: 700,
-                          cursor: isProcessing ? "not-allowed" : "pointer",
+                          cursor: isProcessing || isBatchQueued ? "not-allowed" : "pointer",
                           transition: "all 0.15s ease",
                         }}
                       >
                         <Sparkles size={11} className={isProcessing ? "spin-animation" : ""} />
-                        <span>{isProcessing ? "Enhancing..." : `Enhance to ${targetH}p HD`}</span>
+                        <span>{isProcessing ? "Enhancing..." : isBatchQueued ? "Queued" : `Enhance to ${targetH}p HD`}</span>
                       </button>
                     </div>
                   </div>

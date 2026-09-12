@@ -117,7 +117,14 @@ async def run_background_optimization():
             conn = await get_db_connection()
             try:
                 async with conn.execute(
-                    "SELECT id, filename, filepath, preview_path FROM photos WHERE is_optimized = 0 AND trashed_at IS NULL ORDER BY id ASC;"
+                    """
+                    SELECT id, filename, filepath, preview_path 
+                    FROM photos 
+                    WHERE (mime_type IS NULL OR mime_type NOT LIKE 'video/%')
+                      AND is_optimized = 0 
+                      AND trashed_at IS NULL 
+                    ORDER BY id ASC;
+                    """
                 ) as cursor:
                     unoptimized = await cursor.fetchall()
             finally:
@@ -172,7 +179,7 @@ async def run_background_optimization():
                             try:
                                 prev_file = Path(preview_path)
                                 if prev_file.exists() and prev_file.resolve() != opt_path.resolve():
-                                    prev_file.unlink(missing_ok=True)
+                                     prev_file.unlink(missing_ok=True)
                             except Exception as pe:
                                 logger.debug(f"Could not remove old preview for {filename}: {pe}")
 
@@ -204,6 +211,13 @@ async def run_background_optimization():
 
                 except Exception as err:
                     logger.warning(f"Could not optimize photo {filename}: {err}")
+                    # Mark is_optimized = 1 to prevent infinite re-trigger loop on unprocessable files
+                    conn_err = await get_db_connection()
+                    try:
+                        await conn_err.execute("UPDATE photos SET is_optimized = 1 WHERE id = ?;", (photo_id,))
+                        await conn_err.commit()
+                    finally:
+                        await conn_err.close()
 
                 optimization_state["item_progress"] = 100
                 optimization_state["completed_count"] = idx + 1

@@ -115,34 +115,81 @@ async def list_video_candidates() -> List[Dict[str, Any]]:
     return results
 
 
+# Global in-memory video optimization state tracker
+video_optimization_state: Dict[str, Any] = {
+    "is_active": False,
+    "total_count": 0,
+    "completed_count": 0,
+    "active_video_id": None,
+    "active_filename": None,
+    "item_progress": 0,
+    "total_reclaimed_bytes": 0,
+}
+
+
+@router.get("/optimization-progress")
+async def get_video_optimization_progress() -> Dict[str, Any]:
+    """Returns the real-time continuous video batch optimization state."""
+    return video_optimization_state
+
+
 @router.post("/{photo_id}/compress")
 async def compress_video_endpoint(photo_id: int, req: Optional[CompressRequest] = None) -> Dict[str, Any]:
     """Compresses a specific high-bitrate video using visually lossless H.265/HEVC."""
+    global video_optimization_state
     crf = req.crf if req else None
     preset = req.preset if req else None
 
-    res = await compress_video(photo_id, crf=crf, preset=preset)
-    if not res.get("success"):
-        raise HTTPException(status_code=400, detail=res.get("error", "Transcoding failed."))
+    video_optimization_state["is_active"] = True
+    video_optimization_state["total_count"] = 1
+    video_optimization_state["completed_count"] = 0
+    video_optimization_state["active_video_id"] = photo_id
+    video_optimization_state["item_progress"] = 35
 
-    return res
+    try:
+        res = await compress_video(photo_id, crf=crf, preset=preset)
+        if not res.get("success"):
+            raise HTTPException(status_code=400, detail=res.get("error", "Transcoding failed."))
+        video_optimization_state["completed_count"] = 1
+        video_optimization_state["item_progress"] = 100
+        return res
+    finally:
+        video_optimization_state["is_active"] = False
+        video_optimization_state["active_video_id"] = None
+        video_optimization_state["active_filename"] = None
+        video_optimization_state["item_progress"] = 0
 
 
 @router.post("/{photo_id}/enhance")
 async def enhance_video_endpoint(photo_id: int, req: Optional[EnhanceRequest] = None) -> Dict[str, Any]:
     """Enhances and upscales an older, vintage, or low-resolution video."""
+    global video_optimization_state
     target_height = req.target_height if req and req.target_height else 720
 
-    res = await enhance_old_video(photo_id, target_height=target_height)
-    if not res.get("success"):
-        raise HTTPException(status_code=400, detail=res.get("error", "Enhancement failed."))
+    video_optimization_state["is_active"] = True
+    video_optimization_state["total_count"] = 1
+    video_optimization_state["completed_count"] = 0
+    video_optimization_state["active_video_id"] = photo_id
+    video_optimization_state["item_progress"] = 35
 
-    return res
+    try:
+        res = await enhance_old_video(photo_id, target_height=target_height)
+        if not res.get("success"):
+            raise HTTPException(status_code=400, detail=res.get("error", "Enhancement failed."))
+        video_optimization_state["completed_count"] = 1
+        video_optimization_state["item_progress"] = 100
+        return res
+    finally:
+        video_optimization_state["is_active"] = False
+        video_optimization_state["active_video_id"] = None
+        video_optimization_state["active_filename"] = None
+        video_optimization_state["item_progress"] = 0
 
 
 @router.post("/compress-all")
 async def compress_all_videos_endpoint() -> Dict[str, Any]:
     """Batch compresses all heavy candidate videos in the library."""
+    global video_optimization_state
     conn = await get_db_connection()
     try:
         conn.row_factory = aiosqlite.Row
@@ -159,17 +206,45 @@ async def compress_all_videos_endpoint() -> Dict[str, Any]:
 
     candidates = [dict(r) for r in rows if analyze_video_candidate(dict(r)).get("status") == "compressible"]
 
+    if not candidates:
+        return {
+            "candidate_count": 0,
+            "processed_count": 0,
+            "total_reclaimed_bytes": 0,
+            "errors": [],
+        }
+
+    # Pin state to active throughout the entire batch
+    video_optimization_state["is_active"] = True
+    video_optimization_state["total_count"] = len(candidates)
+    video_optimization_state["completed_count"] = 0
+    video_optimization_state["total_reclaimed_bytes"] = 0
+
     processed = 0
     total_reclaimed = 0
     errors = []
 
-    for c in candidates:
-        res = await compress_video(c["id"])
-        if res.get("success"):
-            processed += 1
-            total_reclaimed += res.get("saved_bytes", 0)
-        else:
-            errors.append({"id": c["id"], "error": res.get("error")})
+    try:
+        for idx, c in enumerate(candidates):
+            video_optimization_state["active_video_id"] = c["id"]
+            video_optimization_state["active_filename"] = c["filename"]
+            video_optimization_state["item_progress"] = 35
+
+            res = await compress_video(c["id"])
+            if res.get("success"):
+                processed += 1
+                total_reclaimed += res.get("saved_bytes", 0)
+                video_optimization_state["total_reclaimed_bytes"] = total_reclaimed
+            else:
+                errors.append({"id": c["id"], "error": res.get("error")})
+
+            video_optimization_state["completed_count"] = idx + 1
+            video_optimization_state["item_progress"] = 100
+    finally:
+        video_optimization_state["is_active"] = False
+        video_optimization_state["active_video_id"] = None
+        video_optimization_state["active_filename"] = None
+        video_optimization_state["item_progress"] = 0
 
     return {
         "candidate_count": len(candidates),

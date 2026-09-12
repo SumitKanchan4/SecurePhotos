@@ -35,7 +35,7 @@ import { AddToAlbumModal } from "./components/AddToAlbumModal";
 import { UpdateModal } from "./components/UpdateModal";
 import { ToastNotification } from "./components/ToastNotification";
 import { useAppStore } from "./store/useAppStore";
-import { PhotoItem, SystemPrerequisites, OptimizationProgress, TimelineYearsData } from "./types";
+import { PhotoItem, SystemPrerequisites, OptimizationProgress, VideoOptimizationProgress, TimelineYearsData } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { check, Update } from "@tauri-apps/plugin-updater";
 
@@ -65,6 +65,7 @@ export const App: React.FC = () => {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxPhotos, setLightboxPhotos] = useState<PhotoItem[] | null>(null);
   const [optimizationProgress, setOptimizationProgress] = useState<OptimizationProgress | null>(null);
+  const [videoProgress, setVideoProgress] = useState<VideoOptimizationProgress | null>(null);
   const [timelineData, setTimelineData] = useState<TimelineYearsData>({ total_count: 0, years: [] });
   const hasRegeneratedThumbnailsRef = useRef(false);
   const timelineRibbonRef = useRef<HTMLDivElement>(null);
@@ -122,9 +123,11 @@ export const App: React.FC = () => {
           fetch("http://127.0.0.1:8000/api/photos/regenerate-thumbnails", { method: "POST" }).catch(() => {});
         }
 
-        // Auto-trigger background 8K optimization queue if unoptimized items exist
-        const hasUnoptimized = data.some((p: PhotoItem) => !p.is_optimized);
-        if (hasUnoptimized) {
+        // Auto-trigger background 8K optimization queue ONLY for photos (not videos)
+        const hasUnoptimizedPhotos = data.some(
+          (p: PhotoItem) => !p.is_optimized && (!p.mime_type || !p.mime_type.startsWith("video/"))
+        );
+        if (hasUnoptimizedPhotos) {
           fetch("http://127.0.0.1:8000/api/photos/start-optimization", { method: "POST" }).catch(() => {});
         }
       }
@@ -140,38 +143,54 @@ export const App: React.FC = () => {
     }
   }, [activeTab, activeYear]);
 
-  // Real-time polling for background 4K optimization progress
+  // Real-time polling for background photo 8K & video optimization progress
   useEffect(() => {
-    let wasActive = false;
-    let lastCompletedCount = 0;
+    let wasPhotoActive = false;
+    let wasVideoActive = false;
+    let lastPhotoCompletedCount = 0;
+
     const interval = setInterval(async () => {
       try {
-        const res = await fetch("http://127.0.0.1:8000/api/photos/optimization-progress");
-        if (res.ok) {
-          const data: OptimizationProgress = await res.json();
-          setOptimizationProgress(data);
+        const [photoRes, videoRes] = await Promise.all([
+          fetch("http://127.0.0.1:8000/api/photos/optimization-progress").catch(() => null),
+          fetch("http://127.0.0.1:8000/api/videos/optimization-progress").catch(() => null),
+        ]);
 
-          // If an individual photo just finished optimizing, immediately update its 4K badge & refresh
-          if (data.completed_count > lastCompletedCount) {
-            lastCompletedCount = data.completed_count;
-            if (data.last_completed_photo_id) {
+        if (photoRes && photoRes.ok) {
+          const photoData: OptimizationProgress = await photoRes.json();
+          setOptimizationProgress(photoData);
+
+          // If an individual photo just finished optimizing, immediately update its badge locally
+          if (photoData.completed_count > lastPhotoCompletedCount) {
+            lastPhotoCompletedCount = photoData.completed_count;
+            if (photoData.last_completed_photo_id) {
               setPhotos((prev) =>
                 prev.map((p) =>
-                  p.id === data.last_completed_photo_id
+                  p.id === photoData.last_completed_photo_id
                     ? { ...p, is_optimized: true, is_enhanced: true }
                     : p
                 )
               );
             }
-            loadPhotos(activeYear);
           }
 
-          // If the entire active batch completed, reload photos list
-          if (wasActive && !data.is_active) {
+          // If the entire active photo batch completed, do a single clean reload
+          if (wasPhotoActive && !photoData.is_active) {
             loadPhotos(activeYear);
-            lastCompletedCount = 0;
+            lastPhotoCompletedCount = 0;
           }
-          wasActive = data.is_active;
+          wasPhotoActive = photoData.is_active;
+        }
+
+        if (videoRes && videoRes.ok) {
+          const videoData: VideoOptimizationProgress = await videoRes.json();
+          setVideoProgress(videoData);
+
+          // When video batch completes, reload photos & timeline
+          if (wasVideoActive && !videoData.is_active) {
+            loadPhotos(activeYear);
+          }
+          wasVideoActive = videoData.is_active;
         }
       } catch {}
     }, 1000);
@@ -463,7 +482,30 @@ export const App: React.FC = () => {
               >
                 {/* Left Column (flex: 1): Status / Live Optimization Badge */}
                 <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "10px", minWidth: "120px" }}>
-                  {optimizationProgress?.is_active ? (
+                  {videoProgress?.is_active ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span 
+                        title={videoProgress.active_filename ? `Processing: ${videoProgress.active_filename}` : undefined}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "4px 10px",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "var(--glass-badge-bg)",
+                          border: "1px solid var(--glass-badge-border)",
+                          fontSize: "11px",
+                          color: "var(--accent-primary)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <Loader2 size={12} className="spin" />
+                        {videoProgress.total_count > 1
+                          ? `Optimizing video (${videoProgress.completed_count + 1} of ${videoProgress.total_count}): ${videoProgress.active_filename || "Transcoding"}`
+                          : `Optimizing video: ${videoProgress.active_filename || "Transcoding"}`}
+                      </span>
+                    </div>
+                  ) : optimizationProgress?.is_active ? (
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <span 
                         title={optimizationProgress.active_filename ? `Processing: ${optimizationProgress.active_filename}` : undefined}

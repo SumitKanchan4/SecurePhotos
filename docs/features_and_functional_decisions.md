@@ -1389,6 +1389,14 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
   - **Video Optimizer View (`src/components/VideoOptimizerView.tsx`)**: Section 4 compliant liquid glass workspace with Space Saver (batch "Compress All" and 1-click compression) and Vintage Restorer (HD upscaling) tabs.
   - **Dashboard Integration (`src/components/DashboardView.tsx`)**: Bento Row 1.6 Video Space Saver & Vintage Restorer card with live candidate telemetry and 1-click navigation.
 
+- **Continuous Batch Optimization & Queue Isolation**:
+  - **Isolated Photo & Video Queues**: The background photo optimization worker (`run_background_optimization` in `photos.py`) queries `WHERE (mime_type IS NULL OR mime_type NOT LIKE 'video/%') AND is_optimized = 0 AND trashed_at IS NULL`. This completely prevents Pillow image super-resolution from attempting to process video containers.
+  - **Self-Healing Fail-Safe**: If an unprocessable file ever raises an unhandled exception during photo enhancement, it is marked `is_optimized = 1` in SQLite to prevent infinite retry loops.
+  - **Sequential Encoding Architecture**: Videos are encoded sequentially rather than concurrently. FFmpeg saturates multi-threaded CPU cores and GPU encoder engines (`hevc_nvenc`/`libx265`); concurrent transcodes cause thermal throttling and resource starvation.
+  - **Continuous Batch State Telemetry (`video_optimization_state`)**: Sequential execution maintains an unbroken global batch state (`is_active`, `total_count`, `completed_count`, `active_video_id`, `active_filename`, `item_progress`, `total_reclaimed_bytes`) polled via `GET /api/videos/optimization-progress`.
+  - **Zero-Flicker Continuous UI Progress Bar**: The top navigation header and Video Optimizer view stay pinned open throughout the entire batch sequence (`Optimizing video (X of Y): filename`) instead of disappearing and reappearing between individual file completions.
+  - **Self-Healing SQLite Migration**: Added automatic migration in `database.py` that sets `is_optimized = 1 WHERE mime_type LIKE 'video/%' AND is_enhanced = 1` on startup.
+
 ### Functional Decision Points & Rationale
 - **Bundled & Self-Healing Discovery vs External Prerequisite**:
   - *Decision*: Bundled/self-discovered binaries guarantee zero setup friction for non-technical users. SecurePhotos works out-of-the-box without requiring terminal commands or installer wizards.
@@ -1398,34 +1406,39 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
   - *Decision*: Re-encoding an already-efficient video (e.g. AV1 or low-bitrate H.265) can cause size bloat or visual degradation. The engine guarantees that if savings < 10%, the transcode aborts and original is kept.
 - **Multi-Stage Filter Graph for Vintage Media**:
   - *Decision*: Direct scaling of low-res VHS/camcorder footage amplifies noise and interlacing comb artifacts. Pre-filtering with `yadif` and `hqdn3d` produces significantly cleaner, modern-looking HD results.
+- **Sequential Video Queue vs Concurrent Encoding**:
+  - *Decision*: Video encoding requires extensive hardware acceleration pipelines (NVENC sessions are hardware-capped to 3-5 concurrent streams, and CPU libx265 uses all available cores). Running them sequentially prevents system lockup while providing steady, predictable batch completion telemetry.
 
 ### Technical Touchpoints
 - `engine/services/video_runtime.py`:
   - `get_ffmpeg_path()`, `get_ffprobe_path()`, `is_video_runtime_available()`, `probe_hardware_encoder()`.
 - `engine/services/video_service.py`:
   - `extract_video_metadata()`, `generate_video_thumbnail()`, `analyze_video_candidate()`, `compress_video()`, `enhance_old_video()`.
-- `engine/services/ingestion_service.py`:
-  - Video format branching in `extract_exif_metadata()` and `ingest_single_photo()`.
+- `engine/api/photos.py`:
+  - Scoped `run_background_optimization` strictly to photos (`mime_type NOT LIKE 'video/%'`). Added fail-safe `is_optimized = 1` marking on failed files.
 - `engine/api/videos.py`:
-  - `GET /api/videos/summary`, `GET /api/videos/candidates`, `POST /api/videos/{photo_id}/compress`, `POST /api/videos/{photo_id}/enhance`, `POST /api/videos/compress-all`.
-- `engine/main.py`:
-  - Mounted `videos.router` under `/api/videos`.
+  - Global `video_optimization_state` tracker.
+  - Added `GET /api/videos/optimization-progress`.
+  - Updated `POST /compress`, `POST /enhance`, and `POST /compress-all` endpoints to maintain active batch telemetry.
+- `engine/database.py`:
+  - Added self-healing migration `UPDATE photos SET is_optimized = 1 WHERE mime_type LIKE 'video/%' AND is_enhanced = 1`.
 - `engine/tests/test_videos.py`:
   - Automated tests covering binary discovery, metadata extraction, candidate analysis, ingestion workflow, and compression with size reduction verification.
 - `src/types/index.ts`:
-  - Added `duration` to `PhotoItem`, defined `VideoCandidate`, `VideoOptimizationPlan`, and `VideoSummary`.
-- `src/components/Lightbox.tsx`:
-  - Interactive HTML5 `<video>` player, poster loading, and video badge.
+  - Added `VideoOptimizationProgress` interface; added `duration` to `PhotoItem`.
+- `src/App.tsx`:
+  - Scoped `hasUnoptimizedPhotos` to non-video items; added dual polling for photo and video optimization; unified header progress pill with zero-flicker batch tracking.
 - `src/components/PhotoGrid.tsx`:
-  - Frosted video duration pill (`▶ M:SS`) in bottom-left corner.
+  - Frosted video duration pill (`▶ M:SS`) in bottom-left corner; scoped 8K optimization badges strictly to photos.
 - `src/components/VideoOptimizerView.tsx`:
-  - Section 4 liquid glass workspace with Space Saver and Vintage Restorer tabs.
+  - Section 4 liquid glass workspace with real-time batch button progress, active/queued candidate card states, and reclaimed space telemetry.
 - `src/components/DashboardView.tsx`:
   - Added `activeSubView: "overview" | "duplicates" | "video-optimizer"` and Bento Row 1.6 card.
 
 ### State & Lifecycle Impact
 - Photos SQLite table: Ingestion and optimization updates `filepath`, `filename`, `file_size`, `width`, `height`, `mime_type`, `is_enhanced`, and `is_optimized`.
 - 30-Day Trash: Replaced files are safely retained in `.trash/` timestamped folders, enabling manual or automated recovery.
+
 
 
 

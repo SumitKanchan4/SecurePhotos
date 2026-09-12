@@ -453,6 +453,8 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
         except Exception as fts_err:
             logger.warning("FTS index rebuild notice during migration: %s", fts_err)
 
+        # Mark all enhanced videos as is_optimized=1 to avoid photo 8K worker collisions
+        await conn.execute("UPDATE photos SET is_optimized = 1 WHERE mime_type LIKE 'video/%' AND is_enhanced = 1;")
         await conn.commit()
         logger.info("Database schema migrations executed successfully.")
     except Exception as e:

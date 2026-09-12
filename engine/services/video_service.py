@@ -593,7 +593,8 @@ async def enhance_old_video(
                     width = ?,
                     height = ?,
                     mime_type = 'video/mp4',
-                    is_enhanced = 1
+                    is_enhanced = 1,
+                    is_optimized = 1
                 WHERE id = ?;
                 """,
                 (

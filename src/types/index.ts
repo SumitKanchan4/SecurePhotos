@@ -278,3 +278,13 @@ export interface VideoSummary {
   already_optimized_count: number;
   potential_savings_bytes: number;
 }
+
+export interface VideoOptimizationProgress {
+  is_active: boolean;
+  total_count: number;
+  completed_count: number;
+  active_video_id?: number | null;
+  active_filename?: string | null;
+  item_progress: number;
+  total_reclaimed_bytes?: number;
+}

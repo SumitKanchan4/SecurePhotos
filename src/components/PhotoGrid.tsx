@@ -58,8 +58,9 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
   const [isHovered, setIsHovered] = useState(false);
 
   const thumbnailUrl = `http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail?v=3`;
-  const isOptimizingThis = Boolean(optimizationProgress?.is_active && optimizationProgress.active_photo_id === photo.id);
-  const isQueued = Boolean(optimizationProgress?.is_active && !photo.is_optimized && !isOptimizingThis);
+  const isPhoto = !photo.mime_type || !photo.mime_type.startsWith("video/");
+  const isOptimizingThis = Boolean(isPhoto && optimizationProgress?.is_active && optimizationProgress.active_photo_id === photo.id);
+  const isQueued = Boolean(isPhoto && optimizationProgress?.is_active && !photo.is_optimized && !isOptimizingThis);
 
   return (
     <div
