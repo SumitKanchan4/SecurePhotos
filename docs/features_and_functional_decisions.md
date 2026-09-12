@@ -1347,10 +1347,12 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - **Streamlined UI & Dynamic Space Reclaim Calculation**:
   - **Single Action Button**: Every duplicate group features exactly one primary action button: `"Keep Selected"`, with the AI-recommended photo pre-selected by default. Resolves the group according to the user's checked photos in a single click.
   - **Real-Time Dynamic Space Telemetry**: As the user toggles checkboxes on images, the group's reclaimable badge and the main view header badge update instantly based on the unselected copies (`+{formatBytes(groupReclaimable)} Reclaimable` or `0 B (Keeping All)`).
-  - **Floating Image Overlays & Minimalist Cards**: Floating interactive checkbox (top-left) and floating `⭐ Recommended` pill (top-right) rendered directly on the thumbnail, eliminating "Copy #1, #2" labels and redundant per-card bottom buttons. Removed verbose recommendation rationale text beneath the photo thumbnail per user feedback, leaving a clean, compact dimensions and file size row.
+  - **Consistent Card Dimensions (210px Flex Wrapping)**: Replaced variable stretching CSS Grid (`repeat(auto-fit, minmax(240px, 1fr))`) with fixed `210px` width cards (`flex: "0 0 210px"`, `flexWrap: "wrap"`). Guarantees that 2-photo groups, 3-photo groups, and 5+ burst clusters maintain identical, consistent thumbnail dimensions without ballooning or shrinking.
+  - **Top-Right Icon Cluster (Yellow Star & Red Heart)**: Replaced bulky text pill with compact frosted-glass icon badges at top-right of each thumbnail: yellow star (`#eab308`) for AI Recommended with `title="Recommended Best Pick"` and red heart (`#ef4444`) for Favorite with `title="Favorite Photo"`. Completely eliminates photo obstruction while keeping sub-image area down to a single clean metadata line.
+  - **Session-Level Skip / Defer Action**: Added secondary `"Skip"` pill button next to `"Keep Selected"` in the group header, allowing users to defer ambiguous duplicate groups for the current session without trashing files or writing permanent dismissals.
   - **Concise Similarity Text**: Streamlined to `Exact Match` and `Similar (94%)`.
   - **Clean Header & Zero Repetition**: Removed redundant sub-header telemetry bar; refined view title to `Duplicate & Burst Photos`.
-- Automated verification: 60/60 backend tests passed; TypeScript type check 0 errors; Vite bundle built cleanly in 4.42s.
+- Automated verification: 60/60 backend tests passed; TypeScript type check 0 errors; Vite bundle built cleanly in 4.19s.
 
 
 

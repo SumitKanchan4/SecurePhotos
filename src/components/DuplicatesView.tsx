@@ -5,6 +5,7 @@ import {
   CheckCircle2, 
   ZoomIn, 
   Star, 
+  Heart,
   RefreshCw, 
   Camera,
   Check,
@@ -157,6 +158,13 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
       setResolvingGroupId(null);
       setTimeout(() => setNotification(null), 4000);
     }
+  };
+
+  // Skip a duplicate group for the current session (deferral without trashing or permanent dismissal)
+  const handleSkipGroup = (groupId: string) => {
+    setGroups((prev) => prev.filter((g) => g.group_id !== groupId));
+    setNotification("Group deferred for this session. You can review it again on your next scan.");
+    setTimeout(() => setNotification(null), 4000);
   };
 
   // Resolve all duplicate groups keeping suggested best in each
@@ -553,6 +561,31 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                         {groupReclaimable > 0 ? `+${formatBytes(groupReclaimable)} Reclaimable` : "0 B (Keeping All)"}
                       </span>
 
+                      {/* Skip/Defer Button */}
+                      <button
+                        onClick={() => handleSkipGroup(group.group_id)}
+                        disabled={isResolving}
+                        className="clickable"
+                        title="Skip this group for now and review other duplicates."
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          padding: "6px 14px",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "var(--glass-pill-bg)",
+                          border: "1px solid var(--glass-border)",
+                          color: "var(--text-secondary)",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          cursor: isResolving ? "not-allowed" : "pointer",
+                          transition: "all 0.15s ease",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <span>Skip</span>
+                      </button>
+
                       {/* Single Action Button: Keep Selected */}
                       <button
                         onClick={() => handleResolveGroup(group.group_id, selectedIds)}
@@ -586,13 +619,13 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Side-by-Side Photo Comparison Grid */}
+                  {/* Side-by-Side Photo Comparison Layout (Consistent 210px Cards) */}
                   <div
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: `repeat(auto-fit, minmax(240px, 1fr))`,
+                      display: "flex",
+                      flexWrap: "wrap",
                       gap: "14px",
-                      alignItems: "stretch",
+                      alignItems: "flex-start",
                     }}
                   >
                     {group.photos.map((photo, pIdx) => {
@@ -604,6 +637,8 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                         <div
                           key={photo.id}
                           style={{
+                            width: "210px",
+                            flex: "0 0 210px",
                             borderRadius: "var(--radius-md)",
                             border: isSelected ? "2px solid var(--accent-primary)" : "1px solid var(--border-subtle)",
                             backgroundColor: "var(--bg-surface-elevated)",
@@ -678,8 +713,8 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                               {isSelected && <Check size={15} strokeWidth={3} />}
                             </button>
 
-                            {/* Floating Recommended Badge (Top-Right of Image) */}
-                            {isBest && (
+                            {/* Floating Status Icons (Top-Right: Yellow Star for Recommended, Red Heart for Favorite) */}
+                            {(isBest || photo.is_favorite) && (
                               <div
                                 style={{
                                   position: "absolute",
@@ -687,22 +722,27 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                                   right: "8px",
                                   display: "flex",
                                   alignItems: "center",
-                                  gap: "4px",
-                                  fontSize: "10px",
-                                  fontWeight: 800,
-                                  color: "#ffffff",
-                                  backgroundColor: "rgba(16, 185, 129, 0.92)",
+                                  gap: "5px",
+                                  backgroundColor: "rgba(0, 0, 0, 0.6)",
                                   backdropFilter: "blur(8px)",
                                   WebkitBackdropFilter: "blur(8px)",
-                                  padding: "3px 9px",
+                                  padding: "4px 7px",
                                   borderRadius: "var(--radius-full)",
-                                  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.35)",
+                                  border: "1px solid rgba(255, 255, 255, 0.2)",
                                   zIndex: 3,
-                                  letterSpacing: "0.02em",
+                                  boxShadow: "0 2px 6px rgba(0, 0, 0, 0.35)",
                                 }}
                               >
-                                <Star size={10} fill="#ffffff" />
-                                <span>Recommended</span>
+                                {isBest && (
+                                  <span title="Recommended Best Pick" style={{ display: "flex", alignItems: "center" }}>
+                                    <Star size={13} fill="#eab308" color="#eab308" />
+                                  </span>
+                                )}
+                                {photo.is_favorite && (
+                                  <span title="Favorite Photo" style={{ display: "flex", alignItems: "center" }}>
+                                    <Heart size={13} fill="#ef4444" color="#ef4444" />
+                                  </span>
+                                )}
                               </div>
                             )}
 
@@ -739,41 +779,6 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                               {formatBytes(photo.file_size)}
                             </span>
                           </div>
-
-
-                          {/* Minimalist Attribute Chips */}
-                          {(photo.is_favorite || photo.is_enhanced) && (
-                            <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
-                              {photo.is_favorite && (
-                                <span
-                                  style={{
-                                    fontSize: "9px",
-                                    fontWeight: 700,
-                                    padding: "1px 5px",
-                                    borderRadius: "var(--radius-sm)",
-                                    backgroundColor: "rgba(245, 158, 11, 0.15)",
-                                    color: "#f59e0b",
-                                  }}
-                                >
-                                  ★ Favorite
-                                </span>
-                              )}
-                              {photo.is_enhanced && (
-                                <span
-                                  style={{
-                                    fontSize: "9px",
-                                    fontWeight: 700,
-                                    padding: "1px 5px",
-                                    borderRadius: "var(--radius-sm)",
-                                    backgroundColor: "rgba(139, 92, 246, 0.15)",
-                                    color: "var(--accent-vault)",
-                                  }}
-                                >
-                                  Enhanced
-                                </span>
-                              )}
-                            </div>
-                          )}
                         </div>
                       );
                     })}
