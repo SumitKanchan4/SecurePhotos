@@ -1347,7 +1347,7 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - **Streamlined UI & Dynamic Space Reclaim Calculation**:
   - **Single Action Button**: Every duplicate group features exactly one primary action button: `"Keep Selected"`, with the AI-recommended photo pre-selected by default. Resolves the group according to the user's checked photos in a single click.
   - **Real-Time Dynamic Space Telemetry**: As the user toggles checkboxes on images, the group's reclaimable badge and the main view header badge update instantly based on the unselected copies (`+{formatBytes(groupReclaimable)} Reclaimable` or `0 B (Keeping All)`).
-  - **Floating Image Overlays**: Floating interactive checkbox (top-left) and floating `⭐ Recommended` pill (top-right) rendered directly on the thumbnail, eliminating "Copy #1, #2" labels and redundant per-card bottom buttons.
+  - **Floating Image Overlays & Minimalist Cards**: Floating interactive checkbox (top-left) and floating `⭐ Recommended` pill (top-right) rendered directly on the thumbnail, eliminating "Copy #1, #2" labels and redundant per-card bottom buttons. Removed verbose recommendation rationale text beneath the photo thumbnail per user feedback, leaving a clean, compact dimensions and file size row.
   - **Concise Similarity Text**: Streamlined to `Exact Match` and `Similar (94%)`.
   - **Clean Header & Zero Repetition**: Removed redundant sub-header telemetry bar; refined view title to `Duplicate & Burst Photos`.
 - Automated verification: 60/60 backend tests passed; TypeScript type check 0 errors; Vite bundle built cleanly in 4.42s.

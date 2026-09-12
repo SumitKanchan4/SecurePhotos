@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { 
   ArrowLeft, 
-  Sparkles, 
+  Sparkles,
   CheckCircle2, 
   ZoomIn, 
   Star, 
@@ -740,27 +740,6 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                             </span>
                           </div>
 
-                          {/* Concise Rationale Tag */}
-                          {isBest && group.best_reason && (
-                            <div
-                              title={group.best_reason}
-                              style={{
-                                fontSize: "10px",
-                                color: "var(--accent-primary)",
-                                fontWeight: 600,
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "4px",
-                                lineHeight: 1.2,
-                              }}
-                            >
-                              <Sparkles size={10} style={{ flexShrink: 0 }} />
-                              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{group.best_reason}</span>
-                            </div>
-                          )}
 
                           {/* Minimalist Attribute Chips */}
                           {(photo.is_favorite || photo.is_enhanced) && (
