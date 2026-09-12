@@ -43,7 +43,8 @@ class PhotoResponse(BaseModel):
 
 class ImportRequest(BaseModel):
     """Payload to trigger batch ingestion."""
-    source_directory: str
+    source_directory: Optional[str] = None
+    file_paths: Optional[List[str]] = None
     mode: str = "managed"          # "managed" (copy/move) or "scan" (in-place)
     delete_source: bool = False
 
@@ -838,32 +839,46 @@ async def get_thumbnail_regeneration_progress() -> dict:
 
 @router.post("/import", response_model=ImportResponse, status_code=status.HTTP_201_CREATED)
 async def import_folder(payload: ImportRequest, background_tasks: BackgroundTasks) -> ImportResponse:
-    """Recursively ingests media files from a directory into the library."""
-    source_dir = Path(payload.source_directory)
-    if not source_dir.exists() or not source_dir.is_dir():
-        raise HTTPException(status_code=400, detail="Invalid source directory path")
+    """Recursively ingests media files from a directory or specific file paths into the library."""
+    files_to_process: List[Path] = []
+
+    # 1. Add specific file paths if provided
+    if payload.file_paths:
+        for fp in payload.file_paths:
+            p = Path(fp)
+            if p.exists() and p.is_file():
+                files_to_process.append(p)
+
+    # 2. Add files from directory if provided
+    if payload.source_directory:
+        source_dir = Path(payload.source_directory)
+        if source_dir.exists() and source_dir.is_dir():
+            for file_path in source_dir.rglob("*"):
+                if file_path.is_file():
+                    files_to_process.append(file_path)
+
+    if not files_to_process:
+        raise HTTPException(status_code=400, detail="No valid media files or source directory provided")
 
     conn = await get_db_connection()
-    total_found = 0
+    total_found = len(files_to_process)
     imported = 0
     skipped = 0
 
-    for file_path in source_dir.rglob("*"):
-        if file_path.is_file():
-            total_found += 1
-            try:
-                photo_id = await ingest_single_photo(
-                    conn,
-                    file_path,
-                    mode=payload.mode,
-                    delete_source=payload.delete_source,
-                )
-                if photo_id:
-                    imported += 1
-                else:
-                    skipped += 1
-            except Exception:
+    for file_path in files_to_process:
+        try:
+            photo_id = await ingest_single_photo(
+                conn,
+                file_path,
+                mode=payload.mode,
+                delete_source=payload.delete_source,
+            )
+            if photo_id:
+                imported += 1
+            else:
                 skipped += 1
+        except Exception:
+            skipped += 1
 
     await conn.close()
 

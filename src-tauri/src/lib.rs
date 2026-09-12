@@ -352,6 +352,29 @@ async fn select_import_folder() -> Option<String> {
     folder.map(|handle| handle.path().to_string_lossy().to_string())
 }
 
+/// Prompts the user with a native, non-blocking multiple media file selection dialog.
+#[tauri::command]
+async fn select_import_files() -> Option<Vec<String>> {
+    let files = rfd::AsyncFileDialog::new()
+        .set_title("Select Photos & Videos to Import")
+        .add_filter(
+            "Media Files",
+            &[
+                "jpg", "jpeg", "png", "webp", "avif", "heic", "bmp", "tiff",
+                "mp4", "mov", "mkv", "avi", "webm", "m4v",
+            ],
+        )
+        .pick_files()
+        .await;
+
+    files.map(|handles| {
+        handles
+            .into_iter()
+            .map(|h| h.path().to_string_lossy().to_string())
+            .collect()
+    })
+}
+
 #[tauri::command]
 fn get_system_drives() -> Vec<SystemVolumeInfo> {
     vec![
@@ -378,6 +401,7 @@ pub fn run() {
             start_backend_engine,
             stop_backend_engine,
             select_import_folder,
+            select_import_files,
             get_system_drives
         ])
         .setup(|app| {

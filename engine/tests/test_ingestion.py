@@ -196,4 +196,30 @@ async def test_whatsapp_extraction_and_undated_api_filter():
                         pass
 
 
+@pytest.mark.asyncio
+async def test_import_endpoint_file_paths():
+    """Verifies that /api/photos/import accepts explicit file_paths list."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        f1 = Path(tmpdir) / "test_import_f1.jpg"
+        f2 = Path(tmpdir) / "test_import_f2.jpg"
+        create_dummy_image(f1, 640, 480, color=(10, 20, 30))
+        create_dummy_image(f2, 640, 480, color=(40, 50, 60))
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            res = await client.post(
+                "/api/photos/import",
+                json={
+                    "file_paths": [str(f1), str(f2)],
+                    "mode": "managed",
+                    "delete_source": False,
+                },
+            )
+            assert res.status_code == 201
+            data = res.json()
+            assert data["total_found"] == 2
+            assert data["imported"] >= 1
+
+
+
 

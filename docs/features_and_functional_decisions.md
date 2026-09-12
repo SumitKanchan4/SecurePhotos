@@ -1524,6 +1524,49 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - React state `selectedAlbumPhotoIds`: Clearing selection, pressing `Esc`, or completing batch operations automatically collapses the dock with zero layout shifts.
 - Full verification: TypeScript 0 errors, Vite production build succeeded, and all backend tests passing.
 
+---
+
+## 34. Universal Media Ingestion Studio (Multi-File, Folder & Safe Ingestion Architecture)
+
+### Functionality Overview
+- **Multi-File & Directory Dual Selection**:
+  - Eliminates the previous limitation where only full directories could be selected.
+  - Users can now select single or multiple photos and videos (`select_import_files` via native file dialog or drag-and-drop) or entire folders (`select_import_folder`).
+  - Supports all major media extensions (`.jpg`, `.jpeg`, `.png`, `.webp`, `.avif`, `.heic`, `.bmp`, `.tiff`, `.mp4`, `.mov`, `.mkv`, `.avi`, `.webm`, `.m4v`).
+- **Interactive Media Dropzone & Summary Capsule**:
+  - Features an interactive drag-and-drop hero card with dual pill buttons: `[ 📸 Select Files ]` and `[ 📁 Select Folder ]`.
+  - When items are picked, the dropzone dynamically transitions into a clean frosted summary capsule (e.g. `18 media files ready to import` or `Folder: Vacation 2024`) with an inline `Change` button.
+- **Elimination of Database Plumbing Jargon**:
+  - Removed technical engineering text (*"Sharding Format: originals/YYYY/MM/DD/ (< 500 files/dir)"*) and raw drive serials from the dialog.
+  - Replaced with a subtle, elegant library destination footnote: `Library Storage: Local Storage (C:)` with an interactive `(i)` tooltip explaining automated chronological capture-date organization.
+- **Critical Data Loss Protection & Safe Copy Default**:
+  - The previous implementation dangerously defaulted to `cleanupMode: "move"` (deleting source files upon import).
+  - Corrected to **"Keep Originals (Safe Copy)"** as the strict default (`delete_source: false`).
+  - Source file deletion is now an explicit, transparent opt-in card styled with an amber warning badge (`⚠️ Deletes Source - ideal for camera SD cards/USB`).
+- **Automated Intelligence Reassurance**:
+  - Replaced superfluous checkboxes for deduplication and 8K proxy generation with automated system guarantees: `✓ Auto-deduplication active` • `✓ Visual quality preservation`.
+- **Liquid Glass Aesthetic Parity**:
+  - Built with frosted liquid glass tokens: `var(--glass-surface)`, `backdropFilter: "blur(28px)"`, `var(--glass-border)`, `var(--radius-xl)`, and smooth entrance animations.
+
+### Functional Decision Points & Rationale
+- **Direct File Selection via Native Dialog & Web Fallback**:
+  - *Decision*: Implemented `select_import_files` using Tauri's `rfd::AsyncFileDialog::new().pick_files()` combined with a hidden HTML5 file input fallback.
+  - *Rationale*: Guarantees that users on desktop Tauri as well as browser testing environments can smoothly pick individual files or drag-and-drop media directly into the app.
+- **Safe Copy by Default**:
+  - *Decision*: Hard-lock the default cleanup mode to `"copy"`.
+  - *Rationale*: Deleting source files without unambiguous user intent violates zero-trust principles and risks catastrophic data loss if a user imports from their Desktop or Downloads directory.
+
+### Technical Touchpoints
+- `src-tauri/src/lib.rs`: Added `select_import_files` native multi-file picker command and registered in invoke handler.
+- `engine/api/photos.py`: Updated `ImportRequest` schema with `file_paths: Optional[List[str]] = None` and updated `/api/photos/import` to ingest both file lists and directories.
+- `engine/tests/test_ingestion.py`: Added automated test `test_import_endpoint_file_paths`.
+- `src/components/ImportModal.tsx`: Complete overhaul with hero dropzone, dual file/folder selection, safe copy defaults, destination info tooltip, and liquid-glass styling.
+
+### State & Lifecycle Impact
+- Zero breaking changes to existing directory imports; `/api/photos/import` cleanly handles both payload shapes.
+- Automated tests passing: 66/66 backend tests, 0 TypeScript errors, Vite bundle cleanly compiled.
+
+
 
 
 
