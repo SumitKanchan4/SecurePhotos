@@ -1254,4 +1254,28 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - Reduces SQLite disk write amplification and WAL journal size during background processing.
 - Full test suite: 55/55 passed. Backward compatible with all existing SQLite databases.
 
+---
+
+## 29. Unified 1:1 Photo Grid Geometry & Row Virtualizer Whitespace Elimination
+
+### Functionality Overview
+- Standardized the primary Photos library grid ([PhotoGrid.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/PhotoGrid.tsx)) to a 1:1 square card aspect ratio, matching the visual geometry of the Albums ([AlbumsView.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/AlbumsView.tsx)) and People detail views ([PeopleView.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/PeopleView.tsx)).
+- Eliminated massive ~75px–85px empty dead space gaps between photo rows in the Photos tab caused by an aspect-ratio desynchronization in the virtual row container height calculation.
+- Increased visible photo real estate by ~60% across the library without changing the responsive column density.
+
+### Functional Decision Points & Rationale
+- **Aspect Ratio Parity Across Core Views**: In the Albums tab, photo cards render as clean 1:1 squares with 10px gaps (`aspectRatio: "1"`). In `PhotoGrid.tsx`, cards had retained a legacy `16 / 10` aspect ratio. Because the virtualizer row height formula was `setRowHeight(itemWidth + gap)`, the virtual container reserved space for a square card, leaving the remaining 37.5% as empty black space. Standardizing on `1:1` creates a cohesive, uniform photo viewing experience across all views.
+- **Mathematical Coupling of Virtualizer Row Height**: Refactored the `updateGrid` observer in `PhotoGrid.tsx` to explicitly compute `const itemHeight = itemWidth / cardAspectRatio;` before calculating `rowHeight = itemHeight + gap`. This mathematically guarantees that row spacing remains locked to the exact 10px grid gap regardless of viewport size or future adjustments.
+
+### Technical Touchpoints
+- `src/components/PhotoGrid.tsx`:
+  - Updated `PhotoCard` container style from `aspectRatio: "16 / 10"` to `aspectRatio: "1"`.
+  - Updated `updateGrid` to couple row height directly to the `1:1` aspect ratio constant.
+
+### State & Lifecycle Impact
+- Zero database or API impact. Pure UI/CSS and virtualizer layout harmonization.
+- Eliminates vertical empty dead space across all screen widths.
+- Build verified: TypeScript 0 errors, Vite bundle built cleanly, 55/55 backend tests passed.
+
+
 

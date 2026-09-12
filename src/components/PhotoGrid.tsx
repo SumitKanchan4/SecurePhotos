@@ -92,7 +92,7 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
             : isHovered 
               ? "var(--shadow-md)" 
               : "var(--shadow-sm)",
-        aspectRatio: "16 / 10",
+        aspectRatio: "1",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -384,8 +384,10 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
       const targetSize = 185;
       const cols = Math.max(2, Math.floor((width + gap) / (targetSize + gap)));
       const itemWidth = (width - (cols - 1) * gap) / cols;
+      const cardAspectRatio = 1; // 1:1 Square (strictly matching Albums & People tabs)
+      const itemHeight = itemWidth / cardAspectRatio;
       setColumns(cols);
-      setRowHeight(itemWidth + gap);
+      setRowHeight(itemHeight + gap);
     };
 
     updateGrid();
