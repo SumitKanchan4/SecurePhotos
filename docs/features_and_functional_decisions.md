@@ -1344,13 +1344,14 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
   - Face prominence: `(box_w * box_h) * 500.0` pts.
   - File size de-emphasized to a pure tie-breaker (`0.01` pts/MB), ensuring 0.1MB compression noise cannot override portrait clarity.
   - Dynamic explainable rationale: e.g. `Front Portrait (Inaaksh: 0.97) • Clear Expression • 3000x4000`.
-- **Multi-Keep, "Keep Both", and Persistent Dismissal Ledger**:
-  - Added `duplicate_dismissals (photo_id_1, photo_id_2)` table and composite index `ix_dup_dismissals`.
-  - For 2-photo groups: added "Keep Both" action button.
-  - For 3+ photo groups: added interactive multi-select checkboxes on each photo card with dynamic action buttons (`Keep Selected (M) & Trash (N)` or `Keep All (N)`).
-  - Resolving multiple kept photos writes canonical pairwise tuples `(min(p1, p2), max(p1, p2))` to `duplicate_dismissals`.
-  - Scanner (`scan_and_cluster_duplicates`) explicitly checks `duplicate_dismissals` and excludes dismissed pairs from perceptual and exact clustering, guaranteeing kept photos never reappear as duplicates across library rescans and app restarts.
-- Automated verification: 60/60 backend tests passed (including face-aware scoring and persistent dismissal tests); TypeScript type check 0 errors; Vite bundle built cleanly in 4.61s.
+- **Streamlined UI & Dynamic Space Reclaim Calculation**:
+  - **Single Action Button**: Every duplicate group features exactly one primary action button: `"Keep Selected"`, with the AI-recommended photo pre-selected by default. Resolves the group according to the user's checked photos in a single click.
+  - **Real-Time Dynamic Space Telemetry**: As the user toggles checkboxes on images, the group's reclaimable badge and the main view header badge update instantly based on the unselected copies (`+{formatBytes(groupReclaimable)} Reclaimable` or `0 B (Keeping All)`).
+  - **Floating Image Overlays**: Floating interactive checkbox (top-left) and floating `⭐ Recommended` pill (top-right) rendered directly on the thumbnail, eliminating "Copy #1, #2" labels and redundant per-card bottom buttons.
+  - **Concise Similarity Text**: Streamlined to `Exact Match` and `Similar (94%)`.
+  - **Clean Header & Zero Repetition**: Removed redundant sub-header telemetry bar; refined view title to `Duplicate & Burst Photos`.
+- Automated verification: 60/60 backend tests passed; TypeScript type check 0 errors; Vite bundle built cleanly in 4.42s.
+
 
 
 
