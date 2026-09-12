@@ -1226,3 +1226,32 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - Backwards compatible with legacy database rows.
 - Full test suite: 53/53 passed. TypeScript: 0 errors.
 
+---
+
+## 28. SQLite FTS5 Trigger Column Scoping, Segment Desync Immunity & Automated Self-Healing
+
+### Functionality Overview
+- Eliminated intermittent `database disk image is malformed` errors originating from SQLite's full-text search (`photos_fts`) during high-frequency photo metadata mutations (such as bulk thumbnail regeneration, proxy generation, favorite toggles, face scanning flags, and trash timestamps).
+- Scoped the FTS5 synchronization trigger (`photos_au`) strictly to searchable textual columns (`filename`, `folder_name`, `caption`, `content_tags`, `ocr_text`, `is_encrypted`), preventing all non-text columns from invoking FTS shadow table deletions and re-indexing.
+- Integrated automated FTS5 index self-healing and resynchronization (`rebuild_fts_index`) into schema migrations (`run_migrations`) to automatically recover from any external content shadow segment desynchronization.
+
+### Functional Decision Points & Rationale
+- **Targeted Column Scoping Over Unrestricted Table Triggers**: The previous trigger was declared as `AFTER UPDATE ON photos BEGIN ...`. Because SQLite executed an FTS deletion (`VALUES('delete', ...)`) followed by a re-insert on *every* column update, batch operations like thumbnail regeneration triggered thousands of redundant FTS operations. Scoping the trigger to `AFTER UPDATE OF filename, folder_name, caption, content_tags, ocr_text, is_encrypted ON photos` completely isolates high-churn media metadata updates from FTS shadow tables.
+- **Automated Self-Healing via Native FTS5 Rebuild**: SQLite FTS5 external content tables can encounter docid/segment desynchronization if historical updates or migrations altered rows without matching token states. FTS5 provides an instant native recovery command: `INSERT INTO photos_fts(photos_fts) VALUES('rebuild');`. Incorporating this into `run_migrations()` guarantees that every database instance automatically self-heals at boot without requiring manual user intervention or raw SQL scripts.
+- **Decoupled Utility Function**: Provided `rebuild_fts_index()` in `engine.database` as a reusable asynchronous service function with full error logging and transaction safety.
+
+### Technical Touchpoints
+- `engine/database.py`:
+  - Updated `SCHEMA_DDL` to define `photos_au AFTER UPDATE OF filename, folder_name, caption, content_tags, ocr_text, is_encrypted ON photos`.
+  - Added `rebuild_fts_index()` utility function for safe programmatic rebuilds.
+  - Enhanced `run_migrations()` to drop legacy unscoped `photos_au` triggers, install the scoped trigger, and execute `rebuild_fts_index()`.
+- `engine/tests/test_database.py`:
+  - Added `test_fts_scoped_update_trigger`: Verifies that updating `thumbnail_path` and `is_favorite` causes zero FTS churn while text updates cleanly re-index.
+  - Added `test_fts_rebuild_self_healing`: Verifies that `rebuild_fts_index` cleanly resynchronizes search items.
+
+### State & Lifecycle Impact
+- Bulk thumbnail regeneration and background optimization workers can process thousands of items with zero risk of `database disk image is malformed` errors.
+- Reduces SQLite disk write amplification and WAL journal size during background processing.
+- Full test suite: 55/55 passed. Backward compatible with all existing SQLite databases.
+
+

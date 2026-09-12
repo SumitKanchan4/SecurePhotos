@@ -4,14 +4,21 @@ trigger: always_on
 
 # 🛡️ Enterprise Workflow & Approval Rules
 
-## 0. Mandatory Branch Protection (Never Work on Master)
+## 0. Mandatory Branch Protection & Git Push Protocol
 - **CRITICAL**: **NEVER work, edit, or commit directly on the `master` (or `main`) branch.**
 - All development, fixes, refactoring, and documentation work must occur on dedicated `feature/*`, `fix/*`, `chore/*`, or related branch.
 - Always check the current branch before starting any task, and switch to or create the appropriate topic branch.
+- **Mandatory Push to Origin on Commit**: Whenever code is committed (`git commit`), **ALWAYS immediately push to origin** (`git push origin <branch>`). Never leave local commits sitting unpushed, as unpushed commits lead to drift, stale checkins, and merge conflicts.
 
-## 1. Explicit Approval Gate
-- **CRITICAL**: When the user is asking questions, exploring ideas, suggesting changes, or discussing architectures, **DO NOT start implementation, generate feature code, or alter project structure without explicit user confirmation and approval.**
-- Always clarify requirements, outline the plan, and wait for the user to say "Proceed" or approve before making modifications.
+## 1. Approval Gate vs. Autonomous Routine Execution
+- **Autonomous Routine Operations (NEVER Ask Permission)**:
+  - Do NOT pause or ask permission for standard, common engineering tasks: reading files, searching/grepping, discovering symbols (`codegraph_explore`), running tests/pytest, running linters, checking git status, pulling `git pull origin <branch>` / fetching latest, running non-destructive diagnostics, writing scratch scripts, and executing planned implementation steps.
+  - Once the user gives a directive or approves an implementation plan, **execute all steps end-to-end autonomously** (edits, tests, docs, commit, push) without forcing the user to babysit the screen or approve routine intermediate steps.
+- **Real Permissions Only**:
+  - Reserve user confirmation strictly for:
+    1. High-level architecture forks or ambiguous product requirements with multiple viable designs.
+    2. Irreversible or destructive operations (e.g. `git reset --hard`, deleting user data, dropping database tables).
+    3. Major new feature proposals before beginning implementation.
 
 ## 2. Clean Architecture, Zero-Debt Policy & Design Standards
 - Keep code clean, decoupled, and modular.

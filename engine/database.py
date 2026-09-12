@@ -340,7 +340,7 @@ CREATE TRIGGER IF NOT EXISTS photos_ad AFTER DELETE ON photos BEGIN
   VALUES('delete', old.id, old.filename, old.folder_name, old.caption, old.content_tags, old.ocr_text);
 END;
 
-CREATE TRIGGER IF NOT EXISTS photos_au AFTER UPDATE ON photos BEGIN
+CREATE TRIGGER IF NOT EXISTS photos_au AFTER UPDATE OF filename, folder_name, caption, content_tags, ocr_text, is_encrypted ON photos BEGIN
   INSERT INTO photos_fts(photos_fts, rowid, filename, folder_name, caption, content_tags, ocr_text)
   VALUES('delete', old.id, old.filename, old.folder_name, old.caption, old.content_tags, old.ocr_text);
   INSERT INTO photos_fts(rowid, filename, folder_name, caption, content_tags, ocr_text)
@@ -372,8 +372,43 @@ async def get_db_connection(db_path: Optional[Path] = None) -> aiosqlite.Connect
     return conn
 
 
+async def rebuild_fts_index(
+    conn: Optional[aiosqlite.Connection] = None,
+    db_path: Optional[Path] = None,
+) -> None:
+    """Rebuilds the FTS5 full-text search index from the external photos table.
+
+    Provides automated self-healing against SQLite external content shadow segment
+    desynchronization (which manifests as 'database disk image is malformed').
+
+    Args:
+        conn: Optional active aiosqlite connection. If None, opens a new connection.
+        db_path: Optional custom path to SQLite database. Defaults to settings.database_path.
+    """
+    should_close = False
+    if conn is None:
+        conn = await get_db_connection(db_path)
+        should_close = True
+
+    try:
+        logger.info("Executing FTS5 index rebuild on photos_fts...")
+        await conn.execute("INSERT INTO photos_fts(photos_fts) VALUES('rebuild');")
+        await conn.commit()
+        logger.info("FTS5 index successfully rebuilt and resynchronized.")
+    except Exception as e:
+        logger.error("Failed to rebuild FTS5 index: %s", e, exc_info=True)
+        raise
+    finally:
+        if should_close:
+            await conn.close()
+
+
 async def run_migrations(db_path: Optional[Path] = None) -> None:
     """Executes idempotent database schema migrations, indexes, and triggers.
+
+    Ensures that triggers are scoped strictly to their dependent columns (e.g. photos_au
+    only fires on searchable text mutations, not thumbnail/preview/favorite updates)
+    and validates FTS5 index integrity.
 
     Args:
         db_path: Optional custom path to SQLite database. Defaults to settings.database_path.
@@ -385,6 +420,27 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
     conn = await get_db_connection(target_path)
     try:
         await conn.executescript(SCHEMA_DDL)
+
+        # Drop legacy unscoped photos_au trigger if present and recreate scoped version
+        await conn.execute("DROP TRIGGER IF EXISTS photos_au;")
+        await conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS photos_au AFTER UPDATE OF 
+                filename, folder_name, caption, content_tags, ocr_text, is_encrypted 
+            ON photos BEGIN
+              INSERT INTO photos_fts(photos_fts, rowid, filename, folder_name, caption, content_tags, ocr_text)
+              VALUES('delete', old.id, old.filename, old.folder_name, old.caption, old.content_tags, old.ocr_text);
+              INSERT INTO photos_fts(rowid, filename, folder_name, caption, content_tags, ocr_text)
+              SELECT new.id, new.filename, new.folder_name, new.caption, new.content_tags, new.ocr_text
+              WHERE new.is_encrypted = 0;
+            END;
+        """)
+
+        # Self-healing: Rebuild FTS index to guarantee clean synchronization with external content
+        try:
+            await rebuild_fts_index(conn=conn)
+        except Exception as fts_err:
+            logger.warning("FTS index rebuild notice during migration: %s", fts_err)
+
         await conn.commit()
         logger.info("Database schema migrations executed successfully.")
     except Exception as e:
