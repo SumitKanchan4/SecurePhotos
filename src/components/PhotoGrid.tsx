@@ -93,6 +93,7 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
               ? "var(--shadow-md)" 
               : "var(--shadow-sm)",
         aspectRatio: "1",
+        width: "100%",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -385,9 +386,9 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
       const cols = Math.max(2, Math.floor((width + gap) / (targetSize + gap)));
       const itemWidth = (width - (cols - 1) * gap) / cols;
       const cardAspectRatio = 1; // 1:1 Square (strictly matching Albums & People tabs)
-      const itemHeight = itemWidth / cardAspectRatio;
+      const itemHeight = Math.round(itemWidth / cardAspectRatio);
       setColumns(cols);
-      setRowHeight(itemHeight + gap);
+      setRowHeight(itemHeight);
     };
 
     updateGrid();
@@ -402,8 +403,14 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
     count: rowCount,
     getScrollElement: () => parentRef.current,
     estimateSize: () => rowHeight,
+    gap: 10,
     overscan: 2,
   });
+
+  // Force virtualizer to recalculate cached measurements whenever column layout or dimensions update
+  useEffect(() => {
+    rowVirtualizer.measure();
+  }, [columns, rowHeight, rowVirtualizer]);
 
   if (allPhotos.length === 0) {
     return (
@@ -439,17 +446,17 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
           return (
             <div
               key={virtualRow.key}
+              ref={rowVirtualizer.measureElement}
+              data-index={virtualRow.index}
               style={{
                 position: "absolute",
                 top: 0,
                 left: 0,
                 width: "100%",
-                height: `${virtualRow.size}px`,
                 transform: `translateY(${virtualRow.start}px)`,
                 display: "grid",
                 gridTemplateColumns: `repeat(${columns}, 1fr)`,
                 gap: "10px",
-                paddingBottom: "10px",
               }}
             >
               {rowPhotos.map((photo, itemIdx) => {

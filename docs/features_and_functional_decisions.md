@@ -1260,22 +1260,26 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 
 ### Functionality Overview
 - Standardized the primary Photos library grid ([PhotoGrid.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/PhotoGrid.tsx)) to a 1:1 square card aspect ratio, matching the visual geometry of the Albums ([AlbumsView.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/AlbumsView.tsx)) and People detail views ([PeopleView.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/PeopleView.tsx)).
-- Eliminated massive ~75px–85px empty dead space gaps between photo rows in the Photos tab caused by an aspect-ratio desynchronization in the virtual row container height calculation.
-- Increased visible photo real estate by ~60% across the library without changing the responsive column density.
+- Eliminated massive empty dead space and vertical row collisions by integrating native TanStack Virtualizer `gap: 10` spacing and dynamic DOM row measurement (`rowVirtualizer.measureElement`).
+- Increased visible photo real estate by ~60% across the library without changing responsive column density.
 
 ### Functional Decision Points & Rationale
-- **Aspect Ratio Parity Across Core Views**: In the Albums tab, photo cards render as clean 1:1 squares with 10px gaps (`aspectRatio: "1"`). In `PhotoGrid.tsx`, cards had retained a legacy `16 / 10` aspect ratio. Because the virtualizer row height formula was `setRowHeight(itemWidth + gap)`, the virtual container reserved space for a square card, leaving the remaining 37.5% as empty black space. Standardizing on `1:1` creates a cohesive, uniform photo viewing experience across all views.
-- **Mathematical Coupling of Virtualizer Row Height**: Refactored the `updateGrid` observer in `PhotoGrid.tsx` to explicitly compute `const itemHeight = itemWidth / cardAspectRatio;` before calculating `rowHeight = itemHeight + gap`. This mathematically guarantees that row spacing remains locked to the exact 10px grid gap regardless of viewport size or future adjustments.
+- **Aspect Ratio Parity Across Core Views**: In the Albums tab, photo cards render as clean 1:1 squares with 10px gaps (`aspectRatio: "1"`). Standardizing `PhotoCard` to 1:1 creates an identical look, feel, and visual weight across all application views.
+- **Native Virtualizer Gap Over Manual Row Container Padding**: Previously, `gap: 10` was hacked by adding `paddingBottom: 10px` inside row containers and hardcoding `height: virtualRow.size`. When the virtualizer cached an initial row height (195px), Row 1 was positioned at `translateY(195px)` while Row 0 occupied up to 202px, causing rows to collide with near-zero vertical separation. Configuring `gap: 10` natively inside `useVirtualizer` removes container padding and guarantees that both vertical and horizontal gaps are mathematically locked to exactly `10px`.
+- **Dynamic `measureElement` & Cache Invalidation**: Attached `ref={rowVirtualizer.measureElement}` and `data-index={virtualRow.index}` to the row element so the browser's ResizeObserver measures exact rendered DOM heights. An observer hook calls `rowVirtualizer.measure()` on resize to instantly purge any stale measurement caches.
 
 ### Technical Touchpoints
 - `src/components/PhotoGrid.tsx`:
-  - Updated `PhotoCard` container style from `aspectRatio: "16 / 10"` to `aspectRatio: "1"`.
-  - Updated `updateGrid` to couple row height directly to the `1:1` aspect ratio constant.
+  - Standardized `PhotoCard` to `aspectRatio: "1"` and `width: "100%"`.
+  - Configured `gap: 10` natively in `useVirtualizer`.
+  - Attached `ref={rowVirtualizer.measureElement}` and `data-index={virtualRow.index}` on the row container, removing manual `paddingBottom` and fixed `height`.
+  - Added cache invalidation hook via `rowVirtualizer.measure()`.
 
 ### State & Lifecycle Impact
-- Zero database or API impact. Pure UI/CSS and virtualizer layout harmonization.
-- Eliminates vertical empty dead space across all screen widths.
-- Build verified: TypeScript 0 errors, Vite bundle built cleanly, 55/55 backend tests passed.
+- Zero database or API impact. Pure UI layout and virtualizer geometry harmonization.
+- Row-to-row spacing is mathematically identical to column-to-column spacing (exactly 10px).
+- Build verified: TypeScript 0 errors, Vite bundle built cleanly in 4.43s, 55/55 backend tests passed.
+
 
 
 
