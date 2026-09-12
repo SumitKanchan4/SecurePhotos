@@ -17,13 +17,16 @@ import {
   Moon,
   Calendar,
   Flame,
-  ArrowRight
+  ArrowRight,
+  Copy
 } from "lucide-react";
-import { DashboardOverview, StoriesInsights } from "../types";
+import { DashboardOverview, StoriesInsights, DuplicateSummaryResponse, PhotoItem } from "../types";
 import { NavTab } from "../store/useAppStore";
+import { DuplicatesView } from "./DuplicatesView";
 
 interface DashboardViewProps {
   onNavigate: (tab: NavTab) => void;
+  onPhotoClick?: (index: number, photos: PhotoItem[]) => void;
 }
 
 /**
@@ -48,9 +51,11 @@ function formatBytes(bytes: number, decimals: number = 1): string {
  * Executive library overview combining physical drive storage allocation,
  * user-centric media storage footprints, and deep photographic intelligence.
  */
-export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhotoClick }) => {
   const [stats, setStats] = useState<DashboardOverview | null>(null);
   const [insights, setInsights] = useState<StoriesInsights | null>(null);
+  const [dupSummary, setDupSummary] = useState<DuplicateSummaryResponse | null>(null);
+  const [activeSubView, setActiveSubView] = useState<"overview" | "duplicates">("overview");
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,9 +63,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const fetchDashboardData = useCallback(async (showRefreshingState: boolean = false) => {
     if (showRefreshingState) setIsRefreshing(true);
     try {
-      const [dashRes, insRes] = await Promise.all([
+      const [dashRes, insRes, dupRes] = await Promise.all([
         fetch("http://127.0.0.1:8000/api/system/dashboard"),
-        fetch("http://127.0.0.1:8000/api/stories/insights")
+        fetch("http://127.0.0.1:8000/api/stories/insights"),
+        fetch("http://127.0.0.1:8000/api/duplicates/summary").catch(() => null),
       ]);
 
       if (!dashRes.ok) throw new Error(`Dashboard API error: ${dashRes.statusText}`);
@@ -70,6 +76,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       if (insRes.ok) {
         const insData: StoriesInsights = await insRes.json();
         setInsights(insData);
+      }
+
+      if (dupRes && dupRes.ok) {
+        const dupData: DuplicateSummaryResponse = await dupRes.json();
+        setDupSummary(dupData);
       }
 
       setError(null);
@@ -85,6 +96,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   useEffect(() => {
     fetchDashboardData();
   }, [fetchDashboardData]);
+
+  if (activeSubView === "duplicates") {
+    return (
+      <DuplicatesView
+        onBack={() => setActiveSubView("overview")}
+        onPhotoClick={onPhotoClick}
+        onRefreshTelemetry={() => fetchDashboardData(false)}
+      />
+    );
+  }
 
   if (isLoading && !stats) {
     return (
@@ -596,6 +617,117 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             ✦ Thumbnails and cache enable frictionless 60fps scrolling without re-reading original files.
           </div>
         </div>
+      </div>
+
+      {/* ── BENTO ROW 1.5: Disk Space Reclaimer & Duplicate Optimizer ─ */}
+      <div
+        className="glass-panel"
+        style={{
+          borderRadius: "var(--radius-md)",
+          border: "1px solid var(--border-subtle)",
+          backgroundColor: "var(--bg-surface)",
+          padding: "16px 20px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: "14px",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+          <div
+            style={{
+              width: "42px",
+              height: "42px",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: dupSummary && dupSummary.total_groups > 0 
+                ? "rgba(239, 68, 68, 0.12)" 
+                : "rgba(16, 185, 129, 0.12)",
+              border: `1px solid ${
+                dupSummary && dupSummary.total_groups > 0 
+                  ? "rgba(239, 68, 68, 0.25)" 
+                  : "rgba(16, 185, 129, 0.25)"
+              }`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: dupSummary && dupSummary.total_groups > 0 ? "#ef4444" : "var(--accent-success)",
+              flexShrink: 0,
+            }}
+          >
+            <Copy size={20} />
+          </div>
+
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "14px", fontWeight: 700 }}>
+                Duplicates & Clutter Reclaimer
+              </span>
+              {dupSummary && dupSummary.total_groups > 0 ? (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    padding: "2px 8px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "rgba(239, 68, 68, 0.12)",
+                    color: "#ef4444",
+                    border: "1px solid rgba(239, 68, 68, 0.25)",
+                    fontFamily: "var(--font-mono)",
+                  }}
+                >
+                  {dupSummary.total_groups} Groups ({formatBytes(dupSummary.reclaimable_bytes)} Reclaimable)
+                </span>
+              ) : (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    padding: "2px 8px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "rgba(16, 185, 129, 0.12)",
+                    color: "var(--accent-success)",
+                    border: "1px solid rgba(16, 185, 129, 0.25)",
+                  }}
+                >
+                  ✓ Optimized & Clean
+                </span>
+              )}
+            </div>
+
+            <p style={{ margin: "3px 0 0 0", fontSize: "12px", color: "var(--text-secondary)" }}>
+              {dupSummary && dupSummary.total_groups > 0
+                ? `Compare duplicate & burst shots side-by-side, inspect in full Lightbox, and safely reclaim storage.`
+                : `No duplicate or redundant burst photos detected in your active media library.`}
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setActiveSubView("duplicates")}
+          className="clickable"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "8px 18px",
+            borderRadius: "var(--radius-full)",
+            backgroundColor: dupSummary && dupSummary.total_groups > 0 ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+            border: `1px solid ${dupSummary && dupSummary.total_groups > 0 ? "transparent" : "var(--glass-border)"}`,
+            color: dupSummary && dupSummary.total_groups > 0 ? "#ffffff" : "var(--text-primary)",
+            fontSize: "12px",
+            fontWeight: 700,
+            cursor: "pointer",
+            boxShadow: dupSummary && dupSummary.total_groups > 0 ? "0 2px 10px var(--accent-glow)" : "none",
+            transition: "all 0.15s ease",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <span>{dupSummary && dupSummary.total_groups > 0 ? "Review & Reclaim Space" : "View Duplicates Space"}</span>
+          <ArrowRight size={14} />
+        </button>
       </div>
 
       {/* ── BENTO GRID ROW 2: High-Density Library Media Catalog Strip ── */}

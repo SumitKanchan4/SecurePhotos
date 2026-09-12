@@ -388,6 +388,10 @@ export const App: React.FC = () => {
             /* System & Storage Telemetry Dashboard */
             <DashboardView 
               onNavigate={(tab) => setActiveTab(tab)}
+              onPhotoClick={(idx, customPhotos) => {
+                setLightboxPhotos(customPhotos);
+                setLightboxIndex(idx);
+              }}
             />
           ) : activeTab === "vault" ? (
             /* Dedicated Zero-Trust Private Vault Gallery */

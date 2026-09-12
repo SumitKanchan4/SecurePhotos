@@ -216,3 +216,19 @@ export interface StoriesInsights {
     count: number;
   }>;
 }
+
+export interface DuplicateGroupItem {
+  group_id: string;
+  match_type: 'exact' | 'near';
+  distance: number;
+  suggested_best_photo_id: number;
+  best_reason: string;
+  reclaimable_bytes: number;
+  photos: PhotoItem[];
+}
+
+export interface DuplicateSummaryResponse {
+  total_groups: number;
+  total_duplicate_photos: number;
+  reclaimable_bytes: number;
+}

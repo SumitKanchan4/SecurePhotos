@@ -1280,6 +1280,64 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - Row-to-row spacing is mathematically identical to column-to-column spacing (exactly 10px).
 - Build verified: TypeScript 0 errors, Vite bundle built cleanly in 4.43s, 55/55 backend tests passed.
 
+---
+
+## 30. Duplicates & Clutter Reclaimer Workspace (Dashboard-Integrated Side-by-Side Comparison & Lightbox)
+
+### Functionality Overview
+- Integrated a dedicated, full-width **Duplicates & Clutter Reclaimer** workspace into the Dashboard tab, accessible via an interactive Storage Visualizer banner (`Review & Reclaim Space`).
+- Surfaces exact duplicate copies (identical SHA-256 checksums) and burst / perceptually near-identical photos (64-bit dHash perceptual hashing with Hamming distance $\le 8$ or burst shots within 3 seconds).
+- Displays duplicate sets in high-density, side-by-side comparison cards with resolution dimensions, file sizes, capture dates, AI enhancement badges, and sharpness scores.
+- Renders an AI-computed **"⭐ Recommended Best"** badge with explainable rationale (e.g. `Marked Favorite • 4032x3024 (12.2 MP) • High Sharpness`).
+- **Interactive Lightbox Inspection**: Clicking any duplicate photo opens it at full resolution in the immersive Lightbox modal, allowing seamless 1:1 zoom, EXIF inspection, and left/right arrow keyboard navigation between duplicate candidates.
+- **Zero Data Loss Space Reclamation**: Single-click resolution per group ("Keep This Photo" or "Keep Suggested Best") or across all groups ("Resolve All (Keep Best)") routes rejected duplicate copies into SecurePhotos' existing 30-Day Soft-Delete Trash (`trashed_at = CURRENT_TIMESTAMP`), preserving user recoverability.
+
+### Functional Decision Points & Rationale
+- **Dashboard-Integrated Sub-view vs. 10th Navigation Tab**:
+  - *Decision*: Avoided adding a 10th tab to the desktop navigation sidebar. Duplicate management is a maintenance/optimization workflow directly tied to physical disk capacity; embedding it as an on-demand sub-view inside the Dashboard (with a prominent Storage Composition banner) keeps the primary sidebar clean, focused, and intuitive.
+- **Side-by-Side Photo Comparison with Full-Resolution Lightbox Zoom**:
+  - *Decision*: Users cannot confidently discard redundant photos from tiny thumbnails alone. The comparison cards provide immediate visual alignment and metadata parity, and clicking any candidate opens the full-screen Lightbox for pixel-level inspection before committing a deletion.
+- **Balanced "Best Pick" Scoring Heuristic**:
+  - *Decision*: Rather than relying purely on file size or resolution, the scoring engine uses a prioritized multi-tier hierarchy:
+    1. User Favorite (+5000 pts): User intention decisively overrides automated heuristics.
+    2. AI Super-Resolution Enhanced (+1000 pts) / Lossless Optimized (+250 pts).
+    3. Resolution Megapixels (+50 pts per MP).
+    4. Sharpness / Blur score (+2.0 per unit).
+    5. SLM Aesthetic Quality score (+10.0 per unit).
+    6. File size (+10.0 per MB).
+- **Strict Non-Destructive Soft-Delete Routing**:
+  - *Decision*: Permanently deleting files (`os.unlink`) carries irreversible user risk. Trashed duplicates receive `trashed_at = CURRENT_TIMESTAMP`, immediately freeing them from library views and reclaiming logical storage while retaining 30-day recovery in the Trash view.
+- **Modern-Web-UI Section 4 Header Standard Compliance**:
+  - Floating dual-theme liquid glass container (`var(--glass-surface)`, `blur(24px)`).
+  - Balanced 3-column layout (Left: Dashboard back button + Rescan pill; Center: Centered Plus Jakarta Sans title + inline capsule badge; Right: Resolve All action pill).
+
+### Technical Touchpoints
+- `engine/services/duplicate_service.py`:
+  - `compute_image_dhash()`: 64-bit difference perceptual hashing using Pillow grayscale downsampling.
+  - `hamming_distance()`: Bitwise XOR popcount distance computation.
+  - `score_candidate_photo()`: Multi-factor scoring with explainable rationale strings.
+  - `scan_and_cluster_duplicates()`: Exact SHA-256 grouping, dHash Union-Find connected component clustering, and DB synchronization into `duplicate_groups`.
+  - `resolve_duplicate_group()` & `resolve_all_duplicates_best()`: Soft-delete routing to `trashed_at = CURRENT_TIMESTAMP`.
+- `engine/api/duplicates.py`:
+  - Endpoints: `GET /api/duplicates/summary`, `GET /api/duplicates/groups`, `POST /api/duplicates/scan`, `POST /api/duplicates/resolve`, `POST /api/duplicates/resolve-all-best`.
+- `engine/main.py`:
+  - Mounted router under `/api/duplicates`.
+- `engine/tests/test_duplicates.py`:
+  - Automated tests covering dHash computation, Hamming distance, candidate scoring, exact hash clustering, summary metrics, and single-group resolution.
+- `src/types/index.ts`:
+  - Defined `DuplicateGroupItem` and `DuplicateSummaryResponse` TypeScript interfaces.
+- `src/components/DuplicatesView.tsx`:
+  - Dedicated full-width workspace with Section 4 liquid glass header, side-by-side comparison cards, Lightbox click-to-open handlers, and individual/bulk resolution.
+- `src/components/DashboardView.tsx`:
+  - Added `activeSubView: "overview" | "duplicates"`, `dupSummary` telemetry loading, and interactive Bento Row 1.5 Duplicates & Clutter Reclaimer banner.
+- `src/App.tsx`:
+  - Passed `onPhotoClick={(idx, customPhotos) => { setLightboxPhotos(customPhotos); setLightboxIndex(idx); }}` to `DashboardView`.
+
+### State & Lifecycle Impact
+- Zero schema migration needed (`duplicate_groups` table was pre-declared in `engine/database.py`).
+- Soft-deletions update SQLite in WAL mode; existing FTS5 and timeline queries automatically exclude trashed items (`trashed_at IS NULL`).
+- Automated verification: 58/58 backend tests passed; TypeScript type check 0 errors; Vite bundle built cleanly in 4.97s.
+
 
 
 
