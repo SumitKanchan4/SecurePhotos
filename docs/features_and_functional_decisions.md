@@ -1354,6 +1354,80 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
   - **Clean Header & Zero Repetition**: Removed redundant sub-header telemetry bar; refined view title to `Duplicate & Burst Photos`.
 - Automated verification: 60/60 backend tests passed; TypeScript type check 0 errors; Vite bundle built cleanly in 4.19s.
 
+---
+
+## 31. Self-Contained Video Engine & Space-Saving Optimizer
+
+### Functionality Overview
+- **Zero External Setup / Bundled Runtime Discovery**:
+  - The application automatically discovers FFmpeg and FFprobe binaries without requiring manual user installation, winget, or PATH modifications.
+  - Multi-tier search hierarchy checks `<AppRoot>/bin`, PyInstaller frozen bundle directory (`sys._MEIPASS/bin`), `.venv/Scripts/`, local application data directory, and the system PATH.
+  - Hardware encoder probing auto-detects GPU acceleration:
+    1. NVIDIA NVENC (`hevc_nvenc`)
+    2. Intel QuickSync (`hevc_qsv`)
+    3. AMD AMF (`hevc_amf`)
+    4. Windows MediaFoundation (`hevc_mf`)
+    5. CPU Fallback (`libx265` with `-tag:v hvc1`)
+- **Quality Preservation ("Never Make Quality Worse")**:
+  - **Visually Lossless H.265 Transcoding**: Uses Constant Rate Factor (CRF 22–24) with preset `medium` (CPU) or `p5` (NVENC).
+  - **Untouched Audio Copying**: Employs `-c:a copy` to pass original AAC, AC3, Opus, or PCM audio bitstreams untouched, eliminating generation loss and accelerating processing 4x.
+  - **QuickTime & Apple Compatibility**: Automatically tags output streams with `-tag:v hvc1`, `-map_metadata 0`, and `-movflags +faststart` for native hardware-accelerated playback in Safari, Chrome, Edge, and macOS/iOS.
+  - **Verification Guard**: Requires transcode to achieve at least 10% space reduction. If an incoming video is already compressed or modern (H.265/AV1), the transcode temp file is discarded and the pristine original is preserved.
+  - **30-Day Trash Safety Guard**: Replaced originals are moved to `.trash/` with timestamped names before updating SQLite records, ensuring zero data loss and 1-click restore.
+- **Vintage & Low-Res Video Restoration**:
+  - Automatically identifies older family videos below 720p (240p, 360p, 480p).
+  - Multi-stage filter graph:
+    1. Motion de-interlacing (`yadif`)
+    2. 3D temporal-spatial noise reduction (`hqdn3d=4:3:6:4.5`)
+    3. Contrast & saturation equalization (`eq=contrast=1.05:saturation=1.1`)
+    4. Lanczos super-resolution upscaling with unsharp masking (`scale=w=trunc(ih*dar/2)*2:h=720:flags=lanczos,unsharp=5:5:0.8:5:5:0.0`) to crisp 720p HD or 1080p FHD.
+- **Video Ingestion & Thumbnailing**:
+  - Ingestion pipeline (`ingestion_service.py`) routes video extensions (`.mp4`, `.mov`, `.mkv`, `.avi`, `.webm`, `.m4v`) to FFprobe stream metadata extraction (`extract_video_metadata`) and FFmpeg WebP thumbnail generation (`generate_video_thumbnail` at 1.0s or first frame), preventing Pillow crashes.
+- **Modern UI & Workspace Integration**:
+  - **Lightbox (`src/components/Lightbox.tsx`)**: Renders native HTML5 `<video>` player with custom controls, video header badge, and EXIF drawer format/duration display.
+  - **PhotoGrid (`src/components/PhotoGrid.tsx`)**: Displays frosted duration pill (`▶ M:SS`) on video cards in the bottom-left corner.
+  - **Video Optimizer View (`src/components/VideoOptimizerView.tsx`)**: Section 4 compliant liquid glass workspace with Space Saver (batch "Compress All" and 1-click compression) and Vintage Restorer (HD upscaling) tabs.
+  - **Dashboard Integration (`src/components/DashboardView.tsx`)**: Bento Row 1.6 Video Space Saver & Vintage Restorer card with live candidate telemetry and 1-click navigation.
+
+### Functional Decision Points & Rationale
+- **Bundled & Self-Healing Discovery vs External Prerequisite**:
+  - *Decision*: Bundled/self-discovered binaries guarantee zero setup friction for non-technical users. SecurePhotos works out-of-the-box without requiring terminal commands or installer wizards.
+- **Untouched Audio Copy (`-c:a copy`) vs Re-encoding Audio**:
+  - *Decision*: Video consumes >90% of file size; re-encoding audio saves negligible bytes while risking audio artifacts and burning CPU cycles. Bitstream copying is instantaneous and 100% faithful to the original recording.
+- **Space Savings Guard (>10% Threshold)**:
+  - *Decision*: Re-encoding an already-efficient video (e.g. AV1 or low-bitrate H.265) can cause size bloat or visual degradation. The engine guarantees that if savings < 10%, the transcode aborts and original is kept.
+- **Multi-Stage Filter Graph for Vintage Media**:
+  - *Decision*: Direct scaling of low-res VHS/camcorder footage amplifies noise and interlacing comb artifacts. Pre-filtering with `yadif` and `hqdn3d` produces significantly cleaner, modern-looking HD results.
+
+### Technical Touchpoints
+- `engine/services/video_runtime.py`:
+  - `get_ffmpeg_path()`, `get_ffprobe_path()`, `is_video_runtime_available()`, `probe_hardware_encoder()`.
+- `engine/services/video_service.py`:
+  - `extract_video_metadata()`, `generate_video_thumbnail()`, `analyze_video_candidate()`, `compress_video()`, `enhance_old_video()`.
+- `engine/services/ingestion_service.py`:
+  - Video format branching in `extract_exif_metadata()` and `ingest_single_photo()`.
+- `engine/api/videos.py`:
+  - `GET /api/videos/summary`, `GET /api/videos/candidates`, `POST /api/videos/{photo_id}/compress`, `POST /api/videos/{photo_id}/enhance`, `POST /api/videos/compress-all`.
+- `engine/main.py`:
+  - Mounted `videos.router` under `/api/videos`.
+- `engine/tests/test_videos.py`:
+  - Automated tests covering binary discovery, metadata extraction, candidate analysis, ingestion workflow, and compression with size reduction verification.
+- `src/types/index.ts`:
+  - Added `duration` to `PhotoItem`, defined `VideoCandidate`, `VideoOptimizationPlan`, and `VideoSummary`.
+- `src/components/Lightbox.tsx`:
+  - Interactive HTML5 `<video>` player, poster loading, and video badge.
+- `src/components/PhotoGrid.tsx`:
+  - Frosted video duration pill (`▶ M:SS`) in bottom-left corner.
+- `src/components/VideoOptimizerView.tsx`:
+  - Section 4 liquid glass workspace with Space Saver and Vintage Restorer tabs.
+- `src/components/DashboardView.tsx`:
+  - Added `activeSubView: "overview" | "duplicates" | "video-optimizer"` and Bento Row 1.6 card.
+
+### State & Lifecycle Impact
+- Photos SQLite table: Ingestion and optimization updates `filepath`, `filename`, `file_size`, `width`, `height`, `mime_type`, `is_enhanced`, and `is_optimized`.
+- 30-Day Trash: Replaced files are safely retained in `.trash/` timestamped folders, enabling manual or automated recovery.
+
+
 
 
 

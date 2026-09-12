@@ -19,6 +19,7 @@ import {
   Trash2,
   Download,
   Printer,
+  Film,
 } from "lucide-react";
 import { PhotoItem, OptimizationProgress } from "../types";
 import { useAppStore } from "../store/useAppStore";
@@ -187,7 +188,24 @@ export const Lightbox: React.FC<LightboxProps> = ({
           <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
             {currentIndex + 1} of {photos.length}
           </span>
-          {currentPhoto.is_enhanced && (
+          {currentPhoto.mime_type?.startsWith("video/") ? (
+            <span 
+              style={{
+                fontSize: "10px",
+                fontWeight: 700,
+                color: "#ffffff",
+                backgroundColor: currentPhoto.is_enhanced ? "var(--accent-primary)" : "rgba(255, 255, 255, 0.15)",
+                border: "1px solid var(--glass-border)",
+                padding: "2px 8px",
+                borderRadius: "var(--radius-full)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <Film size={10} /> {currentPhoto.is_enhanced ? "HD ENHANCED" : "VIDEO"}
+            </span>
+          ) : currentPhoto.is_enhanced ? (
             <span 
               style={{
                 fontSize: "10px",
@@ -203,7 +221,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
             >
               <Sparkles size={10} /> 8K ULTRA
             </span>
-          )}
+          ) : null}
         </div>
 
         {/* Action Controls */}
@@ -276,26 +294,28 @@ export const Lightbox: React.FC<LightboxProps> = ({
             <span style={{ fontSize: "11px", fontWeight: 600 }}>Download</span>
           </button>
 
-          {/* Studio Print Export Button */}
-          <button
-            onClick={() => handleDownload("studio_print")}
-            className="clickable"
-            title="Download print-ready photo for studio printing, posters, and framing"
-            style={{
-              background: "rgba(59, 130, 246, 0.12)",
-              borderRadius: "var(--radius-full)",
-              border: "1px solid rgba(59, 130, 246, 0.35)",
-              color: "var(--accent-primary)",
-              padding: "4px 12px",
-              display: "flex",
-              alignItems: "center",
-              gap: "5px",
-              cursor: "pointer",
-            }}
-          >
-            <Printer size={14} />
-            <span style={{ fontSize: "11px", fontWeight: 600 }}>Print Ready</span>
-          </button>
+          {/* Studio Print Export Button (Photos Only) */}
+          {!currentPhoto.mime_type?.startsWith("video/") && (
+            <button
+              onClick={() => handleDownload("studio_print")}
+              className="clickable"
+              title="Download print-ready photo for studio printing, posters, and framing"
+              style={{
+                background: "rgba(59, 130, 246, 0.12)",
+                borderRadius: "var(--radius-full)",
+                border: "1px solid rgba(59, 130, 246, 0.35)",
+                color: "var(--accent-primary)",
+                padding: "4px 12px",
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                cursor: "pointer",
+              }}
+            >
+              <Printer size={14} />
+              <span style={{ fontSize: "11px", fontWeight: 600 }}>Print Ready</span>
+            </button>
+          )}
 
           {/* Delete / Move to Trash */}
           <button
@@ -503,27 +523,64 @@ export const Lightbox: React.FC<LightboxProps> = ({
               />
             )}
 
-            {/* High-Resolution Media Image */}
-            <img
-              src={previewHasError ? thumbnailUrl : primaryImageUrl}
-              alt={currentPhoto.filename}
-              onLoad={() => setIsPreviewLoaded(true)}
-              onError={() => {
-                setPreviewHasError(true);
-                setIsPreviewLoaded(true);
-              }}
-              style={{
-                maxWidth: "94%",
-                maxHeight: "90%",
-                objectFit: "contain",
-                transform: `scale(${zoom})`,
-                transition: zoom === 1 ? "transform 0.15s ease, opacity 0.25s ease" : "none",
-                opacity: isPreviewLoaded ? 1 : 0.4,
-                borderRadius: "var(--radius-sm)",
-                boxShadow: "var(--shadow-lightbox)",
-                cursor: zoom > 1 ? "grab" : "default",
-              }}
-            />
+            {/* High-Resolution Media Image or Interactive Video Player */}
+            {currentPhoto.mime_type?.startsWith("video/") ? (
+              <div
+                style={{
+                  position: "relative",
+                  maxWidth: "94%",
+                  maxHeight: "88vh",
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <video
+                  key={currentPhoto.id}
+                  src={originalUrl}
+                  poster={thumbnailUrl}
+                  controls
+                  playsInline
+                  autoPlay={false}
+                  onLoadedData={() => setIsPreviewLoaded(true)}
+                  onError={() => {
+                    setPreviewHasError(true);
+                    setIsPreviewLoaded(true);
+                  }}
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: "84vh",
+                    borderRadius: "var(--radius-md)",
+                    boxShadow: "var(--shadow-lightbox)",
+                    backgroundColor: "#000000",
+                    outline: "none",
+                  }}
+                />
+              </div>
+            ) : (
+              <img
+                src={previewHasError ? thumbnailUrl : primaryImageUrl}
+                alt={currentPhoto.filename}
+                onLoad={() => setIsPreviewLoaded(true)}
+                onError={() => {
+                  setPreviewHasError(true);
+                  setIsPreviewLoaded(true);
+                }}
+                style={{
+                  maxWidth: "94%",
+                  maxHeight: "90%",
+                  objectFit: "contain",
+                  transform: `scale(${zoom})`,
+                  transition: zoom === 1 ? "transform 0.15s ease, opacity 0.25s ease" : "none",
+                  opacity: isPreviewLoaded ? 1 : 0.4,
+                  borderRadius: "var(--radius-sm)",
+                  boxShadow: "var(--shadow-lightbox)",
+                  cursor: zoom > 1 ? "grab" : "default",
+                }}
+              />
+            )}
 
             {/* Loading Spinner */}
             {!isPreviewLoaded && (

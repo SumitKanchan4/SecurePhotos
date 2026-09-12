@@ -1,5 +1,7 @@
 # Data & Storage
 data/
+thumbnails/
+previews/
 *.db
 *.db-wal
 *.db-shm

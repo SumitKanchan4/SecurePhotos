@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Check, Sparkles, Heart, Loader2, Image as ImageIcon, Clock } from "lucide-react";
+import { Check, Sparkles, Heart, Loader2, Image as ImageIcon, Clock, Play } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { PhotoItem, OptimizationProgress } from "../types";
 
@@ -253,8 +253,40 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
         </span>
       </div>
 
-      {/* 6a. Bottom-Left Resolution / AI Optimization Frosted Glass Tag (Option 2) */}
-      {(() => {
+      {/* 6a. Bottom-Left Video Duration / Resolution / AI Optimization Frosted Glass Tag */}
+      {photo.mime_type?.startsWith("video/") ? (
+        <div
+          title={`Video clip${photo.duration ? ` • ${Math.round(photo.duration)}s` : ""}`}
+          style={{
+            position: "absolute",
+            bottom: "7px",
+            left: "7px",
+            zIndex: isHovered ? 1 : 3,
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            padding: "2px 7px",
+            borderRadius: "var(--radius-full)",
+            background: "rgba(10, 12, 18, 0.75)",
+            backdropFilter: "blur(10px)",
+            WebkitBackdropFilter: "blur(10px)",
+            border: "1px solid rgba(255, 255, 255, 0.2)",
+            color: "#ffffff",
+            fontSize: "10px",
+            fontWeight: 700,
+            letterSpacing: "0.2px",
+            boxShadow: "0 2px 6px rgba(0, 0, 0, 0.6)",
+            pointerEvents: "none",
+          }}
+        >
+          <Play size={9} fill="#ffffff" color="#ffffff" />
+          <span>
+            {photo.duration
+              ? `${Math.floor(photo.duration / 60)}:${String(Math.floor(photo.duration % 60)).padStart(2, "0")}`
+              : "VIDEO"}
+          </span>
+        </div>
+      ) : (() => {
         const is8k = photo.is_enhanced || photo.is_optimized;
         const maxDim = Math.max(photo.width || 0, photo.height || 0);
         const isHighRes = maxDim >= 3840;

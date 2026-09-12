@@ -24,6 +24,12 @@ from engine.services.thumbnail_service import (
     calculate_file_hash,
     generate_micro_thumbnail,
     generate_display_preview,
+    get_sharded_thumbnail_path,
+    get_sharded_preview_path,
+)
+from engine.services.video_service import (
+    extract_video_metadata,
+    generate_video_thumbnail,
 )
 from engine.volume_tracker import get_volume_serial
 
@@ -197,6 +203,16 @@ def extract_exif_metadata(filepath: Path) -> Dict[str, any]:
         "width": None,
         "height": None,
     }
+
+    # 0. Route Video files to FFprobe metadata extractor
+    video_exts = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
+    if filepath.suffix.lower() in video_exts:
+        v_meta = extract_video_metadata(str(filepath))
+        metadata["width"] = v_meta.get("width")
+        metadata["height"] = v_meta.get("height")
+        if v_meta.get("taken_at"):
+            metadata["taken_at"] = v_meta.get("taken_at")
+        return metadata
 
     try:
         with Image.open(filepath) as img:
@@ -419,9 +435,33 @@ async def ingest_single_photo(
         # In-Place monitored scan mode
         final_filepath = str(source_path.resolve())
 
-    # Generate 1024px Retina micro-thumbnail for fast grid rendering
-    thumb_path, tw, th = generate_micro_thumbnail(final_filepath, file_hash=file_hash, size=1024)
-    preview_path = None
+    # Branch media processing by type (Video vs Photo)
+    video_exts = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
+    is_video = source_path.suffix.lower() in video_exts
+
+    if is_video:
+        thumb_dest = get_sharded_thumbnail_path(file_hash)
+        preview_dest = get_sharded_preview_path(file_hash)
+        generate_video_thumbnail(final_filepath, str(thumb_dest), str(preview_dest))
+        thumb_path = str(thumb_dest.relative_to(settings.data_dir)).replace("\\", "/")
+        preview_path = str(preview_dest.relative_to(settings.data_dir)).replace("\\", "/")
+
+        ext_clean = source_path.suffix.lstrip(".").lower()
+        if ext_clean in ("mp4", "m4v"):
+            mime_type = "video/mp4"
+        elif ext_clean in ("mov", "quicktime"):
+            mime_type = "video/quicktime"
+        elif ext_clean == "webm":
+            mime_type = "video/webm"
+        elif ext_clean == "mkv":
+            mime_type = "video/x-matroska"
+        else:
+            mime_type = f"video/{ext_clean}"
+    else:
+        # Generate 1024px Retina micro-thumbnail for fast grid rendering
+        thumb_path, tw, th = generate_micro_thumbnail(final_filepath, file_hash=file_hash, size=1024)
+        preview_path = None
+        mime_type = f"image/{source_path.suffix.lstrip('.').lower()}"
 
     # Insert into relational SQLite database
     cursor = await conn.execute(
@@ -445,7 +485,7 @@ async def ingest_single_photo(
             final_filepath,
             volume_uuid,
             file_size,
-            f"image/{source_path.suffix.lstrip('.').lower()}",
+            mime_type,
             metadata["width"],
             metadata["height"],
             metadata["width"],

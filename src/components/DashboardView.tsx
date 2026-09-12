@@ -18,11 +18,12 @@ import {
   Calendar,
   Flame,
   ArrowRight,
-  Copy
+  Copy,
 } from "lucide-react";
-import { DashboardOverview, StoriesInsights, DuplicateSummaryResponse, PhotoItem } from "../types";
+import { DashboardOverview, StoriesInsights, DuplicateSummaryResponse, PhotoItem, VideoSummary } from "../types";
 import { NavTab } from "../store/useAppStore";
 import { DuplicatesView } from "./DuplicatesView";
+import { VideoOptimizerView } from "./VideoOptimizerView";
 
 interface DashboardViewProps {
   onNavigate: (tab: NavTab) => void;
@@ -55,7 +56,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
   const [stats, setStats] = useState<DashboardOverview | null>(null);
   const [insights, setInsights] = useState<StoriesInsights | null>(null);
   const [dupSummary, setDupSummary] = useState<DuplicateSummaryResponse | null>(null);
-  const [activeSubView, setActiveSubView] = useState<"overview" | "duplicates">("overview");
+  const [videoSummary, setVideoSummary] = useState<VideoSummary | null>(null);
+  const [activeSubView, setActiveSubView] = useState<"overview" | "duplicates" | "video-optimizer">("overview");
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,10 +65,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
   const fetchDashboardData = useCallback(async (showRefreshingState: boolean = false) => {
     if (showRefreshingState) setIsRefreshing(true);
     try {
-      const [dashRes, insRes, dupRes] = await Promise.all([
+      const [dashRes, insRes, dupRes, vidRes] = await Promise.all([
         fetch("http://127.0.0.1:8000/api/system/dashboard"),
         fetch("http://127.0.0.1:8000/api/stories/insights"),
         fetch("http://127.0.0.1:8000/api/duplicates/summary").catch(() => null),
+        fetch("http://127.0.0.1:8000/api/videos/summary").catch(() => null),
       ]);
 
       if (!dashRes.ok) throw new Error(`Dashboard API error: ${dashRes.statusText}`);
@@ -81,6 +84,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
       if (dupRes && dupRes.ok) {
         const dupData: DuplicateSummaryResponse = await dupRes.json();
         setDupSummary(dupData);
+      }
+
+      if (vidRes && vidRes.ok) {
+        const vidData: VideoSummary = await vidRes.json();
+        setVideoSummary(vidData);
       }
 
       setError(null);
@@ -100,6 +108,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
   if (activeSubView === "duplicates") {
     return (
       <DuplicatesView
+        onBack={() => setActiveSubView("overview")}
+        onPhotoClick={onPhotoClick}
+        onRefreshTelemetry={() => fetchDashboardData(false)}
+      />
+    );
+  }
+
+  if (activeSubView === "video-optimizer") {
+    return (
+      <VideoOptimizerView
         onBack={() => setActiveSubView("overview")}
         onPhotoClick={onPhotoClick}
         onRefreshTelemetry={() => fetchDashboardData(false)}
@@ -734,6 +752,134 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
           }}
         >
           <span>{dupSummary && dupSummary.total_groups > 0 ? "Review & Reclaim Space" : "View Duplicates Space"}</span>
+          <ArrowRight size={14} />
+        </button>
+      </div>
+
+      {/* ── BENTO ROW 1.6: Video Space Saver & Vintage Restorer ─────── */}
+      <div
+        className="glass-panel"
+        style={{
+          borderRadius: "var(--radius-md)",
+          border: "1px solid var(--border-subtle)",
+          backgroundColor: "var(--bg-surface)",
+          padding: "16px 20px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "16px",
+          flex: "0 0 auto",
+          flexShrink: 0,
+          minHeight: "76px",
+          boxSizing: "border-box",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0, flex: 1 }}>
+          <div
+            style={{
+              width: "44px",
+              height: "44px",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: videoSummary && (videoSummary.compressible_count > 0 || videoSummary.enhanceable_count > 0)
+                ? "rgba(245, 158, 11, 0.12)" 
+                : "rgba(16, 185, 129, 0.12)",
+              border: `1px solid ${
+                videoSummary && (videoSummary.compressible_count > 0 || videoSummary.enhanceable_count > 0)
+                  ? "rgba(245, 158, 11, 0.25)" 
+                  : "rgba(16, 185, 129, 0.25)"
+              }`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: videoSummary && (videoSummary.compressible_count > 0 || videoSummary.enhanceable_count > 0) ? "#f59e0b" : "var(--accent-success)",
+              flexShrink: 0,
+            }}
+          >
+            <Film size={20} />
+          </div>
+
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "14px", fontWeight: 700, whiteSpace: "nowrap" }}>
+                Video Space Saver & Vintage Restorer
+              </span>
+              {videoSummary && videoSummary.compressible_count > 0 ? (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    padding: "2px 8px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "rgba(245, 158, 11, 0.12)",
+                    color: "#f59e0b",
+                    border: "1px solid rgba(245, 158, 11, 0.25)",
+                    fontFamily: "var(--font-mono)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {videoSummary.compressible_count} Heavy Videos (~{formatBytes(videoSummary.potential_savings_bytes)} Reclaimable)
+                </span>
+              ) : videoSummary && videoSummary.enhanceable_count > 0 ? (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    padding: "2px 8px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "rgba(59, 130, 246, 0.12)",
+                    color: "var(--accent-primary)",
+                    border: "1px solid rgba(59, 130, 246, 0.25)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {videoSummary.enhanceable_count} Vintage Videos Ready for HD
+                </span>
+              ) : (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    padding: "2px 8px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "rgba(16, 185, 129, 0.12)",
+                    color: "var(--accent-success)",
+                    border: "1px solid rgba(16, 185, 129, 0.25)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  ✓ Videos Highly Optimized (H.265/AV1)
+                </span>
+              )}
+            </div>
+
+            <p style={{ margin: "3px 0 0 0", fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.4 }}>
+              Visually lossless H.265 transcoding with audio copy, 30-day trash safety, and vintage upscaling.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setActiveSubView("video-optimizer")}
+          className="clickable"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "9px 20px",
+            borderRadius: "var(--radius-full)",
+            backgroundColor: videoSummary && (videoSummary.compressible_count > 0 || videoSummary.enhanceable_count > 0) ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+            border: `1px solid ${videoSummary && (videoSummary.compressible_count > 0 || videoSummary.enhanceable_count > 0) ? "transparent" : "var(--glass-border)"}`,
+            color: videoSummary && (videoSummary.compressible_count > 0 || videoSummary.enhanceable_count > 0) ? "#ffffff" : "var(--text-primary)",
+            fontSize: "12px",
+            fontWeight: 700,
+            cursor: "pointer",
+            boxShadow: videoSummary && (videoSummary.compressible_count > 0 || videoSummary.enhanceable_count > 0) ? "0 2px 10px var(--accent-glow)" : "none",
+            transition: "all 0.15s ease",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+        >
+          <span>Open Video Optimizer</span>
           <ArrowRight size={14} />
         </button>
       </div>

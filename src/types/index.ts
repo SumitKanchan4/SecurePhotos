@@ -43,6 +43,7 @@ export interface PhotoItem {
   vault_type?: 'documents' | 'private' | null;
   thumbnail_path?: string;
   preview_path?: string;
+  duration?: number;
   is_optimized: boolean;
   is_enhanced: boolean;
   caption?: string;
@@ -231,4 +232,49 @@ export interface DuplicateSummaryResponse {
   total_groups: number;
   total_duplicate_photos: number;
   reclaimable_bytes: number;
+}
+
+export interface VideoOptimizationPlan {
+  status: 'compressible' | 'enhanceable' | 'already_optimized' | 'standard';
+  action: 'compress' | 'enhance' | 'none';
+  label: string;
+  target_resolution?: string;
+  projected_savings_bytes: number;
+  projected_savings_pct: number;
+  reason: string;
+}
+
+export interface VideoCandidate {
+  id: number;
+  filename: string;
+  filepath: string;
+  file_size: number;
+  width?: number;
+  height?: number;
+  duration?: number;
+  mime_type: string;
+  codec?: string;
+  bitrate?: number;
+  fps?: number;
+  thumbnail_path?: string;
+  is_enhanced?: boolean;
+  optimization_plan: VideoOptimizationPlan;
+}
+
+export interface VideoSummary {
+  runtime_available: boolean;
+  encoder_info?: {
+    encoder: string;
+    type: 'hardware' | 'cpu';
+    crf_param?: string;
+    preset_param?: string;
+    default_crf?: number;
+    default_preset?: string;
+  };
+  total_videos: number;
+  total_video_bytes: number;
+  compressible_count: number;
+  enhanceable_count: number;
+  already_optimized_count: number;
+  potential_savings_bytes: number;
 }
