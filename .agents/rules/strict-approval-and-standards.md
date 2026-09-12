@@ -10,17 +10,33 @@ trigger: always_on
 - Always check the current branch before starting any task, and switch to or create the appropriate topic branch.
 - **Mandatory Push to Origin on Commit**: Whenever code is committed (`git commit`), **ALWAYS immediately push to origin** (`git push origin <branch>`). Never leave local commits sitting unpushed, as unpushed commits lead to drift, stale checkins, and merge conflicts.
 
-## 1. Approval Gate vs. Autonomous Routine Execution
-- **Autonomous Routine Operations (NEVER Ask Permission)**:
-  - Do NOT pause or ask permission for standard, common engineering tasks: reading files, searching/grepping, discovering symbols (`codegraph_explore`), running tests/pytest, running linters, checking git status, pulling `git pull origin <branch>` / fetching latest, running non-destructive diagnostics, writing scratch scripts, and executing planned implementation steps.
+## 1. Approval Gate, Mandatory Planning & Autonomous Execution
+- **Mandatory Plan Proposal Before Implementation**:
+  - **CRITICAL**: **NEVER start modifying code or generating implementation without first proposing a concrete implementation plan.**
+  - The plan must state: problem breakdown, root cause, proposed changes by component/file, edge cases, risks, and verification steps.
+  - Wait for the user's explicit approval ("Proceed" / approval) before executing any source code modifications.
+- **Autonomous Routine Execution Post-Approval (NEVER Ask Permission)**:
   - Once the user gives a directive or approves an implementation plan, **execute all steps end-to-end autonomously** (edits, tests, docs, commit, push) without forcing the user to babysit the screen or approve routine intermediate steps.
+  - Do NOT pause or ask permission for standard engineering tasks: reading files, searching/grepping, discovering symbols (`codegraph_explore`), running tests/pytest, running linters, checking git status, pulling `git pull origin <branch>` / fetching latest, running non-destructive diagnostics, writing scratch scripts, and executing planned implementation steps.
 - **Real Permissions Only**:
   - Reserve user confirmation strictly for:
-    1. High-level architecture forks or ambiguous product requirements with multiple viable designs.
-    2. Irreversible or destructive operations (e.g. `git reset --hard`, deleting user data, dropping database tables).
-    3. Major new feature proposals before beginning implementation.
+    1. Plan approval before implementation begins.
+    2. High-level architecture forks or ambiguous product requirements with multiple viable designs.
+    3. Irreversible or destructive operations (e.g. `git reset --hard`, deleting user data, dropping database tables).
 
-## 2. Clean Architecture, Zero-Debt Policy & Design Standards
+## 2. Intellectual Rigor, Candid Pushback & Confidence Calibration
+- **Anti-Sycophancy & Technical Scrutiny**:
+  - **Do NOT blindly agree with the user.** Rigorously validate every hypothesis, suggestion, or premise against the actual codebase, architecture, performance profiles, and SQLite/system behavior.
+  - If the user's understanding has a gap, is factually mistaken, or proposes a suboptimal solution, **explicitly call it out immediately**.
+- **Risk Analysis & Concrete Alternatives**:
+  - When challenging a user's direction or pointing out a flaw, clearly articulate:
+    1. The exact technical risk or bottleneck in their approach (e.g. data loss, write lock starvation, regression, memory leak).
+    2. The superior, battle-tested alternative with technical rationale.
+- **Mandatory Confidence Calibration**:
+  - **Rate confidence before any technical claim or diagnosis** (e.g. `[Confidence: High (Verified via code/DB)]`, `[Confidence: Medium]`, `[Confidence: Low / Educated Guess]`).
+  - **Never disguise speculation as certainty.** If guessing, making an unverified assumption, or relying on heuristic deduction without direct verification, explicitly say: *"I am hypothesizing/guessing here based on X, because Y has not yet been verified."*
+
+## 3. Clean Architecture, Zero-Debt Policy & Design Standards
 - Keep code clean, decoupled, and modular.
 - Do not mix presentation, business logic, and database operations in single files.
 - Adhere strictly to the project's specialized skills (`modern-web-ui`, `local-slm-engineering`, `sqlite-vector-search`, `zero-trust-crypto`, `enterprise-standards-and-docs`).
@@ -31,12 +47,12 @@ trigger: always_on
   4. Dual-theme frosted liquid glass floating container (`backgroundColor: "var(--glass-surface)"`, `backdropFilter: "blur(24px)"`, `WebkitBackdropFilter: "blur(24px)"`, `border: "1px solid var(--glass-border)"`, `borderRadius: "var(--radius-lg)"`, `boxShadow: "var(--glass-shadow)"`, `color: "var(--text-primary)"`). STRICTLY FORBIDDEN to hardcode dark `rgba(23, 23, 23, ...)` or static dark backgrounds in headers.
   5. Pill geometry (`var(--radius-full)`) on all navigation, action, and filter buttons (`backgroundColor: "var(--glass-pill-bg)"`, `border: "1px solid var(--glass-border)"`).
 
-## 3. High Code Quality, Comments & Tests
+## 4. High Code Quality, Comments & Tests
 - All code must feature Google-style docstrings (Python) / JSDoc (Frontend).
 - Comments must explain non-obvious rationale and architectural intent.
 - Ensure all logic has corresponding automated test coverage.
 
-## 4. Mandatory Functionality & Decision Point Documentation
+## 5. Mandatory Functionality & Decision Point Documentation
 - **CRITICAL**: Every newly added feature, capability, workflow, or functional decision point MUST be explicitly documented in the living registry: `docs/features_and_functional_decisions.md` (and cross-referenced in `walkthrough.md` / feature specs).
 - For every functional change or addition, the documentation MUST specify:
   1. **Functionality Overview**: Purpose, UX behavior, and system flow.
@@ -44,7 +60,7 @@ trigger: always_on
   3. **Technical Touchpoints**: API endpoints, database schema/queries, and UI components.
   4. **State & Lifecycle Impact**: How it interacts with existing states, data persistence, and edge cases.
 
-## 5. Mandatory Token Efficiency & MCP Optimization (`codegraph` & `headroom`)
+## 6. Mandatory Token Efficiency & MCP Optimization (`codegraph` & `headroom`)
 - **CRITICAL**: Maximize context efficiency and reduce token costs by prioritizing MCP tools:
   1. **`codegraph_explore` (MCP)**:
      - Always use `codegraph_explore` as the **first** discovery tool when surveying features, locating symbols, tracing call paths, understanding component hierarchies, or checking the blast radius of changes before editing.
