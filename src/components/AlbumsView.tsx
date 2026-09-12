@@ -1,21 +1,28 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { 
   FolderHeart, 
   Plus, 
   Lock, 
   Unlock, 
   Heart, 
+  HeartOff,
   Image as ImageIcon,
   ArrowLeft,
   Trash2,
   X,
   Check,
+  CheckSquare,
   Loader2,
-  Play
+  Play,
+  LayoutGrid,
+  Download,
+  FolderPlus
 } from "lucide-react";
 import { AlbumItem, PhotoItem } from "../types";
 import { AlbumSlideshowModal } from "./AlbumSlideshowModal";
 import { RemoveFromAlbumModal } from "./RemoveFromAlbumModal";
+import { AddToAlbumModal } from "./AddToAlbumModal";
+import { CollageModal } from "./CollageModal";
 import { useAppStore } from "../store/useAppStore";
 
 interface AlbumsViewProps {
@@ -54,11 +61,125 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   // Full-Screen Slideshow State
   const [isSlideshowOpen, setIsSlideshowOpen] = useState(false);
 
+  // Modals for Album Selection Dock
+  const [isCollageModalOpen, setIsCollageModalOpen] = useState(false);
+  const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
+
   // Photo Picker to Add Photos to Current Album
   const [isPhotoPickerOpen, setIsPhotoPickerOpen] = useState(false);
   const [libraryPhotos, setLibraryPhotos] = useState<PhotoItem[]>([]);
   const [pickerSelectedIds, setPickerSelectedIds] = useState<Set<number>>(new Set());
   const [isAddingPhotos, setIsAddingPhotos] = useState(false);
+
+  // Memoized selectors for selection dock
+  const selectedPhotosList = useMemo(() => {
+    return albumPhotos.filter((p) => selectedAlbumPhotoIds.has(p.id));
+  }, [albumPhotos, selectedAlbumPhotoIds]);
+
+  const hasVideoSelected = useMemo(() => {
+    return selectedPhotosList.some((p) => p.mime_type && p.mime_type.startsWith("video/"));
+  }, [selectedPhotosList]);
+
+  const canCreateCollage = useMemo(() => {
+    return selectedAlbumPhotoIds.size >= 2 && selectedAlbumPhotoIds.size <= 9 && !hasVideoSelected;
+  }, [selectedAlbumPhotoIds.size, hasVideoSelected]);
+
+  // Global Escape key listener to clear selection
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key === "Escape" &&
+        selectedAlbumPhotoIds.size > 0 &&
+        !isCollageModalOpen &&
+        !isAddToAlbumModalOpen &&
+        !removalModalTarget &&
+        !isPhotoPickerOpen &&
+        !isSlideshowOpen
+      ) {
+        setSelectedAlbumPhotoIds(new Set());
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedAlbumPhotoIds, isCollageModalOpen, isAddToAlbumModalOpen, removalModalTarget, isPhotoPickerOpen, isSlideshowOpen]);
+
+  // Batch download selected photos
+  const handleBatchDownload = () => {
+    if (selectedAlbumPhotoIds.size === 0) return;
+    const ids = Array.from(selectedAlbumPhotoIds);
+    showToast(`📥 Downloading ${ids.length} photo(s) to your computer's Downloads folder...`, "info");
+    ids.forEach((id, idx) => {
+      setTimeout(() => {
+        const photo = albumPhotos.find((p) => p.id === id);
+        const filename = photo?.filename || `photo_${id}.jpg`;
+        const link = document.createElement("a");
+        link.href = `http://127.0.0.1:8000/api/photos/${id}/download`;
+        link.setAttribute("download", filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }, idx * 150);
+    });
+  };
+
+  // Batch remove from Favorites smart album (unstar)
+  const handleBatchRemoveFromFavorites = async () => {
+    if (selectedAlbumPhotoIds.size === 0) return;
+    const ids = Array.from(selectedAlbumPhotoIds);
+    try {
+      await Promise.all(
+        ids.map((id) =>
+          fetch(`http://127.0.0.1:8000/api/photos/${id}/toggle-favorite`, { method: "POST" })
+        )
+      );
+      const unstarredSet = new Set(ids);
+      setAlbumPhotos((prev) => prev.filter((p) => !unstarredSet.has(p.id)));
+      setFavoriteCount((prev) => Math.max(0, prev - ids.length));
+      setSelectedAlbumPhotoIds(new Set());
+      showToast(`Removed ${ids.length} photo(s) from Favorites`, "info");
+    } catch (err) {
+      console.error("Failed to unfavorite photos:", err);
+      showToast("Failed to remove some photos from Favorites", "warning");
+    }
+  };
+
+  // Direct batch move to trash
+  const handleBatchMoveToTrash = async () => {
+    if (selectedAlbumPhotoIds.size === 0 || isRemovalProcessing) return;
+    const ids = Array.from(selectedAlbumPhotoIds);
+    setIsRemovalProcessing(true);
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/photos/batch-trash", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo_ids: ids }),
+      });
+      if (res.ok) {
+        const removedSet = new Set(ids);
+        setAlbumPhotos((prev) => prev.filter((p) => !removedSet.has(p.id)));
+        setSelectedAlbumPhotoIds(new Set());
+        if (activeAlbumId !== -1) {
+          setActiveAlbumMeta((prev) =>
+            prev ? { ...prev, photo_count: Math.max(0, (prev.photo_count || ids.length) - ids.length) } : null
+          );
+          setAlbums((prev) =>
+            prev.map((a) =>
+              a.id === activeAlbumId
+                ? { ...a, photo_count: Math.max(0, (a.photo_count || ids.length) - ids.length) }
+                : a
+            )
+          );
+        } else {
+          setFavoriteCount((prev) => Math.max(0, prev - ids.length));
+        }
+        showToast(`Moved ${ids.length} photo(s) to Trash (held for 30 days)`, "info");
+      }
+    } catch (err) {
+      console.error("Failed to move photo(s) to trash:", err);
+    } finally {
+      setIsRemovalProcessing(false);
+    }
+  };
 
   useEffect(() => {
     loadAlbums();
@@ -634,6 +755,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fill, minmax(185px, 1fr))",
                 gap: "10px",
+                paddingBottom: "88px",
               }}
             >
               {albumPhotos.map((photo, idx) => {
@@ -989,71 +1111,294 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
           </div>
         )}
 
-        {/* Floating Batch Selection Bar for Album */}
-        {selectedAlbumPhotoIds.size > 0 && (
-          <div
+        {/* Floating Jira-Style Bottom Batch Action Dock for Album */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: "24px",
+            left: "50%",
+            transform: `translateX(-50%) ${selectedAlbumPhotoIds.size > 0 ? "translateY(0)" : "translateY(80px)"}`,
+            opacity: selectedAlbumPhotoIds.size > 0 ? 1 : 0,
+            pointerEvents: selectedAlbumPhotoIds.size > 0 ? "auto" : "none",
+            transition: "transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease",
+            zIndex: 40,
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "8px 16px",
+            backgroundColor: "var(--glass-surface)",
+            backdropFilter: "blur(24px)",
+            WebkitBackdropFilter: "blur(24px)",
+            border: "1px solid var(--glass-border)",
+            borderRadius: "var(--radius-full)",
+            boxShadow: "0 16px 40px rgba(0, 0, 0, 0.45), 0 0 1px rgba(255, 255, 255, 0.2)",
+            maxWidth: "calc(100% - 48px)",
+            overflowX: "auto",
+          }}
+        >
+          {/* Selection Count Capsule */}
+          <span
             style={{
-              position: "absolute",
-              bottom: "24px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              display: "flex",
+              display: "inline-flex",
               alignItems: "center",
-              gap: "12px",
-              padding: "10px 18px",
-              borderRadius: "var(--radius-full, 9999px)",
-              backgroundColor: "rgba(20, 24, 38, 0.92)",
-              border: "1px solid var(--border-subtle)",
-              backdropFilter: "blur(16px)",
-              boxShadow: "0 16px 36px rgba(0,0,0,0.75)",
-              zIndex: 100,
+              gap: "6px",
+              padding: "4px 12px",
+              borderRadius: "var(--radius-full)",
+              fontSize: "12px",
+              fontWeight: 700,
+              backgroundColor: "rgba(59, 130, 246, 0.15)",
+              color: "var(--accent-primary)",
+              border: "1px solid rgba(59, 130, 246, 0.3)",
+              fontFamily: "var(--font-mono)",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
             }}
           >
-            <span style={{ fontSize: "12px", fontWeight: 600, color: "#ffffff", paddingRight: "4px" }}>
-              {selectedAlbumPhotoIds.size} {selectedAlbumPhotoIds.size === 1 ? "Photo" : "Photos"} Selected
-            </span>
+            <CheckSquare size={13} />
+            {selectedAlbumPhotoIds.size} selected
+          </span>
 
+          {/* Select All / Deselect All Toggle */}
+          <button
+            onClick={() => {
+              if (selectedAlbumPhotoIds.size === albumPhotos.length) {
+                setSelectedAlbumPhotoIds(new Set());
+              } else {
+                setSelectedAlbumPhotoIds(new Set(albumPhotos.map((p) => p.id)));
+              }
+            }}
+            className="clickable"
+            title={selectedAlbumPhotoIds.size === albumPhotos.length ? "Deselect all items" : "Select all items in current album"}
+            style={{
+              padding: "5px 12px",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "var(--glass-pill-bg)",
+              border: "1px solid var(--glass-pill-border)",
+              color: "var(--text-secondary)",
+              fontSize: "11px",
+              fontWeight: 600,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            {selectedAlbumPhotoIds.size === albumPhotos.length ? "Deselect All" : "Select All"}
+          </button>
+
+          {/* Subtle Vertical Glass Divider */}
+          <div style={{ width: "1px", height: "20px", backgroundColor: "var(--glass-border)", margin: "0 2px", flexShrink: 0 }} />
+
+          {/* Remove from Album / Remove from Favorites */}
+          {activeAlbumId !== -1 ? (
             <button
               onClick={() => {
                 if (selectedAlbumPhotoIds.size === 0) return;
                 setRemovalModalTarget({ photoIds: Array.from(selectedAlbumPhotoIds) });
               }}
               className="clickable"
+              title="Remove selected items from this album"
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",
                 padding: "6px 14px",
-                borderRadius: "var(--radius-full, 9999px)",
-                backgroundColor: "var(--accent-danger, #ef4444)",
-                border: "none",
-                color: "#ffffff",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "rgba(239, 68, 68, 0.15)",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+                color: "var(--accent-danger, #ef4444)",
                 fontSize: "12px",
                 fontWeight: 600,
+                whiteSpace: "nowrap",
+                flexShrink: 0,
                 cursor: "pointer",
               }}
             >
               <Trash2 size={13} />
-              Remove from Album
+              <span>Remove from Album</span>
             </button>
-
+          ) : (
             <button
-              onClick={() => setSelectedAlbumPhotoIds(new Set())}
+              onClick={handleBatchRemoveFromFavorites}
               className="clickable"
+              title="Remove selected items from Favorites"
               style={{
-                padding: "6px 12px",
-                borderRadius: "var(--radius-full, 9999px)",
-                backgroundColor: "rgba(255,255,255,0.08)",
-                border: "1px solid rgba(255,255,255,0.15)",
-                color: "var(--text-secondary)",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "6px 14px",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "rgba(239, 68, 68, 0.15)",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+                color: "var(--accent-danger, #ef4444)",
                 fontSize: "12px",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                flexShrink: 0,
                 cursor: "pointer",
               }}
             >
-              Clear
+              <HeartOff size={13} />
+              <span>Remove from Favorites</span>
             </button>
-          </div>
-        )}
+          )}
+
+          {/* Create Collage (Photos only, 2 to 9 items) */}
+          {canCreateCollage && (
+            <button
+              onClick={() => setIsCollageModalOpen(true)}
+              className="clickable"
+              title="Create 4K Collage (2-9 photos)"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "6px 14px",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "var(--glass-pill-bg)",
+                border: "1px solid var(--glass-pill-border)",
+                color: "var(--text-primary)",
+                fontSize: "12px",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+                cursor: "pointer",
+              }}
+            >
+              <LayoutGrid size={14} />
+              <span>Create Collage ({selectedAlbumPhotoIds.size})</span>
+            </button>
+          )}
+
+          {/* Download Selected */}
+          <button
+            onClick={handleBatchDownload}
+            className="clickable"
+            title="Download selected items to Downloads folder"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "6px 14px",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "var(--glass-pill-bg)",
+              border: "1px solid var(--glass-pill-border)",
+              color: "var(--text-primary)",
+              fontSize: "12px",
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+              cursor: "pointer",
+            }}
+          >
+            <Download size={14} />
+            <span>Download</span>
+          </button>
+
+          {/* Add to Album */}
+          <button
+            onClick={() => setIsAddToAlbumModalOpen(true)}
+            className="clickable"
+            title="Add selected items to another album"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "6px 14px",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "var(--glass-pill-bg)",
+              border: "1px solid var(--glass-pill-border)",
+              color: "var(--text-primary)",
+              fontSize: "12px",
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+              cursor: "pointer",
+            }}
+          >
+            <FolderPlus size={14} />
+            <span>Add to Album</span>
+          </button>
+
+          {/* Move to Vault */}
+          {onLockAlbumToVault && (
+            <button
+              onClick={() => {
+                onLockAlbumToVault(activeAlbumId ?? 0);
+                showToast(`Moving ${selectedAlbumPhotoIds.size} item(s) to Vault. Please authenticate.`, "info");
+              }}
+              className="clickable"
+              title="Encrypt and move selected items into Private Zero-Trust Vault"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "6px 14px",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "rgba(139, 92, 246, 0.15)",
+                border: "1px solid rgba(139, 92, 246, 0.35)",
+                color: "var(--accent-vault)",
+                fontSize: "12px",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+                cursor: "pointer",
+              }}
+            >
+              <Lock size={14} />
+              <span>Move to Vault</span>
+            </button>
+          )}
+
+          {/* Move to Trash */}
+          <button
+            onClick={handleBatchMoveToTrash}
+            className="clickable"
+            title="Move selected items to 30-Day Trash"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "6px 14px",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "rgba(239, 68, 68, 0.12)",
+              border: "1px solid rgba(239, 68, 68, 0.25)",
+              color: "var(--accent-danger, #ef4444)",
+              fontSize: "12px",
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+              cursor: "pointer",
+            }}
+          >
+            <Trash2 size={14} />
+            <span>Move to Trash ({selectedAlbumPhotoIds.size})</span>
+          </button>
+
+          {/* Subtle Vertical Glass Divider */}
+          <div style={{ width: "1px", height: "20px", backgroundColor: "var(--glass-border)", margin: "0 2px", flexShrink: 0 }} />
+
+          {/* Dismiss Selection */}
+          <button
+            onClick={() => setSelectedAlbumPhotoIds(new Set())}
+            className="clickable"
+            title="Deselect all (Esc)"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "28px",
+              height: "28px",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "var(--glass-pill-bg)",
+              border: "1px solid var(--glass-pill-border)",
+              color: "var(--text-secondary)",
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            <X size={14} />
+          </button>
+        </div>
 
         {/* Full-Screen Cinematic Slideshow Modal */}
         <AlbumSlideshowModal
@@ -1071,6 +1416,33 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
           onRemoveFromAlbumOnly={handleConfirmRemoveFromAlbumOnly}
           onMoveToTrash={handleConfirmMoveToTrash}
           isProcessing={isRemovalProcessing}
+        />
+
+        {/* Add Selected Photos to Album Modal */}
+        <AddToAlbumModal
+          isOpen={isAddToAlbumModalOpen}
+          selectedPhotoIds={Array.from(selectedAlbumPhotoIds)}
+          onClose={() => setIsAddToAlbumModalOpen(false)}
+          onSuccess={(targetAlbumName) => {
+            setIsAddToAlbumModalOpen(false);
+            setSelectedAlbumPhotoIds(new Set());
+            showToast(`Added photos to album "${targetAlbumName}"`, "success");
+            loadAlbums();
+          }}
+        />
+
+        {/* Mosaic Collage Generator Modal */}
+        <CollageModal
+          isOpen={isCollageModalOpen}
+          selectedPhotoIds={Array.from(selectedAlbumPhotoIds)}
+          onClose={() => setIsCollageModalOpen(false)}
+          onSuccess={() => {
+            setIsCollageModalOpen(false);
+            setSelectedAlbumPhotoIds(new Set());
+            if (activeAlbumId !== null && activeAlbumMeta) {
+              openAlbumDetail(activeAlbumId, activeAlbumMeta);
+            }
+          }}
         />
       </div>
     );

@@ -1480,6 +1480,51 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 ### State & Lifecycle Impact
 - React state `selectedPhotoIds`: Selecting items smoothly animates the dock into view; clicking `X`, pressing `Esc`, or completing batch operations (Trash, Vault, Album) immediately resets selection and slides the dock out of view.
 
+---
+
+## 33. Unified Jira-Style Batch Action Dock across Albums & Detail Views
+
+### Functionality Overview
+- **Design Parity with Primary Library Dock**:
+  - Replaced the legacy, hardcoded dark floating pill (`rgba(20, 24, 38, 0.92)`) in `AlbumsView.tsx` with the standardized Section 4 liquid-glass floating action dock.
+  - Pinned at bottom center (`position: absolute, bottom: 24px, left: 50%, transform: translateX(-50%)`, `zIndex: 40`).
+  - Features smooth micro-animation: slides up (`translateY(0)`, `opacity: 1`) when items are selected and glides down (`translateY(80px)`, `opacity: 0`, `pointerEvents: none`) when selection is cleared.
+- **Context-Aware Album Operations**:
+  - **Remove from Album vs. Remove from Favorites**:
+    - When inside a user album (`activeAlbumId !== -1`), renders `"Remove from Album"`, which opens the in-album choice modal allowing users to either remove from the album only or move directly to trash.
+    - When inside the smart Favorites album (`activeAlbumId === -1`), dynamically displays `"Remove from Favorites"` with `HeartOff` icon, unstarring selected photos via `/api/photos/{id}/toggle-favorite`.
+  - **Create Collage**: Dynamically appears when 2–9 photos are selected without videos (`canCreateCollage`), opening the integrated `CollageModal`.
+  - **Batch Download**: Directly triggers staggered browser downloads to the user's Downloads folder.
+  - **Add to Album**: Integrates `AddToAlbumModal`, allowing the user to copy or cross-organize the selected photos into another album.
+  - **Move to Vault**: Provides zero-trust encryption into the Private Vault with authentication trigger.
+  - **Move to Trash**: Direct action routing selected photos to 30-day soft-delete trash (`/api/photos/batch-trash`).
+  - **Dismiss Button & Keyboard Shortcut**: Close `✕` button and global `Escape` key listener instantly clear the selection and collapse the dock.
+- **Scroll Clearance**:
+  - Added `paddingBottom: "88px"` to the album photo grid container, guaranteeing that photos in the bottom row remain 100% visible and accessible when the floating dock is active.
+
+### Functional Decision Points & Rationale
+- **Universal Design Language Across Library & Albums**:
+  - *Decision*: Standardized all multi-selection toolbars across the application on the Jira/Linear floating bottom action dock.
+  - *Rationale*: Eliminates fragmented UX where the library had a sleek frosted liquid-glass action island while albums used a dark retro pill. Every view in SecurePhotos now adheres to identical visual tokens (`var(--glass-surface)`, `var(--glass-border)`, `var(--glass-shadow)`).
+- **Context-Aware Favorite Handling**:
+  - *Decision*: Differentiate Favorites from standard albums.
+  - *Rationale*: Favorites is a virtual/smart collection defined by `is_favorite = 1`, not an entry in `album_photos`. Attempting to call the album removal endpoint on `-1` would fail. Providing dedicated batch unstarring ensures seamless user experience.
+
+### Technical Touchpoints
+- `src/components/AlbumsView.tsx`:
+  - Added imports for `CheckSquare`, `Download`, `LayoutGrid`, `FolderPlus`, `HeartOff`, `CollageModal`, and `AddToAlbumModal`.
+  - Added local state for `isCollageModalOpen` and `isAddToAlbumModalOpen`.
+  - Added memoized selectors `selectedPhotosList`, `hasVideoSelected`, and `canCreateCollage`.
+  - Added `Escape` key shortcut listener.
+  - Implemented `handleBatchDownload`, `handleBatchRemoveFromFavorites`, and `handleBatchMoveToTrash`.
+  - Replaced legacy selection pill with the Section 4 liquid-glass floating dock.
+  - Added `paddingBottom: "88px"` to the album photo grid container.
+
+### State & Lifecycle Impact
+- React state `selectedAlbumPhotoIds`: Clearing selection, pressing `Esc`, or completing batch operations automatically collapses the dock with zero layout shifts.
+- Full verification: TypeScript 0 errors, Vite production build succeeded, and all backend tests passing.
+
+
 
 
 
