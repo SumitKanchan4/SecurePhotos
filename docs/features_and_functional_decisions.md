@@ -1336,7 +1336,22 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 ### State & Lifecycle Impact
 - Zero schema migration needed (`duplicate_groups` table was pre-declared in `engine/database.py`).
 - Soft-deletions update SQLite in WAL mode; existing FTS5 and timeline queries automatically exclude trashed items (`trashed_at IS NULL`).
-- Automated verification: 58/58 backend tests passed; TypeScript type check 0 errors; Vite bundle built cleanly in 4.97s.
+- **Layout & Typography Resilience**: Added `flexShrink: 0`, `flex: "0 0 auto"`, and `minHeight: "76px"` to the Duplicates banner and Bento rows, preventing vertical browser compression. Added `gap: 10px`, `minWidth: 0`, and concise subtitles (`Solar EXIF`, `Hardware EXIF`, `Timeline EXIF`) across insight cards, eliminating text collisions.
+- **Human Subject & Facial Clarity Recommendation Engine**:
+  - `duplicate_service.py` evaluates detected face telemetry from `faces` and `persons` tables in a single batch query (`ix_faces_photo_id`).
+  - Face base clarity: `quality_score * 1000.0` pts.
+  - VIP close-one multiplier: `+300.0 * quality_score` for family members (`is_close_one = 1`, e.g. Inaaksh, Kiaan).
+  - Face prominence: `(box_w * box_h) * 500.0` pts.
+  - File size de-emphasized to a pure tie-breaker (`0.01` pts/MB), ensuring 0.1MB compression noise cannot override portrait clarity.
+  - Dynamic explainable rationale: e.g. `Front Portrait (Inaaksh: 0.97) • Clear Expression • 3000x4000`.
+- **Multi-Keep, "Keep Both", and Persistent Dismissal Ledger**:
+  - Added `duplicate_dismissals (photo_id_1, photo_id_2)` table and composite index `ix_dup_dismissals`.
+  - For 2-photo groups: added "Keep Both" action button.
+  - For 3+ photo groups: added interactive multi-select checkboxes on each photo card with dynamic action buttons (`Keep Selected (M) & Trash (N)` or `Keep All (N)`).
+  - Resolving multiple kept photos writes canonical pairwise tuples `(min(p1, p2), max(p1, p2))` to `duplicate_dismissals`.
+  - Scanner (`scan_and_cluster_duplicates`) explicitly checks `duplicate_dismissals` and excludes dismissed pairs from perceptual and exact clustering, guaranteeing kept photos never reappear as duplicates across library rescans and app restarts.
+- Automated verification: 60/60 backend tests passed (including face-aware scoring and persistent dismissal tests); TypeScript type check 0 errors; Vite bundle built cleanly in 4.61s.
+
 
 
 

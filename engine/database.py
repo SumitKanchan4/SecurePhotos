@@ -276,6 +276,18 @@ CREATE TABLE IF NOT EXISTS duplicate_groups (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ── 19. Duplicate Dismissals Table ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS duplicate_dismissals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    photo_id_1 INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+    photo_id_2 INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(photo_id_1, photo_id_2)
+);
+
+CREATE INDEX IF NOT EXISTS ix_dup_dismissals 
+ON duplicate_dismissals (photo_id_1, photo_id_2);
+
 -- ── Composite Covering Indexes ──────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS ix_photos_active_taken 
 ON photos (is_encrypted, trashed_at, taken_at DESC);

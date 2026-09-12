@@ -194,3 +194,125 @@ async def test_duplicate_scan_and_resolve_api():
             await conn.execute("DELETE FROM photos WHERE id IN (?, ?);", (p1_id, p2_id))
             await conn.commit()
             await conn.close()
+
+
+def test_face_aware_candidate_scoring():
+    """Validates that candidate scoring prioritizes front portraits and close ones over file size noise."""
+    # Side photo: 0.12 MB larger, but lower quality face (0.808)
+    p_side = {
+        "id": 14,
+        "width": 3000,
+        "height": 4000,
+        "is_favorite": False,
+        "is_enhanced": False,
+        "blur_score": 30.0,
+        "quality_score": 0.0,
+        "file_size": 2_169_083,  # 2.17 MB
+    }
+    faces_side = [
+        {"quality_score": 0.8078, "is_close_one": 1, "name": "Inaaksh", "box_w": 0.14, "box_h": 0.15},
+        {"quality_score": 0.5735, "is_close_one": 1, "name": "Kiaan", "box_w": 0.05, "box_h": 0.06},
+    ]
+
+    # Front portrait: slightly smaller file (2.05 MB), but crisp front face (0.969)
+    p_front = {
+        "id": 15,
+        "width": 3000,
+        "height": 4000,
+        "is_favorite": False,
+        "is_enhanced": False,
+        "blur_score": 30.0,
+        "quality_score": 0.0,
+        "file_size": 2_047_456,  # 2.05 MB
+    }
+    faces_front = [
+        {"quality_score": 0.9690, "is_close_one": 1, "name": "Inaaksh", "box_w": 0.16, "box_h": 0.17},
+        {"quality_score": 0.6441, "is_close_one": 1, "name": "Kiaan", "box_w": 0.06, "box_h": 0.06},
+    ]
+
+    score_side, reason_side = score_candidate_photo(p_side, faces_side)
+    score_front, reason_front = score_candidate_photo(p_front, faces_front)
+
+    # Front portrait MUST decisively beat the side profile despite smaller file size
+    assert score_front > score_side
+    assert score_front - score_side > 200.0  # Decisive margin (+300+ pts)
+    assert "Front Portrait (Inaaksh: 0.97)" in reason_front
+
+
+@pytest.mark.asyncio
+async def test_keep_both_and_persistent_dismissal():
+    """Validates that 'Keep Both' records persistent dismissals and prevents duplicate re-clustering."""
+    await run_migrations()
+    conn = await get_db_connection()
+
+    p1_id = None
+    p2_id = None
+    try:
+        # Insert two photos with same phash to trigger near-duplicate clustering
+        shared_phash = "a1b2c3d4e5f60718"
+        cur1 = await conn.execute(
+            """
+            INSERT INTO photos (filename, filepath, phash, file_size, mime_type, width, height)
+            VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id;
+            """,
+            ("burst_1.jpg", "test/path/burst_1.jpg", shared_phash, 300000, "image/jpeg", 1920, 1080),
+        )
+        p1_id = (await cur1.fetchone())[0]
+
+        cur2 = await conn.execute(
+            """
+            INSERT INTO photos (filename, filepath, phash, file_size, mime_type, width, height)
+            VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id;
+            """,
+            ("burst_2.jpg", "test/path/burst_2.jpg", shared_phash, 300000, "image/jpeg", 1920, 1080),
+        )
+        p2_id = (await cur2.fetchone())[0]
+        await conn.commit()
+
+        # Step 1: Scan and verify they form a cluster
+        groups = await scan_and_cluster_duplicates(conn)
+        test_group = next((g for g in groups if p1_id in [m["id"] for m in g["photos"]]), None)
+        assert test_group is not None
+        assert len(test_group["photos"]) == 2
+
+        # Step 2: Resolve with keep_photo_ids=[p1_id, p2_id] ("Keep Both")
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            res = await client.post(
+                "/api/duplicates/resolve",
+                json={"group_id": test_group["group_id"], "keep_photo_ids": [p1_id, p2_id]},
+            )
+            assert res.status_code == 200
+            data = res.json()
+            assert data["trashed_count"] == 0
+            assert len(data["kept_photo_ids"]) == 2
+
+        # Step 3: Verify dismissal recorded in DB and both photos remain active
+        pair_min, pair_max = min(p1_id, p2_id), max(p1_id, p2_id)
+        async with conn.execute(
+            "SELECT COUNT(*) FROM duplicate_dismissals WHERE photo_id_1 = ? AND photo_id_2 = ?;",
+            (pair_min, pair_max),
+        ) as cur:
+            assert (await cur.fetchone())[0] == 1
+
+        async with conn.execute("SELECT id, trashed_at FROM photos WHERE id IN (?, ?);", (p1_id, p2_id)) as cur:
+            rows = await cur.fetchall()
+            for r in rows:
+                assert r["trashed_at"] is None
+
+        # Step 4: Re-scan library and verify these photos DO NOT appear again as duplicates
+        groups_after = await scan_and_cluster_duplicates(conn)
+        reappeared = any(
+            p1_id in [m["id"] for m in g["photos"]] and p2_id in [m["id"] for m in g["photos"]]
+            for g in groups_after
+        )
+        assert not reappeared, "Dismissed pair must not reappear as duplicates in subsequent scans"
+
+    finally:
+        if p1_id and p2_id:
+            await conn.execute("DELETE FROM duplicate_dismissals WHERE photo_id_1 IN (?, ?) OR photo_id_2 IN (?, ?);", (p1_id, p2_id, p1_id, p2_id))
+            await conn.execute("DELETE FROM duplicate_groups WHERE photo_id IN (?, ?);", (p1_id, p2_id))
+            await conn.execute("DELETE FROM photos WHERE id IN (?, ?);", (p1_id, p2_id))
+            await conn.commit()
+        await conn.close()
+

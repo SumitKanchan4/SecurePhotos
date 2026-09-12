@@ -200,10 +200,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
           border: "1px solid var(--glass-border)",
           borderRadius: "var(--radius-lg)",
           boxShadow: "var(--glass-shadow)",
+          flexShrink: 0,
         }}
       >
         {/* Left Column (flex: 1) */}
-        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "10px" }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "8px" }}>
           <span 
             style={{
               display: "inline-flex",
@@ -251,23 +252,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
               fontFamily: "Plus Jakarta Sans, sans-serif"
             }}
           >
-            Library Dashboard
+            Dashboard
           </h1>
           <span 
             style={{
               display: "inline-flex",
               alignItems: "center",
-              padding: "2px 8px",
-              borderRadius: "var(--radius-full)",
+              gap: "4px",
               fontSize: "11px",
               fontWeight: 700,
-              backgroundColor: "var(--glass-badge-bg)",
+              padding: "3px 10px",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "var(--glass-pill-bg)",
+              border: "1px solid var(--glass-border)",
               color: "var(--text-secondary)",
-              border: "1px solid var(--glass-badge-border)",
               fontFamily: "var(--font-mono)",
             }}
           >
-            {formatBytes(totalDrive)} Volume
+            {stats?.media_counts.total_media.toLocaleString() || 0} Media Items
           </span>
         </div>
 
@@ -311,7 +313,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
             backgroundColor: "rgba(239, 68, 68, 0.1)", 
             border: "1px solid rgba(239, 68, 68, 0.25)",
             color: "var(--accent-danger)",
-            fontSize: "12px"
+            fontSize: "12px",
+            flexShrink: 0,
           }}
         >
           {error}
@@ -325,6 +328,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
           gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", 
           gap: "16px",
           alignItems: "stretch",
+          flexShrink: 0,
         }}
       >
         {/* Bento Tile A: Storage Allocation & Drive HUD */}
@@ -630,17 +634,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: "14px",
-          position: "relative",
-          overflow: "hidden",
+          gap: "16px",
+          flex: "0 0 auto",
+          flexShrink: 0,
+          minHeight: "76px",
+          boxSizing: "border-box",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0, flex: 1 }}>
           <div
             style={{
-              width: "42px",
-              height: "42px",
+              width: "44px",
+              height: "44px",
               borderRadius: "var(--radius-md)",
               backgroundColor: dupSummary && dupSummary.total_groups > 0 
                 ? "rgba(239, 68, 68, 0.12)" 
@@ -660,9 +665,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
             <Copy size={20} />
           </div>
 
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "14px", fontWeight: 700 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "14px", fontWeight: 700, whiteSpace: "nowrap" }}>
                 Duplicates & Clutter Reclaimer
               </span>
               {dupSummary && dupSummary.total_groups > 0 ? (
@@ -676,6 +681,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                     color: "#ef4444",
                     border: "1px solid rgba(239, 68, 68, 0.25)",
                     fontFamily: "var(--font-mono)",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   {dupSummary.total_groups} Groups ({formatBytes(dupSummary.reclaimable_bytes)} Reclaimable)
@@ -690,6 +696,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                     backgroundColor: "rgba(16, 185, 129, 0.12)",
                     color: "var(--accent-success)",
                     border: "1px solid rgba(16, 185, 129, 0.25)",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   ✓ Optimized & Clean
@@ -697,10 +704,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
               )}
             </div>
 
-            <p style={{ margin: "3px 0 0 0", fontSize: "12px", color: "var(--text-secondary)" }}>
+            <p style={{ margin: "3px 0 0 0", fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.4 }}>
               {dupSummary && dupSummary.total_groups > 0
-                ? `Compare duplicate & burst shots side-by-side, inspect in full Lightbox, and safely reclaim storage.`
-                : `No duplicate or redundant burst photos detected in your active media library.`}
+                ? "Compare duplicate & burst shots side-by-side, inspect in full Lightbox, and safely reclaim storage."
+                : "No duplicate or redundant burst photos detected in your active media library."}
             </p>
           </div>
         </div>
@@ -712,7 +719,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
             display: "flex",
             alignItems: "center",
             gap: "8px",
-            padding: "8px 18px",
+            padding: "9px 20px",
             borderRadius: "var(--radius-full)",
             backgroundColor: dupSummary && dupSummary.total_groups > 0 ? "var(--accent-primary)" : "var(--glass-pill-bg)",
             border: `1px solid ${dupSummary && dupSummary.total_groups > 0 ? "transparent" : "var(--glass-border)"}`,
@@ -723,6 +730,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
             boxShadow: dupSummary && dupSummary.total_groups > 0 ? "0 2px 10px var(--accent-glow)" : "none",
             transition: "all 0.15s ease",
             whiteSpace: "nowrap",
+            flexShrink: 0,
           }}
         >
           <span>{dupSummary && dupSummary.total_groups > 0 ? "Review & Reclaim Space" : "View Duplicates Space"}</span>
@@ -731,7 +739,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
       </div>
 
       {/* ── BENTO GRID ROW 2: High-Density Library Media Catalog Strip ── */}
-      <div>
+      <div style={{ flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
           <h2 style={{ fontSize: "14px", fontWeight: 700, margin: 0 }}>
             Library Media Catalog
@@ -997,7 +1005,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
       </div>
 
       {/* ── BENTO GRID ROW 3: Photographic Intelligence & Memory Velocity ─ */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <h2 style={{ fontSize: "15px", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
             <Flame size={16} style={{ color: "var(--accent-vault)" }} />
@@ -1145,12 +1153,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
             }}
           >
             <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <Sunset size={16} style={{ color: "#f59e0b" }} />
-                  <span style={{ fontSize: "13px", fontWeight: 700 }}>Lighting & Time of Day</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", marginBottom: "12px", minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                  <Sunset size={16} style={{ color: "#f59e0b", flexShrink: 0 }} />
+                  <span style={{ fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap" }}>Lighting & Time of Day</span>
                 </div>
-                <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>Exif Timestamp Analytics</span>
+                <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>Solar EXIF</span>
               </div>
 
               {insights && insights.time_of_day_distribution.length > 0 ? (
@@ -1220,12 +1228,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
             }}
           >
             <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <Camera size={16} style={{ color: "var(--accent-primary)" }} />
-                  <span style={{ fontSize: "13px", fontWeight: 700 }}>Optics & Gear Profile</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", marginBottom: "12px", minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                  <Camera size={16} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
+                  <span style={{ fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap" }}>Optics & Gear Profile</span>
                 </div>
-                <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>Hardware EXIF</span>
+                <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>Hardware EXIF</span>
               </div>
 
               {insights && insights.camera_breakdown.length > 0 ? (
@@ -1291,12 +1299,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
             }}
           >
             <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <Calendar size={16} style={{ color: "var(--accent-success)" }} />
-                  <span style={{ fontSize: "13px", fontWeight: 700 }}>Archive Span & Velocity</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", marginBottom: "12px", minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                  <Calendar size={16} style={{ color: "var(--accent-success)", flexShrink: 0 }} />
+                  <span style={{ fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap" }}>Archive Span & Velocity</span>
                 </div>
-                <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>Through the Years</span>
+                <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap", flexShrink: 0 }}>Through the Years</span>
               </div>
 
               {insights && insights.top_years.length > 0 ? (

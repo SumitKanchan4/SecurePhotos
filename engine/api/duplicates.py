@@ -63,7 +63,8 @@ class DuplicateSummaryResponse(BaseModel):
 class ResolveGroupRequest(BaseModel):
     """Payload to resolve a single duplicate group."""
     group_id: str
-    keep_photo_id: int
+    keep_photo_id: Optional[int] = None
+    keep_photo_ids: Optional[List[int]] = None
 
 
 class ResolveResponse(BaseModel):
@@ -71,6 +72,7 @@ class ResolveResponse(BaseModel):
     status: str
     group_id: Optional[str] = None
     kept_photo_id: Optional[int] = None
+    kept_photo_ids: Optional[List[int]] = None
     resolved_groups: Optional[int] = None
     trashed_count: int
     reclaimed_bytes: int
@@ -114,13 +116,32 @@ async def rescan_duplicates() -> List[DuplicateGroupResponse]:
 
 @router.post("/resolve", response_model=ResolveResponse, status_code=status.HTTP_200_OK)
 async def resolve_group(payload: ResolveGroupRequest) -> ResolveResponse:
-    """Resolves a single duplicate group by keeping one designated photo and trashing the rest."""
+    """Resolves a duplicate group by keeping designated photo(s) and trashing any unselected copies."""
     conn = await get_db_connection()
     try:
+        target_keep_ids: List[int] = []
+        if payload.keep_photo_ids:
+            target_keep_ids.extend(payload.keep_photo_ids)
+        elif payload.keep_photo_id is not None:
+            target_keep_ids.append(payload.keep_photo_id)
+
+        if not target_keep_ids:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Must provide either keep_photo_id or keep_photo_ids to resolve duplicate group.",
+            )
+
         result = await duplicate_service.resolve_duplicate_group(
-            conn, payload.group_id, payload.keep_photo_id
+            conn, payload.group_id, target_keep_ids
         )
-        return ResolveResponse(**result)
+        return ResolveResponse(
+            status=result["status"],
+            group_id=result["group_id"],
+            kept_photo_id=target_keep_ids[0] if len(target_keep_ids) == 1 else None,
+            kept_photo_ids=result.get("kept_photo_ids", target_keep_ids),
+            trashed_count=result["trashed_count"],
+            reclaimed_bytes=result["reclaimed_bytes"],
+        )
     finally:
         await conn.close()
 

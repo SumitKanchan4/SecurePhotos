@@ -6,13 +6,28 @@ evaluates and scores each photo to determine the AI-suggested "Best Pick",
 and safely orchestrates space reclamation via the 30-day soft-delete trash.
 """
 
+import itertools
 import logging
+import struct
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 from PIL import Image
 import aiosqlite
 
 logger = logging.getLogger("securephotos.services.duplicates")
+
+
+def _to_float(val: Any) -> float:
+    """Safely converts numerical or 4-byte packed float to Python float."""
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, (bytes, bytearray)) and len(val) == 4:
+        return float(struct.unpack("<f", val)[0])
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return 0.0
+
 
 
 def compute_image_dhash(image_path: str | Path, hash_size: int = 8) -> Optional[str]:
@@ -76,20 +91,30 @@ def hamming_distance(hash1: str, hash2: str) -> int:
         return 64
 
 
-def score_candidate_photo(photo: Dict[str, Any]) -> Tuple[float, str]:
+def score_candidate_photo(
+    photo: Dict[str, Any],
+    faces: Optional[List[Dict[str, Any]]] = None,
+) -> Tuple[float, str]:
     """Evaluates and scores a candidate photo to recommend the AI 'Best Pick'.
 
-    Scoring factors:
-    - User Favorite: +5000 pts (User intention strongly overrides heuristics)
-    - Super-Resolution Enhanced: +1000 pts
-    - 4K Optimized / Lossless: +250 pts
-    - Resolution (Megapixels): Proportional to width * height (50 pts per MP)
-    - Sharpness / Blur score: High blur_score indicates crisp edge detail
-    - Aesthetic Quality score: Higher SLM aesthetic ranking
-    - File size: Larger files generally retain greater uncompressed sensor detail
+    Scoring hierarchy:
+    1. User Favorite: +5000 pts (Human intention explicitly overrides heuristics)
+    2. Super-Resolution Enhanced: +1000 pts
+    3. 4K Optimized / Lossless: +250 pts
+    4. Human Subject & Facial Clarity:
+       - Detected face quality: quality_score * 1000.0 pts
+       - VIP Close-One multiplier: +300.0 * quality_score for family / close ones
+       - Named person multiplier: +150.0 * quality_score
+       - Face prominence: (box_w * box_h) * 500.0 pts
+    5. Image Resolution: 50.0 pts per Megapixel
+    6. Overall Sharpness: blur_score * 0.5 (capped at 50 pts)
+    7. SLM Aesthetic Quality: quality_score * 10.0 pts
+    8. File Size: Pure tie-breaker (0.01 pts per MB) to prevent compression noise
+       from overriding facial quality or frontality.
 
     Args:
         photo: Dictionary containing photo attributes.
+        faces: Optional list of detected faces associated with this photo.
 
     Returns:
         A tuple of (computed_score, human_readable_reason).
@@ -110,7 +135,49 @@ def score_candidate_photo(photo: Dict[str, Any]) -> Tuple[float, str]:
         score += 250.0
         reasons.append("Optimized")
 
-    # 3. Image Resolution (50 pts per MP)
+    # 3. Human Subject & Facial Clarity (Dominates technical compression metrics)
+    if faces:
+        total_face_score = 0.0
+        best_face_name = ""
+        best_face_clarity = 0.0
+        close_one_names: List[str] = []
+
+        for f in faces:
+            q = _to_float(f.get("quality_score") or 0.0)
+            is_close = bool(f.get("is_close_one"))
+            name = f.get("name")
+            bw = _to_float(f.get("box_w"))
+            bh = _to_float(f.get("box_h"))
+            face_area = max(0.0, min(1.0, bw * bh))
+
+            face_pts = q * 1000.0
+            if is_close:
+                face_pts += 300.0 * q
+                if name and name not in close_one_names:
+                    close_one_names.append(name)
+            if name:
+                face_pts += 150.0 * q
+            face_pts += face_area * 500.0
+
+            total_face_score += face_pts
+
+            if q > best_face_clarity:
+                best_face_clarity = q
+                if name:
+                    best_face_name = name
+
+        score += total_face_score
+
+        if best_face_name and best_face_clarity >= 0.70:
+            reasons.append(f"Front Portrait ({best_face_name}: {round(best_face_clarity, 2)})")
+        elif close_one_names:
+            reasons.append(f"Clear Subject ({', '.join(close_one_names)})")
+        elif best_face_clarity >= 0.85:
+            reasons.append(f"High Face Clarity ({round(best_face_clarity, 2)})")
+        elif len(faces) > 0:
+            reasons.append(f"Detected Faces ({len(faces)})")
+
+    # 4. Image Resolution (50 pts per MP)
     width = photo.get("width") or 0
     height = photo.get("height") or 0
     pixels = width * height
@@ -122,25 +189,62 @@ def score_candidate_photo(photo: Dict[str, Any]) -> Tuple[float, str]:
         else:
             reasons.append(f"{width}x{height}")
 
-    # 4. Sharpness / Blur score
+    # 5. Sharpness / Blur score
     blur = photo.get("blur_score") or 0.0
     if blur > 0:
-        score += blur * 2.0
+        score += min(50.0, blur * 0.5)
         if blur > 50.0:
             reasons.append("High Sharpness")
 
-    # 5. SLM Quality score
+    # 6. SLM Quality score
     quality = photo.get("quality_score") or 0.0
     if quality > 0:
         score += quality * 10.0
 
-    # 6. File size detail
+    # 7. File size (pure tie-breaker, never outweighs facial clarity or resolution)
     size = photo.get("file_size") or 0
     if size > 0:
-        score += (size / 1_000_000.0) * 10.0
+        score += (size / 1_000_000.0) * 0.01
 
     reason_str = " • ".join(reasons) if reasons else "Best Available Resolution"
     return score, reason_str
+
+
+async def fetch_faces_for_photos(
+    conn: aiosqlite.Connection,
+    photo_ids: List[int],
+) -> Dict[int, List[Dict[str, Any]]]:
+    """Fetches all face detections and associated person metadata for a list of photo IDs in a single batch query.
+
+    Args:
+        conn: Open aiosqlite database connection.
+        photo_ids: List of photo IDs to query.
+
+    Returns:
+        Dictionary mapping photo_id to list of face records.
+    """
+    if not photo_ids:
+        return {}
+
+    faces_by_photo: Dict[int, List[Dict[str, Any]]] = {}
+    conn.row_factory = aiosqlite.Row
+    placeholders = ",".join("?" for _ in photo_ids)
+    query = f"""
+        SELECT 
+            f.id, f.photo_id, f.person_id, p.name, p.is_close_one, p.relationship_type,
+            f.quality_score, f.box_x, f.box_y, f.box_w, f.box_h
+        FROM faces f
+        LEFT JOIN persons p ON f.person_id = p.id
+        WHERE f.photo_id IN ({placeholders})
+        ORDER BY f.photo_id ASC, f.quality_score DESC;
+    """
+    async with conn.execute(query, photo_ids) as cursor:
+        rows = await cursor.fetchall()
+        for r in rows:
+            faces_by_photo.setdefault(r["photo_id"], []).append(dict(r))
+
+    return faces_by_photo
+
 
 
 class UnionFind:
@@ -199,6 +303,14 @@ async def scan_and_cluster_duplicates(conn: aiosqlite.Connection) -> List[Dict[s
         await conn.commit()
         return []
 
+    # ── 0. Load Persistent Duplicate Dismissals ──────────────────────────────
+    dismissed_pairs: Set[Tuple[int, int]] = set()
+    async with conn.execute("SELECT photo_id_1, photo_id_2 FROM duplicate_dismissals;") as cur:
+        drows = await cur.fetchall()
+        for dr in drows:
+            p1, p2 = int(dr[0]), int(dr[1])
+            dismissed_pairs.add((min(p1, p2), max(p1, p2)))
+
     # ── 1. Exact Duplicate Clustering (by file_hash) ─────────────────────────
     hash_groups: Dict[str, List[Dict[str, Any]]] = {}
     for p in photos:
@@ -211,15 +323,30 @@ async def scan_and_cluster_duplicates(conn: aiosqlite.Connection) -> List[Dict[s
 
     for fhash, members in hash_groups.items():
         if len(members) >= 2:
-            group_id = f"exact_{fhash[:12]}"
+            # Respect pairwise dismissals within exact hash matches
+            exact_uf = UnionFind()
+            for i in range(len(members)):
+                for j in range(i + 1, len(members)):
+                    pk = (min(members[i]["id"], members[j]["id"]), max(members[i]["id"], members[j]["id"]))
+                    if pk not in dismissed_pairs:
+                        exact_uf.union(members[i]["id"], members[j]["id"])
+
+            subgroups: Dict[int, List[Dict[str, Any]]] = {}
             for m in members:
-                grouped_photo_ids.add(m["id"])
-            clusters.append({
-                "group_id": group_id,
-                "match_type": "exact",
-                "distance": 0,
-                "members": members,
-            })
+                root = exact_uf.find(m["id"])
+                subgroups.setdefault(root, []).append(m)
+
+            for root, sub_members in subgroups.items():
+                if len(sub_members) >= 2:
+                    group_id = f"exact_{fhash[:8]}_{root}"
+                    for m in sub_members:
+                        grouped_photo_ids.add(m["id"])
+                    clusters.append({
+                        "group_id": group_id,
+                        "match_type": "exact",
+                        "distance": 0,
+                        "members": sub_members,
+                    })
 
     # ── 2. Perceptual Near-Duplicate Clustering ──────────────────────────────
     remaining_photos = [p for p in photos if p["id"] not in grouped_photo_ids]
@@ -252,11 +379,13 @@ async def scan_and_cluster_duplicates(conn: aiosqlite.Connection) -> List[Dict[s
         h1 = p1["phash"]
         for j in range(i + 1, len(phash_photos)):
             p2 = phash_photos[j]
+            pair_key = (min(p1["id"], p2["id"]), max(p1["id"], p2["id"]))
+            if pair_key in dismissed_pairs:
+                continue
             h2 = p2["phash"]
             dist = hamming_distance(h1, h2)
             if dist <= 8:
                 uf.union(p1["id"], p2["id"])
-                pair_key = (min(p1["id"], p2["id"]), max(p1["id"], p2["id"]))
                 distances[pair_key] = dist
 
     # Group connected components
@@ -287,6 +416,10 @@ async def scan_and_cluster_duplicates(conn: aiosqlite.Connection) -> List[Dict[s
     # ── 3. Evaluate Best Picks, Reclaimable Bytes, and Sync DB ───────────────
     await conn.execute("DELETE FROM duplicate_groups;")
 
+    # Batch fetch faces for all cluster members in a single query
+    all_cluster_photo_ids = [m["id"] for cluster in clusters for m in cluster["members"]]
+    faces_by_photo = await fetch_faces_for_photos(conn, all_cluster_photo_ids)
+
     result_groups: List[Dict[str, Any]] = []
 
     for cluster in clusters:
@@ -301,7 +434,8 @@ async def scan_and_cluster_duplicates(conn: aiosqlite.Connection) -> List[Dict[s
         best_reason = ""
 
         for m in members:
-            score, reason = score_candidate_photo(m)
+            faces = faces_by_photo.get(m["id"], [])
+            score, reason = score_candidate_photo(m, faces)
             if score > best_score:
                 best_score = score
                 best_photo = m
@@ -399,6 +533,10 @@ async def get_duplicate_groups(conn: aiosqlite.Connection) -> List[Dict[str, Any
         }
         grouped[gid]["photos"].append(photo_dict)
 
+    # Batch fetch faces for all member photos
+    all_photo_ids = [r["id"] for r in rows]
+    faces_by_photo = await fetch_faces_for_photos(conn, all_photo_ids)
+
     # Filter out any groups that now have fewer than 2 active photos
     valid_groups = []
     for gid, gdata in grouped.items():
@@ -408,7 +546,8 @@ async def get_duplicate_groups(conn: aiosqlite.Connection) -> List[Dict[str, Any
             best_score = -1.0
             best_reason = ""
             for m in members:
-                score, reason = score_candidate_photo(m)
+                faces = faces_by_photo.get(m["id"], [])
+                score, reason = score_candidate_photo(m, faces)
                 if score > best_score:
                     best_score = score
                     best_photo = m
@@ -454,22 +593,36 @@ async def get_duplicate_summary(conn: aiosqlite.Connection) -> Dict[str, Any]:
 
 
 async def resolve_duplicate_group(
-    conn: aiosqlite.Connection, group_id: str, keep_photo_id: int
+    conn: aiosqlite.Connection,
+    group_id: str,
+    keep_photo_ids: Any,
 ) -> Dict[str, Any]:
-    """Resolves a single duplicate group by keeping one photo and trashing the rest.
+    """Resolves a duplicate group by keeping designated photo(s) and soft-trashing the rest.
 
-    Photos to be removed are marked with trashed_at = CURRENT_TIMESTAMP (soft delete),
-    allowing 30-day recovery in the Trash view.
+    If multiple photos are kept (e.g. 'Keep Both' or multiple selected burst shots),
+    persists pairwise dismissals into `duplicate_dismissals` to guarantee they will
+    never appear together as duplicates in future scans or library operations.
 
     Args:
         conn: Open aiosqlite database connection.
-        group_id: Unique duplicate group identifier.
-        keep_photo_id: ID of the photo user explicitly chooses to retain.
+        group_id: Identifier of the duplicate cluster.
+        keep_photo_ids: Single int photo ID or list of int photo IDs to keep.
 
     Returns:
-        Status dictionary with count of trashed photos and reclaimed bytes.
+        Status dictionary with count of kept, trashed photos and reclaimed bytes.
     """
     conn.row_factory = aiosqlite.Row
+
+    # Normalize keep_photo_ids to list of integers
+    if isinstance(keep_photo_ids, (int, str)):
+        try:
+            keep_ids = [int(keep_photo_ids)]
+        except (ValueError, TypeError):
+            keep_ids = []
+    elif isinstance(keep_photo_ids, (list, tuple, set)):
+        keep_ids = [int(x) for x in keep_photo_ids]
+    else:
+        keep_ids = []
 
     # Find members of this group
     cursor = await conn.execute(
@@ -483,9 +636,10 @@ async def resolve_duplicate_group(
     )
     rows = await cursor.fetchall()
 
-    trash_ids = [r["id"] for r in rows if r["id"] != keep_photo_id]
+    trash_ids = [r["id"] for r in rows if r["id"] not in keep_ids]
     reclaimed_bytes = sum(r["file_size"] for r in rows if r["id"] in trash_ids)
 
+    # 1. Soft-delete unkept photos into 30-day Trash
     if trash_ids:
         placeholders = ",".join("?" for _ in trash_ids)
         await conn.execute(
@@ -493,14 +647,26 @@ async def resolve_duplicate_group(
             trash_ids,
         )
 
-    # Clean up group from duplicate_groups
+    # 2. If 2 or more photos are kept, record persistent dismissals so they never reappear
+    if len(keep_ids) >= 2:
+        for p1, p2 in itertools.combinations(keep_ids, 2):
+            p_min, p_max = min(p1, p2), max(p1, p2)
+            await conn.execute(
+                """
+                INSERT OR IGNORE INTO duplicate_dismissals (photo_id_1, photo_id_2)
+                VALUES (?, ?);
+                """,
+                (p_min, p_max),
+            )
+
+    # 3. Clean up group from duplicate_groups
     await conn.execute("DELETE FROM duplicate_groups WHERE group_id = ?;", (group_id,))
     await conn.commit()
 
     return {
         "status": "ok",
         "group_id": group_id,
-        "kept_photo_id": keep_photo_id,
+        "kept_photo_ids": keep_ids,
         "trashed_count": len(trash_ids),
         "reclaimed_bytes": reclaimed_bytes,
     }

@@ -9,6 +9,7 @@ import {
   ShieldCheck, 
   Camera,
   Check,
+  CheckCheck,
   HardDrive,
   Info
 } from "lucide-react";
@@ -53,6 +54,35 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
   const [resolvingGroupId, setResolvingGroupId] = useState<string | null>(null);
   const [isResolvingAll, setIsResolvingAll] = useState<boolean>(false);
   const [notification, setNotification] = useState<string | null>(null);
+  const [selectedPhotosByGroup, setSelectedPhotosByGroup] = useState<Record<string, number[]>>({});
+
+  // Synchronize selection state whenever groups change (defaults to AI suggested best)
+  useEffect(() => {
+    setSelectedPhotosByGroup((prev) => {
+      const next: Record<string, number[]> = { ...prev };
+      groups.forEach((g) => {
+        if (!next[g.group_id] || next[g.group_id].length === 0) {
+          next[g.group_id] = [g.suggested_best_photo_id];
+        }
+      });
+      return next;
+    });
+  }, [groups]);
+
+  // Toggle selection of a photo within a group
+  const togglePhotoSelection = (groupId: string, photoId: number) => {
+    setSelectedPhotosByGroup((prev) => {
+      const current = prev[groupId] || [];
+      const exists = current.includes(photoId);
+      if (exists) {
+        // Retain at least 1 selected photo to keep
+        if (current.length === 1) return prev;
+        return { ...prev, [groupId]: current.filter((id) => id !== photoId) };
+      } else {
+        return { ...prev, [groupId]: [...current, photoId] };
+      }
+    });
+  };
 
   // Load duplicate groups and summary
   const fetchDuplicates = useCallback(async () => {
@@ -104,32 +134,42 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
     }
   };
 
-  // Resolve a single duplicate group
-  const handleResolveGroup = async (groupId: string, keepPhotoId: number) => {
+  // Resolve a single duplicate group with designated photo(s) to keep
+  const handleResolveGroup = async (groupId: string, keepPhotoIds: number | number[]) => {
     setResolvingGroupId(groupId);
+    const targetIds = Array.isArray(keepPhotoIds) ? keepPhotoIds : [keepPhotoIds];
     try {
       const res = await fetch(`${API_BASE}/duplicates/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ group_id: groupId, keep_photo_id: keepPhotoId }),
+        body: JSON.stringify({ group_id: groupId, keep_photo_ids: targetIds }),
       });
 
       if (res.ok) {
         const data = await res.json();
         // Remove group from UI state
         setGroups((prev) => prev.filter((g) => g.group_id !== groupId));
-        // Update summary
+        // Update summary telemetry
         setSummary((prev) => {
           if (!prev) return null;
           return {
             total_groups: Math.max(0, prev.total_groups - 1),
-            total_duplicate_photos: Math.max(0, prev.total_duplicate_photos - data.trashed_count),
-            reclaimable_bytes: Math.max(0, prev.reclaimable_bytes - data.reclaimed_bytes),
+            total_duplicate_photos: Math.max(0, prev.total_duplicate_photos - (data.trashed_count || 0)),
+            reclaimable_bytes: Math.max(0, prev.reclaimable_bytes - (data.reclaimed_bytes || 0)),
           };
         });
-        setNotification(
-          `Moved ${data.trashed_count} redundant copy to Trash (${formatBytes(data.reclaimed_bytes)} reclaimed).`
-        );
+
+        if (targetIds.length > 1 && data.trashed_count === 0) {
+          setNotification(`Kept all ${targetIds.length} photos. Registered as non-duplicate permanently.`);
+        } else if (targetIds.length > 1) {
+          setNotification(
+            `Kept ${targetIds.length} selected photos, moved ${data.trashed_count} to Trash (${formatBytes(data.reclaimed_bytes)} reclaimed).`
+          );
+        } else {
+          setNotification(
+            `Kept photo and moved ${data.trashed_count} redundant to Trash (${formatBytes(data.reclaimed_bytes)} reclaimed).`
+          );
+        }
         onRefreshTelemetry?.();
       }
     } catch (err) {
@@ -545,7 +585,126 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                       </span>
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                      {group.photos.length === 2 ? (
+                        <>
+                          {/* 2-Photo Group: Keep Both (Permanent Dismissal) */}
+                          <button
+                            onClick={() => handleResolveGroup(group.group_id, group.photos.map((p) => p.id))}
+                            disabled={isResolving}
+                            className="clickable"
+                            title="Keep both photos in your active library. They will never appear as duplicates again."
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "5px",
+                              padding: "5px 12px",
+                              borderRadius: "var(--radius-full)",
+                              backgroundColor: "rgba(16, 185, 129, 0.12)",
+                              border: "1px solid rgba(16, 185, 129, 0.3)",
+                              color: "var(--accent-success)",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              cursor: isResolving ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            <CheckCheck size={13} />
+                            <span>Keep Both</span>
+                          </button>
+
+                          {/* 2-Photo Group: Keep Suggested Best */}
+                          <button
+                            onClick={() => handleResolveGroup(group.group_id, [group.suggested_best_photo_id])}
+                            disabled={isResolving}
+                            className="clickable"
+                            title="Keep only the AI-recommended Best Pick and move other to Trash"
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "5px",
+                              padding: "5px 12px",
+                              borderRadius: "var(--radius-full)",
+                              backgroundColor: "var(--glass-pill-bg)",
+                              border: "1px solid var(--glass-border)",
+                              color: "var(--accent-primary)",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              cursor: isResolving ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            <Sparkles size={11} />
+                            <span>Keep Suggested Best</span>
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          {/* Multi-Photo Group (>2 photos): Dynamic Multi-Keep */}
+                          {(() => {
+                            const selectedIds = selectedPhotosByGroup[group.group_id] || [group.suggested_best_photo_id];
+                            const isAllSelected = selectedIds.length === group.photos.length;
+                            const trashedCount = group.photos.length - selectedIds.length;
+
+                            return (
+                              <>
+                                <button
+                                  onClick={() => handleResolveGroup(group.group_id, selectedIds)}
+                                  disabled={isResolving}
+                                  className="clickable"
+                                  title={
+                                    isAllSelected
+                                      ? "Keep all photos in library and dismiss duplicate comparison permanently."
+                                      : `Keep ${selectedIds.length} selected photos and soft-delete remaining ${trashedCount} photos.`
+                                  }
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "5px",
+                                    padding: "5px 12px",
+                                    borderRadius: "var(--radius-full)",
+                                    backgroundColor: isAllSelected ? "rgba(16, 185, 129, 0.12)" : "var(--accent-primary)",
+                                    border: isAllSelected ? "1px solid rgba(16, 185, 129, 0.3)" : "none",
+                                    color: isAllSelected ? "var(--accent-success)" : "#ffffff",
+                                    fontSize: "11px",
+                                    fontWeight: 700,
+                                    cursor: isResolving ? "not-allowed" : "pointer",
+                                  }}
+                                >
+                                  <CheckCheck size={13} />
+                                  <span>
+                                    {isAllSelected
+                                      ? `Keep All (${group.photos.length})`
+                                      : `Keep Selected (${selectedIds.length}) & Trash (${trashedCount})`}
+                                  </span>
+                                </button>
+
+                                <button
+                                  onClick={() => handleResolveGroup(group.group_id, [group.suggested_best_photo_id])}
+                                  disabled={isResolving}
+                                  className="clickable"
+                                  title="Keep only the AI-recommended Best Pick and trash the rest"
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "5px",
+                                    padding: "5px 12px",
+                                    borderRadius: "var(--radius-full)",
+                                    backgroundColor: "var(--glass-pill-bg)",
+                                    border: "1px solid var(--glass-border)",
+                                    color: "var(--accent-primary)",
+                                    fontSize: "11px",
+                                    fontWeight: 700,
+                                    cursor: isResolving ? "not-allowed" : "pointer",
+                                  }}
+                                >
+                                  <Sparkles size={11} />
+                                  <span>Keep Best Only</span>
+                                </button>
+                              </>
+                            );
+                          })()}
+                        </>
+                      )}
+
                       <span
                         style={{
                           fontSize: "11px",
@@ -559,29 +718,6 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                       >
                         +{formatBytes(group.reclaimable_bytes)} Reclaimable
                       </span>
-
-                      <button
-                        onClick={() => handleResolveGroup(group.group_id, group.suggested_best_photo_id)}
-                        disabled={isResolving}
-                        className="clickable"
-                        title="Keep the AI-recommended Best Pick and trash the rest"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "5px",
-                          padding: "5px 12px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "var(--glass-pill-bg)",
-                          border: "1px solid var(--glass-border)",
-                          color: "var(--accent-primary)",
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          cursor: isResolving ? "not-allowed" : "pointer",
-                        }}
-                      >
-                        <Sparkles size={11} />
-                        <span>Keep Suggested Best</span>
-                      </button>
                     </div>
                   </div>
 
@@ -596,6 +732,8 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                   >
                     {group.photos.map((photo, pIdx) => {
                       const isBest = photo.id === group.suggested_best_photo_id;
+                      const selectedIds = selectedPhotosByGroup[group.group_id] || [group.suggested_best_photo_id];
+                      const isSelected = selectedIds.includes(photo.id);
                       const thumbUrl = `${API_BASE}/photos/${photo.id}/thumbnail?v=3`;
 
                       return (
@@ -603,9 +741,9 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                           key={photo.id}
                           style={{
                             borderRadius: "var(--radius-sm)",
-                            border: isBest ? "2px solid var(--accent-primary)" : "1px solid var(--border-subtle)",
+                            border: isSelected ? "2px solid var(--accent-primary)" : "1px solid var(--border-subtle)",
                             backgroundColor: "var(--bg-surface-elevated)",
-                            boxShadow: isBest ? "0 0 12px var(--accent-glow)" : "var(--shadow-sm)",
+                            boxShadow: isSelected ? "0 0 12px var(--accent-glow)" : "var(--shadow-sm)",
                             padding: "12px",
                             display: "flex",
                             flexDirection: "column",
@@ -615,31 +753,56 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                             transition: "all 0.15s ease",
                           }}
                         >
-                          {/* Top Status Tag */}
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", minHeight: "22px" }}>
-                            {isBest ? (
-                              <div
+                          {/* Top Status Tag with Selection Checkbox */}
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", minHeight: "22px", gap: "6px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              {/* Multi-Select Checkbox Toggle */}
+                              <button
+                                onClick={() => togglePhotoSelection(group.group_id, photo.id)}
+                                className="clickable"
+                                title={isSelected ? "Uncheck to mark this copy for removal" : "Check to keep this copy in library"}
                                 style={{
                                   display: "flex",
                                   alignItems: "center",
-                                  gap: "4px",
-                                  fontSize: "10px",
-                                  fontWeight: 800,
-                                  color: "#ffffff",
-                                  backgroundColor: "var(--accent-primary)",
-                                  padding: "2px 8px",
-                                  borderRadius: "var(--radius-full)",
-                                  letterSpacing: "0.02em",
+                                  justifyContent: "center",
+                                  width: "20px",
+                                  height: "20px",
+                                  borderRadius: "4px",
+                                  backgroundColor: isSelected ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+                                  border: `1px solid ${isSelected ? "var(--accent-primary)" : "var(--border-subtle)"}`,
+                                  color: isSelected ? "#ffffff" : "transparent",
+                                  cursor: "pointer",
+                                  padding: 0,
+                                  transition: "all 0.15s ease",
                                 }}
                               >
-                                <Star size={10} fill="#ffffff" />
-                                <span>RECOMMENDED BEST</span>
-                              </div>
-                            ) : (
-                              <span style={{ fontSize: "10px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                                Copy #{pIdx + 1}
-                              </span>
-                            )}
+                                <Check size={12} strokeWidth={3} />
+                              </button>
+
+                              {isBest ? (
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                    fontSize: "10px",
+                                    fontWeight: 800,
+                                    color: "#ffffff",
+                                    backgroundColor: "var(--accent-primary)",
+                                    padding: "2px 8px",
+                                    borderRadius: "var(--radius-full)",
+                                    letterSpacing: "0.02em",
+                                  }}
+                                >
+                                  <Star size={10} fill="#ffffff" />
+                                  <span>RECOMMENDED BEST</span>
+                                </div>
+                              ) : (
+                                <span style={{ fontSize: "10px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                                  Copy #{pIdx + 1}
+                                </span>
+                              )}
+                            </div>
 
                             {isBest && group.best_reason && (
                               <span 
@@ -647,10 +810,11 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                                 style={{
                                   fontSize: "10px",
                                   color: "var(--text-secondary)",
-                                  maxWidth: "140px",
+                                  maxWidth: "240px",
                                   whiteSpace: "nowrap",
                                   overflow: "hidden",
                                   textOverflow: "ellipsis",
+                                  lineHeight: 1.3,
                                 }}
                               >
                                 {group.best_reason}
@@ -791,18 +955,18 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
 
                           {/* Action Button: Keep This Specific Photo */}
                           <button
-                            onClick={() => handleResolveGroup(group.group_id, photo.id)}
+                            onClick={() => handleResolveGroup(group.group_id, [photo.id])}
                             disabled={isResolving}
                             className="clickable"
-                            title={`Keep this copy (${photo.filename}) and move other redundant copies to Trash`}
+                            title={`Keep only this copy (${photo.filename}) and move other redundant copies to Trash`}
                             style={{
                               marginTop: "4px",
                               width: "100%",
                               padding: "8px 12px",
                               borderRadius: "var(--radius-full)",
-                              backgroundColor: isBest ? "var(--accent-primary)" : "var(--glass-pill-bg)",
-                              border: isBest ? "none" : "1px solid var(--border-subtle)",
-                              color: isBest ? "#ffffff" : "var(--text-primary)",
+                              backgroundColor: isSelected ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+                              border: isSelected ? "none" : "1px solid var(--border-subtle)",
+                              color: isSelected ? "#ffffff" : "var(--text-primary)",
                               fontSize: "12px",
                               fontWeight: 700,
                               display: "flex",
@@ -814,7 +978,7 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                             }}
                           >
                             <Check size={13} />
-                            <span>Keep This Photo</span>
+                            <span>{isSelected ? "Keep This Photo" : "Select & Keep Only This"}</span>
                           </button>
                         </div>
                       );
