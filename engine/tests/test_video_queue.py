@@ -83,19 +83,28 @@ async def test_video_queue_lifecycle():
     finally:
         await conn.close()
 
-    # Enqueue
-    success = await enqueue_video_for_processing(photo_id, action="enhance", target_height=1080)
-    assert success is True
+    try:
+        # Enqueue
+        success = await enqueue_video_for_processing(photo_id, action="enhance", target_height=1080)
+        assert success is True
 
-    status = await get_queue_status()
-    assert status["queued"] >= 1
-    assert status["total"] >= 1
+        status = await get_queue_status()
+        assert status["queued"] >= 1
+        assert status["total"] >= 1
 
-    # Pause and resume
-    pause_video_queue()
-    assert (await get_queue_status())["is_paused"] is True
-    resume_video_queue()
-    assert (await get_queue_status())["is_paused"] is False
+        # Pause and resume
+        pause_video_queue()
+        assert (await get_queue_status())["is_paused"] is True
+        resume_video_queue()
+        assert (await get_queue_status())["is_paused"] is False
+    finally:
+        conn = await get_db_connection()
+        try:
+            await conn.execute("DELETE FROM video_processing_queue WHERE photo_id = ?;", (photo_id,))
+            await conn.execute("DELETE FROM photos WHERE id = ?;", (photo_id,))
+            await conn.commit()
+        finally:
+            await conn.close()
 
 
 @pytest.mark.asyncio
@@ -118,15 +127,24 @@ async def test_video_queue_disconnection_safety():
     finally:
         await conn.close()
 
-    await enqueue_video_for_processing(photo_id, action="enhance", target_height=1080)
+    try:
+        await enqueue_video_for_processing(photo_id, action="enhance", target_height=1080)
 
-    # Process next job
-    processed = await _process_next_video_job()
-    assert processed is False
+        # Process next job
+        processed = await _process_next_video_job()
+        assert processed is False
 
-    # Verify job status transitioned to paused
-    status = await get_queue_status()
-    assert status["paused"] >= 1
+        # Verify job status transitioned to paused
+        status = await get_queue_status()
+        assert status["paused"] >= 1
+    finally:
+        conn = await get_db_connection()
+        try:
+            await conn.execute("DELETE FROM video_processing_queue WHERE photo_id = ?;", (photo_id,))
+            await conn.execute("DELETE FROM photos WHERE id = ?;", (photo_id,))
+            await conn.commit()
+        finally:
+            await conn.close()
 
 
 @pytest.mark.asyncio

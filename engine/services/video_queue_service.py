@@ -63,6 +63,14 @@ async def init_video_queue_db() -> None:
             WHERE status = 'processing';
             """
         )
+
+        # Purge any orphaned queue rows whose photo record was deleted
+        await conn.execute(
+            """
+            DELETE FROM video_processing_queue
+            WHERE photo_id NOT IN (SELECT id FROM photos);
+            """
+        )
         await conn.commit()
     finally:
         await conn.close()
@@ -196,14 +204,24 @@ async def _process_next_video_job() -> bool:
     conn = await get_db_connection()
     try:
         conn.row_factory = aiosqlite.Row
-        # Find next queued or previously paused item
+        # Find next queued or eligible paused item (prioritizing queued, with a 60s cooldown on paused)
         query = """
-            SELECT q.id as queue_id, q.photo_id, q.action, q.target_height, q.retry_count,
+            SELECT q.id as queue_id, q.photo_id, q.action, q.target_height, q.retry_count, q.status as queue_status,
                    p.filepath, p.filename, p.is_enhanced, p.is_optimized
             FROM video_processing_queue q
             JOIN photos p ON q.photo_id = p.id
-            WHERE q.status IN ('queued', 'paused') AND p.trashed_at IS NULL
-            ORDER BY q.created_at ASC
+            WHERE (
+                q.status = 'queued'
+                OR (
+                    q.status = 'paused'
+                    AND (q.updated_at IS NULL OR q.updated_at <= datetime('now', '-60 seconds'))
+                    AND q.retry_count < 5
+                )
+            )
+            AND p.trashed_at IS NULL
+            ORDER BY 
+                CASE WHEN q.status = 'queued' THEN 0 ELSE 1 END ASC,
+                q.created_at ASC
             LIMIT 1;
         """
         async with conn.execute(query) as cursor:
@@ -217,22 +235,36 @@ async def _process_next_video_job() -> bool:
         action = job["action"]
         target_height = job["target_height"] or 1080
         filepath = job["filepath"]
-        retry_count = job["retry_count"]
+        retry_count = job["retry_count"] or 0
+        queue_status = job["queue_status"]
 
-        # Disconnection Safety Check 1: Check if source file and directory exist
+        # Disconnection Safety Check 1: Check if source file exists
         if not filepath or not os.path.exists(filepath):
-            logger.warning(
-                f"Source storage for video #{photo_id} ({filepath}) is inaccessible or drive disconnected. Pausing job."
-            )
+            new_retries = retry_count + 1
+            if new_retries >= 5:
+                logger.warning(
+                    f"Source storage for video #{photo_id} ({filepath}) remained unavailable after 5 reconnection checks. Marking job failed."
+                )
+                status_to_set = "failed"
+                err_text = "Source storage or file missing after multiple reconnection checks."
+            else:
+                if queue_status != "paused":
+                    logger.warning(
+                        f"Source storage for video #{photo_id} ({filepath}) is inaccessible or drive disconnected. Pausing job."
+                    )
+                status_to_set = "paused"
+                err_text = "Storage drive or source file is disconnected."
+
             await conn.execute(
                 """
                 UPDATE video_processing_queue
-                SET status = 'paused',
-                    error_message = 'Storage drive or source file is disconnected.',
+                SET status = ?,
+                    error_message = ?,
+                    retry_count = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?;
                 """,
-                (queue_id,),
+                (status_to_set, err_text, new_retries, queue_id),
             )
             await conn.commit()
             return False

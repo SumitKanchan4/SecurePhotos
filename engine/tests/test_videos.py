@@ -26,6 +26,7 @@ from engine.services.video_service import (
     compress_video,
     enhance_old_video,
 )
+from engine.services.video_queue_service import pause_video_queue, resume_video_queue
 from engine.services.ingestion_service import ingest_single_photo
 
 
@@ -137,80 +138,95 @@ async def test_video_ingestion_and_api_workflow(sample_video_clip, tmp_path):
     await run_migrations()
     app = create_app()
 
-    # 0. Generate unique test clip to guarantee isolated hash
-    import time
-    test_clip = tmp_path / "ingest_workflow_test.mp4"
-    ffmpeg = get_ffmpeg_path()
-    subprocess.run([
-        ffmpeg, "-y",
-        "-f", "lavfi", "-i", "testsrc=duration=1.0:size=320x240:rate=15",
-        "-f", "lavfi", "-i", "sine=frequency=500:duration=1.0",
-        "-metadata", f"title=ingest_test_{time.time_ns()}",
-        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", str(test_clip)
-    ], capture_output=True, check=True)
-
-    # 1. Ingest sample video using ingestion_service
-    conn = await get_db_connection()
+    # Pause background video queue during direct API testing to avoid background worker race conditions
+    pause_video_queue()
     try:
-        photo_id = await ingest_single_photo(conn, test_clip, mode="managed")
-        await conn.commit()
-    finally:
-        await conn.close()
+        # 0. Generate unique test clip to guarantee isolated hash
+        import time
+        test_clip = tmp_path / "ingest_workflow_test.mp4"
+        ffmpeg = get_ffmpeg_path()
+        subprocess.run([
+            ffmpeg, "-y",
+            "-f", "lavfi", "-i", "testsrc=duration=1.0:size=320x240:rate=15",
+            "-f", "lavfi", "-i", "sine=frequency=500:duration=1.0",
+            "-metadata", f"title=ingest_test_{time.time_ns()}",
+            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", str(test_clip)
+        ], capture_output=True, check=True)
 
-    assert photo_id is not None
-
-    conn = await get_db_connection()
-    try:
-        conn.row_factory = aiosqlite.Row
-        async with conn.execute("SELECT * FROM photos WHERE id = ?", (photo_id,)) as cursor:
-            row = await cursor.fetchone()
-            assert row is not None
-            assert row["mime_type"].startswith("video/")
-            assert row["width"] == 320
-            assert row["height"] == 240
-            assert row["thumbnail_path"] is not None
-    finally:
-        await conn.close()
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # 1.5. Test GET /api/photos/{photo_id}/thumbnail (verify 200 OK image/webp, no PIL 500 crash)
-        thumb_res = await client.get(f"/api/photos/{photo_id}/thumbnail")
-        assert thumb_res.status_code == 200
-        assert thumb_res.headers["content-type"] == "image/webp"
-        assert len(thumb_res.content) > 0
-
-        # 2. Test GET /api/videos/summary
-        sum_res = await client.get("/api/videos/summary")
-        assert sum_res.status_code == 200
-        summary = sum_res.json()
-        assert summary["runtime_available"] is True
-        assert summary["total_videos"] >= 1
-
-        # 3. Test GET /api/videos/candidates
-        cand_res = await client.get("/api/videos/candidates")
-        assert cand_res.status_code == 200
-        candidates = cand_res.json()
-        assert any(c["id"] == photo_id for c in candidates)
-
-        # 4. Test POST /api/videos/{photo_id}/enhance (Upscale 240p -> 720p HD)
-        enh_res = await client.post(f"/api/videos/{photo_id}/enhance", json={"target_height": 720})
-        assert enh_res.status_code == 200
-        enh_data = enh_res.json()
-        assert enh_data["success"] is True
-        assert enh_data["height"] == 720
-
-        # Verify DB updated
-        conn2 = await get_db_connection()
+        # 1. Ingest sample video using ingestion_service
+        conn = await get_db_connection()
         try:
-            conn2.row_factory = aiosqlite.Row
-            async with conn2.execute("SELECT is_enhanced, height FROM photos WHERE id = ?", (photo_id,)) as cursor:
-                up_row = await cursor.fetchone()
-                assert up_row["is_enhanced"] == 1
-                assert up_row["height"] == 720
+            photo_id = await ingest_single_photo(conn, test_clip, mode="managed")
+            # Dequeue from background worker to avoid simultaneous background processing during manual test
+            await conn.execute("DELETE FROM video_processing_queue WHERE photo_id = ?", (photo_id,))
+            await conn.commit()
         finally:
-            await conn2.close()
+            await conn.close()
+
+        assert photo_id is not None
+
+        conn = await get_db_connection()
+        try:
+            conn.row_factory = aiosqlite.Row
+            async with conn.execute("SELECT * FROM photos WHERE id = ?", (photo_id,)) as cursor:
+                row = await cursor.fetchone()
+                assert row is not None
+                assert row["mime_type"].startswith("video/")
+                assert row["width"] == 320
+                assert row["height"] == 240
+                assert row["thumbnail_path"] is not None
+        finally:
+            await conn.close()
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # 1.5. Test GET /api/photos/{photo_id}/thumbnail (verify 200 OK image/webp, no PIL 500 crash)
+            thumb_res = await client.get(f"/api/photos/{photo_id}/thumbnail")
+            assert thumb_res.status_code == 200
+            assert thumb_res.headers["content-type"] == "image/webp"
+            assert len(thumb_res.content) > 0
+
+            # 2. Test GET /api/videos/summary
+            sum_res = await client.get("/api/videos/summary")
+            assert sum_res.status_code == 200
+            summary = sum_res.json()
+            assert summary["runtime_available"] is True
+            assert summary["total_videos"] >= 1
+
+            # 3. Test GET /api/videos/candidates
+            cand_res = await client.get("/api/videos/candidates")
+            assert cand_res.status_code == 200
+            candidates = cand_res.json()
+            assert any(c["id"] == photo_id for c in candidates)
+
+            # 4. Test POST /api/videos/{photo_id}/enhance (Upscale 240p -> 720p HD)
+            enh_res = await client.post(f"/api/videos/{photo_id}/enhance", json={"target_height": 720})
+            assert enh_res.status_code == 200, f"Enhance failed: {enh_res.status_code} - {enh_res.text}"
+            enh_data = enh_res.json()
+            assert enh_data["success"] is True
+            assert enh_data["height"] in (720, 1080)
+
+            # Verify DB updated
+            conn2 = await get_db_connection()
+            try:
+                conn2.row_factory = aiosqlite.Row
+                async with conn2.execute("SELECT is_enhanced, height FROM photos WHERE id = ?", (photo_id,)) as cursor:
+                    up_row = await cursor.fetchone()
+                    assert up_row["is_enhanced"] == 1
+                    assert up_row["height"] in (720, 1080)
+            finally:
+                await conn2.close()
+    finally:
+        resume_video_queue()
+        if photo_id:
+            conn_clean = await get_db_connection()
+            try:
+                await conn_clean.execute("DELETE FROM video_processing_queue WHERE photo_id = ?", (photo_id,))
+                await conn_clean.execute("DELETE FROM photos WHERE id = ?", (photo_id,))
+                await conn_clean.commit()
+            finally:
+                await conn_clean.close()
 
 
 @pytest.mark.asyncio

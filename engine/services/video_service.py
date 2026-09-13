@@ -8,6 +8,7 @@ This module delivers end-to-end video operations for SecurePhotos:
 5. `enhance_old_video`: Vintage video restoration with 3D denoising, de-interlacing, color dynamic revival, and Lanczos/Unsharp HD upscaling.
 """
 
+import asyncio
 import datetime
 import json
 import logging
@@ -15,6 +16,7 @@ import os
 import shutil
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
@@ -604,13 +606,23 @@ async def enhance_old_video(
     if not photo:
         return {"success": False, "error": f"Photo with ID {photo_id} not found."}
 
+    if photo["is_enhanced"]:
+        return {
+            "success": True,
+            "already_enhanced": True,
+            "photo_id": photo_id,
+            "height": photo["height"] or target_height,
+            "width": photo["width"] or 0,
+            "message": "Video is already enhanced.",
+        }
+
     orig_path = photo["filepath"]
     if not os.path.exists(orig_path):
         return {"success": False, "error": f"Source video file not found at {orig_path}"}
 
     orig_p = Path(orig_path)
     target_path = orig_p.with_name(f"{orig_p.stem}_enhanced.mp4")
-    temp_path = orig_p.with_name(f"{orig_p.stem}_enhancing.tmp.mp4")
+    temp_path = orig_p.with_name(f"{orig_p.stem}_enhancing_{uuid.uuid4().hex[:6]}.tmp.mp4")
 
     # Multi-stage restoration filter graph:
     # 1. yadif=1:-1:0 (deinterlacing)
@@ -664,11 +676,28 @@ async def enhance_old_video(
             target_path.unlink()
         os.replace(temp_path, target_path)
 
-        # Move original to 30-Day Trash
+        # Move original to 30-Day Trash (with Windows file lock resilience)
         trash_dir = Path(orig_path).parent / ".trash"
         trash_dir.mkdir(parents=True, exist_ok=True)
         trash_orig_path = trash_dir / f"{orig_p.name}.vintage_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
-        shutil.move(orig_path, str(trash_orig_path))
+        moved = False
+        for attempt in range(5):
+            try:
+                shutil.move(orig_path, str(trash_orig_path))
+                moved = True
+                break
+            except (PermissionError, OSError):
+                await asyncio.sleep(0.3)
+
+        if not moved:
+            try:
+                shutil.copy2(orig_path, str(trash_orig_path))
+                try:
+                    os.unlink(orig_path)
+                except OSError:
+                    pass
+            except Exception:
+                pass
 
         new_meta = extract_video_metadata(str(target_path))
         new_size = target_path.stat().st_size
