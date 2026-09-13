@@ -184,7 +184,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
   const handleEnhanceVideo = async (photoId: number) => {
     const targetH = targetHeights[photoId] || 720;
     setProcessingIds((prev) => new Set(prev).add(photoId));
-    setStatusMessage(`Restoring & upscaling clip to ${targetH}p HD with temporal denoising...`);
+    setStatusMessage(`Restoring & upscaling clip to ${targetH === 2160 ? "4K UHD" : `${targetH}p HD`} with temporal denoising...`);
     try {
       const res = await fetch(`${API_BASE}/videos/${photoId}/enhance`, {
         method: "POST",
@@ -193,7 +193,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setStatusMessage(`Enhanced clip successfully to ${data.width}x${data.height} HD!`);
+        setStatusMessage(`Enhanced clip successfully to ${data.width}x${data.height} (${targetH === 2160 ? "4K UHD" : "HD"})!`);
         await fetchData();
         onRefreshTelemetry?.();
       } else {
@@ -891,6 +891,21 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
                           >
                             1080p FHD
                           </button>
+                          <button
+                            onClick={() => setTargetHeights((prev) => ({ ...prev, [video.id]: 2160 }))}
+                            style={{
+                              padding: "3px 8px",
+                              borderRadius: "var(--radius-full)",
+                              backgroundColor: targetH === 2160 ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+                              border: "1px solid var(--glass-border)",
+                              color: targetH === 2160 ? "#ffffff" : "var(--text-secondary)",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            2160p 4K UHD
+                          </button>
                         </div>
                       </div>
 
@@ -925,7 +940,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
                         }}
                       >
                         <Sparkles size={11} className={isProcessing ? "spin-animation" : ""} />
-                        <span>{isProcessing ? "Enhancing..." : isBatchQueued ? "Queued" : `Enhance to ${targetH}p HD`}</span>
+                        <span>{isProcessing ? "Enhancing..." : isBatchQueued ? "Queued" : targetH === 2160 ? "Enhance to 4K UHD" : `Enhance to ${targetH}p HD`}</span>
                       </button>
                     </div>
                   </div>

@@ -1683,14 +1683,48 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - Zero TypeScript errors; Vite bundle built in 5.36s.
 - 100% backend test pass rate across 67 unit/integration tests.
 
+---
 
+## 38. Video Enhancement Harmonization, Lightbox Video Card Parity & 4K UHD Upscaling
 
+### Functionality Overview
+1. **Studio Print Removal & Video Quality Card in Lightbox**:
+   - Guarded the "Studio Poster Print Readiness" card in `src/components/Lightbox.tsx` to photos only (`!isVideo`).
+   - For video files (`isVideo === true`), replaced the 300 DPI / 200 DPI poster calculations and "Download Print-Ready Photo" button with a dedicated **Video Playback & Quality** card:
+     - Resolution Tier: Displays `4K Ultra HD`, `1080p Full HD`, `720p HD`, or native resolution.
+     - Frame Timing: Surfaces total duration (e.g. `1m 24s`) and native stream specifications.
+     - Optimization Badge: Shows `✨ 4K Enhanced`, `✨ HD Enhanced`, or `Original Video`.
+     - Direct Download Action: Provides a `<Download /> Save Video to Downloads` button calling `handleDownload("original")`.
+2. **Elimination of False "Queued for 8K AI Enhancement" on Videos**:
+   - The floating status pill in `Lightbox.tsx` previously showed `Queued for AI Enhancement (8K ULTRA Acutance & Face Unblur)` unconditionally when an item was not enhanced.
+   - Guarded the banner with `!isVideo && (isOptimizingThis || isQueued)` so that videos—which are not part of the automated photo 8K queue—never display misleading background queuing messages.
+3. **Unified Golden-Yellow Enhancement Badge Parity**:
+   - In `src/components/PhotoGrid.tsx`, unified the bottom-left video pill to combine duration and enhancement status without cluttering additional corners: `[ ▶ 0:42 • ✨ HD ]` or `[ ▶ 0:42 • ✨ 4K ]`.
+   - Replaced temporary blue styling with warm golden yellow (`#fbbf24`, `rgba(251, 191, 36, 0.4)` border, and gold text glow) to maintain visual identity consistency with the photo `✦ 8K ULTRA` tag.
+   - Lightbox header badges for videos similarly use `#fbbf24` `[ ✨ HD ENHANCED ]` / `[ ✨ 4K ENHANCED ]`.
+4. **4K UHD Video Upscaling Support**:
+   - Enabled `2160p 4K UHD` preset alongside 720p and 1080p in `src/components/VideoOptimizerView.tsx`.
+   - Supported natively by FFmpeg Lanczos scaling (`scale=-2:2160:flags=lanczos`) and 3D temporal denoising in `engine/services/video_service.py`.
+   - Updated frontend user status messaging and button labels dynamically according to chosen target resolution.
 
+### Functional Decision Points & Rationale
+- **Decoupled Photo vs. Video Lightbox Metadata**:
+  - *Decision*: Separate static print calculations from dynamic video playback telemetry.
+  - *Rationale*: Calculating physical paper print dimensions (300 DPI) on video clips confuses users and degrades perceived software polish. Videos require duration, framerate, and resolution tier indicators.
+- **Accurate Queuing Transparency**:
+  - *Decision*: Only show queuing pills when a background process is genuinely active for the item.
+  - *Rationale*: Displaying "Queued" on videos when no optimization process was running eroded user trust and led users to believe the background processor was stalled.
+- **Harmonized Color System Across Media Types**:
+  - *Decision*: Standardize on golden-yellow (`#fbbf24`) for all AI-enhanced media badges (photos and videos).
+  - *Rationale*: Using blue for video enhancements and gold for photo enhancements created a fractured visual hierarchy. Gold consistently signals premium, AI-enhanced media across the app.
 
+### Technical Touchpoints
+- `src/components/PhotoGrid.tsx`: Integrated golden-yellow `✨ HD` and `✨ 4K` badges into the bottom-left video pill.
+- `src/components/Lightbox.tsx`: Added `isVideo` conditional logic, top header golden-yellow badge, removed false queue banner, and rendered Video Playback & Quality card.
+- `src/components/VideoOptimizerView.tsx`: Added `2160p 4K UHD` target resolution preset, button, and dynamic status copy.
+- `engine/services/video_service.py`: Verified `scale=-2:{target_height}:flags=lanczos` supports 4K UHD (2160p).
+- `docs/features_and_functional_decisions.md`: Documented Section 38 in the registry.
 
-
-
-
-
-
-
+### State & Lifecycle Impact
+- 100% backend test pass rate across 67 unit/integration tests.
+- 0 TypeScript compiler errors; production Vite bundle built cleanly.

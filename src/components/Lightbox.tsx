@@ -55,9 +55,11 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
 
   const currentPhoto = photos[currentIndex];
+  const isVideo = Boolean(currentPhoto?.mime_type?.startsWith("video/"));
 
   const isCompleted = Boolean(currentPhoto?.is_optimized || currentPhoto?.is_enhanced);
-  const isOptimizingThis = Boolean(optimizationProgress?.is_active && optimizationProgress.active_photo_id === currentPhoto?.id);
+  const isOptimizingThis = Boolean(!isVideo && optimizationProgress?.is_active && optimizationProgress.active_photo_id === currentPhoto?.id);
+  const isQueued = Boolean(!isVideo && optimizationProgress?.is_active && !currentPhoto?.is_optimized && !isOptimizingThis);
 
   const previewUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/preview`;
   const originalUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/original`;
@@ -134,13 +136,15 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
   const handleDownload = (mode: "original" | "studio_print" = "original") => {
     if (!currentPhoto) return;
-    const baseName = currentPhoto.filename ? currentPhoto.filename.replace(/\.[^/.]+$/, "") : "photo";
-    const filename = mode === "studio_print" ? `${baseName}_studio_300dpi.jpg` : (currentPhoto.filename || "photo.jpg");
+    const baseName = currentPhoto.filename ? currentPhoto.filename.replace(/\.[^/.]+$/, "") : "media";
+    const defaultExt = isVideo ? ".mp4" : ".jpg";
+    const filename = mode === "studio_print" ? `${baseName}_studio_300dpi.jpg` : (currentPhoto.filename || `media${defaultExt}`);
+    const mediaTypeLabel = isVideo ? "video" : "photo";
 
     if (mode === "studio_print") {
       showToast(`🖨️ Downloading print-ready photo "${filename}" to your computer's Downloads folder...`, "info");
     } else {
-      showToast(`📥 Downloading "${filename}" to your computer's Downloads folder...`, "info");
+      showToast(`📥 Downloading ${mediaTypeLabel} "${filename}" to your computer's Downloads folder...`, "info");
     }
 
     const downloadUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto.id}/download?mode=${mode}`;
@@ -188,30 +192,36 @@ export const Lightbox: React.FC<LightboxProps> = ({
           <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
             {currentIndex + 1} of {photos.length}
           </span>
-          {currentPhoto.mime_type?.startsWith("video/") ? (
+          {isVideo ? (() => {
+            const isEnhanced = Boolean(currentPhoto.is_enhanced);
+            const is4K = isEnhanced && Boolean((currentPhoto.height && currentPhoto.height >= 2160) || (currentPhoto.width && currentPhoto.width >= 3840));
+            return (
+              <span 
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  color: isEnhanced ? "#fbbf24" : "#ffffff",
+                  backgroundColor: isEnhanced ? "rgba(251, 191, 36, 0.15)" : "rgba(255, 255, 255, 0.15)",
+                  border: isEnhanced ? "1px solid rgba(251, 191, 36, 0.35)" : "1px solid var(--glass-border)",
+                  padding: "2px 8px",
+                  borderRadius: "var(--radius-full)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                {isEnhanced ? <Sparkles size={10} style={{ color: "#fbbf24" }} /> : <Film size={10} />}
+                <span>{isEnhanced ? (is4K ? "4K ENHANCED" : "HD ENHANCED") : "VIDEO"}</span>
+              </span>
+            );
+          })() : currentPhoto.is_enhanced ? (
             <span 
               style={{
                 fontSize: "10px",
                 fontWeight: 700,
-                color: "#ffffff",
-                backgroundColor: currentPhoto.is_enhanced ? "var(--accent-primary)" : "rgba(255, 255, 255, 0.15)",
-                border: "1px solid var(--glass-border)",
-                padding: "2px 8px",
-                borderRadius: "var(--radius-full)",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
-            >
-              <Film size={10} /> {currentPhoto.is_enhanced ? "HD ENHANCED" : "VIDEO"}
-            </span>
-          ) : currentPhoto.is_enhanced ? (
-            <span 
-              style={{
-                fontSize: "10px",
-                fontWeight: 700,
-                color: "#ffffff",
-                backgroundColor: "var(--accent-primary)",
+                color: "#fbbf24",
+                backgroundColor: "rgba(251, 191, 36, 0.15)",
+                border: "1px solid rgba(251, 191, 36, 0.35)",
                 padding: "2px 8px",
                 borderRadius: "var(--radius-full)",
                 display: "inline-flex",
@@ -219,7 +229,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 gap: "3px",
               }}
             >
-              <Sparkles size={10} /> 8K ULTRA
+              <Sparkles size={10} style={{ color: "#fbbf24" }} /> 8K ULTRA
             </span>
           ) : null}
         </div>
@@ -386,8 +396,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
       {/* Main Viewport Container */}
       <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden" }}>
-        {/* Floating In-Progress / Queued Status Pill */}
-        {!isCompleted && (
+        {/* Floating In-Progress / Queued Status Pill (Photos actively in optimization only) */}
+        {!isVideo && (isOptimizingThis || isQueued) && (
           <div
             style={{
               position: "absolute",
@@ -414,13 +424,13 @@ export const Lightbox: React.FC<LightboxProps> = ({
               <>
                 <Loader2 size={14} className="spin" style={{ color: "var(--accent-primary)" }} />
                 <span>
-                  AI Enhancement in progress ({optimizationProgress?.item_progress || 0}%) — Showing original photo
+                  Enhancing photo ({optimizationProgress?.item_progress || 0}%) — Showing original photo
                 </span>
               </>
             ) : (
               <>
                 <Clock size={14} style={{ color: "var(--text-muted)" }} />
-                <span>Queued for AI Enhancement (8K ULTRA Acutance & Face Unblur) — Showing original photo</span>
+                <span>Queued for 8K Super-Resolution — Showing original photo</span>
               </>
             )}
           </div>
@@ -823,92 +833,197 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 </div>
               </div>
 
-              {/* Studio Poster Print Readiness Card */}
-              {(() => {
-                const w = currentPhoto.width || 0;
-                const h = currentPhoto.height || 0;
-                const dpi300W = w > 0 ? (w / 300).toFixed(1) : "0";
-                const dpi300H = h > 0 ? (h / 300).toFixed(1) : "0";
-                const dpi300Wcm = w > 0 ? ((w / 300) * 2.54).toFixed(0) : "0";
-                const dpi300Hcm = h > 0 ? ((h / 300) * 2.54).toFixed(0) : "0";
+              {/* Studio Poster Print Readiness Card (Photos Only) OR Video Specifications & Quality Card (Videos) */}
+              {!isVideo ? (
+                (() => {
+                  const w = currentPhoto.width || 0;
+                  const h = currentPhoto.height || 0;
+                  const dpi300W = w > 0 ? (w / 300).toFixed(1) : "0";
+                  const dpi300H = h > 0 ? (h / 300).toFixed(1) : "0";
+                  const dpi300Wcm = w > 0 ? ((w / 300) * 2.54).toFixed(0) : "0";
+                  const dpi300Hcm = h > 0 ? ((h / 300) * 2.54).toFixed(0) : "0";
 
-                const dpi200W = w > 0 ? (w / 200).toFixed(1) : "0";
-                const dpi200H = h > 0 ? (h / 200).toFixed(1) : "0";
-                const dpi200Wcm = w > 0 ? ((w / 200) * 2.54).toFixed(0) : "0";
-                const dpi200Hcm = h > 0 ? ((h / 200) * 2.54).toFixed(0) : "0";
+                  const dpi200W = w > 0 ? (w / 200).toFixed(1) : "0";
+                  const dpi200H = h > 0 ? (h / 200).toFixed(1) : "0";
+                  const dpi200Wcm = w > 0 ? ((w / 200) * 2.54).toFixed(0) : "0";
+                  const dpi200Hcm = h > 0 ? ((h / 200) * 2.54).toFixed(0) : "0";
 
-                const maxDim = Math.max(w, h);
-                const isPosterReady = maxDim >= 4500;
-                const isMediumReady = maxDim >= 2400;
+                  const maxDim = Math.max(w, h);
+                  const isPosterReady = maxDim >= 4500;
+                  const isMediumReady = maxDim >= 2400;
 
-                return (
-                  <div style={{ backgroundColor: "var(--bg-surface)", padding: "12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-primary)", fontWeight: 600 }}>
-                        <Printer size={14} style={{ color: "var(--accent-primary)" }} />
-                        <span>Studio Print Readiness</span>
+                  return (
+                    <div style={{ backgroundColor: "var(--bg-surface)", padding: "12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-primary)", fontWeight: 600 }}>
+                          <Printer size={14} style={{ color: "var(--accent-primary)" }} />
+                          <span>Studio Print Readiness</span>
+                        </div>
+                        <span style={{ 
+                          fontSize: "10px", 
+                          fontWeight: 700, 
+                          padding: "2px 6px", 
+                          borderRadius: "var(--radius-xs)",
+                          backgroundColor: isPosterReady ? "rgba(16, 185, 129, 0.15)" : isMediumReady ? "rgba(59, 130, 246, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                          color: isPosterReady ? "var(--accent-success)" : isMediumReady ? "var(--accent-primary)" : "var(--accent-warning)",
+                          border: `1px solid ${isPosterReady ? "rgba(16, 185, 129, 0.4)" : isMediumReady ? "rgba(59, 130, 246, 0.4)" : "rgba(245, 158, 11, 0.4)"}`
+                        }}>
+                          {isPosterReady ? "✓ Studio Poster Ready" : isMediumReady ? "✓ Studio Photo Ready" : "Desk Print Ready"}
+                        </span>
                       </div>
-                      <span style={{ 
-                        fontSize: "10px", 
-                        fontWeight: 700, 
-                        padding: "2px 6px", 
-                        borderRadius: "var(--radius-xs)",
-                        backgroundColor: isPosterReady ? "rgba(16, 185, 129, 0.15)" : isMediumReady ? "rgba(59, 130, 246, 0.15)" : "rgba(245, 158, 11, 0.15)",
-                        color: isPosterReady ? "var(--accent-success)" : isMediumReady ? "var(--accent-primary)" : "var(--accent-warning)",
-                        border: `1px solid ${isPosterReady ? "rgba(16, 185, 129, 0.4)" : isMediumReady ? "rgba(59, 130, 246, 0.4)" : "rgba(245, 158, 11, 0.4)"}`
-                      }}>
-                        {isPosterReady ? "✓ Studio Poster Ready" : isMediumReady ? "✓ Studio Photo Ready" : "Desk Print Ready"}
-                      </span>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "11px" }}>
+                        <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                            <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>300 DPI (Studio Glossy / Framing)</span>
+                            <span style={{ color: "var(--accent-success)", fontWeight: 700 }}>Razor Sharp</span>
+                          </div>
+                          <div style={{ color: "var(--text-muted)", fontSize: "10px" }}>
+                            Max Crisp Size: <strong style={{ color: "var(--text-secondary)" }}>{dpi300W}" × {dpi300H}"</strong> ({dpi300Wcm} × {dpi300Hcm} cm)
+                          </div>
+                        </div>
+
+                        <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                            <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>200 DPI (Wall Poster / Canvas)</span>
+                            <span style={{ color: "var(--accent-primary)", fontWeight: 700 }}>Poster Grade</span>
+                          </div>
+                          <div style={{ color: "var(--text-muted)", fontSize: "10px" }}>
+                            Max Poster Size: <strong style={{ color: "var(--text-secondary)" }}>{dpi200W}" × {dpi200H}"</strong> ({dpi200Wcm} × {dpi200Hcm} cm)
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleDownload("studio_print")}
+                        className="clickable"
+                        title="Download print-ready photo to your computer's Downloads folder"
+                        style={{
+                          width: "100%",
+                          marginTop: "10px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "6px",
+                          padding: "7px 10px",
+                          borderRadius: "var(--radius-xs)",
+                          backgroundColor: "var(--accent-primary)",
+                          border: "none",
+                          color: "#ffffff",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <Printer size={13} /> Download Print-Ready Photo
+                      </button>
                     </div>
+                  );
+                })()
+              ) : (
+                (() => {
+                  const w = currentPhoto.width || 0;
+                  const h = currentPhoto.height || 0;
+                  const isEnhanced = Boolean(currentPhoto.is_enhanced);
+                  const is4K = isEnhanced && (h >= 2160 || w >= 3840);
+                  const is1080p = h >= 1080 || w >= 1920;
+                  const is720p = h >= 720 || w >= 1280;
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "11px" }}>
-                      <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
-                          <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>300 DPI (Studio Glossy / Framing)</span>
-                          <span style={{ color: "var(--accent-success)", fontWeight: 700 }}>Razor Sharp</span>
+                  const resolutionTier = is4K
+                    ? "4K Ultra HD"
+                    : is1080p
+                    ? "1080p Full HD"
+                    : is720p
+                    ? "720p HD"
+                    : w > 0 && h > 0
+                    ? `${w} × ${h} SD`
+                    : "Standard Definition";
+
+                  const durationStr = currentPhoto.duration
+                    ? `${Math.floor(currentPhoto.duration / 60)}m ${Math.floor(currentPhoto.duration % 60)}s`
+                    : null;
+
+                  return (
+                    <div style={{ backgroundColor: "var(--bg-surface)", padding: "12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-primary)", fontWeight: 600 }}>
+                          <Film size={14} style={{ color: isEnhanced ? "#fbbf24" : "var(--accent-primary)" }} />
+                          <span>Video Playback & Quality</span>
                         </div>
-                        <div style={{ color: "var(--text-muted)", fontSize: "10px" }}>
-                          Max Crisp Size: <strong style={{ color: "var(--text-secondary)" }}>{dpi300W}" × {dpi300H}"</strong> ({dpi300Wcm} × {dpi300Hcm} cm)
-                        </div>
+                        <span style={{ 
+                          fontSize: "10px", 
+                          fontWeight: 700, 
+                          padding: "2px 6px", 
+                          borderRadius: "var(--radius-xs)",
+                          backgroundColor: isEnhanced 
+                            ? "rgba(251, 191, 36, 0.15)" 
+                            : "rgba(59, 130, 246, 0.15)",
+                          color: isEnhanced 
+                            ? "#fbbf24" 
+                            : "var(--accent-primary)",
+                          border: `1px solid ${isEnhanced ? "rgba(251, 191, 36, 0.4)" : "rgba(59, 130, 246, 0.4)"}`,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "3px"
+                        }}>
+                          {isEnhanced && <Sparkles size={9} style={{ color: "#fbbf24" }} />}
+                          {isEnhanced ? (is4K ? "4K Enhanced" : "HD Enhanced") : "Original Video"}
+                        </span>
                       </div>
 
-                      <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
-                          <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>200 DPI (Wall Poster / Canvas)</span>
-                          <span style={{ color: "var(--accent-primary)", fontWeight: 700 }}>Poster Grade</span>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "11px" }}>
+                        <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                            <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>Resolution & Tier</span>
+                            <span style={{ color: isEnhanced ? "#fbbf24" : "var(--accent-primary)", fontWeight: 700 }}>
+                              {resolutionTier}
+                            </span>
+                          </div>
+                          <div style={{ color: "var(--text-muted)", fontSize: "10px" }}>
+                            Dimensions: <strong style={{ color: "var(--text-secondary)" }}>{w > 0 && h > 0 ? `${w} × ${h} px` : "Native stream"}</strong>
+                          </div>
                         </div>
-                        <div style={{ color: "var(--text-muted)", fontSize: "10px" }}>
-                          Max Poster Size: <strong style={{ color: "var(--text-secondary)" }}>{dpi200W}" × {dpi200H}"</strong> ({dpi200Wcm} × {dpi200Hcm} cm)
-                        </div>
+
+                        {durationStr && (
+                          <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                              <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>Total Duration</span>
+                              <span style={{ color: "var(--text-secondary)", fontWeight: 700 }}>{durationStr}</span>
+                            </div>
+                            <div style={{ color: "var(--text-muted)", fontSize: "10px" }}>
+                              Frame Timing: <strong style={{ color: "var(--text-secondary)" }}>Full playback available</strong>
+                            </div>
+                          </div>
+                        )}
                       </div>
+
+                      <button
+                        onClick={() => handleDownload("original")}
+                        className="clickable"
+                        title="Save video file to your computer's Downloads folder"
+                        style={{
+                          width: "100%",
+                          marginTop: "10px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "6px",
+                          padding: "7px 10px",
+                          borderRadius: "var(--radius-xs)",
+                          backgroundColor: isEnhanced ? "#d97706" : "var(--accent-primary)",
+                          border: "none",
+                          color: "#ffffff",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <Download size={13} /> Save Video to Downloads
+                      </button>
                     </div>
-
-                    <button
-                      onClick={() => handleDownload("studio_print")}
-                      className="clickable"
-                      title="Download print-ready photo to your computer's Downloads folder"
-                      style={{
-                        width: "100%",
-                        marginTop: "10px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: "6px",
-                        padding: "7px 10px",
-                        borderRadius: "var(--radius-xs)",
-                        backgroundColor: "var(--accent-primary)",
-                        border: "none",
-                        color: "#ffffff",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <Printer size={13} /> Download Print-Ready Photo
-                    </button>
-                  </div>
-                );
-              })()}
+                  );
+                })()
+              )}
             </div>
           </aside>
         )}

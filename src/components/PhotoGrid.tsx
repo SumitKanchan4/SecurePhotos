@@ -255,39 +255,63 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
       </div>
 
       {/* 6a. Bottom-Left Video Duration / Resolution / AI Optimization Frosted Glass Tag */}
-      {photo.mime_type?.startsWith("video/") ? (
-        <div
-          title={`Video clip${photo.duration ? ` • ${Math.round(photo.duration)}s` : ""}`}
-          style={{
-            position: "absolute",
-            bottom: "7px",
-            left: "7px",
-            zIndex: isHovered ? 1 : 3,
-            display: isHovered ? "none" : "flex",
-            alignItems: "center",
-            gap: "4px",
-            padding: "2px 7px",
-            borderRadius: "var(--radius-full)",
-            background: "rgba(10, 12, 18, 0.75)",
-            backdropFilter: "blur(10px)",
-            WebkitBackdropFilter: "blur(10px)",
-            border: "1px solid rgba(255, 255, 255, 0.2)",
-            color: "#ffffff",
-            fontSize: "10px",
-            fontWeight: 700,
-            letterSpacing: "0.2px",
-            boxShadow: "0 2px 6px rgba(0, 0, 0, 0.6)",
-            pointerEvents: "none",
-          }}
-        >
-          <Play size={9} fill="#ffffff" color="#ffffff" />
-          <span>
-            {photo.duration
-              ? `${Math.floor(photo.duration / 60)}:${String(Math.floor(photo.duration % 60)).padStart(2, "0")}`
-              : "VIDEO"}
-          </span>
-        </div>
-      ) : (() => {
+      {photo.mime_type?.startsWith("video/") ? (() => {
+        const isEnhanced = Boolean(photo.is_enhanced);
+        const is4K = isEnhanced && Boolean((photo.height && photo.height >= 2160) || (photo.width && photo.width >= 3840));
+        const durationStr = photo.duration
+          ? `${Math.floor(photo.duration / 60)}:${String(Math.floor(photo.duration % 60)).padStart(2, "0")}`
+          : "VIDEO";
+
+        return (
+          <div
+            title={`Video clip${photo.duration ? ` • ${Math.round(photo.duration)}s` : ""}${isEnhanced ? (is4K ? " • AI Enhanced 4K UHD" : " • AI Enhanced HD") : ""}`}
+            style={{
+              position: "absolute",
+              bottom: "7px",
+              left: "7px",
+              zIndex: isHovered ? 1 : 3,
+              display: isHovered ? "none" : "flex",
+              alignItems: "center",
+              gap: "4px",
+              padding: "2px 7px",
+              borderRadius: "var(--radius-full)",
+              background: "rgba(10, 12, 18, 0.75)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+              border: isEnhanced 
+                ? "1px solid rgba(251, 191, 36, 0.4)" 
+                : "1px solid rgba(255, 255, 255, 0.2)",
+              color: "#ffffff",
+              fontSize: "10px",
+              fontWeight: 700,
+              letterSpacing: "0.2px",
+              boxShadow: isEnhanced 
+                ? "0 2px 8px rgba(0, 0, 0, 0.6), 0 0 8px rgba(251, 191, 36, 0.2)" 
+                : "0 2px 6px rgba(0, 0, 0, 0.6)",
+              pointerEvents: "none",
+            }}
+          >
+            <Play size={9} fill="#ffffff" color="#ffffff" />
+            <span>{durationStr}</span>
+            {isEnhanced && (
+              <span 
+                style={{ 
+                  display: "inline-flex", 
+                  alignItems: "center", 
+                  gap: "2px", 
+                  color: "#fbbf24", 
+                  fontWeight: 800, 
+                  fontSize: "9px" 
+                }}
+              >
+                <span>•</span>
+                <Sparkles size={8} style={{ color: "#fbbf24" }} />
+                <span>{is4K ? "4K" : "HD"}</span>
+              </span>
+            )}
+          </div>
+        );
+      })() : (() => {
         const is8k = photo.is_enhanced || photo.is_optimized;
         const maxDim = Math.max(photo.width || 0, photo.height || 0);
         const isHighRes = maxDim >= 3840;
