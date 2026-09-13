@@ -63,8 +63,6 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   // Native Tauri drag-and-drop listener for full filesystem paths
   useEffect(() => {
     if (!isOpen) return;
@@ -104,6 +102,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
       if (unlisten) unlisten();
     };
   }, [isOpen]);
+
+  // Early return MUST follow all React hook declarations
+  if (!isOpen) return null;
 
   // Handle selecting multiple individual files (images/videos)
   const handleSelectFiles = async () => {

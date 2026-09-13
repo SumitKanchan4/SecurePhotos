@@ -1080,14 +1080,16 @@ export const App: React.FC = () => {
       <DriveStatusBanner />
 
       {/* Interactive Import Modal */}
-      <ImportModal 
-        isOpen={isImportModalOpen} 
-        onClose={() => setIsImportModalOpen(false)} 
-        onImportComplete={() => {
-          loadPhotos(activeYear);
-          loadTimelineYears();
-        }}
-      />
+      {isImportModalOpen && (
+        <ImportModal 
+          isOpen={isImportModalOpen} 
+          onClose={() => setIsImportModalOpen(false)} 
+          onImportComplete={() => {
+            loadPhotos(activeYear);
+            loadTimelineYears();
+          }}
+        />
+      )}
 
       {/* Vault Unlock Modal */}
       <VaultUnlockModal

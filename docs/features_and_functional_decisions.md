@@ -1605,6 +1605,46 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - 100% automated test pass rate across 67 backend tests.
 - Zero TypeScript compiler errors; Vite bundle built in 6.01s.
 
+---
+
+## 36. Import Modal Hook Lifecycle Stabilization & Enterprise Error Boundary
+
+### Functionality Overview
+1. **React Rules of Hooks Stabilization in `ImportModal`**:
+   - In `src/components/ImportModal.tsx`, an early return statement (`if (!isOpen) return null;`) was previously situated between hook declarations (after hook 11, but immediately before hook 12: `useEffect` for the native Tauri drag-and-drop listener).
+   - Under React 19's strict hook counting model, mounting with `isOpen = false` executed 11 hooks and returned `null`. When clicking the "Import" button (`isOpen = true`), the component re-rendered past the early return and encountered hook 12, throwing `Rendered more hooks than during the previous render.`.
+   - Relocated `if (!isOpen) return null;` to strictly follow all 12 React hooks (`useAppStore`, `useState`, `useRef`, and `useEffect`), ensuring identical, unconditional hook invocation order on every render.
+2. **Conditional Modal Mounting in `App.tsx`**:
+   - Updated `App.tsx` to render `{isImportModalOpen && <ImportModal ... />}`.
+   - Provides clean lifecycle isolation, mounting the modal and its event listeners only when open and unmounting cleanly upon dismissal.
+3. **Enterprise Liquid-Glass Error Boundary (`ErrorBoundary.tsx`)**:
+   - Created `src/components/ErrorBoundary.tsx` adhering to Section 4 dual-theme liquid glass design standards (`var(--glass-surface)`, `backdropFilter: blur(28px)`, `var(--radius-xl)`).
+   - Intercepts uncaught runtime/render exceptions across the component hierarchy, preventing the entire `#root` container from unmounting into an unresponsive blank screen.
+   - Surfaces a user-friendly error card, collapsible technical diagnostic stack trace, "Try Again" recovery action, and "Reload Application" button.
+   - Wrapped `<App />` in `src/main.tsx` with `<ErrorBoundary>`.
+4. **Modal Entrance Smooth Keyframe**:
+   - Defined `@keyframes modalFadeIn` in `src/index.css` to provide a subtle scale/translate-y entrance animation for modal dialogs.
+
+### Functional Decision Points & Rationale
+- **Strict Hook Ordering Prior to Early Returns**:
+  - *Decision*: Place all React hooks at the top level of the component before any conditional exit points.
+  - *Rationale*: React hooks maintain internal state indexed by execution order. Any deviation between renders triggers a fatal invariant violation that unmounts the application tree.
+- **Fail-Safe UI via Global Error Boundary**:
+  - *Decision*: Wrap the root application in a styled Error Boundary rather than relying on browser/webview defaults.
+  - *Rationale*: In packaged desktop environments (Tauri / WebView2), unhandled React exceptions unmount the DOM without surfacing errors if the developer console is not active. An Error Boundary ensures users are never stranded on a blank screen and can recover gracefully.
+
+### Technical Touchpoints
+- `src/components/ImportModal.tsx`: Relocated early return after all React hooks.
+- `src/App.tsx`: Conditionally mount `<ImportModal>` with `{isImportModalOpen && ...}`.
+- `src/components/ErrorBoundary.tsx`: New enterprise liquid-glass error boundary component.
+- `src/main.tsx`: Wrapped `<App />` with `<ErrorBoundary>`.
+- `src/index.css`: Added `@keyframes modalFadeIn`.
+
+### State & Lifecycle Impact
+- Eliminates the blank screen crash on clicking "Import" completely.
+- Zero TypeScript compiler errors; Vite bundle built cleanly.
+- 100% test pass rate across 67 backend engine tests.
+
 
 
 
