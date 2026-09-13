@@ -14,6 +14,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
@@ -343,6 +344,71 @@ def analyze_video_candidate(photo_record: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def classify_video_for_ingestion(meta: Dict[str, Any]) -> Dict[str, Any]:
+    """Classifies an ingested video to decide whether it needs enhancement, compression, or is already optimized.
+
+    Args:
+        meta: Extracted video metadata (width, height, file_size, codec, bitrate, duration).
+
+    Returns:
+        Dict with keys:
+            - 'action': 'none' | 'enhance' | 'compress'
+            - 'target_height': Optional target height (e.g. 1080 or 2160)
+            - 'reason': Human-readable description
+            - 'is_already_optimized': bool
+    """
+    width = meta.get("width") or 0
+    height = meta.get("height") or 0
+    codec = (meta.get("codec") or "").lower()
+    file_size = meta.get("file_size") or 0
+    max_dim = max(width, height)
+    min_dim = min(width, height) if min(width, height) > 0 else max_dim
+
+    # 1. Already 4K UHD (>= 2160p or width >= 3840)
+    if min_dim >= 2160 or max_dim >= 3840:
+        return {
+            "action": "none",
+            "is_already_optimized": True,
+            "target_height": None,
+            "reason": "Already pristine 4K UHD. Preserving original camera master.",
+        }
+
+    # 2. Modern 1080p in efficient codec (H.265 / HEVC / AV1 / VP9)
+    if min_dim >= 1080 and codec in ("hevc", "h265", "av1", "vp9"):
+        return {
+            "action": "none",
+            "is_already_optimized": True,
+            "target_height": None,
+            "reason": "Already modern high-definition H.265/AV1. No re-encode required.",
+        }
+
+    # 3. Vintage / Low-Res clip (under 720p vertical or under 1280 horizontal)
+    if min_dim < 720 and max_dim < 1280:
+        return {
+            "action": "enhance",
+            "is_already_optimized": False,
+            "target_height": 1080,
+            "reason": f"Vintage {min_dim}p video. Scheduled for AI upscaling to 1080p HD.",
+        }
+
+    # 4. Heavy legacy video (> 35MB with legacy H.264 / MPEG-4 / ProRes)
+    if file_size > 35_000_000 and codec not in ("hevc", "h265", "av1", "vp9"):
+        return {
+            "action": "compress",
+            "is_already_optimized": False,
+            "target_height": None,
+            "reason": f"Heavy {codec.upper()} video. Scheduled for visually lossless H.265 space saving.",
+        }
+
+    # 5. Standard compact clip
+    return {
+        "action": "none",
+        "is_already_optimized": True,
+        "target_height": None,
+        "reason": "Standard compact video clip.",
+    }
+
+
 async def compress_video(
     photo_id: int,
     crf: Optional[int] = None,
@@ -389,10 +455,15 @@ async def compress_video(
     target_path = orig_p.with_name(f"{orig_p.stem}_opt.mp4")
     temp_path = orig_p.with_name(f"{orig_p.stem}_transcoding.tmp.mp4")
 
+    # Constrain threads to 50% CPU cores so user UI stays smooth at 60fps
+    thread_count = max(1, (os.cpu_count() or 4) // 2)
+    creation_flags = 0x00004000 if sys.platform == "win32" else 0
+
     # Construct ffmpeg command
     cmd = [
         ffmpeg,
         "-y",
+        "-threads", str(thread_count),
         "-i", orig_path,
         "-c:v", enc_info["encoder"],
     ]
@@ -413,7 +484,13 @@ async def compress_video(
     ])
 
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=900,
+            creationflags=creation_flags,
+        )
         if proc.returncode != 0 or not temp_path.exists() or temp_path.stat().st_size == 0:
             if temp_path.exists():
                 temp_path.unlink()
@@ -549,9 +626,14 @@ async def enhance_old_video(
         f"eq=contrast=1.05:brightness=0.01:saturation=1.12"
     )
 
+    # Constrain threads to 50% CPU cores and lower Windows process priority
+    thread_count = max(1, (os.cpu_count() or 4) // 2)
+    creation_flags = 0x00004000 if sys.platform == "win32" else 0
+
     cmd = [
         ffmpeg,
         "-y",
+        "-threads", str(thread_count),
         "-i", orig_path,
         "-vf", filter_chain,
         "-c:v", "libx265",
@@ -565,7 +647,13 @@ async def enhance_old_video(
     ]
 
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=1200,
+            creationflags=creation_flags,
+        )
         if proc.returncode != 0 or not temp_path.exists() or temp_path.stat().st_size == 0:
             if temp_path.exists():
                 temp_path.unlink()

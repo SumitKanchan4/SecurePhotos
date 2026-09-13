@@ -194,14 +194,15 @@ export const Lightbox: React.FC<LightboxProps> = ({
           </span>
           {isVideo ? (() => {
             const isEnhanced = Boolean(currentPhoto.is_enhanced);
-            const is4K = isEnhanced && Boolean((currentPhoto.height && currentPhoto.height >= 2160) || (currentPhoto.width && currentPhoto.width >= 3840));
+            const is4K = Boolean((currentPhoto.height && currentPhoto.height >= 2160) || (currentPhoto.width && currentPhoto.width >= 3840));
+            const isHD = Boolean((currentPhoto.height && currentPhoto.height >= 720) || (currentPhoto.width && currentPhoto.width >= 1280));
             return (
               <span 
                 style={{
                   fontSize: "10px",
                   fontWeight: 700,
-                  color: isEnhanced ? "#fbbf24" : "#ffffff",
-                  backgroundColor: isEnhanced ? "rgba(251, 191, 36, 0.15)" : "rgba(255, 255, 255, 0.15)",
+                  color: isEnhanced ? "#fbbf24" : "rgba(255, 255, 255, 0.9)",
+                  backgroundColor: isEnhanced ? "rgba(251, 191, 36, 0.15)" : "rgba(255, 255, 255, 0.12)",
                   border: isEnhanced ? "1px solid rgba(251, 191, 36, 0.35)" : "1px solid var(--glass-border)",
                   padding: "2px 8px",
                   borderRadius: "var(--radius-full)",
@@ -211,7 +212,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 }}
               >
                 {isEnhanced ? <Sparkles size={10} style={{ color: "#fbbf24" }} /> : <Film size={10} />}
-                <span>{isEnhanced ? (is4K ? "4K ENHANCED" : "HD ENHANCED") : "VIDEO"}</span>
+                <span>{is4K ? "4K UHD" : isHD ? "HD" : "VIDEO"}</span>
               </span>
             );
           })() : currentPhoto.is_enhanced ? (
@@ -229,7 +230,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 gap: "3px",
               }}
             >
-              <Sparkles size={10} style={{ color: "#fbbf24" }} /> 8K ULTRA
+              <Sparkles size={10} style={{ color: "#fbbf24" }} /> 8K UHD
             </span>
           ) : null}
         </div>
@@ -424,13 +425,13 @@ export const Lightbox: React.FC<LightboxProps> = ({
               <>
                 <Loader2 size={14} className="spin" style={{ color: "var(--accent-primary)" }} />
                 <span>
-                  Enhancing photo ({optimizationProgress?.item_progress || 0}%) — Showing original photo
+                  Optimizing to 8K UHD ({optimizationProgress?.item_progress || 0}%) — Showing original photo
                 </span>
               </>
             ) : (
               <>
                 <Clock size={14} style={{ color: "var(--text-muted)" }} />
-                <span>Queued for 8K Super-Resolution — Showing original photo</span>
+                <span>Queued for 8K UHD — Showing original photo</span>
               </>
             )}
           </div>
@@ -967,7 +968,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                           gap: "3px"
                         }}>
                           {isEnhanced && <Sparkles size={9} style={{ color: "#fbbf24" }} />}
-                          {isEnhanced ? (is4K ? "4K Enhanced" : "HD Enhanced") : "Original Video"}
+                          {isEnhanced ? (is4K ? "4K UHD" : "HD") : (is4K ? "4K UHD" : (currentPhoto.height && currentPhoto.height >= 720 ? "HD" : "Original Video"))}
                         </span>
                       </div>
 
@@ -997,13 +998,56 @@ export const Lightbox: React.FC<LightboxProps> = ({
                         )}
                       </div>
 
+                      {!is4K && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              showToast("Starting background enhancement to 4K UHD...", "info");
+                              const res = await fetch(`http://127.0.0.1:8000/api/videos/${currentPhoto.id}/enhance`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ target_height: 2160 }),
+                              });
+                              const data = await res.json();
+                              if (res.ok && data.success) {
+                                showToast("Enhanced video to 4K UHD successfully!", "success");
+                              } else {
+                                showToast(data.error || "Video enhancement failed", "warning");
+                              }
+                            } catch {
+                              showToast("Failed to connect to video enhancement engine", "warning");
+                            }
+                          }}
+                          className="clickable"
+                          title="Upscale video to 4K UHD with Lanczos & 3D temporal denoising"
+                          style={{
+                            width: "100%",
+                            marginTop: "10px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "6px",
+                            padding: "7px 10px",
+                            borderRadius: "var(--radius-xs)",
+                            backgroundColor: "rgba(251, 191, 36, 0.15)",
+                            border: "1px solid rgba(251, 191, 36, 0.4)",
+                            color: "#fbbf24",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <Sparkles size={13} style={{ color: "#fbbf24" }} /> Enhance to 4K UHD
+                        </button>
+                      )}
+
                       <button
                         onClick={() => handleDownload("original")}
                         className="clickable"
                         title="Save video file to your computer's Downloads folder"
                         style={{
                           width: "100%",
-                          marginTop: "10px",
+                          marginTop: "8px",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",

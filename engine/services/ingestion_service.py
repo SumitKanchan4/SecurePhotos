@@ -28,8 +28,13 @@ from engine.services.thumbnail_service import (
     get_sharded_preview_path,
 )
 from engine.services.video_service import (
+    classify_video_for_ingestion,
     extract_video_metadata,
     generate_video_thumbnail,
+)
+from engine.services.video_queue_service import (
+    enqueue_video_for_processing,
+    start_video_queue_worker,
 )
 from engine.volume_tracker import get_volume_serial
 
@@ -509,4 +514,24 @@ async def ingest_single_photo(
         ),
     )
     await conn.commit()
-    return cursor.lastrowid
+    photo_id = cursor.lastrowid
+
+    # Intelligent Auto-Video Classification and Resilient Queue Enrollment
+    if is_video and photo_id:
+        try:
+            classification = classify_video_for_ingestion(metadata)
+            if classification.get("is_already_optimized"):
+                await conn.execute("UPDATE photos SET is_optimized = 1 WHERE id = ?", (photo_id,))
+                await conn.commit()
+                logger.info(f"Video #{photo_id} classified as already optimized: {classification.get('reason')}")
+            elif classification.get("action") in ("enhance", "compress"):
+                await enqueue_video_for_processing(
+                    photo_id,
+                    action=classification["action"],
+                    target_height=classification.get("target_height") or 1080,
+                )
+                start_video_queue_worker()
+        except Exception as queue_err:
+            logger.warning(f"Could not enqueue video #{photo_id} for background processing: {queue_err}")
+
+    return photo_id

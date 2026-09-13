@@ -14,6 +14,13 @@ from engine.services.video_service import (
     extract_video_metadata,
 )
 from engine.services.video_runtime import is_video_runtime_available
+from engine.services.video_queue_service import (
+    enqueue_video_for_processing,
+    get_queue_status,
+    pause_video_queue,
+    resume_video_queue,
+    start_video_queue_worker,
+)
 
 logger = logging.getLogger("securephotos.api.videos")
 
@@ -252,3 +259,24 @@ async def compress_all_videos_endpoint() -> Dict[str, Any]:
         "total_reclaimed_bytes": total_reclaimed,
         "errors": errors,
     }
+
+
+@router.get("/queue")
+async def get_video_queue_endpoint() -> Dict[str, Any]:
+    """Returns background video queue status, counts, and paused state."""
+    return await get_queue_status()
+
+
+@router.post("/queue/pause")
+async def pause_video_queue_endpoint() -> Dict[str, Any]:
+    """Pauses the background video processing worker."""
+    pause_video_queue()
+    return {"success": True, "status": "paused"}
+
+
+@router.post("/queue/resume")
+async def resume_video_queue_endpoint() -> Dict[str, Any]:
+    """Resumes the background video processing worker."""
+    resume_video_queue()
+    start_video_queue_worker()
+    return {"success": True, "status": "running"}

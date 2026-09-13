@@ -49,6 +49,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         asyncio.create_task(photos.run_background_optimization())
         from engine.services.face_scan_worker import start_background_scan
         start_background_scan()
+        from engine.services.video_queue_service import start_video_queue_worker
+        start_video_queue_worker()
 
     yield
 

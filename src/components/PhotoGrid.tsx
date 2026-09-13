@@ -257,14 +257,15 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
       {/* 6a. Bottom-Left Video Duration / Resolution / AI Optimization Frosted Glass Tag */}
       {photo.mime_type?.startsWith("video/") ? (() => {
         const isEnhanced = Boolean(photo.is_enhanced);
-        const is4K = isEnhanced && Boolean((photo.height && photo.height >= 2160) || (photo.width && photo.width >= 3840));
+        const is4K = Boolean((photo.height && photo.height >= 2160) || (photo.width && photo.width >= 3840));
+        const isHD = Boolean((photo.height && photo.height >= 720) || (photo.width && photo.width >= 1280));
         const durationStr = photo.duration
           ? `${Math.floor(photo.duration / 60)}:${String(Math.floor(photo.duration % 60)).padStart(2, "0")}`
           : "VIDEO";
 
         return (
           <div
-            title={`Video clip${photo.duration ? ` • ${Math.round(photo.duration)}s` : ""}${isEnhanced ? (is4K ? " • AI Enhanced 4K UHD" : " • AI Enhanced HD") : ""}`}
+            title={`Video clip${photo.duration ? ` • ${Math.round(photo.duration)}s` : ""}${is4K ? " • 4K UHD" : isHD ? " • HD" : ""}${isEnhanced ? " (Enhanced)" : ""}`}
             style={{
               position: "absolute",
               bottom: "7px",
@@ -293,20 +294,20 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
           >
             <Play size={9} fill="#ffffff" color="#ffffff" />
             <span>{durationStr}</span>
-            {isEnhanced && (
+            {(isEnhanced || is4K || isHD) && (
               <span 
                 style={{ 
                   display: "inline-flex", 
                   alignItems: "center", 
                   gap: "2px", 
-                  color: "#fbbf24", 
+                  color: isEnhanced ? "#fbbf24" : "rgba(255, 255, 255, 0.8)", 
                   fontWeight: 800, 
                   fontSize: "9px" 
                 }}
               >
                 <span>•</span>
-                <Sparkles size={8} style={{ color: "#fbbf24" }} />
-                <span>{is4K ? "4K" : "HD"}</span>
+                {isEnhanced && <Sparkles size={8} style={{ color: "#fbbf24" }} />}
+                <span>{is4K ? "4K UHD" : "HD"}</span>
               </span>
             )}
           </div>
@@ -320,7 +321,7 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
 
         return (
           <div
-            title={is8k ? "8K ULTRA Super-Resolution Optimized" : "High-Resolution Source"}
+            title={is8k ? "8K UHD Resolution" : "High-Resolution Source"}
             style={{
               position: "absolute",
               bottom: "7px",
@@ -345,7 +346,7 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
             }}
           >
             {is8k && <Sparkles size={9} style={{ color: "#fbbf24" }} />}
-            <span>{is8k ? "8K ULTRA" : (maxDim >= 7680 ? "8K" : "HQ")}</span>
+            <span>{is8k ? "8K UHD" : (maxDim >= 7680 ? "8K" : "HQ")}</span>
           </div>
         );
       })()}

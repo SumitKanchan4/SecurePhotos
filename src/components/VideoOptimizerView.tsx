@@ -889,7 +889,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
                               cursor: "pointer",
                             }}
                           >
-                            1080p FHD
+                            1080p HD
                           </button>
                           <button
                             onClick={() => setTargetHeights((prev) => ({ ...prev, [video.id]: 2160 }))}

@@ -1728,3 +1728,60 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 ### State & Lifecycle Impact
 - 100% backend test pass rate across 67 unit/integration tests.
 - 0 TypeScript compiler errors; production Vite bundle built cleanly.
+
+---
+
+## 39. Automated Video Processing on Import, CPU Throttling, Resumability & Label Simplification
+
+### Functionality Overview
+1. **Intelligent Ingestion Video Classifier**:
+   - Implemented `classify_video_for_ingestion(metadata)` in `engine/services/video_service.py`.
+   - Distinguishes native 4K UHD and modern H.265 1080p clips from vintage/low-res and heavy legacy videos.
+   - For native 4K UHD or modern H.265/AV1 videos: automatically marks `is_optimized = 1` and tags them as `4K UHD` without burning CPU or degrading quality through unnecessary re-encoding.
+   - For low-res vintage videos (<720p or <1080p vintage): automatically enqueues them for background AI upscaling to 1080p HD.
+   - For heavy legacy videos (>35MB with H.264/MPEG-4): automatically enqueues them for background visually lossless H.265 space saving.
+2. **CPU Throttling & Priority Control**:
+   - Caps FFmpeg threads to half available CPU cores: `-threads max(1, (os.cpu_count() or 4) // 2)`, leaving 50% CPU free for OS tasks, smooth mouse interaction, and 60fps UI rendering.
+   - Spawns FFmpeg with Windows priority class `0x00004000` (`BELOW_NORMAL_PRIORITY_CLASS`), ensuring Windows prioritizes user interaction over background encoding.
+3. **Resilient Background Queue & Disconnection Safety (`video_queue_service.py`)**:
+   - Persistent SQLite queue (`video_processing_queue`) supporting `queued`, `processing`, `paused`, `completed`, and `failed`.
+   - Single-worker FIFO asynchronous execution loop with 1.5s cooling pauses between videos.
+   - Resumable across app restarts: any jobs interrupted while `processing` are reset to `queued` on startup.
+   - Storage disconnection safety: detects detached drives or missing files (`FileNotFoundError`, `OSError`), marks job as `paused`, and skips without crashing the engine. Resumes automatically once the drive is reconnected.
+   - Cleans up orphaned temporary files (`*.tmp.mp4`) on startup.
+   - Atomic replacement: moves original files to `.trash/` with 30-day recovery protection matching photo ingestion.
+4. **Universal Label & Badge Simplification**:
+   - Removed verbose marketing jargon (`"ULTRA"`, `"AI ENHANCED"`, `"Acutance & Face Unblur"`).
+   - Standardized on clean, universal badges:
+     - Photos: `✦ 8K UHD`
+     - 4K Videos: `✨ 4K UHD`
+     - HD Videos: `✨ HD`
+     - Status Pills: `"Optimizing to 8K UHD..."` / `"Queued for 8K UHD"`
+   - Added direct `<Sparkles /> Enhance to 4K UHD` button in Lightbox Video Playback card.
+
+### Functional Decision Points & Rationale
+- **Classifier-Driven Ingestion vs. Blind Transcoding**:
+  - *Decision*: Ingest with intelligent classification rather than blindly transcoding all videos.
+  - *Rationale*: Re-encoding an iPhone 4K 60fps video burns 25+ minutes of CPU, drains laptop battery, and introduces generation loss without visual benefit. Classifying media upfront ensures resources are spent only on clips that genuinely benefit.
+- **Process Priority Throttling**:
+  - *Decision*: Apply `BELOW_NORMAL_PRIORITY_CLASS` and cap threads to 50% of CPU cores.
+  - *Rationale*: Ensures the desktop app remains fully responsive, animations stay fluid at 60fps, and fans do not excessively spin during imports.
+- **Drive Disconnection Handling**:
+  - *Decision*: Transition to `paused` on missing file instead of throwing unhandled I/O exceptions or failing permanently.
+  - *Rationale*: External hard drives and SD cards can be unplugged unexpectedly. Preserving job state in SQLite prevents data loss and allows seamless resumption when reconnected.
+
+### Technical Touchpoints
+- `engine/services/video_service.py`: Added `classify_video_for_ingestion`, thread capping, and Windows `creationflags`.
+- `engine/services/video_queue_service.py`: New resilient SQLite queue worker service.
+- `engine/services/ingestion_service.py`: Automatically classifies and enqueues newly imported videos.
+- `engine/api/videos.py`: Added `/api/videos/queue`, `/api/videos/queue/pause`, `/api/videos/queue/resume`.
+- `engine/main.py`: Starts `video_queue_worker` during lifespan initialization.
+- `src/components/PhotoGrid.tsx`: Simplified badges to `✦ 8K UHD`, `✨ 4K UHD`, and `✨ HD`.
+- `src/components/Lightbox.tsx`: Simplified badges, status pills, and added direct Enhance to 4K UHD button.
+- `src/components/VideoOptimizerView.tsx`: Harmonized resolution button labels.
+- `engine/tests/test_video_queue.py`: Comprehensive test suite for classification, queue lifecycle, and disconnection safety.
+
+### State & Lifecycle Impact
+- 100% backend test pass rate across all 73 tests (and 8 subtests).
+- Zero TypeScript compiler errors; Vite bundle built cleanly in 4.43s.
+
