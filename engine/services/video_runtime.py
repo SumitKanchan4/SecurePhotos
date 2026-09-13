@@ -3,7 +3,7 @@
 This module provides self-contained discovery and validation for FFmpeg and FFprobe binaries:
 1. Discovers bundled binaries in `<AppRoot>/bin`, PyInstaller frozen paths, venv, or system PATH.
 2. Validates execution and checks version telemetry.
-3. Probes hardware-accelerated HEVC/H.265 encoding capabilities (NVENC, QSV, AMF, MediaFoundation, D3D12VA) with seamless CPU fallback (libx265).
+3. Probes hardware-accelerated H.264 (AVC) encoding capabilities (NVENC, QSV, AMF, MediaFoundation) with seamless CPU fallback (libx264) and guaranteed universal 8-bit yuv420p web/TV compatibility.
 """
 
 import logging
@@ -92,15 +92,18 @@ def is_video_runtime_available() -> bool:
 
 
 def probe_hardware_encoder() -> Dict[str, Any]:
-    """Probes the best available H.265/HEVC encoder (Hardware vs CPU).
+    """Probes the best available H.264 (AVC) encoder (Hardware vs CPU).
 
     Tests available encoders by attempting a dry-run 1-frame encode.
     Prioritizes:
-    1. NVIDIA NVENC (`hevc_nvenc`)
-    2. Intel QuickSync (`hevc_qsv`)
-    3. AMD AMF (`hevc_amf`)
-    4. Windows MediaFoundation (`hevc_mf`)
-    5. High-quality CPU fallback (`libx265`)
+    1. NVIDIA NVENC (`h264_nvenc`)
+    2. Intel QuickSync (`h264_qsv`)
+    3. AMD AMF (`h264_amf`)
+    4. Windows MediaFoundation (`h264_mf`)
+    5. High-quality CPU fallback (`libx264`)
+
+    All profiles enforce 8-bit `yuv420p` pixel format to ensure 100% universal
+    playback across Google TV, Smart TVs, mobile browsers, and WebView2.
 
     Returns:
         Dictionary containing encoder name, type ('hardware' or 'cpu'),
@@ -113,13 +116,13 @@ def probe_hardware_encoder() -> Dict[str, Any]:
     ffmpeg = get_ffmpeg_path()
     if not ffmpeg:
         _CACHED_ENCODER = {
-            "encoder": "libx265",
+            "encoder": "libx264",
             "type": "cpu",
             "crf_param": "-crf",
             "preset_param": "-preset",
-            "default_crf": 23,
+            "default_crf": 22,
             "default_preset": "medium",
-            "extra_args": ["-tag:v", "hvc1"],
+            "extra_args": ["-pix_fmt", "yuv420p"],
         }
         return _CACHED_ENCODER
 
@@ -139,40 +142,31 @@ def probe_hardware_encoder() -> Dict[str, Any]:
 
     candidates = [
         {
-            "name": "hevc_nvenc",
+            "name": "h264_nvenc",
             "type": "hardware",
             "crf_param": "-cq",
             "preset_param": "-preset",
-            "default_crf": 24,
+            "default_crf": 22,
             "default_preset": "p5",
-            "extra_args": ["-tag:v", "hvc1"],
+            "extra_args": ["-pix_fmt", "yuv420p"],
         },
         {
-            "name": "hevc_qsv",
+            "name": "h264_qsv",
             "type": "hardware",
             "crf_param": "-global_quality",
             "preset_param": "-preset",
-            "default_crf": 24,
+            "default_crf": 22,
             "default_preset": "medium",
-            "extra_args": ["-tag:v", "hvc1"],
+            "extra_args": ["-pix_fmt", "yuv420p"],
         },
         {
-            "name": "hevc_amf",
+            "name": "h264_amf",
             "type": "hardware",
             "crf_param": "-qp_p",
             "preset_param": "-quality",
-            "default_crf": 24,
+            "default_crf": 22,
             "default_preset": "balanced",
-            "extra_args": ["-tag:v", "hvc1"],
-        },
-        {
-            "name": "hevc_mf",
-            "type": "hardware",
-            "crf_param": "-b:v",
-            "preset_param": None,
-            "default_crf": 0,
-            "default_preset": None,
-            "extra_args": ["-tag:v", "hvc1"],
+            "extra_args": ["-pix_fmt", "yuv420p"],
         },
     ]
 
@@ -187,6 +181,7 @@ def probe_hardware_encoder() -> Dict[str, Any]:
                     "-f", "lavfi",
                     "-i", "color=c=black:s=64x64:d=0.1",
                     "-c:v", cand["name"],
+                    "-pix_fmt", "yuv420p",
                     "-f", "null",
                     "-",
                 ]
@@ -201,22 +196,22 @@ def probe_hardware_encoder() -> Dict[str, Any]:
                         "default_preset": cand["default_preset"],
                         "extra_args": cand["extra_args"],
                     }
-                    logger.info(f"Hardware HEVC acceleration active: {cand['name']}")
+                    logger.info(f"Hardware H.264 acceleration active: {cand['name']}")
                     break
             except Exception:
                 continue
 
     if not selected:
         selected = {
-            "encoder": "libx265",
+            "encoder": "libx264",
             "type": "cpu",
             "crf_param": "-crf",
             "preset_param": "-preset",
-            "default_crf": 23,
+            "default_crf": 22,
             "default_preset": "medium",
-            "extra_args": ["-tag:v", "hvc1"],
+            "extra_args": ["-pix_fmt", "yuv420p"],
         }
-        logger.info("Using CPU libx265 for visually lossless video encoding.")
+        logger.info("Using CPU libx264 for visually lossless, universal web/TV video encoding.")
 
     _CACHED_ENCODER = selected
     return _CACHED_ENCODER

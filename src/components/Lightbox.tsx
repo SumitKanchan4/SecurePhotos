@@ -518,8 +518,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
               position: "relative",
             }}
           >
-            {/* Instant Thumbnail Low-Res Backdrop while High-Res Loads */}
-            {!isPreviewLoaded && !previewHasError && (
+            {/* Instant Thumbnail Low-Res Backdrop while High-Res Loads (Photos only) */}
+            {!isVideo && !isPreviewLoaded && !previewHasError && (
               <img
                 src={thumbnailUrl}
                 alt={currentPhoto.filename}
@@ -554,6 +554,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   poster={thumbnailUrl}
                   controls
                   playsInline
+                  preload="metadata"
                   autoPlay={false}
                   onLoadedData={() => setIsPreviewLoaded(true)}
                   onError={() => {

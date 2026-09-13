@@ -399,7 +399,7 @@ def classify_video_for_ingestion(meta: Dict[str, Any]) -> Dict[str, Any]:
             "action": "compress",
             "is_already_optimized": False,
             "target_height": None,
-            "reason": f"Heavy {codec.upper()} video. Scheduled for visually lossless H.265 space saving.",
+            "reason": f"Heavy {codec.upper()} video. Scheduled for visually lossless H.264 space saving.",
         }
 
     # 5. Standard compact clip
@@ -416,7 +416,7 @@ async def compress_video(
     crf: Optional[int] = None,
     preset: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Transcodes a video to H.265/HEVC with visually lossless CRF, untouched audio copy, and 30-day trash safety.
+    """Transcodes a video to universal H.264 with visually lossless CRF, untouched audio copy, and 30-day trash safety.
 
     Args:
         photo_id: ID of the photo record in the database.
@@ -648,10 +648,10 @@ async def enhance_old_video(
         "-threads", str(thread_count),
         "-i", orig_path,
         "-vf", filter_chain,
-        "-c:v", "libx265",
+        "-c:v", "libx264",
         "-crf", "20",
         "-preset", "medium",
-        "-tag:v", "hvc1",
+        "-pix_fmt", "yuv420p",
         "-c:a", "copy",
         "-map_metadata", "0",
         "-movflags", "+faststart",
