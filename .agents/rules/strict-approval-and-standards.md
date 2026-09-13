@@ -77,3 +77,15 @@ trigger: always_on
   3. **Context Hygiene**:
      - Never read whole large files when a sliced range suffices. Always use `StartLine` and `EndLine` in `view_file` to keep the context window compact and cost-effective.
      - When running pytest multiple times in a session, compress each run's output immediately — do not accumulate raw logs.
+
+## 7. User-First UX Copywriting & Human-Centric Communication
+- **Human Tone Over Developer Jargon**:
+  - UI labels, descriptions, toasts, dialogs, and helper text must always speak from the **end-user's mental model**, NEVER from an internal technical or systems-engineering perspective.
+  - STRICTLY FORBIDDEN: Cryptographic terminology (e.g. "SHA-256 verification", "hash check"), database/filesystem mechanics (e.g. "Source File Handling", "sharded thumbnail generation", "FTS5 query", "ONNX eviction"), technical path strings (e.g. "Local Storage (C:\)"), or developer architecture terms.
+  - REQUIRED: Direct, warm, concise, and reassuring human language focused on real user benefits: safety, simplicity, disk space, and privacy.
+- **Concise, Calibrated & Meaningful**:
+  - Keep copy concise and scannable. Avoid redundant statements (e.g., if a user is importing to the app, do not mechanically state "importing to app storage").
+  - Emphasize user confidence and core value: 100% private, on-device, never uploaded to any cloud.
+- **Visual De-Cluttering & Breathing Room**:
+  - Avoid filler checkboxes, bullet points, and marketing-style feature badges inside modal workflows (e.g. "Auto-deduplication active", "Visual quality preservation").
+  - Maintain clean, spacious layouts with generous whitespace (`24px`–`32px` padding) that allow users to digest decisions effortlessly without cognitive overload.

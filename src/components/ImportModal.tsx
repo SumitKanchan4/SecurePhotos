@@ -6,12 +6,10 @@ import {
   CheckCircle2, 
   X, 
   Loader2, 
-  HardDrive, 
   Images, 
   Copy, 
   ArrowRightLeft, 
-  Sparkles, 
-  Check
+  ShieldCheck
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/useAppStore";
@@ -23,7 +21,7 @@ interface ImportModalProps {
 }
 
 export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImportComplete }) => {
-  const { activeVolume, showToast } = useAppStore();
+  const { showToast } = useAppStore();
   
   // Selection state: either specific files or an entire folder
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
@@ -307,7 +305,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
 
       <div 
         style={{
-          width: "560px",
+          width: "580px",
           maxWidth: "100%",
           backgroundColor: "var(--glass-surface)",
           backdropFilter: "blur(28px)",
@@ -324,73 +322,97 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
         {/* Modal Header */}
         <div 
           style={{
-            padding: "18px 24px",
+            padding: "20px 28px",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             borderBottom: "1px solid var(--glass-border)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <div
               style={{
-                width: "36px",
-                height: "36px",
+                width: "40px",
+                height: "40px",
                 borderRadius: "var(--radius-full)",
-                backgroundColor: "rgba(59, 130, 246, 0.15)",
-                border: "1px solid rgba(59, 130, 246, 0.3)",
+                backgroundColor: "rgba(59, 130, 246, 0.12)",
+                border: "1px solid rgba(59, 130, 246, 0.25)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 color: "var(--accent-primary)",
               }}
             >
-              <FolderDown size={18} />
+              <FolderDown size={20} />
             </div>
             <div>
               <h2 
                 style={{ 
-                  fontSize: "17px", 
+                  fontSize: "18px", 
                   fontWeight: 800, 
                   letterSpacing: "-0.02em",
                   color: "var(--text-primary)",
-                  fontFamily: "Plus Jakarta Sans, sans-serif",
+                  fontFamily: "var(--font-display, Plus Jakarta Sans, sans-serif)",
                   margin: 0,
                 }}
               >
-                Import Media
+                Import Photos &amp; Videos
               </h2>
-              <p style={{ fontSize: "11px", color: "var(--text-secondary)", margin: "2px 0 0 0" }}>
-                Add photos and videos to your private, on-device collection
+              <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: "3px 0 0 0" }}>
+                Add media to your private, on-device library
               </p>
             </div>
           </div>
-          <button 
-            onClick={onClose}
-            disabled={isImporting || isBrowsing}
-            className="clickable"
-            title="Close (Esc)"
-            style={{
-              width: "30px",
-              height: "30px",
-              borderRadius: "var(--radius-full)",
-              background: "var(--glass-pill-bg)",
-              border: "1px solid var(--glass-pill-border)",
-              color: "var(--text-secondary)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: isImporting || isBrowsing ? "not-allowed" : "pointer",
-            }}
-          >
-            <X size={15} />
-          </button>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            {/* Reassuring Zero-Cloud Privacy Badge */}
+            <div
+              title="SecurePhotos runs 100% on your device. Your photos are never uploaded to any remote server or cloud."
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                padding: "4px 10px",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "rgba(16, 185, 129, 0.12)",
+                border: "1px solid rgba(16, 185, 129, 0.25)",
+                color: "#10b981",
+                fontSize: "11px",
+                fontWeight: 600,
+                letterSpacing: "0.01em",
+              }}
+            >
+              <ShieldCheck size={13} />
+              <span>100% On-Device</span>
+            </div>
+
+            <button 
+              onClick={onClose}
+              disabled={isImporting || isBrowsing}
+              className="clickable"
+              title="Close (Esc)"
+              style={{
+                width: "32px",
+                height: "32px",
+                borderRadius: "var(--radius-full)",
+                background: "var(--glass-pill-bg)",
+                border: "1px solid var(--glass-pill-border)",
+                color: "var(--text-secondary)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: isImporting || isBrowsing ? "not-allowed" : "pointer",
+              }}
+            >
+              <X size={15} />
+            </button>
+          </div>
         </div>
 
-        {/* Modal Body */}
-        <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "18px" }}>
+        {/* Modal Body with Spacious 22px Gap & 28px Padding */}
+        <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: "22px" }}>
           
-          {/* Interactive Media Dropzone & Selector */}
+          {/* Step 1: Interactive Media Dropzone & Selector */}
           <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -403,13 +425,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                   ? "var(--glass-pill-bg)" 
                   : "rgba(255, 255, 255, 0.02)",
               borderRadius: "var(--radius-lg)",
-              padding: hasSelection ? "16px 20px" : "24px 20px",
+              padding: hasSelection ? "18px 22px" : "32px 24px",
               textAlign: "center",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              gap: "10px",
+              gap: "12px",
               transition: "all 0.2s ease",
             }}
           >
@@ -417,8 +439,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
               <>
                 <div
                   style={{
-                    width: "48px",
-                    height: "48px",
+                    width: "52px",
+                    height: "52px",
                     borderRadius: "var(--radius-full)",
                     backgroundColor: "rgba(59, 130, 246, 0.12)",
                     display: "flex",
@@ -427,19 +449,19 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                     color: "var(--accent-primary)",
                   }}
                 >
-                  <UploadCloud size={24} />
+                  <UploadCloud size={26} />
                 </div>
                 <div>
                   <p style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
-                    Choose Photos, Videos, or a Folder
+                    Drag &amp; drop photos, videos, or folders here
                   </p>
-                  <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: "4px 0 0 0" }}>
-                    Drag & drop files here, or browse from your computer
+                  <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: "4px 0 0 0" }}>
+                    Or choose directly from your computer
                   </p>
                 </div>
 
                 {/* Dual Pill Action Buttons */}
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "6px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "4px" }}>
                   <button
                     type="button"
                     disabled={isBrowsing || isImporting}
@@ -449,7 +471,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                       display: "flex",
                       alignItems: "center",
                       gap: "6px",
-                      padding: "7px 16px",
+                      padding: "8px 18px",
                       borderRadius: "var(--radius-full)",
                       backgroundColor: "var(--glass-pill-bg)",
                       border: "1px solid var(--glass-pill-border)",
@@ -460,8 +482,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                       boxShadow: "var(--glass-shadow)",
                     }}
                   >
-                    <Images size={14} style={{ color: "var(--accent-primary)" }} />
-                    <span>Select Files</span>
+                    <Images size={15} style={{ color: "var(--accent-primary)" }} />
+                    <span>Choose Photos</span>
                   </button>
 
                   <button
@@ -473,7 +495,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                       display: "flex",
                       alignItems: "center",
                       gap: "6px",
-                      padding: "7px 16px",
+                      padding: "8px 18px",
                       borderRadius: "var(--radius-full)",
                       backgroundColor: "var(--glass-pill-bg)",
                       border: "1px solid var(--glass-pill-border)",
@@ -484,19 +506,19 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                       boxShadow: "var(--glass-shadow)",
                     }}
                   >
-                    <FolderOpen size={14} style={{ color: "var(--accent-primary)" }} />
-                    <span>Select Folder</span>
+                    <FolderOpen size={15} style={{ color: "var(--accent-primary)" }} />
+                    <span>Choose Folder</span>
                   </button>
                 </div>
               </>
             ) : (
               /* Selected State Presentation */
-              <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0, textAlign: "left" }}>
+              <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0, textAlign: "left" }}>
                   <div
                     style={{
-                      width: "40px",
-                      height: "40px",
+                      width: "44px",
+                      height: "44px",
                       borderRadius: "var(--radius-full)",
                       backgroundColor: "rgba(59, 130, 246, 0.15)",
                       display: "flex",
@@ -506,13 +528,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                       flexShrink: 0,
                     }}
                   >
-                    {selectedFolder ? <FolderOpen size={18} /> : <Images size={18} />}
+                    {selectedFolder ? <FolderOpen size={20} /> : <Images size={20} />}
                   </div>
                   <div style={{ minWidth: 0 }}>
-                    <p style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {selectedFolder ? `Folder: ${getFolderName(selectedFolder)}` : `${selectedFiles.length} media ${selectedFiles.length === 1 ? "file" : "files"} ready to import`}
+                    <p style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {selectedFolder ? `Folder: ${getFolderName(selectedFolder)}` : `${selectedFiles.length} media ${selectedFiles.length === 1 ? "item" : "items"} ready to import`}
                     </p>
-                    <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: "2px 0 0 0", fontFamily: "var(--font-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: "3px 0 0 0", fontFamily: "var(--font-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {selectedFolder || (selectedFiles.length <= 2 ? selectedFiles.join(", ") : `${selectedFiles.slice(0, 2).join(", ")} and ${selectedFiles.length - 2} more`)}
                     </p>
                   </div>
@@ -525,12 +547,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                   className="clickable"
                   title="Change selected items"
                   style={{
-                    padding: "5px 12px",
+                    padding: "6px 14px",
                     borderRadius: "var(--radius-full)",
                     backgroundColor: "rgba(255, 255, 255, 0.08)",
                     border: "1px solid var(--glass-border)",
                     color: "var(--text-secondary)",
-                    fontSize: "11px",
+                    fontSize: "12px",
                     fontWeight: 600,
                     cursor: "pointer",
                     flexShrink: 0,
@@ -542,72 +564,21 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
             )}
           </div>
 
-          {/* Clean Destination Capsule with Info Tooltip */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "10px 14px",
-              borderRadius: "var(--radius-md)",
-              backgroundColor: "rgba(255, 255, 255, 0.03)",
-              border: "1px solid var(--glass-border)",
-              fontSize: "12px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--text-secondary)" }}>
-              <HardDrive size={14} style={{ color: "var(--accent-primary)" }} />
-              <span>Library Storage:</span>
-              <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
-                {activeVolume ? `${activeVolume.volume_name} (${activeVolume.drive_letter})` : "Local Storage (C:)"}
-              </span>
-            </div>
-
-            <div 
-              title="SecurePhotos automatically organizes your media into chronologically date-indexed directories and protects against duplicate clutter."
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                color: "var(--text-muted)",
-                fontSize: "11px",
-                cursor: "help",
-              }}
-            >
-              <span style={{ textDecoration: "underline dotted" }}>Auto-organized by date</span>
-              <span 
-                style={{ 
-                  display: "inline-flex", 
-                  alignItems: "center", 
-                  justifyContent: "center", 
-                  width: "14px", 
-                  height: "14px", 
-                  borderRadius: "50%", 
-                  backgroundColor: "rgba(255, 255, 255, 0.1)", 
-                  fontSize: "10px",
-                  fontWeight: 700 
-                }}
-              >
-                i
-              </span>
-            </div>
-          </div>
-
-          {/* Transparent Source Cleanup Selector (Safe by default) */}
+          {/* Step 2: What to do with original files (Humanized, zero developer jargon) */}
           <div>
-            <label style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-secondary)", marginBottom: "8px", display: "block" }}>
-              Source File Handling
+            <label style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-secondary)", marginBottom: "10px", display: "block" }}>
+              After importing:
             </label>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              {/* Option 1: Safe Copy (Recommended) */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              {/* Option 1: Keep Originals (Recommended) */}
               <div
                 onClick={() => setCleanupMode("copy")}
                 className="clickable"
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  gap: "6px",
-                  padding: "12px 14px",
+                  gap: "8px",
+                  padding: "14px 16px",
                   borderRadius: "var(--radius-md)",
                   backgroundColor: cleanupMode === "copy" ? "rgba(59, 130, 246, 0.12)" : "rgba(255, 255, 255, 0.02)",
                   border: cleanupMode === "copy" ? "1.5px solid var(--accent-primary)" : "1px solid var(--glass-border)",
@@ -616,38 +587,38 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 700, fontSize: "12px", color: cleanupMode === "copy" ? "var(--accent-primary)" : "var(--text-primary)" }}>
-                    <Copy size={13} />
+                  <div style={{ display: "flex", alignItems: "center", gap: "7px", fontWeight: 700, fontSize: "13px", color: cleanupMode === "copy" ? "var(--accent-primary)" : "var(--text-primary)" }}>
+                    <Copy size={14} />
                     <span>Keep Originals</span>
                   </div>
                   <span
                     style={{
-                      fontSize: "9px",
+                      fontSize: "10px",
                       fontWeight: 700,
-                      padding: "2px 6px",
+                      padding: "2px 8px",
                       borderRadius: "var(--radius-full)",
                       backgroundColor: "rgba(16, 185, 129, 0.15)",
                       color: "#10b981",
                       border: "1px solid rgba(16, 185, 129, 0.3)",
                     }}
                   >
-                    Safe Copy
+                    Recommended
                   </span>
                 </div>
-                <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: 1.4 }}>
-                  Files are safely copied to library. Source files remain completely untouched.
+                <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: 1.45 }}>
+                  Makes a copy in SecurePhotos. Your original files stay untouched right where they are.
                 </p>
               </div>
 
-              {/* Option 2: Move & Free Up Space (Recommended) */}
+              {/* Option 2: Move & Free Up Space */}
               <div
                 onClick={() => setCleanupMode("move")}
                 className="clickable"
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  gap: "6px",
-                  padding: "12px 14px",
+                  gap: "8px",
+                  padding: "14px 16px",
                   borderRadius: "var(--radius-md)",
                   backgroundColor: cleanupMode === "move" ? "rgba(59, 130, 246, 0.12)" : "rgba(255, 255, 255, 0.02)",
                   border: cleanupMode === "move" ? "1.5px solid var(--accent-primary)" : "1px solid var(--glass-border)",
@@ -656,58 +627,36 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 700, fontSize: "12px", color: cleanupMode === "move" ? "var(--accent-primary)" : "var(--text-primary)" }}>
-                    <ArrowRightLeft size={13} />
-                    <span>Move & Free Space</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "7px", fontWeight: 700, fontSize: "13px", color: cleanupMode === "move" ? "var(--accent-primary)" : "var(--text-primary)" }}>
+                    <ArrowRightLeft size={14} />
+                    <span>Move &amp; Free Space</span>
                   </div>
                   <span
                     style={{
-                      fontSize: "9px",
+                      fontSize: "10px",
                       fontWeight: 700,
-                      padding: "2px 6px",
+                      padding: "2px 8px",
                       borderRadius: "var(--radius-full)",
                       backgroundColor: "rgba(59, 130, 246, 0.15)",
                       color: "var(--accent-primary)",
                       border: "1px solid rgba(59, 130, 246, 0.3)",
                     }}
                   >
-                    Recommended
+                    Saves Space
                   </span>
                 </div>
-                <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: 1.4 }}>
-                  Deletes source files only after SHA-256 verification. Frees device space.
+                <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: 1.45 }}>
+                  Imports to your library and safely removes originals to free up space on your computer.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Automated Intelligence Indicators (Reassuring, zero checkboxes needed) */}
-          <div 
-            style={{ 
-              display: "flex", 
-              alignItems: "center", 
-              gap: "14px", 
-              fontSize: "11px", 
-              color: "var(--text-muted)",
-              padding: "4px 2px",
-            }}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
-              <Check size={12} style={{ color: "#10b981" }} />
-              Auto-deduplication active
-            </span>
-            <span>•</span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
-              <Sparkles size={12} style={{ color: "var(--accent-primary)" }} />
-              Visual quality preservation
-            </span>
-          </div>
-
           {/* Progress Bar when importing */}
           {isImporting && (
-            <div style={{ marginTop: "2px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "var(--text-secondary)", marginBottom: "6px" }}>
-                <span>Importing & generating sharded thumbnails...</span>
+            <div style={{ marginTop: "4px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "var(--text-secondary)", marginBottom: "6px" }}>
+                <span>Importing and organizing your media...</span>
                 <span style={{ fontWeight: 700, fontFamily: "var(--font-mono)" }}>{importProgress}%</span>
               </div>
               <div style={{ height: "6px", backgroundColor: "rgba(255, 255, 255, 0.08)", borderRadius: "var(--radius-full)", overflow: "hidden" }}>
@@ -729,64 +678,70 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
         {/* Modal Footer */}
         <div 
           style={{
-            padding: "16px 24px",
+            padding: "16px 28px",
             backgroundColor: "rgba(0, 0, 0, 0.15)",
             borderTop: "1px solid var(--glass-border)",
             display: "flex",
             alignItems: "center",
-            justifyContent: "flex-end",
-            gap: "10px",
+            justifyContent: "space-between",
           }}
         >
-          <button
-            onClick={onClose}
-            disabled={isImporting}
-            className="clickable"
-            style={{
-              padding: "8px 18px",
-              borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--glass-pill-bg)",
-              border: "1px solid var(--glass-pill-border)",
-              color: "var(--text-secondary)",
-              fontSize: "12px",
-              fontWeight: 600,
-              cursor: isImporting ? "not-allowed" : "pointer",
-            }}
-          >
-            Cancel
-          </button>
-          
-          <button
-            onClick={handleStartImport}
-            disabled={isImporting || !hasSelection}
-            className="clickable"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "8px 22px",
-              borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--accent-primary)",
-              border: "none",
-              color: "#ffffff",
-              fontSize: "12px",
-              fontWeight: 700,
-              cursor: isImporting || !hasSelection ? "not-allowed" : "pointer",
-              opacity: !hasSelection ? 0.5 : 1,
-              boxShadow: hasSelection ? "0 2px 10px rgba(59, 130, 246, 0.35)" : "none",
-              transition: "all 0.15s ease",
-            }}
-          >
-            {isImporting ? <Loader2 size={14} className="spin" /> : <CheckCircle2 size={14} />}
-            {isImporting 
-              ? "Importing..." 
-              : selectedFiles.length > 0 
-                ? `Import ${selectedFiles.length} ${selectedFiles.length === 1 ? "Item" : "Items"}`
-                : selectedFolder 
-                  ? "Import Folder" 
-                  : "Import Media"
-            }
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-muted)", fontSize: "11px" }}>
+            <ShieldCheck size={13} style={{ color: "#10b981" }} />
+            <span>Zero cloud uploads &bull; Completely offline</span>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <button
+              onClick={onClose}
+              disabled={isImporting}
+              className="clickable"
+              style={{
+                padding: "8px 18px",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "var(--glass-pill-bg)",
+                border: "1px solid var(--glass-pill-border)",
+                color: "var(--text-secondary)",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: isImporting ? "not-allowed" : "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            
+            <button
+              onClick={handleStartImport}
+              disabled={isImporting || !hasSelection}
+              className="clickable"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "8px 22px",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "var(--accent-primary)",
+                border: "none",
+                color: "#ffffff",
+                fontSize: "12px",
+                fontWeight: 700,
+                cursor: isImporting || !hasSelection ? "not-allowed" : "pointer",
+                opacity: !hasSelection ? 0.5 : 1,
+                boxShadow: hasSelection ? "0 2px 10px rgba(59, 130, 246, 0.35)" : "none",
+                transition: "all 0.15s ease",
+              }}
+            >
+              {isImporting ? <Loader2 size={14} className="spin" /> : <CheckCircle2 size={14} />}
+              {isImporting 
+                ? "Importing..." 
+                : selectedFiles.length > 0 
+                  ? `Import ${selectedFiles.length} ${selectedFiles.length === 1 ? "Item" : "Items"}`
+                  : selectedFolder 
+                    ? "Import Folder" 
+                    : "Import Media"
+              }
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -1645,6 +1645,45 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - Zero TypeScript compiler errors; Vite bundle built cleanly.
 - 100% test pass rate across 67 backend engine tests.
 
+---
+
+## 37. User-First UX Copywriting Standards & Import Dialog De-Cluttering
+
+### Functionality Overview
+1. **Rule Codification (Section 7 of Enterprise Standards)**:
+   - Added strict project rules prohibiting internal technical jargon (e.g. "SHA-256 verification", "Source File Handling", "sharded thumbnails", "FTS5 query", "Local Storage (C:\)") in user-facing UI copy.
+   - Enforced concise, warm, conversational, and human-centric language focusing on user benefits: safety, simplicity, disk space, and privacy.
+   - Mandated visual de-cluttering and generous breathing room across all dialogs.
+2. **Import Modal De-Cluttering & Spacious Layout**:
+   - Replaced the technical storage path bar (`Library Storage: Local Storage (C:\)`) with an elegant, confidence-inspiring privacy badge in the modal header: `🛡️ 100% On-Device` / `Never uploaded to the cloud`.
+   - Removed developer marketing clutter (`✓ Auto-deduplication active • 🪄 Visual quality preservation`), allowing deduplication feedback to be handled naturally via post-import toast summaries.
+   - Widened modal container to `580px` and expanded body padding to `28px` with a `22px` gap between sections, providing comfortable breathing room and scannability.
+3. **Humanized Post-Import Decisions**:
+   - Changed section title from `Source File Handling` to **`After importing:`**.
+   - Option 1 (**Keep Originals**, `Safe & Recommended`): *"Makes a copy in SecurePhotos. Your original files stay untouched right where they are."*
+   - Option 2 (**Move & Free Up Space**, `Saves Disk Space`): *"Imports to your library and safely removes originals to free up space on your computer."*
+4. **Humanized Progress & Actions**:
+   - Replaced `"Importing & generating sharded thumbnails..."` with `"Importing and organizing your media..."`.
+   - Added a reassuring footer guarantee: `🛡️ Zero cloud uploads • Completely offline`.
+
+### Functional Decision Points & Rationale
+- **Zero Cloud Reassurance over Filesystem Paths**:
+  - *Decision*: Strip C:\ drive path strings and replace them with clear on-device privacy badges.
+  - *Rationale*: Users intuitively know they are using a local application; printing physical disk paths adds visual noise without value. What users genuinely care about is certainty that private family photos are never sent to remote servers.
+- **Eliminating Checklist Clutter**:
+  - *Decision*: Remove marketing-style checkboxes for deduplication and visual quality.
+  - *Rationale*: Quality preservation and duplicate detection are baseline expectations of a modern photo manager. Exhibiting them inside modal bodies distracts the user from their primary workflow.
+
+### Technical Touchpoints
+- `.agents/rules/strict-approval-and-standards.md`: Added Section 7 on User-First UX Copywriting & Human-Centric Communication.
+- `src/components/ImportModal.tsx`: Complete layout and copywriting overhaul; added `ShieldCheck` icon, removed storage bar and deduplication badges, expanded padding and spacing.
+- `docs/features_and_functional_decisions.md`: Documented Section 37 in the living registry.
+
+### State & Lifecycle Impact
+- Zero TypeScript errors; Vite bundle built in 5.36s.
+- 100% backend test pass rate across 67 unit/integration tests.
+
+
 
 
 
