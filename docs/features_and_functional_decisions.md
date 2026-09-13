@@ -1785,3 +1785,45 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - 100% backend test pass rate across all 73 tests (and 8 subtests).
 - Zero TypeScript compiler errors; Vite bundle built cleanly in 4.43s.
 
+---
+
+## 40. Trash Selection Menu Parity & Floating Bottom Batch Action Dock
+
+### Functionality Overview
+1. **Linear/Jira-Style Floating Bottom Batch Action Dock**:
+   - Replaced the previous cramped inline top-bar selection buttons in `src/components/TrashView.tsx` with the project-standard floating bottom action dock, achieving 100% design and functional parity with the main `Photos` view (`App.tsx`) and `Albums` view (`AlbumsView.tsx`).
+   - Positioned fixed at `bottom: 24px`, horizontally centered (`left: 50%`, `transform: translateX(-50%)`), floating over content with a smooth slide-up and fade transition (`cubic-bezier(0.16, 1, 0.3, 1)`).
+   - Constructed using Section 4 liquid-glass tokens (`var(--glass-surface)`, `backdropFilter: blur(24px)`, `border: 1px solid var(--glass-border)`, `borderRadius: var(--radius-full)`, `boxShadow: 0 16px 40px rgba(0,0,0,0.45)`).
+   - Features:
+     - **Selection Counter**: Monospace capsule badge `[ ✓ N selected ]` with glowing primary tint.
+     - **Select All / Deselect All Toggle**: Pill button that dynamically toggles between selecting all trashed items and clearing selection.
+     - **Vertical Dividers**: Subtle frosted vertical separators structuring logical action clusters.
+     - **Restore Selected**: Emerald-tinted capsule action button `[ ↺ Restore (N) ]` with loading spinner indicator during batch execution.
+     - **Delete Permanently**: Danger red-tinted capsule button `[ 🗑 Delete Permanently (N) ]` triggering explicit confirmation before unlinking files from disk.
+     - **Dismiss / Close**: Circular pill `[ × ]` button to instantly clear selection.
+2. **Keyboard Shortcut Support (`Escape`)**:
+   - Registered a global keydown listener within `TrashView.tsx` so pressing `Escape` instantly clears `selectedIds` and dismisses the floating dock without requiring mouse movement.
+3. **Card Selection Micro-Checkbox Standardization**:
+   - Aligned individual media card checkboxes from large, inconsistent SVG icon toggles to the standardized 18px rounded micro-checkboxes (`var(--radius-xs)`, `backgroundColor: rgba(0,0,0,0.45)` when unselected, `var(--accent-primary)` when selected, with `<Check size={12} strokeWidth={3} />`).
+   - Isolated checkbox click propagation (`e.stopPropagation()`) from card preview triggers.
+4. **Section 4 Compliant Sticky Header**:
+   - Restored the sticky top header of `TrashView` to a clean 3-column layout (`flex: 1` left spacer / `flex: 0 1 auto` center title and badge / `flex: 1` right actions).
+   - Top header is now dedicated exclusively to the centered `Trash` title, inline frosted count badge (`[ N items ]`), and a standalone `Empty Trash` button on the far right.
+
+### Functional Decision Points & Rationale
+- **Dock vs. Header Selection Controls**:
+  - *Decision*: Relocate batch operations from the top header to a bottom floating action dock.
+  - *Rationale*: Cramming multi-selection state, Select All, Restore, and Delete buttons into the sticky header violated the balanced 3-column Section 4 header standard and caused layout shift/clutter when selections toggled. The bottom dock keeps primary controls directly accessible near thumb/cursor travel while keeping view headers calm and consistent.
+- **Escape Key Parity**:
+  - *Decision*: Bind `Escape` to clear selection in TrashView.
+  - *Rationale*: Users accustomed to navigating `Photos` and `Albums` rely on `Escape` for keyboard-driven de-selection. Consistent muscle memory across views improves perceived speed and desktop ergonomics.
+
+### Technical Touchpoints
+- `src/components/TrashView.tsx`: Cleaned 3-column top header, standardized 18px micro-checkboxes on media cards, added fixed floating bottom dock, and added `Escape` key listener.
+- `docs/features_and_functional_decisions.md`: Documented Section 40 in the living registry.
+
+### State & Lifecycle Impact
+- Zero TypeScript compiler errors; Vite bundle built cleanly in 4.49s.
+- 100% backend test pass rate maintained.
+
+

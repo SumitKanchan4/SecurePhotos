@@ -4,8 +4,9 @@ import {
   RotateCcw, 
   AlertTriangle, 
   CheckSquare, 
-  Square, 
   Loader2,
+  Check,
+  X,
 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 
@@ -29,6 +30,17 @@ export const TrashView: React.FC = () => {
   useEffect(() => {
     loadTrashedPhotos();
   }, []);
+
+  // Keyboard shortcut to dismiss selection with Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && selectedIds.size > 0) {
+        setSelectedIds(new Set());
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedIds.size]);
 
   const loadTrashedPhotos = async () => {
     setIsLoading(true);
@@ -156,32 +168,8 @@ export const TrashView: React.FC = () => {
           flexShrink: 0,
         }}
       >
-        {/* Left Column: Select Controls */}
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-start", gap: "10px", minWidth: "120px" }}>
-          {trashedItems.length > 0 && (
-            <button
-              onClick={handleSelectAll}
-              className="clickable"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "6px 14px",
-                borderRadius: "var(--radius-full)",
-                backgroundColor: "var(--glass-pill-bg)",
-                border: "1px solid var(--glass-pill-border)",
-                color: "var(--text-primary)",
-                fontSize: "12px",
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-            >
-              {selectedIds.size === trashedItems.length ? <CheckSquare size={14} /> : <Square size={14} />}
-              <span>{selectedIds.size === trashedItems.length ? "Deselect All" : "Select All"}</span>
-            </button>
-          )}
-        </div>
+        {/* Left Column: Balanced Spacer */}
+        <div style={{ flex: 1, minWidth: "120px" }} />
 
         {/* Center Column: Centered Title & Inline Frosted Capsule Badge */}
         <div style={{ flex: "0 1 auto", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", minWidth: 0 }}>
@@ -223,59 +211,8 @@ export const TrashView: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column: Action Controls */}
+        {/* Right Column: Empty Trash Action */}
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", minWidth: "120px" }}>
-          {selectedIds.size > 0 && (
-            <>
-              <button
-                onClick={handleRestoreSelected}
-                disabled={isActionInProgress}
-                className="clickable"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "7px 16px",
-                  borderRadius: "var(--radius-full)",
-                  backgroundColor: "var(--glass-action-bg)",
-                  border: "1px solid var(--glass-action-border)",
-                  color: "var(--text-primary)",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  boxShadow: "var(--glass-shadow)",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <RotateCcw size={13} />
-                <span>Restore ({selectedIds.size})</span>
-              </button>
-
-              <button
-                onClick={handleDeleteSelectedPermanently}
-                disabled={isActionInProgress}
-                className="clickable"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "7px 14px",
-                  borderRadius: "var(--radius-full)",
-                  backgroundColor: "rgba(239, 68, 68, 0.12)",
-                  border: "1px solid rgba(239, 68, 68, 0.25)",
-                  color: "var(--accent-danger, #ef4444)",
-                  fontSize: "12px",
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <Trash2 size={13} />
-                <span>Delete Selected</span>
-              </button>
-            </>
-          )}
-
           {trashedItems.length > 0 && (
             <button
               onClick={handleEmptyTrash}
@@ -292,7 +229,7 @@ export const TrashView: React.FC = () => {
                 color: "var(--accent-danger, #ef4444)",
                 fontSize: "12px",
                 fontWeight: 600,
-                cursor: "pointer",
+                cursor: isActionInProgress ? "not-allowed" : "pointer",
                 transition: "all 0.15s ease",
               }}
             >
@@ -355,18 +292,32 @@ export const TrashView: React.FC = () => {
                   transition: "border-color 0.15s ease, transform 0.15s ease",
                 }}
               >
-                {/* Select Checkbox (Top Left) */}
+                {/* Select Checkbox (Top Left - Exactly matching PhotoGrid & Albums) */}
                 <div 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleToggleSelect(item.id);
+                  }}
                   style={{ 
                     position: "absolute", 
-                    top: "8px", 
-                    left: "8px", 
-                    color: isSelected ? "var(--accent-primary)" : "#ffffff",
+                    top: "6px", 
+                    left: "6px", 
+                    width: "18px",
+                    height: "18px",
+                    borderRadius: "var(--radius-xs)",
+                    backgroundColor: isSelected ? "var(--accent-primary)" : "rgba(0, 0, 0, 0.45)",
+                    border: isSelected ? "none" : "1px solid rgba(255, 255, 255, 0.5)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#ffffff",
                     zIndex: 3,
-                    filter: "drop-shadow(0 1px 3px rgba(0, 0, 0, 0.8))"
+                    opacity: isSelected ? 1 : 0.4,
+                    transition: "opacity 0.15s ease, background-color 0.15s ease",
+                    cursor: "pointer",
                   }}
                 >
-                  {isSelected ? <CheckSquare size={18} /> : <Square size={18} style={{ opacity: 0.7 }} />}
+                  {isSelected && <Check size={12} strokeWidth={3} />}
                 </div>
 
                 {/* Expiry Pill (Top Right) */}
@@ -467,6 +418,156 @@ export const TrashView: React.FC = () => {
           })}
         </div>
       )}
+
+      {/* ── Jira/Linear-Style Floating Bottom Batch Action Dock (Exact Parity with Photos View) ── */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: "24px",
+          left: "50%",
+          transform: `translateX(-50%) ${selectedIds.size > 0 ? "translateY(0)" : "translateY(80px)"}`,
+          opacity: selectedIds.size > 0 ? 1 : 0,
+          pointerEvents: selectedIds.size > 0 ? "auto" : "none",
+          transition: "transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease",
+          zIndex: 40,
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          padding: "8px 16px",
+          backgroundColor: "var(--glass-surface)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          border: "1px solid var(--glass-border)",
+          borderRadius: "var(--radius-full)",
+          boxShadow: "0 16px 40px rgba(0, 0, 0, 0.45), 0 0 1px rgba(255, 255, 255, 0.2)",
+          maxWidth: "calc(100% - 48px)",
+          overflowX: "auto",
+        }}
+      >
+        {/* Selection Count Capsule */}
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "4px 12px",
+            borderRadius: "var(--radius-full)",
+            fontSize: "12px",
+            fontWeight: 700,
+            backgroundColor: "rgba(59, 130, 246, 0.15)",
+            color: "var(--accent-primary)",
+            border: "1px solid rgba(59, 130, 246, 0.3)",
+            fontFamily: "var(--font-mono)",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+        >
+          <CheckSquare size={13} />
+          {selectedIds.size} selected
+        </span>
+
+        {/* Select All / Deselect All Toggle */}
+        <button
+          onClick={handleSelectAll}
+          className="clickable"
+          title={selectedIds.size === trashedItems.length ? "Deselect all items" : "Select all items"}
+          style={{
+            padding: "5px 12px",
+            borderRadius: "var(--radius-full)",
+            backgroundColor: "var(--glass-pill-bg)",
+            border: "1px solid var(--glass-pill-border)",
+            color: "var(--text-secondary)",
+            fontSize: "11px",
+            fontWeight: 600,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+        >
+          {selectedIds.size === trashedItems.length ? "Deselect All" : "Select All"}
+        </button>
+
+        {/* Subtle Vertical Glass Divider */}
+        <div style={{ width: "1px", height: "20px", backgroundColor: "var(--glass-border)", margin: "0 2px", flexShrink: 0 }} />
+
+        {/* Restore Selected */}
+        <button
+          onClick={handleRestoreSelected}
+          disabled={isActionInProgress}
+          className="clickable"
+          title="Restore selected items back to your library"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "6px 14px",
+            borderRadius: "var(--radius-full)",
+            backgroundColor: "rgba(16, 185, 129, 0.15)",
+            border: "1px solid rgba(16, 185, 129, 0.3)",
+            color: "var(--accent-success, #10b981)",
+            fontSize: "12px",
+            fontWeight: 600,
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+            cursor: isActionInProgress ? "not-allowed" : "pointer",
+          }}
+        >
+          {isActionInProgress ? <Loader2 size={13} className="spin" /> : <RotateCcw size={13} />}
+          <span>Restore ({selectedIds.size})</span>
+        </button>
+
+        {/* Delete Permanently */}
+        <button
+          onClick={handleDeleteSelectedPermanently}
+          disabled={isActionInProgress}
+          className="clickable"
+          title="Permanently delete selected items from disk"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "6px 14px",
+            borderRadius: "var(--radius-full)",
+            backgroundColor: "rgba(239, 68, 68, 0.15)",
+            border: "1px solid rgba(239, 68, 68, 0.3)",
+            color: "var(--accent-danger, #ef4444)",
+            fontSize: "12px",
+            fontWeight: 600,
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+            cursor: isActionInProgress ? "not-allowed" : "pointer",
+          }}
+        >
+          <Trash2 size={13} />
+          <span>Delete Permanently ({selectedIds.size})</span>
+        </button>
+
+        {/* Subtle Vertical Glass Divider */}
+        <div style={{ width: "1px", height: "20px", backgroundColor: "var(--glass-border)", margin: "0 2px", flexShrink: 0 }} />
+
+        {/* Close / Deselect Button */}
+        <button
+          onClick={() => setSelectedIds(new Set())}
+          className="clickable"
+          title="Clear selection (Esc)"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "28px",
+            height: "28px",
+            borderRadius: "var(--radius-full)",
+            backgroundColor: "var(--glass-pill-bg)",
+            border: "1px solid var(--glass-pill-border)",
+            color: "var(--text-muted)",
+            cursor: "pointer",
+            flexShrink: 0,
+            transition: "all 0.15s ease",
+          }}
+        >
+          <X size={14} />
+        </button>
+      </div>
     </div>
   );
 };
