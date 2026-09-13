@@ -522,6 +522,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
     return (
       <EmptyLibraryState 
         onSelectFolder={onImportClick || (() => {})} 
+        onImportMedia={onImportClick || (() => {})} 
         onDropFiles={onDropFiles}
       />
     );

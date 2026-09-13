@@ -2094,3 +2094,40 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - 0 TypeScript compiler errors; Vite bundle built cleanly in 5.45s.
 - Stuck header badges are completely eliminated and impossible to reproduce under any deletion, crash, or disconnect scenario.
 
+---
+
+## 46. User-First Copywriting & Liquid-Glass Polish for Empty Library Welcome State
+
+### Functionality Overview
+1. **Elimination of Technical & Cryptographic Jargon**:
+   - Cleaned up the empty library onboarding screen (`EmptyLibraryState.tsx`) to strictly comply with Section 7 of Enterprise Workflow & Approval Rules.
+   - Removed cryptographic terms (`AES-256-GCM Zero-Trust Vault`) and marketing buzzwords (`8K ULTRA AI super-resolution`).
+   - Replaced hardware-bound instructions (`"from your PC, SD card, or external drive"`) with universal, warm, and comforting human-centric language.
+2. **Humanized Copywriting & Clear Action Scope**:
+   - **Main Heading**: Elevated to display typography (`fontSize: 24px`, `fontWeight: 800`, `letterSpacing: -0.03em`, Plus Jakarta Sans).
+   - **Subtitle**: *"Import your photos and videos to get started. Your media stays safely stored on your device—100% private, offline, and beautifully organized."*
+   - **Primary Action**: Changed from the restrictive `"Select Folder to Import"` to the inclusive **`"Import Photos & Videos"`**, correctly communicating that both individual files and entire directories can be ingested.
+   - **Drag-and-Drop Guidance**: Added clear, dimmed micro-copy below the button: *"or drag and drop photos, videos, or folders anywhere here"*, informing users that the active window dropzone is ready.
+3. **Pill Geometry & Liquid-Glass Value Highlights**:
+   - Standardized feature badges to full rounded pills (`var(--radius-full)`) with dual-theme liquid-glass surfaces (`var(--glass-surface)`, `border: 1px solid var(--glass-border)`, `backdropFilter: blur(16px)`):
+     - `🛡️ 100% Offline & Private` (Emerald `#10b981`)
+     - `✨ Smart Clarity Enhancement` (Golden Amber `#fbbf24`)
+     - `🔒 Protected Personal Vault` (Vault Violet `#a855f7`)
+
+### Functional Decision Points & Rationale
+- **End-User Mental Model vs System Internals**:
+  - *Decision*: Replace cipher identifiers (`AES-256-GCM`) with benefit-focused terms (`Protected Personal Vault`, `100% Offline & Private`).
+  - *Rationale*: Everyday users do not care about cipher names; what matters to them is certainty that family photos and personal videos are completely private and never uploaded to any remote server or cloud.
+- **Inclusive Media Scope**:
+  - *Decision*: Align empty state labels to "Photos & Videos" rather than solely "Folder".
+  - *Rationale*: Users frequently import single video clips or photos via native file pickers or drag-and-drop. Specifying "Select Folder to Import" misled users into thinking individual files could not be added.
+
+### Technical Touchpoints
+- `src/components/EmptyLibraryState.tsx`: Copywriting overhaul, Plus Jakarta Sans display typography, pill geometry, drag-and-drop hint, and humanized value pills.
+- `src/components/PhotoGrid.tsx`: Added `onImportMedia` prop mapping.
+- `docs/features_and_functional_decisions.md`: Documented Section 46 in the living registry.
+
+### State & Lifecycle Impact
+- 0 TypeScript compiler errors; production Vite bundle built in 5.71s.
+- 100% backend test pass rate maintained.
+- Onboarding screen provides a warm, modern, and reassuring first impression.
