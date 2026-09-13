@@ -614,7 +614,38 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 }}
               >
                 <Loader2 size={16} className="spin" style={{ color: "var(--accent-primary)" }} />
-                {isCompleted ? "Loading Enhanced Photo..." : "Loading Original Photo..."}
+                {isVideo
+                  ? (isCompleted ? "Loading High-Definition Video..." : "Loading Video...")
+                  : (isCompleted ? "Loading Enhanced Photo..." : "Loading Original Photo...")}
+              </div>
+            )}
+
+            {/* Video Load Error Overlay */}
+            {isVideo && previewHasError && (
+              <div 
+                style={{
+                  position: "absolute",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "16px 24px",
+                  borderRadius: "var(--radius-lg)",
+                  backgroundColor: "rgba(14, 16, 23, 0.9)",
+                  border: "1px solid var(--glass-border)",
+                  color: "var(--text-primary)",
+                  fontSize: "12px",
+                  backdropFilter: "blur(20px)",
+                  WebkitBackdropFilter: "blur(20px)",
+                  boxShadow: "var(--glass-shadow)",
+                }}
+              >
+                <span style={{ fontWeight: 700, color: "var(--accent-warning, #f59e0b)" }}>
+                  Video Unavailable
+                </span>
+                <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                  This video may still be processing in the background or the original file was moved.
+                </span>
               </div>
             )}
           </div>

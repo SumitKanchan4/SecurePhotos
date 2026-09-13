@@ -136,7 +136,46 @@ video_optimization_state: Dict[str, Any] = {
 
 @router.get("/optimization-progress")
 async def get_video_optimization_progress() -> Dict[str, Any]:
-    """Returns the real-time continuous video batch optimization state."""
+    """Returns the real-time continuous video batch optimization state, including background queue jobs."""
+    global video_optimization_state
+    if video_optimization_state.get("is_active"):
+        return video_optimization_state
+
+    # Check background video_processing_queue
+    conn = await get_db_connection()
+    try:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            """
+            SELECT q.photo_id, q.status, q.action, p.filename
+            FROM video_processing_queue q
+            LEFT JOIN photos p ON p.id = q.photo_id
+            WHERE q.status IN ('queued', 'processing')
+            ORDER BY CASE WHEN q.status = 'processing' THEN 0 ELSE 1 END ASC, q.created_at ASC
+            LIMIT 1;
+            """
+        ) as cursor:
+            active_row = await cursor.fetchone()
+
+        if active_row:
+            async with conn.execute("SELECT COUNT(*) FROM video_processing_queue WHERE status IN ('queued', 'processing');") as c2:
+                row_c = await c2.fetchone()
+                total_pending = row_c[0] if row_c else 1
+
+            return {
+                "is_active": True,
+                "total_count": total_pending,
+                "completed_count": 0,
+                "active_video_id": active_row["photo_id"],
+                "active_filename": active_row["filename"] or f"Video #{active_row['photo_id']}",
+                "item_progress": 50 if active_row["status"] == "processing" else 10,
+                "total_reclaimed_bytes": 0,
+            }
+    except Exception as e:
+        logger.warning(f"Failed to query queue status for progress: {e}")
+    finally:
+        await conn.close()
+
     return video_optimization_state
 
 

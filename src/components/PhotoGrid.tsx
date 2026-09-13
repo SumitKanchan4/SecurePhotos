@@ -2,13 +2,14 @@ import React, { useRef, useState, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check, Sparkles, Heart, Loader2, Image as ImageIcon, Clock, Play } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
-import { PhotoItem, OptimizationProgress } from "../types";
+import { PhotoItem, OptimizationProgress, VideoOptimizationProgress } from "../types";
 
 import { EmptyLibraryState } from "./EmptyLibraryState";
 
 interface PhotoGridProps {
   photos?: PhotoItem[];
   optimizationProgress?: OptimizationProgress | null;
+  videoProgress?: VideoOptimizationProgress | null;
   onPhotoClick?: (index: number) => void;
   onImportClick?: () => void;
   onDropFiles?: (files: FileList) => void;
@@ -39,6 +40,7 @@ interface PhotoCardProps {
   globalIndex: number;
   isSelected: boolean;
   optimizationProgress?: OptimizationProgress | null;
+  videoProgress?: VideoOptimizationProgress | null;
   onPhotoClick?: (index: number) => void;
   togglePhotoSelection: (id: number) => void;
   onToggleFavorite?: (photoId: number) => void;
@@ -49,6 +51,7 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
   globalIndex,
   isSelected,
   optimizationProgress,
+  videoProgress,
   onPhotoClick,
   togglePhotoSelection,
   onToggleFavorite,
@@ -58,15 +61,28 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
   const [isHovered, setIsHovered] = useState(false);
 
   const thumbnailUrl = `http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail?v=3`;
-  const isPhoto = !photo.mime_type || !photo.mime_type.startsWith("video/");
+  const isVideo = Boolean(photo.mime_type?.startsWith("video/"));
+  const isPhoto = !isVideo;
   const isOptimizingThis = Boolean(isPhoto && optimizationProgress?.is_active && optimizationProgress.active_photo_id === photo.id);
   const isQueued = Boolean(isPhoto && optimizationProgress?.is_active && !photo.is_optimized && !isOptimizingThis);
+
+  const isVideoProcessing = Boolean(
+    isVideo && (
+      (!photo.is_enhanced && !photo.is_optimized) ||
+      (videoProgress?.is_active && videoProgress.active_video_id === photo.id)
+    )
+  );
 
   return (
     <div
       onClick={(e) => {
         if (e.shiftKey || e.ctrlKey) {
           togglePhotoSelection(photo.id);
+        } else if (isVideoProcessing) {
+          useAppStore.getState().showToast(
+            "⏳ Video is currently being enhanced to high-definition. It will be ready to watch in a moment.",
+            "info"
+          );
         } else {
           onPhotoClick?.(globalIndex);
         }
@@ -256,6 +272,37 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
 
       {/* 6a. Bottom-Left Video Duration / Resolution / AI Optimization Frosted Glass Tag */}
       {photo.mime_type?.startsWith("video/") ? (() => {
+        if (isVideoProcessing) {
+          return (
+            <div
+              title="This video is currently being enhanced in the background."
+              style={{
+                position: "absolute",
+                bottom: "7px",
+                left: "7px",
+                zIndex: isHovered ? 1 : 3,
+                display: isHovered ? "none" : "flex",
+                alignItems: "center",
+                gap: "5px",
+                padding: "3px 8px",
+                borderRadius: "var(--radius-full)",
+                background: "rgba(10, 12, 18, 0.85)",
+                backdropFilter: "blur(12px)",
+                border: "1px solid rgba(59, 130, 246, 0.6)",
+                color: "#60a5fa",
+                fontSize: "10px",
+                fontWeight: 700,
+                letterSpacing: "0.2px",
+                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.6), 0 0 10px rgba(59, 130, 246, 0.3)",
+                pointerEvents: "none",
+              }}
+            >
+              <Loader2 size={10} className="spin" style={{ color: "#60a5fa" }} />
+              <span>Processing HD...</span>
+            </div>
+          );
+        }
+
         const isEnhanced = Boolean(photo.is_enhanced);
         const is4K = Boolean((photo.height && photo.height >= 2160) || (photo.width && photo.width >= 3840));
         const isHD = Boolean((photo.height && photo.height >= 720) || (photo.width && photo.width >= 1280));
@@ -420,6 +467,7 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
 export const PhotoGrid: React.FC<PhotoGridProps> = ({ 
   photos, 
   optimizationProgress,
+  videoProgress,
   onPhotoClick,
   onImportClick,
   onDropFiles,
@@ -528,6 +576,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                     globalIndex={globalIndex}
                     isSelected={isSelected}
                     optimizationProgress={optimizationProgress}
+                    videoProgress={videoProgress}
                     onPhotoClick={onPhotoClick}
                     togglePhotoSelection={togglePhotoSelection}
                     onToggleFavorite={onToggleFavorite}

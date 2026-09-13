@@ -1918,5 +1918,65 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - Frontend compiled cleanly with 0 TypeScript/bundler errors (`npm run build`).
 - Video files now play smoothly with synchronized video motion and audio on web, desktop, and all Smart TVs.
 
+---
+
+## 43. Video Processing Pipeline Resilience, Two-Phase Commit Safety & Google Photos-Style Processing UX
+
+### Functionality Overview
+1. **Resolution of Re-Imported Video Infinite Spinner & Black Screen**:
+   - Diagnosed and resolved the issue where a user re-imported a previously deleted video (`VID-20260816-WA0002.mp4`), the card showed "VIDEO • HD", but on clicking, the Lightbox opened to a black screen with an infinite spinner stating `"Loading Original Photo..."` even after 5 minutes.
+   - **Root Cause**:
+     1. The previous video record had been soft-deleted (`trashed_at IS NOT NULL`), retaining its target path (`.../VID-20260816-WA0002_enhanced.mp4`) in the database.
+     2. When the user re-imported the original clip, ingestion created a new active photo record.
+     3. The background video worker picked up the video and ran `enhance_old_video`.
+     4. During enhancement, the worker generated the enhanced file and moved the original input file to `.trash/`.
+     5. Next, the worker executed an `UPDATE photos SET filepath = ...` pointing to the enhanced file.
+     6. SQLite raised `IntegrityError: UNIQUE constraint failed: photos.filepath` because the soft-deleted row still held that unique path.
+     7. The transaction aborted, leaving the active photo record pointing to the original filepath which had already been moved to `.trash/`.
+     8. When Lightbox requested `/api/photos/{id}/original`, the backend returned `404 Not Found`.
+     9. The browser's `<video>` tag never fired `onLoadedData`, and `Lightbox.tsx` displayed the hardcoded spinner `"Loading Original Photo..."` indefinitely.
+2. **Two-Phase Commit Disk Safety**:
+   - Refactored `enhance_old_video` and `transcode_video` in `engine/services/video_service.py` to follow an atomic Two-Phase Commit architecture:
+     - **Phase 1 (Database Transaction Commit)**: Update the photo record in SQLite (`filepath`, `file_size`, `width`, `height`, `is_enhanced`, `is_optimized`) and `await conn.commit()`.
+     - **Phase 2 (Disk File Archival)**: Only AFTER the database transaction commits successfully is the original source file safely moved to `.trash/`.
+     - **Fail-Safe Rollback**: If the database transaction fails for any reason (e.g. unique constraint collision, write lock timeout), the newly created temporary/enhanced file is cleaned up, the original source file remains completely untouched on disk, and the database record continues pointing to the intact original video.
+3. **Soft-Deleted Unique Constraint Auto-Resolution**:
+   - In `engine/services/ingestion_service.py` (`ingest_single_photo`), before inserting or updating a file path, if a soft-deleted row (`trashed_at IS NOT NULL`) already occupies the target filepath, the soft-deleted record is automatically purged or reconciled, preventing UNIQUE constraint collisions upon re-import.
+   - In `engine/services/video_service.py` (`enhance_old_video` and `transcode_video`), before updating the filepath to an `_enhanced` or `_optimized` target, any soft-deleted record with that path is purged. If an active (non-trashed) record already has the target path, a unique collision suffix (`_enhanced_{uuid[:6]}.mp4`) is generated.
+4. **Google Photos-Style "Processing HD..." Video Card Badge**:
+   - In `src/components/PhotoGrid.tsx`:
+     - Added video state detection: `isVideoProcessing = isVideo && ((!photo.is_enhanced && !photo.is_optimized) || (videoProgress?.is_active && videoProgress.active_video_id === photo.id))`.
+     - When processing or pending enhancement, the video card displays a frosted liquid-glass badge `[ ⏳ Processing HD... ]` in the bottom-left with a micro-animated spinner, matching Google Photos' user-friendly video processing experience.
+     - **Click Suppression & Friendly Toast**: Clicking a video card while it is still processing does NOT open a broken black screen or infinite spinner in the Lightbox; instead, it prevents opening and displays a warm, reassuring toast: `"⏳ Video is currently being enhanced to high-definition. It will be ready to watch in a moment."`.
+5. **Lightbox UI Polish & Media-Type Contextual Loading**:
+   - In `src/components/Lightbox.tsx`, updated the loading spinner message from the hardcoded `"Loading Original Photo..."` to be media-aware:
+     - Videos: `"Loading High-Definition Video..."`
+     - Photos: `"Loading Enhanced Photo..."`
+   - Added a graceful error overlay if `previewHasError` occurs rather than leaving the viewer stranded on a blank black canvas.
+6. **Real-Time Video Optimization Progress API**:
+   - Updated `GET /api/videos/optimization-progress` in `engine/api/videos.py` to query `video_processing_queue` so real-time background queue jobs report `is_active: True`, `total_count`, and `active_video_id` to the frontend polling loop.
+
+### Functional Decision Points & Rationale
+- **Two-Phase Commit Disk Archival**:
+  - *Decision*: Never move or alter original source files until the database transaction has committed.
+  - *Rationale*: Reversing file operations across disk directories is fragile and cannot be rolled back atomically by SQLite. By making disk archival the final step after database commit, the system guarantees zero data loss and prevents dangling 404 pointers.
+- **Google Photos Processing Mental Model**:
+  - *Decision*: Provide visual "Processing HD..." indicators and suppress Lightbox navigation until the video is watchable.
+  - *Rationale*: Heavy video transcoding and AI upscaling require several seconds of encoding time. Opening an unencoded or in-transit video gives users the impression of a broken app. Preventing click navigation with clear, comforting status messages provides an intuitive, premium user experience.
+
+### Technical Touchpoints
+- `engine/services/video_service.py`: Implemented atomic Two-Phase Commit, soft-deleted path cleanup, and relative path resolution in `generate_video_thumbnail`.
+- `engine/services/ingestion_service.py`: Handled soft-deleted row path conflicts during re-import.
+- `engine/api/videos.py`: Integrated `video_processing_queue` into `/api/videos/optimization-progress`.
+- `src/components/PhotoGrid.tsx`: Added `[ ⏳ Processing HD... ]` badge and click suppression with informative toast.
+- `src/App.tsx`: Wired `videoProgress` state into `PhotoGrid`.
+- `src/components/Lightbox.tsx`: Added media-aware loading spinner text and error fallback.
+- `engine/tests/test_video_queue.py`: Added concurrency resilience for queue status assertions.
+
+### State & Lifecycle Impact
+- 100% test pass rate across all 73 backend tests (`pytest engine/tests`).
+- Frontend compiled cleanly with 0 TypeScript/bundler errors (`npm run build`).
+- Re-imported videos encode safely without constraint collisions and play back smoothly in full motion and HD.
+
 
 

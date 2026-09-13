@@ -410,8 +410,16 @@ async def ingest_single_photo(
         dest_path = get_hierarchical_destination_path(metadata["taken_at"], source_path.name, file_hash=file_hash)
         
         # Avoid filename collisions in same day folder or database unique filepath constraint
-        async with conn.execute("SELECT id FROM photos WHERE filepath = ?;", (str(dest_path.resolve()),)) as cursor:
-            fp_exists_in_db = bool(await cursor.fetchone())
+        async with conn.execute("SELECT id, trashed_at FROM photos WHERE filepath = ?;", (str(dest_path.resolve()),)) as cursor:
+            fp_row = await cursor.fetchone()
+
+        if fp_row and fp_row[1] is not None:
+            # Previous item at this destination was in Trash (soft-deleted). Clean it up so re-import can take this path.
+            await conn.execute("DELETE FROM photo_album WHERE photo_id = ?;", (fp_row[0],))
+            await conn.execute("DELETE FROM photos WHERE id = ?;", (fp_row[0],))
+            fp_exists_in_db = False
+        else:
+            fp_exists_in_db = bool(fp_row)
 
         if (dest_path.exists() and dest_path != source_path) or fp_exists_in_db:
             stem = source_path.stem

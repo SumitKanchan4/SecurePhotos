@@ -832,6 +832,7 @@ export const App: React.FC = () => {
               <PhotoGrid 
                 photos={photos} 
                 optimizationProgress={optimizationProgress}
+                videoProgress={videoProgress}
                 onPhotoClick={(idx) => {
                   setLightboxPhotos(null);
                   setLightboxIndex(idx);

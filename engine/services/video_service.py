@@ -22,6 +22,7 @@ from typing import Dict, List, Optional, Tuple, Any
 
 import aiosqlite
 
+from engine.config import settings
 from engine.database import get_db_connection
 from engine.services.video_runtime import (
     get_ffmpeg_path,
@@ -210,9 +211,19 @@ def generate_video_thumbnail(
     if not ffmpeg or not os.path.exists(video_path):
         return False
 
-    os.makedirs(os.path.dirname(thumb_path), exist_ok=True)
+    t_path = Path(thumb_path)
+    if not t_path.is_absolute():
+        t_path = settings.data_dir / t_path
+    os.makedirs(t_path.parent, exist_ok=True)
+    thumb_path_str = str(t_path)
+
+    preview_path_str = None
     if preview_path:
-        os.makedirs(os.path.dirname(preview_path), exist_ok=True)
+        p_path = Path(preview_path)
+        if not p_path.is_absolute():
+            p_path = settings.data_dir / p_path
+        os.makedirs(p_path.parent, exist_ok=True)
+        preview_path_str = str(p_path)
 
     # 1. Generate micro-thumbnail (400x400 max bounding box)
     cmd_thumb = [
@@ -224,16 +235,16 @@ def generate_video_thumbnail(
         "-vf", "scale=400:400:force_original_aspect_ratio=decrease",
         "-c:v", "libwebp",
         "-quality", "85",
-        thumb_path,
+        thumb_path_str,
     ]
 
     try:
         res = subprocess.run(cmd_thumb, capture_output=True, timeout=10)
-        if res.returncode != 0 or not os.path.exists(thumb_path) or os.path.getsize(thumb_path) == 0:
+        if res.returncode != 0 or not os.path.exists(thumb_path_str) or os.path.getsize(thumb_path_str) == 0:
             # If seeking to timestamp_sec failed or produced an empty file (e.g. short clip), retry seeking to 0.0s
             cmd_thumb[3] = "0.0"
             res = subprocess.run(cmd_thumb, capture_output=True, timeout=10)
-            if res.returncode != 0 or not os.path.exists(thumb_path) or os.path.getsize(thumb_path) == 0:
+            if res.returncode != 0 or not os.path.exists(thumb_path_str) or os.path.getsize(thumb_path_str) == 0:
                 logger.warning(f"Failed to generate video thumbnail for {video_path}: {res.stderr.decode('utf-8', 'ignore')}")
                 return False
     except Exception as e:
@@ -241,7 +252,7 @@ def generate_video_thumbnail(
         return False
 
     # 2. Generate display preview (1920x1080 max bounding box)
-    if preview_path:
+    if preview_path_str:
         cmd_prev = [
             ffmpeg,
             "-y",
@@ -251,13 +262,14 @@ def generate_video_thumbnail(
             "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease",
             "-c:v", "libwebp",
             "-quality", "88",
-            preview_path,
+            preview_path_str,
         ]
+
         try:
-            res_prev = subprocess.run(cmd_prev, capture_output=True, timeout=10)
-            if res_prev.returncode != 0 or not os.path.exists(preview_path) or os.path.getsize(preview_path) == 0:
+            res_prev = subprocess.run(cmd_prev, capture_output=True, timeout=15)
+            if res_prev.returncode != 0 or not os.path.exists(preview_path_str) or os.path.getsize(preview_path_str) == 0:
                 cmd_prev[3] = "0.0"
-                subprocess.run(cmd_prev, capture_output=True, timeout=10)
+                subprocess.run(cmd_prev, capture_output=True, timeout=15)
         except Exception as e:
             logger.warning(f"Preview extraction exception: {e}")
 
@@ -513,24 +525,33 @@ async def compress_video(
                 "compressed_bytes": compressed_size,
             }
 
-        # Finalize output file
-        if target_path.exists():
-            target_path.unlink()
-        os.replace(temp_path, target_path)
-
-        # Move original to 30-Day Trash for safety rollback
-        trash_dir = Path(orig_path).parent / ".trash"
-        trash_dir.mkdir(parents=True, exist_ok=True)
-        trash_orig_path = trash_dir / f"{orig_p.name}.orig_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
-        shutil.move(orig_path, str(trash_orig_path))
-
-        # Re-extract accurate dimensions & metadata
-        new_meta = extract_video_metadata(str(target_path))
-
-        # Update database record
-        saved_bytes = orig_size - compressed_size
         conn = await get_db_connection()
         try:
+            conn.row_factory = aiosqlite.Row
+            # Check for UNIQUE filepath collision against soft-deleted/active records
+            async with conn.execute(
+                "SELECT id, trashed_at FROM photos WHERE filepath = ? AND id != ?;",
+                (str(target_path), photo_id),
+            ) as cursor:
+                colliding = await cursor.fetchone()
+
+            if colliding:
+                if colliding["trashed_at"] is not None:
+                    await conn.execute("DELETE FROM photo_album WHERE photo_id = ?;", (colliding["id"],))
+                    await conn.execute("DELETE FROM photos WHERE id = ?;", (colliding["id"],))
+                else:
+                    target_path = orig_p.with_name(f"{orig_p.stem}_opt_{uuid.uuid4().hex[:6]}.mp4")
+
+            # Finalize output file
+            if target_path.exists():
+                target_path.unlink()
+            os.replace(temp_path, target_path)
+
+            # Re-extract accurate dimensions & metadata
+            new_meta = extract_video_metadata(str(target_path))
+            saved_bytes = orig_size - compressed_size
+
+            # Atomic Step 1: Update database record FIRST
             await conn.execute(
                 """
                 UPDATE photos 
@@ -555,6 +576,12 @@ async def compress_video(
             await conn.commit()
         finally:
             await conn.close()
+
+        # Atomic Step 2: Move original to 30-Day Trash ONLY AFTER DB commit succeeds
+        trash_dir = Path(orig_path).parent / ".trash"
+        trash_dir.mkdir(parents=True, exist_ok=True)
+        trash_orig_path = trash_dir / f"{orig_p.name}.orig_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+        shutil.move(orig_path, str(trash_orig_path))
 
         # Refresh thumbnails for the new file
         if photo["thumbnail_path"]:
@@ -672,38 +699,33 @@ async def enhance_old_video(
             err_msg = proc.stderr[-400:] if proc.stderr else "Unknown enhancement error"
             return {"success": False, "error": f"Enhancement failed: {err_msg}"}
 
-        if target_path.exists():
-            target_path.unlink()
-        os.replace(temp_path, target_path)
-
-        # Move original to 30-Day Trash (with Windows file lock resilience)
-        trash_dir = Path(orig_path).parent / ".trash"
-        trash_dir.mkdir(parents=True, exist_ok=True)
-        trash_orig_path = trash_dir / f"{orig_p.name}.vintage_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
-        moved = False
-        for attempt in range(5):
-            try:
-                shutil.move(orig_path, str(trash_orig_path))
-                moved = True
-                break
-            except (PermissionError, OSError):
-                await asyncio.sleep(0.3)
-
-        if not moved:
-            try:
-                shutil.copy2(orig_path, str(trash_orig_path))
-                try:
-                    os.unlink(orig_path)
-                except OSError:
-                    pass
-            except Exception:
-                pass
-
-        new_meta = extract_video_metadata(str(target_path))
-        new_size = target_path.stat().st_size
-
         conn = await get_db_connection()
         try:
+            conn.row_factory = aiosqlite.Row
+            # Check for UNIQUE filepath collision against soft-deleted/active records
+            async with conn.execute(
+                "SELECT id, trashed_at FROM photos WHERE filepath = ? AND id != ?;",
+                (str(target_path), photo_id),
+            ) as cursor:
+                colliding = await cursor.fetchone()
+
+            if colliding:
+                if colliding["trashed_at"] is not None:
+                    # Previous record was in Trash. Clean it up to release the UNIQUE constraint.
+                    await conn.execute("DELETE FROM photo_album WHERE photo_id = ?;", (colliding["id"],))
+                    await conn.execute("DELETE FROM photos WHERE id = ?;", (colliding["id"],))
+                else:
+                    # Active record collision: generate non-colliding target name
+                    target_path = orig_p.with_name(f"{orig_p.stem}_enhanced_{uuid.uuid4().hex[:6]}.mp4")
+
+            if target_path.exists():
+                target_path.unlink()
+            os.replace(temp_path, target_path)
+
+            new_meta = extract_video_metadata(str(target_path))
+            new_size = target_path.stat().st_size
+
+            # Atomic Step 1: Update database record FIRST before touching source file
             await conn.execute(
                 """
                 UPDATE photos 
@@ -729,6 +751,29 @@ async def enhance_old_video(
             await conn.commit()
         finally:
             await conn.close()
+
+        # Atomic Step 2: Move original to 30-Day Trash ONLY AFTER DB commit succeeds
+        trash_dir = Path(orig_path).parent / ".trash"
+        trash_dir.mkdir(parents=True, exist_ok=True)
+        trash_orig_path = trash_dir / f"{orig_p.name}.vintage_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+        moved = False
+        for attempt in range(5):
+            try:
+                shutil.move(orig_path, str(trash_orig_path))
+                moved = True
+                break
+            except (PermissionError, OSError):
+                await asyncio.sleep(0.3)
+
+        if not moved:
+            try:
+                shutil.copy2(orig_path, str(trash_orig_path))
+                try:
+                    os.unlink(orig_path)
+                except OSError:
+                    pass
+            except Exception:
+                pass
 
         if photo["thumbnail_path"]:
             generate_video_thumbnail(str(target_path), photo["thumbnail_path"], photo["preview_path"])

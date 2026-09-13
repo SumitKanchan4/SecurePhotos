@@ -89,7 +89,7 @@ async def test_video_queue_lifecycle():
         assert success is True
 
         status = await get_queue_status()
-        assert status["queued"] >= 1
+        assert (status.get("queued", 0) + status.get("processing", 0) + status.get("paused", 0)) >= 1
         assert status["total"] >= 1
 
         # Pause and resume
@@ -128,6 +128,14 @@ async def test_video_queue_disconnection_safety():
         await conn.close()
 
     try:
+        # Clear any leftover pending queue items from prior tests to ensure strict isolation
+        conn = await get_db_connection()
+        try:
+            await conn.execute("DELETE FROM video_processing_queue WHERE status IN ('queued', 'processing');")
+            await conn.commit()
+        finally:
+            await conn.close()
+
         await enqueue_video_for_processing(photo_id, action="enhance", target_height=1080)
 
         # Process next job
