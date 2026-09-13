@@ -53,6 +53,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const [previewHasError, setPreviewHasError] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isEnhancing4K, setIsEnhancing4K] = useState(false);
+  const [videoVersion, setVideoVersion] = useState(0);
 
   const currentPhoto = photos[currentIndex];
   const isVideo = Boolean(currentPhoto?.mime_type?.startsWith("video/"));
@@ -62,7 +64,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const isQueued = Boolean(!isVideo && optimizationProgress?.is_active && !currentPhoto?.is_optimized && !isOptimizingThis);
 
   const previewUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/preview`;
-  const originalUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/original`;
+  const originalUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/original${videoVersion > 0 ? `?v=${videoVersion}` : ""}`;
   const thumbnailUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/thumbnail`;
 
   // Display the enhanced proxy if completed; otherwise display the unprocessed original
@@ -549,7 +551,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 }}
               >
                 <video
-                  key={currentPhoto.id}
+                  key={`${currentPhoto.id}_${videoVersion}`}
                   src={originalUrl}
                   poster={thumbnailUrl}
                   controls
@@ -1032,9 +1034,11 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
                       {!is4K && (
                         <button
+                          disabled={isEnhancing4K}
                           onClick={async () => {
                             try {
-                              showToast("Starting background enhancement to 4K UHD...", "info");
+                              setIsEnhancing4K(true);
+                              showToast("Starting 4K UHD upscale with Lanczos & 3D denoising...", "info");
                               const res = await fetch(`http://127.0.0.1:8000/api/videos/${currentPhoto.id}/enhance`, {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
@@ -1042,12 +1046,29 @@ export const Lightbox: React.FC<LightboxProps> = ({
                               });
                               const data = await res.json();
                               if (res.ok && data.success) {
-                                showToast("Enhanced video to 4K UHD successfully!", "success");
+                                if (data.already_enhanced) {
+                                  showToast("This video is already at 4K UHD resolution.", "info");
+                                } else {
+                                  showToast("✨ Enhanced video to 4K UHD successfully!", "success");
+                                  // Update current photo in-place so UI badge immediately changes to 4K UHD
+                                  if (currentPhoto) {
+                                    currentPhoto.is_enhanced = true;
+                                    currentPhoto.is_optimized = true;
+                                    currentPhoto.height = data.height || 2160;
+                                    currentPhoto.width = data.width || currentPhoto.width;
+                                    if (data.file_size) currentPhoto.file_size = data.file_size;
+                                  }
+                                  // Invalidate video stream cache so player reloads the 4K stream
+                                  setIsPreviewLoaded(false);
+                                  setVideoVersion((v) => v + 1);
+                                }
                               } else {
                                 showToast(data.error || "Video enhancement failed", "warning");
                               }
                             } catch {
                               showToast("Failed to connect to video enhancement engine", "warning");
+                            } finally {
+                              setIsEnhancing4K(false);
                             }
                           }}
                           className="clickable"
@@ -1061,15 +1082,26 @@ export const Lightbox: React.FC<LightboxProps> = ({
                             gap: "6px",
                             padding: "7px 10px",
                             borderRadius: "var(--radius-xs)",
-                            backgroundColor: "rgba(251, 191, 36, 0.15)",
+                            backgroundColor: isEnhancing4K ? "rgba(251, 191, 36, 0.08)" : "rgba(251, 191, 36, 0.15)",
                             border: "1px solid rgba(251, 191, 36, 0.4)",
                             color: "#fbbf24",
                             fontSize: "11px",
                             fontWeight: 700,
-                            cursor: "pointer",
+                            cursor: isEnhancing4K ? "not-allowed" : "pointer",
+                            opacity: isEnhancing4K ? 0.75 : 1,
                           }}
                         >
-                          <Sparkles size={13} style={{ color: "#fbbf24" }} /> Enhance to 4K UHD
+                          {isEnhancing4K ? (
+                            <>
+                              <Loader2 size={13} className="spin-animation" style={{ color: "#fbbf24" }} />
+                              <span>Upscaling to 4K UHD...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles size={13} style={{ color: "#fbbf24" }} />
+                              <span>Enhance to 4K UHD</span>
+                            </>
+                          )}
                         </button>
                       )}
 

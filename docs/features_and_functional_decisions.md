@@ -1978,5 +1978,59 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - Frontend compiled cleanly with 0 TypeScript/bundler errors (`npm run build`).
 - Re-imported videos encode safely without constraint collisions and play back smoothly in full motion and HD.
 
+---
+
+## 44. Resolution-Aware Video Upscaling Guard & 4K UHD Lightbox Progress Architecture
+
+### Functionality Overview
+1. **Resolution of Premature 'Done' Status on 4K UHD Video Enhancement**:
+   - Diagnosed and resolved the bug where clicking "Enhance to 4K UHD" on an HD video in the Lightbox immediately reported "done" and showed a success toast within milliseconds without performing actual 4K Lanczos upscaling.
+   - **Root Cause**:
+     1. When low-res or vintage clips are imported, the background worker automatically enhances them to 1080p HD, setting `is_enhanced = 1`.
+     2. In `engine/services/video_service.py`, `enhance_old_video()` contained an early-exit guard:
+        ```python
+        if photo["is_enhanced"]:
+            return {"success": True, "already_enhanced": True, ...}
+        ```
+     3. The guard did not inspect the requested `target_height` (2160) relative to current resolution (`photo["height"]`). Because `is_enhanced` was already 1, the backend immediately returned `success: True, already_enhanced: True` without executing FFmpeg.
+     4. In `src/components/Lightbox.tsx`, the button's `onClick` handler checked only `res.ok && data.success` without verifying `data.already_enhanced`, immediately flashing a false positive success toast.
+2. **Resolution-Aware Upscale Pipeline (`video_service.py`)**:
+   - Refactored `enhance_old_video()` to evaluate both `photo["is_enhanced"]` AND current dimensions (`current_height >= target_height or current_width >= 3840`).
+   - If a video is already 1080p HD, requesting `target_height = 2160` (4K UHD) proceeds with Lanczos upscaling, de-interlacing (`yadif`), 3D temporal denoising (`hqdn3d`), and edge sharpening (`unsharp`).
+   - If a video is already at 2160p, it gracefully reports `already_enhanced: True`.
+3. **Clean 4K File Naming & Deduplication**:
+   - Strips previous processing suffixes (`_enhanced`, `_opt`, `_4k`) to derive `clean_stem`.
+   - Formats 4K deliverables cleanly as `[clean_stem]_4k.mp4` rather than compound names (`..._enhanced_enhanced.mp4`).
+   - Handles existing file unlinking and database unique constraint collision checks.
+4. **Interactive In-Flight UI Progress Feedback (`Lightbox.tsx`)**:
+   - Added `isEnhancing4K` state to disable the button while upscaling is in-flight.
+   - Button renders `<Loader2 size={13} className="spin-animation" style={{ color: "#fbbf24" }} /> <span>Upscaling to 4K UHD...</span>` during encoding.
+   - On completion:
+     - Distinguishes `data.already_enhanced` (informing the user that the video is already 4K) from fresh enhancement.
+     - Automatically mutates `currentPhoto` properties (`height`, `width`, `file_size`) so `is4K` becomes `true`, gracefully transitioning the UI to display the golden `[ ✨ 4K UHD ]` badge.
+5. **Video Stream Cache-Busting & Seamless Player Reload**:
+   - Introduced `videoVersion` state in `Lightbox.tsx`.
+   - When 4K enhancement succeeds, `setVideoVersion(v => v + 1)` increments the cache-busting parameter (`?v=1`) and updates the `<video key={`${currentPhoto.id}_${videoVersion}`}>`, smoothly reloading the pristine 4K video stream without requiring page refresh.
+
+### Functional Decision Points & Rationale
+- **Resolution-Aware Upscale vs Binary Flag**:
+  - *Decision*: Gate enhancement by resolution thresholds rather than a boolean `is_enhanced` flag.
+  - *Rationale*: Enhancement is hierarchical (720p -> 1080p -> 4K UHD). Users who have a 1080p clip must have the option to upscale on-demand to 4K UHD without the system falsely claiming the operation is complete.
+- **In-Flight UI Disabled State & Spin Animation**:
+  - *Decision*: Provide animated in-button spinner and disabled state during the 15-40s 4K encoding pass.
+  - *Rationale*: 4K Lanczos upscaling takes significant CPU time. Without immediate visual feedback, users repeatedly click the button or believe the app froze.
+
+### Technical Touchpoints
+- `engine/services/video_service.py`: Updated resolution guard, clean 4K naming, and two-phase commit in `enhance_old_video`.
+- `src/components/Lightbox.tsx`: Added `isEnhancing4K`, `videoVersion`, in-flight button spinner, stream cache-busting, and in-place photo state update.
+- `src/index.css`: Added `@keyframes spinAnimation` and `.spin-animation` utility class.
+- `engine/tests/test_videos.py`: Added `test_video_enhance_resolution_aware_upscale` verifying 1080p -> 4K upgrade and resolution guard.
+
+### State & Lifecycle Impact
+- 100% test pass rate across all 74 backend tests (`pytest engine/tests`).
+- Frontend compiled cleanly with 0 TypeScript/bundler errors (`npm run build`).
+- Clicking "Enhance to 4K UHD" properly triggers background upscaling with visible loading progress, produces a pristine 4K video file, and updates the player seamlessly.
+
+
 
 

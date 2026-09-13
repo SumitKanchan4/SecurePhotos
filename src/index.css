@@ -211,6 +211,15 @@ html, body, #root {
   }
 }
 
+@keyframes spinAnimation {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin-animation {
+  animation: spinAnimation 1s linear infinite;
+}
+
 /* ═════════════════════════════════════════════════════════════════════════
    ✨ UTILITY & GLASSMORPHISM CLASSES
    ═════════════════════════════════════════════════════════════════════════ */

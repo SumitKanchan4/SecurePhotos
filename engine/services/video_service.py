@@ -633,14 +633,18 @@ async def enhance_old_video(
     if not photo:
         return {"success": False, "error": f"Photo with ID {photo_id} not found."}
 
-    if photo["is_enhanced"]:
+    current_height = photo["height"] or 0
+    current_width = photo["width"] or 0
+
+    # Only skip if the video was already enhanced AND is already at or above target_height (or 4K width)
+    if photo["is_enhanced"] and (current_height >= target_height or current_width >= 3840):
         return {
             "success": True,
             "already_enhanced": True,
             "photo_id": photo_id,
-            "height": photo["height"] or target_height,
-            "width": photo["width"] or 0,
-            "message": "Video is already enhanced.",
+            "height": current_height or target_height,
+            "width": current_width or 0,
+            "message": f"Video is already at or above {target_height}p resolution.",
         }
 
     orig_path = photo["filepath"]
@@ -648,8 +652,17 @@ async def enhance_old_video(
         return {"success": False, "error": f"Source video file not found at {orig_path}"}
 
     orig_p = Path(orig_path)
-    target_path = orig_p.with_name(f"{orig_p.stem}_enhanced.mp4")
-    temp_path = orig_p.with_name(f"{orig_p.stem}_enhancing_{uuid.uuid4().hex[:6]}.tmp.mp4")
+    clean_stem = orig_p.stem
+    for sfx in ["_enhanced", "_4k", "_opt"]:
+        clean_stem = clean_stem.replace(sfx, "")
+
+    if target_height >= 2160:
+        target_name = f"{clean_stem}_4k.mp4"
+    else:
+        target_name = f"{clean_stem}_enhanced.mp4"
+
+    target_path = orig_p.with_name(target_name)
+    temp_path = orig_p.with_name(f"{clean_stem}_enhancing_{uuid.uuid4().hex[:6]}.tmp.mp4")
 
     # Multi-stage restoration filter graph:
     # 1. yadif=1:-1:0 (deinterlacing)
@@ -716,9 +729,10 @@ async def enhance_old_video(
                     await conn.execute("DELETE FROM photos WHERE id = ?;", (colliding["id"],))
                 else:
                     # Active record collision: generate non-colliding target name
-                    target_path = orig_p.with_name(f"{orig_p.stem}_enhanced_{uuid.uuid4().hex[:6]}.mp4")
+                    suffix = "4k" if target_height >= 2160 else "enhanced"
+                    target_path = orig_p.with_name(f"{clean_stem}_{suffix}_{uuid.uuid4().hex[:6]}.mp4")
 
-            if target_path.exists():
+            if target_path.exists() and target_path != orig_p:
                 target_path.unlink()
             os.replace(temp_path, target_path)
 
@@ -753,27 +767,28 @@ async def enhance_old_video(
             await conn.close()
 
         # Atomic Step 2: Move original to 30-Day Trash ONLY AFTER DB commit succeeds
-        trash_dir = Path(orig_path).parent / ".trash"
-        trash_dir.mkdir(parents=True, exist_ok=True)
-        trash_orig_path = trash_dir / f"{orig_p.name}.vintage_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
-        moved = False
-        for attempt in range(5):
-            try:
-                shutil.move(orig_path, str(trash_orig_path))
-                moved = True
-                break
-            except (PermissionError, OSError):
-                await asyncio.sleep(0.3)
-
-        if not moved:
-            try:
-                shutil.copy2(orig_path, str(trash_orig_path))
+        if str(orig_path) != str(target_path):
+            trash_dir = Path(orig_path).parent / ".trash"
+            trash_dir.mkdir(parents=True, exist_ok=True)
+            trash_orig_path = trash_dir / f"{orig_p.name}.vintage_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+            moved = False
+            for attempt in range(5):
                 try:
-                    os.unlink(orig_path)
-                except OSError:
+                    shutil.move(orig_path, str(trash_orig_path))
+                    moved = True
+                    break
+                except (PermissionError, OSError):
+                    await asyncio.sleep(0.3)
+
+            if not moved:
+                try:
+                    shutil.copy2(orig_path, str(trash_orig_path))
+                    try:
+                        os.unlink(orig_path)
+                    except OSError:
+                        pass
+                except Exception:
                     pass
-            except Exception:
-                pass
 
         if photo["thumbnail_path"]:
             generate_video_thumbnail(str(target_path), photo["thumbnail_path"], photo["preview_path"])

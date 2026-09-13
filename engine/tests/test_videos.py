@@ -299,3 +299,55 @@ async def test_video_compression_workflow(tmp_path):
     assert trash_dir.exists()
     assert len(list(trash_dir.glob("*.orig_*"))) >= 1
 
+
+@pytest.mark.asyncio
+async def test_video_enhance_resolution_aware_upscale(tmp_path):
+    """Verifies that an already-enhanced 1080p video can be upgraded to 4K UHD, but skips if already 4K."""
+    ffmpeg = get_ffmpeg_path()
+    if not ffmpeg:
+        pytest.skip("FFmpeg not available")
+
+    clip_path = tmp_path / "test_1080p_clip.mp4"
+    cmd = [
+        ffmpeg, "-y",
+        "-f", "lavfi", "-i", "testsrc=duration=0.5:size=320x240:rate=10",
+        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+        str(clip_path),
+    ]
+    subprocess.run(cmd, capture_output=True, check=True)
+
+    conn = await get_db_connection()
+    try:
+        photo_id = await ingest_single_photo(conn, clip_path, mode="managed")
+        # Artificially set is_enhanced = 1 and height = 1080
+        await conn.execute("UPDATE photos SET is_enhanced = 1, height = 1080, width = 608 WHERE id = ?", (photo_id,))
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    try:
+        # 1. Calling enhance with target_height=1080 should return already_enhanced = True
+        res_hd = await enhance_old_video(photo_id, target_height=1080)
+        assert res_hd["success"] is True
+        assert res_hd.get("already_enhanced") is True
+
+        # 2. Calling enhance with target_height=2160 (4K UHD) should NOT be blocked by already_enhanced
+        # It should upscale to 4K
+        res_4k = await enhance_old_video(photo_id, target_height=2160)
+        assert res_4k["success"] is True
+        assert res_4k.get("already_enhanced") is not True
+        assert res_4k["height"] == 2160
+        assert "_4k.mp4" in res_4k["new_filepath"]
+
+        # 3. Now that it is 2160p, calling enhance with target_height=2160 again should report already_enhanced = True
+        res_4k_again = await enhance_old_video(photo_id, target_height=2160)
+        assert res_4k_again["success"] is True
+        assert res_4k_again.get("already_enhanced") is True
+    finally:
+        conn = await get_db_connection()
+        try:
+            await conn.execute("DELETE FROM photos WHERE id = ?", (photo_id,))
+            await conn.commit()
+        finally:
+            await conn.close()
+
