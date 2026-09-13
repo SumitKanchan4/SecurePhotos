@@ -82,4 +82,57 @@ A companion mobile application (iOS & Android) that enables users to securely br
 4. **Technology Stack**:
    - **Tauri 2.0 Mobile (React + Rust)**: Enables 90% code reuse of existing UI design tokens, virtualized photo grids (`@tanstack/react-virtual`), and cryptographic Rust primitives.
 
+---
+
+## 5. Video Face Recognition, In-Playback Cast Overlay & Multimodal Video Search
+
+### Overview
+Expand SecurePhotos' on-device facial recognition and semantic indexing to video media. By intelligently sampling keyframes across video streams, the system identifies all individuals appearing in each video clip, enables face-based video search, and displays an interactive, frosted liquid-glass "Cast in this Video" overlay during playback in the Lightbox.
+
+### Architectural Blueprint & Feasibility Analysis
+1. **Adaptive Temporal Keyframe Sampling (Zero CPU Melt)**:
+   - *Problem*: A 1080p 60fps 5-minute home video contains 18,000 frames. Decoding and running neural face embeddings on every individual frame would freeze the machine and drain massive power.
+   - *Solution*: Extract lightweight candidate frames using FFmpeg scene cut detection combined with a 2–3 second interval cap:
+     ```bash
+     ffmpeg -i input.mp4 -vf "select='gt(scene,0.3)+not(mod(n,75))',scale=1280:-1" -vsync vfr -q:v 2 temp_frame_%04d.jpg
+     ```
+   - For a 1-minute clip, this yields approximately 15–25 highly representative frames, completing face detection in under 1.5 seconds on background CPU/DirectML.
+2. **Temporal Face Tagging & Database Relational Model**:
+   - Enhance the `faces` table with an optional `video_timestamp_secs REAL` field indicating the exact second of appearance.
+   - When a face is recognized, associate it with the parent video (`photo_id`) and assign it to the matching `person_id`.
+3. **Interactive In-Playback Cast Overlay (`Lightbox.tsx`)**:
+   - In the Lightbox video player, render a floating, frosted liquid-glass pill container: `[ 👥 In this video: (Avatar 1) (Avatar 2) ... ]`.
+   - Hovering over an avatar reveals the person's name and confidence score.
+   - Clicking an avatar automatically seeks the `<video>` player to that person's first or primary appearance timestamp (`video.currentTime = face.video_timestamp_secs`).
+4. **Unified Person Search Integration (`SearchModal.tsx` & `/api/search`)**:
+   - Searching a person's name (e.g., *"Mom"*, *"Alex"*, *"David"*) returns video clips featuring that person right alongside photos, with a `▶ [duration]` badge indicating a video appearance.
+
+---
+
+## 6. Dynamic "Live Albums" (Auto-Updating Rule-Based Smart Albums)
+
+### Overview
+Empower users to create dynamic, rule-based "Live Albums" (similar to Google Photos Live Albums / Apple Photos Smart Albums) that automatically populate and keep themselves updated whenever matching photos or videos are imported or newly recognized.
+
+### Architectural Blueprint & Feasibility Analysis
+1. **Rule Engine & Schema Extension**:
+   - Add a `rules_json` column to the `albums` table:
+     ```json
+     {
+       "type": "live",
+       "match_operator": "ANY",
+       "person_ids": [4, 12],
+       "media_types": ["photo", "video"],
+       "include_dates": { "start": null, "end": null }
+     }
+     ```
+2. **Automatic Population via Reactive Ingestion Hooks**:
+   - Whenever `face_scan_worker.py` clusters or labels a new face, or when a user renames/merges a cluster in `PeopleView.tsx`, the engine checks active Live Album rules.
+   - Any newly matched photo or video is automatically inserted into `photo_album` for that album.
+   - Conversely, if a photo is untagged or deleted, triggers automatically maintain synchronization.
+3. **Real-Time Co-Occurrence Albums**:
+   - Users can create targeted co-occurrence albums, such as *"Emma & Grandfather Together"* (`match_operator: "ALL"`), which selectively filters only media where both individuals appear in the same frame.
+4. **Dynamic Editorial Cover Auto-Selection**:
+   - If the user hasn't explicitly locked a custom cover photo, the Live Album dynamically sets its cover to the latest high-affinity, high-resolution portrait from the matched media.
+
 
