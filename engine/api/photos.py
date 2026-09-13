@@ -789,6 +789,7 @@ async def delete_photo(photo_id: int) -> dict:
             return {"status": "ok", "photo_id": photo_id, "already_trashed": True}
 
         await conn.execute("UPDATE photos SET trashed_at = CURRENT_TIMESTAMP WHERE id = ?;", (photo_id,))
+        await conn.execute("DELETE FROM video_processing_queue WHERE photo_id = ?;", (photo_id,))
         await conn.commit()
     finally:
         await conn.close()
@@ -810,6 +811,7 @@ async def batch_trash_photos(payload: BatchTrashRequest) -> BatchTrashResponse:
             payload.photo_ids,
         )
         trashed_count = cursor.rowcount
+        await conn.execute(f"DELETE FROM video_processing_queue WHERE photo_id IN ({placeholders});", payload.photo_ids)
         await conn.commit()
     finally:
         await conn.close()

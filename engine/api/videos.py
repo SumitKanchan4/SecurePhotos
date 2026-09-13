@@ -145,12 +145,36 @@ async def get_video_optimization_progress() -> Dict[str, Any]:
     conn = await get_db_connection()
     try:
         conn.row_factory = aiosqlite.Row
+
+        # Self-healing Layer 2.1: Opportunistically purge orphaned or trashed queue rows
+        await conn.execute(
+            """
+            DELETE FROM video_processing_queue 
+            WHERE photo_id NOT IN (SELECT id FROM photos WHERE trashed_at IS NULL);
+            """
+        )
+
+        # Self-healing Layer 2.2: Stalled job watchdog (recover jobs stuck in 'processing' > 3 mins)
+        await conn.execute(
+            """
+            UPDATE video_processing_queue
+            SET status = CASE WHEN retry_count >= 2 THEN 'failed' ELSE 'queued' END,
+                error_message = 'Job timed out or worker process was interrupted.',
+                retry_count = retry_count + 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE status = 'processing'
+              AND updated_at <= datetime('now', '-3 minutes');
+            """
+        )
+        await conn.commit()
+
         async with conn.execute(
             """
             SELECT q.photo_id, q.status, q.action, p.filename
             FROM video_processing_queue q
-            LEFT JOIN photos p ON p.id = q.photo_id
+            JOIN photos p ON p.id = q.photo_id
             WHERE q.status IN ('queued', 'processing')
+              AND p.trashed_at IS NULL
             ORDER BY CASE WHEN q.status = 'processing' THEN 0 ELSE 1 END ASC, q.created_at ASC
             LIMIT 1;
             """
@@ -158,7 +182,14 @@ async def get_video_optimization_progress() -> Dict[str, Any]:
             active_row = await cursor.fetchone()
 
         if active_row:
-            async with conn.execute("SELECT COUNT(*) FROM video_processing_queue WHERE status IN ('queued', 'processing');") as c2:
+            async with conn.execute(
+                """
+                SELECT COUNT(*) FROM video_processing_queue q
+                JOIN photos p ON p.id = q.photo_id
+                WHERE q.status IN ('queued', 'processing')
+                  AND p.trashed_at IS NULL;
+                """
+            ) as c2:
                 row_c = await c2.fetchone()
                 total_pending = row_c[0] if row_c else 1
 
@@ -169,6 +200,16 @@ async def get_video_optimization_progress() -> Dict[str, Any]:
                 "active_video_id": active_row["photo_id"],
                 "active_filename": active_row["filename"] or f"Video #{active_row['photo_id']}",
                 "item_progress": 50 if active_row["status"] == "processing" else 10,
+                "total_reclaimed_bytes": 0,
+            }
+        else:
+            return {
+                "is_active": False,
+                "total_count": 0,
+                "completed_count": 0,
+                "active_video_id": None,
+                "active_filename": None,
+                "item_progress": 0,
                 "total_reclaimed_bytes": 0,
             }
     except Exception as e:

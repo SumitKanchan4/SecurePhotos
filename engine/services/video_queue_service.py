@@ -93,6 +93,13 @@ async def enqueue_video_for_processing(
     """
     conn = await get_db_connection()
     try:
+        # Guard: Ensure photo exists and is not trashed
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute("SELECT id FROM photos WHERE id = ? AND trashed_at IS NULL;", (photo_id,)) as cursor:
+            if not await cursor.fetchone():
+                logger.info(f"Skipping enqueue for photo #{photo_id}: photo does not exist or is trashed.")
+                return False
+
         await conn.execute(
             """
             INSERT INTO video_processing_queue (photo_id, action, target_height, status, updated_at)
@@ -204,6 +211,29 @@ async def _process_next_video_job() -> bool:
     conn = await get_db_connection()
     try:
         conn.row_factory = aiosqlite.Row
+
+        # Continuous Self-Healing 1: Purge any queue entries whose photo was deleted or moved to trash
+        await conn.execute(
+            """
+            DELETE FROM video_processing_queue 
+            WHERE photo_id NOT IN (SELECT id FROM photos WHERE trashed_at IS NULL);
+            """
+        )
+
+        # Continuous Self-Healing 2: Reset/fail stale processing jobs older than 3 minutes
+        await conn.execute(
+            """
+            UPDATE video_processing_queue
+            SET status = CASE WHEN retry_count >= 2 THEN 'failed' ELSE 'queued' END,
+                error_message = 'Job timed out or worker process was interrupted.',
+                retry_count = retry_count + 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE status = 'processing'
+              AND updated_at <= datetime('now', '-3 minutes');
+            """
+        )
+        await conn.commit()
+
         # Find next queued or eligible paused item (prioritizing queued, with a 60s cooldown on paused)
         query = """
             SELECT q.id as queue_id, q.photo_id, q.action, q.target_height, q.retry_count, q.status as queue_status,
@@ -297,6 +327,12 @@ async def _process_next_video_job() -> bool:
         success = bool(res.get("success"))
         if not success:
             error_msg = res.get("error", "Processing failed.")
+            if "not found" in str(error_msg).lower():
+                status_to_set = "delete"
+            else:
+                status_to_set = "failed" if retry_count >= 2 else "queued"
+        else:
+            status_to_set = "completed"
     except (FileNotFoundError, OSError) as io_err:
         # Drive was unplugged or storage I/O failed mid-encode
         logger.warning(f"Drive I/O error during video processing #{photo_id}: {io_err}. Marking job paused.")
@@ -306,24 +342,25 @@ async def _process_next_video_job() -> bool:
         logger.exception(f"Unexpected error processing video #{photo_id}: {e}")
         error_msg = str(e)
         status_to_set = "failed" if retry_count >= 2 else "queued"
-    else:
-        status_to_set = "completed" if success else ("failed" if retry_count >= 2 else "queued")
 
     # Update database record with result
     conn = await get_db_connection()
     try:
-        new_retries = retry_count + (0 if success or status_to_set == "paused" else 1)
-        await conn.execute(
-            """
-            UPDATE video_processing_queue
-            SET status = ?,
-                error_message = ?,
-                retry_count = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?;
-            """,
-            (status_to_set, error_msg, new_retries, queue_id),
-        )
+        if status_to_set == "delete":
+            await conn.execute("DELETE FROM video_processing_queue WHERE id = ?;", (queue_id,))
+        else:
+            new_retries = retry_count + (0 if success or status_to_set == "paused" else 1)
+            await conn.execute(
+                """
+                UPDATE video_processing_queue
+                SET status = ?,
+                    error_message = ?,
+                    retry_count = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?;
+                """,
+                (status_to_set, error_msg, new_retries, queue_id),
+            )
         await conn.commit()
     finally:
         await conn.close()

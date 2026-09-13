@@ -146,7 +146,8 @@ async def permanently_delete_selected(payload: PermanentDeleteRequest) -> dict:
         for r in rows:
             _unlink_photo_files(r["filepath"], r["thumbnail_path"], r["preview_path"])
 
-        # Delete database records (photo_album and other FKs cascade or clean up)
+        # Delete database records (photo_album, video_processing_queue and other FKs cascade or clean up)
+        await conn.execute(f"DELETE FROM video_processing_queue WHERE photo_id IN ({placeholders});", payload.photo_ids)
         await conn.execute(f"DELETE FROM photo_album WHERE photo_id IN ({placeholders});", payload.photo_ids)
         cursor = await conn.execute(f"DELETE FROM photos WHERE id IN ({placeholders});", payload.photo_ids)
         deleted_count = cursor.rowcount
@@ -171,6 +172,7 @@ async def empty_trash_permanently() -> dict:
 
         if photo_ids:
             placeholders = ",".join("?" for _ in photo_ids)
+            await conn.execute(f"DELETE FROM video_processing_queue WHERE photo_id IN ({placeholders});", photo_ids)
             await conn.execute(f"DELETE FROM photo_album WHERE photo_id IN ({placeholders});", photo_ids)
             cursor = await conn.execute("DELETE FROM photos WHERE trashed_at IS NOT NULL;")
             deleted_count = cursor.rowcount

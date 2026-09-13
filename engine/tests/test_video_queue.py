@@ -138,13 +138,17 @@ async def test_video_queue_disconnection_safety():
 
         await enqueue_video_for_processing(photo_id, action="enhance", target_height=1080)
 
-        # Process next job
-        processed = await _process_next_video_job()
-        assert processed is False
+        # Process next job (unpause first since autouse fixture isolates tests with pause_video_queue)
+        resume_video_queue()
+        try:
+            processed = await _process_next_video_job()
+            assert processed is False
 
-        # Verify job status transitioned to paused
-        status = await get_queue_status()
-        assert status["paused"] >= 1
+            # Verify job status transitioned to paused
+            status = await get_queue_status()
+            assert status["paused"] >= 1
+        finally:
+            pause_video_queue()
     finally:
         conn = await get_db_connection()
         try:
@@ -176,3 +180,87 @@ async def test_video_queue_api_endpoints():
         res_resume = await client.post("/api/videos/queue/resume")
         assert res_resume.status_code == 200
         assert res_resume.json()["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_video_queue_self_healing_on_photo_deletion_and_trash():
+    """Verify SQLite triggers and API watchdog automatically self-heal and purge orphaned/trashed queue items."""
+    await init_video_queue_db()
+
+    conn = await get_db_connection()
+    unique_path_1 = f"dummy_self_heal_{uuid.uuid4().hex[:8]}.mp4"
+    unique_path_2 = f"dummy_self_heal_{uuid.uuid4().hex[:8]}.mp4"
+    try:
+        # Create 2 test photos
+        c1 = await conn.execute(
+            "INSERT INTO photos (filename, filepath, file_size, mime_type, width, height) VALUES ('v1.mp4', ?, 1000, 'video/mp4', 640, 480);",
+            (unique_path_1,),
+        )
+        pid_1 = c1.lastrowid
+
+        c2 = await conn.execute(
+            "INSERT INTO photos (filename, filepath, file_size, mime_type, width, height) VALUES ('v2.mp4', ?, 1000, 'video/mp4', 640, 480);",
+            (unique_path_2,),
+        )
+        pid_2 = c2.lastrowid
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    try:
+        # Enqueue both
+        await enqueue_video_for_processing(pid_1, action="enhance")
+        await enqueue_video_for_processing(pid_2, action="enhance")
+
+        # Verify both are queued in DB
+        conn = await get_db_connection()
+        try:
+            async with conn.execute("SELECT COUNT(*) FROM video_processing_queue WHERE photo_id IN (?, ?);", (pid_1, pid_2)) as cur:
+                assert (await cur.fetchone())[0] == 2
+
+            # Self-Healing Test 1: Moving photo 1 to trash must trigger immediate deletion from queue
+            await conn.execute("UPDATE photos SET trashed_at = CURRENT_TIMESTAMP WHERE id = ?;", (pid_1,))
+            await conn.commit()
+
+            async with conn.execute("SELECT COUNT(*) FROM video_processing_queue WHERE photo_id = ?;", (pid_1,)) as cur:
+                # SQLite trigger trg_photos_trash_purge_video_queue immediately purges pid_1
+                assert (await cur.fetchone())[0] == 0
+
+            # Self-Healing Test 2: Deleting photo 2 entirely must trigger immediate deletion from queue
+            await conn.execute("DELETE FROM photos WHERE id = ?;", (pid_2,))
+            await conn.commit()
+
+            async with conn.execute("SELECT COUNT(*) FROM video_processing_queue WHERE photo_id = ?;", (pid_2,)) as cur:
+                # SQLite trigger trg_photos_delete_purge_video_queue immediately purges pid_2
+                assert (await cur.fetchone())[0] == 0
+        finally:
+            await conn.close()
+
+        # Self-Healing Test 3: Watchdog in GET /api/videos/optimization-progress
+        # Insert a synthetic stalled job with a non-existent photo
+        conn = await get_db_connection()
+        try:
+            await conn.execute(
+                "INSERT INTO video_processing_queue (photo_id, action, status, updated_at) VALUES (999999, 'enhance', 'processing', datetime('now', '-5 minutes'));"
+            )
+            await conn.commit()
+        finally:
+            await conn.close()
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            res = await client.get("/api/videos/optimization-progress")
+            assert res.status_code == 200
+            data = res.json()
+            # Stalled orphaned job is purged by watchdog, returning is_active: False
+            assert data["is_active"] is False
+            assert data["total_count"] == 0
+    finally:
+        conn = await get_db_connection()
+        try:
+            await conn.execute("DELETE FROM video_processing_queue WHERE photo_id IN (?, ?, 999999);", (pid_1, pid_2))
+            await conn.execute("DELETE FROM photos WHERE id IN (?, ?);", (pid_1, pid_2))
+            await conn.commit()
+        finally:
+            await conn.close()
+

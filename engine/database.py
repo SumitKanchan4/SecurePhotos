@@ -359,6 +359,38 @@ CREATE TRIGGER IF NOT EXISTS photos_au AFTER UPDATE OF filename, folder_name, ca
   SELECT new.id, new.filename, new.folder_name, new.caption, new.content_tags, new.ocr_text
   WHERE new.is_encrypted = 0;
 END;
+
+-- ── 20. Video Processing Queue Table ────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS video_processing_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    photo_id INTEGER NOT NULL UNIQUE REFERENCES photos(id) ON DELETE CASCADE,
+    action TEXT NOT NULL,
+    target_height INTEGER,
+    status TEXT NOT NULL DEFAULT 'queued',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    error_message TEXT,
+    retry_count INTEGER DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_video_queue_status 
+ON video_processing_queue (status, created_at);
+
+-- ── 21. Self-Healing Relational Cascade Triggers ────────────────────────────
+-- Automatically purge video queue item when parent photo is deleted anywhere
+CREATE TRIGGER IF NOT EXISTS trg_photos_delete_purge_video_queue
+AFTER DELETE ON photos
+BEGIN
+    DELETE FROM video_processing_queue WHERE photo_id = OLD.id;
+END;
+
+-- Automatically cancel and purge video queue item when photo is moved to trash
+CREATE TRIGGER IF NOT EXISTS trg_photos_trash_purge_video_queue
+AFTER UPDATE OF trashed_at ON photos
+WHEN NEW.trashed_at IS NOT NULL
+BEGIN
+    DELETE FROM video_processing_queue WHERE photo_id = NEW.id;
+END;
 """
 
 
@@ -455,6 +487,10 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
 
         # Mark all enhanced videos as is_optimized=1 to avoid photo 8K worker collisions
         await conn.execute("UPDATE photos SET is_optimized = 1 WHERE mime_type LIKE 'video/%' AND is_enhanced = 1;")
+
+        # Self-healing: Purge any orphaned or trashed video processing queue rows
+        await conn.execute("DELETE FROM video_processing_queue WHERE photo_id NOT IN (SELECT id FROM photos WHERE trashed_at IS NULL);")
+
         await conn.commit()
         logger.info("Database schema migrations executed successfully.")
     except Exception as e:
