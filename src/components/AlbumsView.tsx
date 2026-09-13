@@ -24,6 +24,25 @@ import { RemoveFromAlbumModal } from "./RemoveFromAlbumModal";
 import { AddToAlbumModal } from "./AddToAlbumModal";
 import { CollageModal } from "./CollageModal";
 import { useAppStore } from "../store/useAppStore";
+import collagesDefaultCover from "../assets/covers/collages_default.jpg";
+
+// Deterministic vibrant dual-tone gradients for empty custom albums based on name hash
+const ALBUM_PALETTES = [
+  { bg: "linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #065f46 100%)", glow: "#06b6d4", iconBg: "rgba(6, 182, 212, 0.25)" },
+  { bg: "linear-gradient(135deg, #2e1065 0%, #581c87 40%, #831843 100%)", glow: "#ec4899", iconBg: "rgba(236, 72, 153, 0.25)" },
+  { bg: "linear-gradient(135deg, #064e3b 0%, #065f46 40%, #164e63 100%)", glow: "#10b981", iconBg: "rgba(16, 185, 129, 0.25)" },
+  { bg: "linear-gradient(135deg, #451a03 0%, #78350f 40%, #7f1d1d 100%)", glow: "#f59e0b", iconBg: "rgba(245, 158, 11, 0.25)" },
+  { bg: "linear-gradient(135deg, #172554 0%, #1e3a8a 40%, #312e81 100%)", glow: "#60a5fa", iconBg: "rgba(96, 165, 250, 0.25)" },
+  { bg: "linear-gradient(135deg, #4c0519 0%, #881337 40%, #4a044e 100%)", glow: "#f43f5e", iconBg: "rgba(244, 63, 94, 0.25)" },
+];
+
+const getAlbumPalette = (name: string) => {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return ALBUM_PALETTES[Math.abs(hash) % ALBUM_PALETTES.length];
+};
 
 interface AlbumsViewProps {
   onLockAlbumToVault?: (albumId: number) => void;
@@ -40,6 +59,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isCreatingAlbum, setIsCreatingAlbum] = useState(false);
   const [newAlbumName, setNewAlbumName] = useState("");
+  const [failedCoverIds, setFailedCoverIds] = useState<Set<number>>(new Set());
 
   // Favorites Smart Album State
   const [favoriteCount, setFavoriteCount] = useState<number>(0);
@@ -1677,7 +1697,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
             <div
               style={{
                 height: "160px",
-                background: favoriteCoverId
+                background: favoriteCoverId && !failedCoverIds.has(favoriteCoverId)
                   ? "var(--bg-surface-elevated)"
                   : "linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(168, 85, 247, 0.2) 100%)",
                 position: "relative",
@@ -1687,10 +1707,11 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                 overflow: "hidden",
               }}
             >
-              {favoriteCoverId ? (
+              {favoriteCoverId && !failedCoverIds.has(favoriteCoverId) ? (
                 <img
                   src={`http://127.0.0.1:8000/api/photos/${favoriteCoverId}/thumbnail?v=3`}
                   alt="Favorites"
+                  onError={() => setFailedCoverIds((prev) => new Set(prev).add(favoriteCoverId))}
                   style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
                   loading="lazy"
                 />
@@ -1785,16 +1806,138 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   overflow: "hidden",
                 }}
               >
-                {album.cover_photo_id ? (
-                  <img
-                    src={`http://127.0.0.1:8000/api/photos/${album.cover_photo_id}/thumbnail?v=3`}
-                    alt={album.name}
-                    style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
-                    loading="lazy"
-                  />
-                ) : (
-                  <ImageIcon size={48} style={{ opacity: 0.3 }} />
-                )}
+                {(() => {
+                  const isCollages = album.name.toLowerCase() === "collages";
+                  const count = album.photo_count || 0;
+                  const hasValidCover = count > 0 && album.cover_photo_id && !failedCoverIds.has(album.cover_photo_id);
+
+                  if (hasValidCover) {
+                    return (
+                      <img
+                        src={`http://127.0.0.1:8000/api/photos/${album.cover_photo_id}/thumbnail?v=3`}
+                        alt={album.name}
+                        onError={() => setFailedCoverIds((prev) => new Set(prev).add(album.cover_photo_id!))}
+                        style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
+                        loading="lazy"
+                      />
+                    );
+                  }
+
+                  if (isCollages) {
+                    return (
+                      <div style={{ width: "100%", height: "100%", position: "relative", overflow: "hidden" }}>
+                        <img
+                          src={collagesDefaultCover}
+                          alt="Collages Default Cover"
+                          style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scale(1.02)" }}
+                        />
+                        <div
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            background: "linear-gradient(180deg, rgba(0, 0, 0, 0.05) 0%, rgba(0, 0, 0, 0.55) 100%)",
+                            display: "flex",
+                            alignItems: "flex-end",
+                            padding: "10px",
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              letterSpacing: "0.04em",
+                              textTransform: "uppercase",
+                              padding: "3px 8px",
+                              borderRadius: "var(--radius-full)",
+                              backgroundColor: "rgba(0, 0, 0, 0.6)",
+                              backdropFilter: "blur(8px)",
+                              WebkitBackdropFilter: "blur(8px)",
+                              color: "#38bdf8",
+                              border: "1px solid rgba(56, 189, 248, 0.35)",
+                              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.4)",
+                            }}
+                          >
+                            ✦ Creative Studio
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  const palette = getAlbumPalette(album.name);
+                  const initial = album.name.trim().charAt(0).toUpperCase() || "A";
+
+                  return (
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        background: palette.bg,
+                        position: "relative",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {/* Ambient blur glow */}
+                      <div
+                        style={{
+                          position: "absolute",
+                          width: "90px",
+                          height: "90px",
+                          borderRadius: "50%",
+                          backgroundColor: palette.glow,
+                          filter: "blur(32px)",
+                          opacity: 0.35,
+                        }}
+                      />
+                      {/* Frosted monogram badge */}
+                      <div
+                        style={{
+                          width: "50px",
+                          height: "50px",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "rgba(255, 255, 255, 0.1)",
+                          backdropFilter: "blur(12px)",
+                          WebkitBackdropFilter: "blur(12px)",
+                          border: "1px solid rgba(255, 255, 255, 0.2)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          boxShadow: `0 8px 24px rgba(0, 0, 0, 0.4), 0 0 14px ${palette.iconBg}`,
+                          zIndex: 1,
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: "20px",
+                            fontWeight: 800,
+                            fontFamily: "var(--font-display, Plus Jakarta Sans, sans-serif)",
+                            color: "#ffffff",
+                            textShadow: "0 2px 8px rgba(0, 0, 0, 0.5)",
+                          }}
+                        >
+                          {initial}
+                        </span>
+                      </div>
+                      <span
+                        style={{
+                          marginTop: "8px",
+                          fontSize: "10px",
+                          fontWeight: 600,
+                          color: "rgba(255, 255, 255, 0.65)",
+                          letterSpacing: "0.05em",
+                          textTransform: "uppercase",
+                          zIndex: 1,
+                        }}
+                      >
+                        Empty Album
+                      </span>
+                    </div>
+                  );
+                })()}
 
                 {/* Vault / Favorite Badges */}
                 <div style={{ position: "absolute", top: "10px", right: "10px", display: "flex", gap: "6px" }}>

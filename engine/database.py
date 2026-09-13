@@ -391,6 +391,21 @@ WHEN NEW.trashed_at IS NOT NULL
 BEGIN
     DELETE FROM video_processing_queue WHERE photo_id = NEW.id;
 END;
+
+-- Automatically reset album cover if cover photo is deleted
+CREATE TRIGGER IF NOT EXISTS trg_photos_delete_update_album_cover
+AFTER DELETE ON photos
+BEGIN
+    UPDATE albums SET cover_photo_id = NULL WHERE cover_photo_id = OLD.id;
+END;
+
+-- Automatically reset album cover if cover photo is moved to trash
+CREATE TRIGGER IF NOT EXISTS trg_photos_trash_update_album_cover
+AFTER UPDATE OF trashed_at ON photos
+WHEN NEW.trashed_at IS NOT NULL
+BEGIN
+    UPDATE albums SET cover_photo_id = NULL WHERE cover_photo_id = NEW.id;
+END;
 """
 
 
@@ -490,6 +505,25 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
 
         # Self-healing: Purge any orphaned or trashed video processing queue rows
         await conn.execute("DELETE FROM video_processing_queue WHERE photo_id NOT IN (SELECT id FROM photos WHERE trashed_at IS NULL);")
+
+        # Self-healing: Reset any invalid, deleted, or trashed album cover references
+        await conn.execute(
+            """
+            UPDATE albums 
+            SET cover_photo_id = NULL 
+            WHERE cover_photo_id IS NOT NULL 
+              AND cover_photo_id NOT IN (SELECT id FROM photos WHERE trashed_at IS NULL);
+            """
+        )
+
+        # Self-healing: Ensure albums with 0 photos have cover_photo_id set to NULL
+        await conn.execute(
+            """
+            UPDATE albums 
+            SET cover_photo_id = NULL 
+            WHERE id NOT IN (SELECT album_id FROM photo_album);
+            """
+        )
 
         await conn.commit()
         logger.info("Database schema migrations executed successfully.")

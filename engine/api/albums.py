@@ -71,11 +71,13 @@ async def list_albums() -> List[AlbumResponse]:
             SELECT 
                 a.id, a.name, a.description, a.is_vault, a.vault_type, a.is_favorite,
                 a.created_at, a.cover_photo_id,
-                COUNT(pa.photo_id) AS photo_count,
+                COUNT(pa_p.id) AS photo_count,
+                p.id AS valid_cover_id,
                 p.thumbnail_path AS cover_thumbnail_path
             FROM albums a
             LEFT JOIN photo_album pa ON a.id = pa.album_id
-            LEFT JOIN photos p ON a.cover_photo_id = p.id
+            LEFT JOIN photos pa_p ON pa.photo_id = pa_p.id AND pa_p.trashed_at IS NULL
+            LEFT JOIN photos p ON a.cover_photo_id = p.id AND p.trashed_at IS NULL
             WHERE a.is_vault = 0
             GROUP BY a.id
             ORDER BY a.is_favorite DESC, a.created_at DESC;
@@ -85,12 +87,15 @@ async def list_albums() -> List[AlbumResponse]:
 
         results = []
         for r in rows:
-            cover_thumb = r["cover_thumbnail_path"]
-            # If cover photo is not set but album has photos, grab latest photo's thumbnail
-            if not cover_thumb and r["photo_count"] > 0:
+            photo_count = r["photo_count"]
+            cover_id = r["valid_cover_id"]
+            cover_thumb = r["cover_thumbnail_path"] if cover_id else None
+
+            # If album has photos but cover photo is not set (or was deleted/trashed), grab latest active photo
+            if photo_count > 0 and not cover_id:
                 async with conn.execute(
                     """
-                    SELECT p.thumbnail_path 
+                    SELECT p.id, p.thumbnail_path 
                     FROM photo_album pa
                     JOIN photos p ON pa.photo_id = p.id
                     WHERE pa.album_id = ? AND p.trashed_at IS NULL
@@ -101,7 +106,11 @@ async def list_albums() -> List[AlbumResponse]:
                 ) as sub_cursor:
                     sub_row = await sub_cursor.fetchone()
                     if sub_row:
+                        cover_id = sub_row["id"]
                         cover_thumb = sub_row["thumbnail_path"]
+            elif photo_count == 0:
+                cover_id = None
+                cover_thumb = None
 
             results.append(
                 AlbumResponse(
@@ -111,9 +120,9 @@ async def list_albums() -> List[AlbumResponse]:
                     is_vault=bool(r["is_vault"]),
                     vault_type=r["vault_type"],
                     is_favorite=bool(r["is_favorite"]),
-                    cover_photo_id=r["cover_photo_id"],
+                    cover_photo_id=cover_id,
                     cover_thumbnail_path=cover_thumb,
-                    photo_count=r["photo_count"],
+                    photo_count=photo_count,
                     created_at=str(r["created_at"]) if r["created_at"] else None,
                 )
             )

@@ -2131,3 +2131,51 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - 0 TypeScript compiler errors; production Vite bundle built in 5.71s.
 - 100% backend test pass rate maintained.
 - Onboarding screen provides a warm, modern, and reassuring first impression.
+
+---
+
+## 47. High-Aesthetic Default Category Cover Art & Stale Cover Self-Healing
+
+### Functionality Overview
+1. **Resolution of Broken Album Cover Icon (`[ 🖼️ Collages ]`)**:
+   - Diagnosed and resolved the defect where the `Collages` album (and other albums whose cover photos had been deleted) displayed a broken image icon with alt text in the album card.
+   - **Root Cause**:
+     1. When `Collages` was created by `engine/api/creatives.py`, it was assigned photo `#276` as its `cover_photo_id`.
+     2. When photo `#276` was subsequently deleted, SQLite had no trigger or cascade on `albums.cover_photo_id`.
+     3. In `engine/api/albums.py` (`list_albums`), `LEFT JOIN photos p ON a.cover_photo_id = p.id` returned `cover_photo_id: 276` to the frontend without checking if the photo was deleted or trashed.
+     4. In `AlbumsView.tsx`, `<img src=".../api/photos/276/thumbnail?v=3" alt="Collages" />` returned a 404, and lacking an `onError` fallback, the browser displayed the native broken image icon.
+2. **Curated High-Aesthetic Default Cover for "Collages"**:
+   - Generated a bespoke, modern 3D glassmorphic artistic collage artwork (`collages_default.jpg`) featuring floating frosted glass frames, vibrant cyan and magenta ambient rim glows, and elegant depth of field against a deep dark background.
+   - Integrated into `src/assets/covers/collages_default.jpg` and bundled directly into the production client bundle.
+   - Rendered with an elegant `✦ Creative Studio` badge whenever the Collages album is empty or lacks an assigned cover.
+3. **Dynamic Editorial Gradients for Custom Empty Albums**:
+   - For custom albums created by the user (e.g. "Summer Trip", "Family", "Test Album") that have 0 photos, replaced the lifeless dark box and faint grey icon with dynamic, deterministic dual-tone frosted glass gradients (e.g. Indigo-Cyan, Violet-Fuchsia, Emerald-Teal, Amber-Rose) selected by hashing the album name.
+   - Features a centered frosted glass pill with the album's initial monogram in bold Plus Jakarta Sans display typography and an "Empty Album" label, delivering an Apple Music / Spotify editorial playlist aesthetic.
+4. **Database-Level Self-Healing Triggers (`engine/database.py`)**:
+   - Created SQLite trigger `trg_photos_delete_update_album_cover`: `AFTER DELETE ON photos BEGIN UPDATE albums SET cover_photo_id = NULL WHERE cover_photo_id = OLD.id; END;`.
+   - Created SQLite trigger `trg_photos_trash_update_album_cover`: `AFTER UPDATE OF trashed_at ON photos WHEN NEW.trashed_at IS NOT NULL BEGIN UPDATE albums SET cover_photo_id = NULL WHERE cover_photo_id = NEW.id; END;`.
+   - In `run_migrations()`: automatically sweeps and sets `cover_photo_id = NULL` for any album whose cover photo is missing, trashed, or if the album has 0 photos.
+5. **Robust Frontend Fallback & Error Handling (`AlbumsView.tsx`)**:
+   - Added `failedCoverIds` state to track thumbnail load failures.
+   - Added `onError` handler on `<img />` tags for both user custom albums and the Favorites smart album, automatically and seamlessly falling back to default category artwork without ever rendering broken image icons.
+
+### Functional Decision Points & Rationale
+- **Curated Asset vs. Empty Black Box**:
+  - *Decision*: Provide bespoke 3D glassmorphic art for system categories like "Collages" and dynamic procedural gradient monograms for custom albums.
+  - *Rationale*: Media apps feel sterile and broken when empty categories display black rectangles with faint placeholder icons. Curated visual art creates a premium, inspiring first impression that encourages users to create and organize content.
+- **Database Trigger Ground Truth for Album Covers**:
+  - *Decision*: Enforce cover cleanup via SQLite triggers on `photos`.
+  - *Rationale*: Guarantees that deleting or trashing a photo from anywhere in the application (API, worker, raw SQL, or test cleanup) immediately clears stale cover pointers, eliminating ghost 404 references at the source.
+
+### Technical Touchpoints
+- `engine/database.py`: Added `trg_photos_delete_update_album_cover` and `trg_photos_trash_update_album_cover`, plus migration cleanup.
+- `engine/api/albums.py`: Added active non-trashed photo join and cover auto-promotion in `list_albums`.
+- `src/assets/covers/collages_default.jpg`: Generated high-aesthetic 3D glassmorphic collage cover asset.
+- `src/vite-env.d.ts`: Added module declarations for image assets.
+- `src/components/AlbumsView.tsx`: Integrated `collagesDefaultCover`, `ALBUM_PALETTES`, monogram cards, and `onError` fallbacks.
+- `engine/tests/test_collages.py`: Added `test_album_cover_self_healing_on_delete_and_trash`.
+
+### State & Lifecycle Impact
+- 100% backend test pass rate across all 76 tests (and 8 subtests).
+- 0 TypeScript compiler errors; Vite bundle built cleanly in 11.85s.
+- Broken image icons are permanently eliminated from album grids. Empty albums display magazine-grade cover artwork.

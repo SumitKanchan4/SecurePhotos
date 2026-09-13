@@ -255,3 +255,77 @@ async def test_download_photo_endpoint():
             finally:
                 await conn.close()
 
+
+@pytest.mark.asyncio
+async def test_album_cover_self_healing_on_delete_and_trash():
+    """Verify SQLite triggers and GET /api/albums self-heal when an album cover photo is deleted or trashed."""
+    await run_migrations()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        p1 = await create_collage_test_photo(tmp_path, "cover_sample_1.jpg", (50, 100, 150))
+        p2 = await create_collage_test_photo(tmp_path, "cover_sample_2.jpg", (80, 120, 160))
+
+        conn = await get_db_connection()
+        try:
+            # Create album 1 pointing to p1 as cover
+            cur1 = await conn.execute(
+                "INSERT INTO albums (name, cover_photo_id, is_vault) VALUES ('Self-Healing Album 1', ?, 0);",
+                (p1,),
+            )
+            a1_id = cur1.lastrowid
+
+            # Create album 2 pointing to p2 as cover
+            cur2 = await conn.execute(
+                "INSERT INTO albums (name, cover_photo_id, is_vault) VALUES ('Self-Healing Album 2', ?, 0);",
+                (p2,),
+            )
+            a2_id = cur2.lastrowid
+            await conn.commit()
+        finally:
+            await conn.close()
+
+        try:
+            # Test 1: Moving p1 to trash triggers trg_photos_trash_update_album_cover
+            conn = await get_db_connection()
+            try:
+                await conn.execute("UPDATE photos SET trashed_at = CURRENT_TIMESTAMP WHERE id = ?;", (p1,))
+                await conn.commit()
+
+                async with conn.execute("SELECT cover_photo_id FROM albums WHERE id = ?;", (a1_id,)) as cur:
+                    row1 = await cur.fetchone()
+                    assert row1["cover_photo_id"] is None
+            finally:
+                await conn.close()
+
+            # Test 2: Deleting p2 triggers trg_photos_delete_update_album_cover
+            conn = await get_db_connection()
+            try:
+                await conn.execute("DELETE FROM photos WHERE id = ?;", (p2,))
+                await conn.commit()
+
+                async with conn.execute("SELECT cover_photo_id FROM albums WHERE id = ?;", (a2_id,)) as cur:
+                    row2 = await cur.fetchone()
+                    assert row2["cover_photo_id"] is None
+            finally:
+                await conn.close()
+
+            # Test 3: GET /api/albums returns null cover_photo_id and 0 photo_count for empty albums
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                res = await client.get("/api/albums")
+                assert res.status_code == 200
+                data = res.json()
+                matching_a1 = next((a for a in data if a["id"] == a1_id), None)
+                assert matching_a1 is not None
+                assert matching_a1["cover_photo_id"] is None
+                assert matching_a1["photo_count"] == 0
+        finally:
+            conn = await get_db_connection()
+            try:
+                await conn.execute("DELETE FROM albums WHERE id IN (?, ?);", (a1_id, a2_id))
+                await conn.execute("DELETE FROM photos WHERE id IN (?, ?);", (p1, p2))
+                await conn.commit()
+            finally:
+                await conn.close()
+
+
