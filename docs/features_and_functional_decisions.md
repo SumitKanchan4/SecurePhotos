@@ -2179,3 +2179,65 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - 100% backend test pass rate across all 76 tests (and 8 subtests).
 - 0 TypeScript compiler errors; Vite bundle built cleanly in 11.85s.
 - Broken image icons are permanently eliminated from album grids. Empty albums display magazine-grade cover artwork.
+
+---
+
+## 48. Smart Album Parity for Collages & Human-Centric Empty States Architecture
+
+### Functionality Overview
+1. **Collages Smart Album Parity with Favorites**:
+   - Elevated the system `Collages` album to full Smart Album parity matching `Favorites`:
+     - **Grid Card Pill**: Displays a dedicated `Smart Album` cyan pill (`var(--accent-primary, #38bdf8)`) in the card footer, replacing the inappropriate `Lock (L)` vault action.
+     - **Cover Art Badge**: Features a `COLLAGES` smart badge with `<Sparkles size={10} />` on the top-right of the cover artwork.
+     - **No Favorite Mark**: Suppressed the heart toggle button on the card title and header; Collages cannot be marked as favorite.
+     - **No Deletion**: Suppressed the `Delete Album` button in the album detail view.
+     - **Detail Header Badge**: Displays a frosted liquid-glass `[ ✨ Smart Album ]` badge in the detail action toolbar instead of "Add Photos" and "Delete Album".
+2. **Backend & Migration Self-Healing Protection**:
+   - In `engine/api/albums.py`:
+     - `delete_album()` explicitly rejects deletion requests on the `Collages` album with HTTP 400 (`"System smart albums cannot be deleted"`).
+     - `toggle_album_favorite()` explicitly rejects favoriting the `Collages` album with HTTP 400 (`"System smart albums cannot be favorited"`).
+   - In `engine/database.py`:
+     - Added automatic migration sweep in `run_migrations()`: `UPDATE albums SET is_favorite = 0 WHERE LOWER(name) = 'collages';` to heal any legacy database state.
+   - In `src/components/AddToAlbumModal.tsx`:
+     - Excluded `Collages` from the list of target albums when users manually click "Add to Album" on single photos, preserving Collages strictly for composite creative outputs.
+3. **Tailored, Human-Centric Empty States**:
+   - Designed and deployed three distinct, contextual empty state screens in `AlbumsView.tsx` (`albumPhotos.length === 0`), completely eliminating generic, confusing empty views:
+     - **Favorites Smart Album (`activeAlbumId === -1`)**:
+       - *Icon*: Warm glowing red heart capsule (`rgba(239, 68, 68, 0.12)`).
+       - *Title*: "No Favorite Photos or Videos Yet".
+       - *Description*: Explains that Favorites is a personal smart album and instructs users to tap the heart icon on any photo or video across the library to collect memories for instant access.
+       - *Call-to-Action*: "Browse Photos & Videos" button that seamlessly switches the view to the main Photos library tab.
+     - **Collages Smart Album (`isCollages`)**:
+       - *Icon*: Cyan glowing sparkle capsule (`rgba(56, 189, 248, 0.12)`).
+       - *Title*: "No Collages Created Yet".
+       - *Description*: Explains what collages are—combining 2 to 9 photos into a seamless 4K UHD composite with customizable layouts, borders, and spacing.
+       - *Instruction*: Explains how to create one: select 2 to 9 photos from the Photos library and click "Create Collage" in the bottom dock.
+       - *Call-to-Action*: "Browse Photos to Make a Collage" button that navigates directly to the Photos library tab.
+     - **Custom User Albums**:
+       - *Icon*: Frosted subtle folder capsule (`FolderPlus`).
+       - *Title*: "This Album is Empty".
+       - *Description*: Explains custom collections for grouping related moments together.
+       - *Call-to-Action*: "+ Add Photos & Videos" primary button opening the photo picker modal.
+
+### Functional Decision Points & Rationale
+- **Smart Album Protection at API & Client Layers**:
+  - *Decision*: Enforce smart album rules (no delete, no favorite) both in the frontend UI and in backend FastAPI endpoints.
+  - *Rationale*: System smart albums are foundational collections generated dynamically or by creative tools. If a user or API client could delete the Collages album, future collage generations would either fail or recreate orphaned records. Defense-in-depth guarantees database stability.
+- **Contextual Action Navigation in Empty States**:
+  - *Decision*: Wire empty state CTA buttons to `setActiveTab("photos")` rather than dead-end text.
+  - *Rationale*: When users view an empty Favorites or Collages album, their immediate goal is to find photos to add or create with. Directly routing them to the Photos library removes friction and drives immediate engagement.
+
+### Technical Touchpoints
+- `engine/api/albums.py`: Added 400 guard in `delete_album` and `toggle_album_favorite`.
+- `engine/database.py`: Added migration reset for `is_favorite` on Collages.
+- `src/components/AlbumsView.tsx`: Added `Sparkles` icon, `Smart Album` badge, suppressed delete/favorite on Collages, and created the 3 contextual empty states.
+- `src/components/AddToAlbumModal.tsx`: Filtered out Collages from manual album assignment.
+- `engine/services/video_service.py`: Added UUID suffix to transcoding temporary file to avoid filename collisions.
+- `engine/tests/test_collages.py`: Added `test_collages_smart_album_parity`.
+- `engine/tests/test_videos.py`: Made test filenames unique with timestamps.
+
+### State & Lifecycle Impact
+- 100% backend test pass rate across all 77 tests (and 8 subtests).
+- 0 TypeScript compiler errors; Vite bundle built in 8.41s.
+- Collages album functions seamlessly as a protected smart album alongside Favorites.
+- All empty albums clearly communicate their purpose and provide direct, frictionless guidance.

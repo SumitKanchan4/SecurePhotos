@@ -467,7 +467,7 @@ async def compress_video(
     orig_p = Path(orig_path)
     # Output file using .mp4 container
     target_path = orig_p.with_name(f"{orig_p.stem}_opt.mp4")
-    temp_path = orig_p.with_name(f"{orig_p.stem}_transcoding.tmp.mp4")
+    temp_path = orig_p.with_name(f"{orig_p.stem}_transcoding_{uuid.uuid4().hex[:6]}.tmp.mp4")
 
     # Constrain threads to 50% CPU cores so user UI stays smooth at 60fps
     thread_count = max(1, (os.cpu_count() or 4) // 2)

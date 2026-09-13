@@ -259,7 +259,7 @@ async def test_video_compression_workflow(tmp_path):
 
     # Generate a heavy 2-second clip with high bitrate (640x480 at ~15 Mbps)
     import time
-    heavy_path = tmp_path / "heavy_clip.mp4"
+    heavy_path = tmp_path / f"heavy_clip_{time.time_ns()}.mp4"
     cmd = [
         ffmpeg,
         "-y",

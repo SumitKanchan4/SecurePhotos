@@ -525,6 +525,9 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
             """
         )
 
+        # Smart album parity: System smart albums like Collages cannot be favorited
+        await conn.execute("UPDATE albums SET is_favorite = 0 WHERE LOWER(name) = 'collages';")
+
         await conn.commit()
         logger.info("Database schema migrations executed successfully.")
     except Exception as e:

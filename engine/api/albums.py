@@ -336,6 +336,14 @@ async def delete_album(album_id: int) -> dict:
     """Deletes an album and unlinks member photos without deleting the source photos."""
     conn = await get_db_connection()
     try:
+        # Guard against deleting system smart albums
+        async with conn.execute("SELECT name FROM albums WHERE id = ?;", (album_id,)) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Album not found")
+        if row["name"].lower() == "collages":
+            raise HTTPException(status_code=400, detail="System smart albums cannot be deleted")
+
         # Foreign key CASCADE handles photo_album, but let's be explicit
         await conn.execute("DELETE FROM photo_album WHERE album_id = ?;", (album_id,))
         cursor = await conn.execute("DELETE FROM albums WHERE id = ?;", (album_id,))
@@ -353,6 +361,14 @@ async def toggle_album_favorite(album_id: int) -> dict:
     """Toggles favorite star status for an album."""
     conn = await get_db_connection()
     try:
+        # Guard against favoriting system smart albums
+        async with conn.execute("SELECT name FROM albums WHERE id = ?;", (album_id,)) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Album not found")
+        if row["name"].lower() == "collages":
+            raise HTTPException(status_code=400, detail="System smart albums cannot be favorited")
+
         cursor = await conn.execute(
             "UPDATE albums SET is_favorite = NOT is_favorite WHERE id = ? RETURNING is_favorite;",
             (album_id,),

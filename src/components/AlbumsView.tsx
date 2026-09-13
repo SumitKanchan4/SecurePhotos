@@ -16,7 +16,8 @@ import {
   Play,
   LayoutGrid,
   Download,
-  FolderPlus
+  FolderPlus,
+  Sparkles
 } from "lucide-react";
 import { AlbumItem, PhotoItem } from "../types";
 import { AlbumSlideshowModal } from "./AlbumSlideshowModal";
@@ -73,6 +74,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
 
   // Multi-Selection in Album Detail
   const showToast = useAppStore((state) => state.showToast);
+  const setActiveTab = useAppStore((state) => state.setActiveTab);
   const [selectedAlbumPhotoIds, setSelectedAlbumPhotoIds] = useState<Set<number>>(new Set());
   const [hoveredPhotoId, setHoveredPhotoId] = useState<number | null>(null);
   const [removalModalTarget, setRemovalModalTarget] = useState<{ photoIds: number[] } | null>(null);
@@ -269,6 +271,11 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   };
 
   const handleDeleteAlbum = async (albumId: number) => {
+    const targetAlbum = albums.find((a) => a.id === albumId) || (activeAlbumMeta?.id === albumId ? activeAlbumMeta : null);
+    if (targetAlbum?.name.toLowerCase() === "collages") {
+      showToast("System smart albums cannot be deleted", "warning");
+      return;
+    }
     if (!window.confirm("Are you sure you want to delete this album? Photos inside will remain safe in your library.")) {
       return;
     }
@@ -288,6 +295,11 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   };
 
   const handleToggleFavorite = async (albumId: number) => {
+    const targetAlbum = albums.find((a) => a.id === albumId) || (activeAlbumMeta?.id === albumId ? activeAlbumMeta : null);
+    if (targetAlbum?.name.toLowerCase() === "collages") {
+      showToast("System smart albums cannot be favorited", "warning");
+      return;
+    }
     try {
       const res = await fetch(`http://127.0.0.1:8000/api/albums/${albumId}/toggle-favorite`, { method: "POST" });
       if (res.ok) {
@@ -503,6 +515,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   // VIEW: Album Detail View (Inside a selected album)
   // ──────────────────────────────────────────────────────────────────────────
   if (activeAlbumId !== null && activeAlbumMeta) {
+    const isCollages = activeAlbumMeta.name.toLowerCase() === "collages";
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", padding: "16px 24px 0", gap: "16px", position: "relative" }}>
         {/* Unified Compact Glassmorphic Header Bar */}
@@ -586,9 +599,16 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     style={{ filter: "drop-shadow(0 0 8px rgba(239, 68, 68, 0.5))" }}
                   />
                 )}
+                {isCollages && (
+                  <Sparkles
+                    size={20}
+                    color="var(--accent-primary, #38bdf8)"
+                    style={{ filter: "drop-shadow(0 0 8px rgba(56, 189, 248, 0.5))" }}
+                  />
+                )}
                 <span>{activeAlbumMeta.name}</span>
               </h2>
-              {activeAlbumId !== -1 && (
+              {activeAlbumId !== -1 && !isCollages && (
                 <button
                   onClick={() => handleToggleFavorite(activeAlbumMeta.id)}
                   title={activeAlbumMeta.is_favorite ? "Favorited Album" : "Mark as Favorite"}
@@ -660,7 +680,26 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               </button>
             )}
 
-            {activeAlbumId !== -1 && (
+            {isCollages ? (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "6px 14px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "rgba(56, 189, 248, 0.12)",
+                  border: "1px solid rgba(56, 189, 248, 0.25)",
+                  color: "var(--accent-primary, #38bdf8)",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  letterSpacing: "0.02em",
+                }}
+              >
+                <Sparkles size={13} />
+                <span>Smart Album</span>
+              </span>
+            ) : activeAlbumId !== -1 ? (
               <>
                 <button
                   onClick={openPhotoPicker}
@@ -707,7 +746,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   <span>Delete Album</span>
                 </button>
               </>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -728,43 +767,159 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                 justifyContent: "center",
                 color: "var(--text-muted)",
                 textAlign: "center",
+                padding: "32px 24px",
+                maxWidth: "520px",
+                margin: "60px auto 0",
               }}
             >
               {activeAlbumId === -1 ? (
                 <>
-                  <Heart size={48} style={{ color: "var(--accent-danger)", opacity: 0.5, marginBottom: "12px" }} />
-                  <p style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-primary)" }}>No Favorites Yet</p>
-                  <p style={{ fontSize: "12px", marginTop: "4px", maxWidth: "340px" }}>
-                    Click the heart icon on any photo in your gallery or albums to save it to your Favorites.
+                  <div
+                    style={{
+                      width: "64px",
+                      height: "64px",
+                      borderRadius: "50%",
+                      backgroundColor: "rgba(239, 68, 68, 0.12)",
+                      border: "1px solid rgba(239, 68, 68, 0.25)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <Heart size={32} style={{ color: "var(--accent-danger, #ef4444)" }} fill="rgba(239, 68, 68, 0.3)" />
+                  </div>
+                  <h3 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0" }}>
+                    No Favorite Photos or Videos Yet
+                  </h3>
+                  <p style={{ fontSize: "13px", lineHeight: "1.6", color: "var(--text-secondary)", margin: 0, maxWidth: "440px" }}>
+                    This is your personal Favorites smart album. Tap the heart icon on any photo or video across your library to collect your most cherished memories here for instant access.
                   </p>
+                  <button
+                    onClick={() => {
+                      setActiveAlbumId(null);
+                      setActiveAlbumMeta(null);
+                      setActiveTab("photos");
+                    }}
+                    className="clickable"
+                    style={{
+                      marginTop: "20px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "9px 20px",
+                      borderRadius: "var(--radius-full)",
+                      backgroundColor: "var(--glass-action-bg)",
+                      border: "1px solid var(--glass-action-border)",
+                      color: "var(--text-primary)",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      boxShadow: "var(--glass-shadow)",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    Browse Photos & Videos
+                  </button>
+                </>
+              ) : isCollages ? (
+                <>
+                  <div
+                    style={{
+                      width: "64px",
+                      height: "64px",
+                      borderRadius: "50%",
+                      backgroundColor: "rgba(56, 189, 248, 0.12)",
+                      border: "1px solid rgba(56, 189, 248, 0.25)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <Sparkles size={32} style={{ color: "var(--accent-primary, #38bdf8)" }} />
+                  </div>
+                  <h3 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0" }}>
+                    No Collages Created Yet
+                  </h3>
+                  <p style={{ fontSize: "13px", lineHeight: "1.6", color: "var(--text-secondary)", margin: 0, maxWidth: "440px" }}>
+                    Collages combine 2 to 9 photos from your library into a seamless 4K UHD composite with customizable layouts, borders, and spacing.
+                  </p>
+                  <p style={{ fontSize: "12px", lineHeight: "1.5", color: "var(--text-muted)", marginTop: "8px", maxWidth: "420px" }}>
+                    To create a collage, head to your Photos library, select 2 to 9 photos, and click &ldquo;Create Collage&rdquo; in the bottom action dock.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setActiveAlbumId(null);
+                      setActiveAlbumMeta(null);
+                      setActiveTab("photos");
+                    }}
+                    className="clickable"
+                    style={{
+                      marginTop: "20px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "9px 20px",
+                      borderRadius: "var(--radius-full)",
+                      backgroundColor: "var(--accent-primary)",
+                      border: "none",
+                      color: "#ffffff",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      boxShadow: "0 2px 10px rgba(56, 189, 248, 0.3)",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    Browse Photos to Make a Collage
+                  </button>
                 </>
               ) : (
                 <>
-                  <ImageIcon size={48} style={{ opacity: 0.3, marginBottom: "12px" }} />
-                  <p style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-primary)" }}>This Album is Empty</p>
-                  <p style={{ fontSize: "12px", marginTop: "4px", maxWidth: "340px" }}>
-                    Add photos from your collection to organize them in this album.
+                  <div
+                    style={{
+                      width: "64px",
+                      height: "64px",
+                      borderRadius: "50%",
+                      backgroundColor: "rgba(255, 255, 255, 0.05)",
+                      border: "1px solid var(--border-subtle)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <FolderPlus size={32} style={{ color: "var(--text-secondary)", opacity: 0.8 }} />
+                  </div>
+                  <h3 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0" }}>
+                    This Album is Empty
+                  </h3>
+                  <p style={{ fontSize: "13px", lineHeight: "1.6", color: "var(--text-secondary)", margin: 0, maxWidth: "440px" }}>
+                    Organize your memories into custom collections. Add photos and videos to this album to keep related moments grouped together.
                   </p>
                   <button
                     onClick={openPhotoPicker}
                     className="clickable"
                     style={{
-                      marginTop: "16px",
+                      marginTop: "20px",
                       display: "flex",
                       alignItems: "center",
                       gap: "6px",
                       padding: "9px 20px",
-                      borderRadius: "var(--radius-sm)",
+                      borderRadius: "var(--radius-full)",
                       backgroundColor: "var(--accent-primary)",
                       border: "none",
                       color: "#ffffff",
-                      fontSize: "12px",
+                      fontSize: "13px",
                       fontWeight: 600,
                       cursor: "pointer",
+                      boxShadow: "0 2px 10px rgba(99, 102, 241, 0.3)",
+                      transition: "all 0.15s ease",
                     }}
                   >
                     <Plus size={15} />
-                    Add Photos to Album
+                    <span>Add Photos & Videos</span>
                   </button>
                 </>
               )}
@@ -1768,8 +1923,10 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
             </div>
           </div>
 
-          {/* User Custom Albums */}
-          {albums.map((album) => (
+          {/* User Custom Albums & Smart Albums */}
+          {albums.map((album) => {
+            const isCollages = album.name.toLowerCase() === "collages";
+            return (
             <div
               key={album.id}
               onClick={() => openAlbumDetail(album.id, album)}
@@ -1777,20 +1934,26 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               style={{
                 borderRadius: "var(--radius-md)",
                 backgroundColor: "var(--bg-surface)",
-                border: "1px solid var(--border-subtle)",
+                border: isCollages ? "1px solid rgba(56, 189, 248, 0.4)" : "1px solid var(--border-subtle)",
                 overflow: "hidden",
                 display: "flex",
                 flexDirection: "column",
                 cursor: "pointer",
-                transition: "transform 0.15s ease, border-color 0.15s ease",
+                transition: "transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = "translateY(-2px)";
-                e.currentTarget.style.borderColor = "var(--accent-primary)";
+                e.currentTarget.style.borderColor = isCollages ? "var(--accent-primary, #38bdf8)" : "var(--accent-primary)";
+                if (isCollages) {
+                  e.currentTarget.style.boxShadow = "0 8px 24px rgba(56, 189, 248, 0.25)";
+                }
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = "translateY(0)";
-                e.currentTarget.style.borderColor = "var(--border-subtle)";
+                e.currentTarget.style.borderColor = isCollages ? "rgba(56, 189, 248, 0.4)" : "var(--border-subtle)";
+                if (isCollages) {
+                  e.currentTarget.style.boxShadow = "none";
+                }
               }}
             >
               {/* Album Cover Art */}
@@ -1939,8 +2102,26 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   );
                 })()}
 
-                {/* Vault / Favorite Badges */}
+                {/* Vault / Favorite / Smart Badges */}
                 <div style={{ position: "absolute", top: "10px", right: "10px", display: "flex", gap: "6px" }}>
+                  {isCollages && (
+                    <span 
+                      style={{
+                        backgroundColor: "rgba(56, 189, 248, 0.95)",
+                        color: "#0f172a",
+                        padding: "3px 8px",
+                        borderRadius: "var(--radius-xs)",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        boxShadow: "0 2px 8px rgba(56, 189, 248, 0.35)",
+                      }}
+                    >
+                      <Sparkles size={10} /> COLLAGES
+                    </span>
+                  )}
                   {album.is_vault && (
                     <span 
                       title="Encrypted Vault Album"
@@ -1959,7 +2140,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                       <Lock size={10} /> VAULT
                     </span>
                   )}
-                  {album.is_favorite && (
+                  {!isCollages && album.is_favorite && (
                     <span 
                       style={{
                         backgroundColor: "rgba(239, 68, 68, 0.9)",
@@ -1982,21 +2163,23 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   <h3 style={{ fontSize: "14px", fontWeight: 700, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {album.name}
                   </h3>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleToggleFavorite(album.id);
-                    }}
-                    style={{
-                      background: "transparent",
-                      border: "none",
-                      color: album.is_favorite ? "var(--accent-danger, #ef4444)" : "var(--text-muted)",
-                      cursor: "pointer",
-                      padding: "2px",
-                    }}
-                  >
-                    <Heart size={14} fill={album.is_favorite ? "currentColor" : "none"} />
-                  </button>
+                  {!isCollages && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleFavorite(album.id);
+                      }}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: album.is_favorite ? "var(--accent-danger, #ef4444)" : "var(--text-muted)",
+                        cursor: "pointer",
+                        padding: "2px",
+                      }}
+                    >
+                      <Heart size={14} fill={album.is_favorite ? "currentColor" : "none"} />
+                    </button>
+                  )}
                 </div>
 
                 <div 
@@ -2013,31 +2196,38 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     {album.photo_count} {album.photo_count === 1 ? "photo" : "photos"}
                   </span>
 
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onLockAlbumToVault?.(album.id);
-                    }}
-                    className="clickable"
-                    style={{
-                      background: "transparent",
-                      border: "none",
-                      color: album.is_vault ? "var(--accent-success)" : "var(--accent-vault)",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {album.is_vault ? <Unlock size={12} /> : <Lock size={12} />}
-                    {album.is_vault ? "Decrypt" : "Lock (L)"}
-                  </button>
+                  {isCollages ? (
+                    <span style={{ fontSize: "10px", color: "var(--accent-primary, #38bdf8)", fontWeight: 600 }}>
+                      Smart Album
+                    </span>
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onLockAlbumToVault?.(album.id);
+                      }}
+                      className="clickable"
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: album.is_vault ? "var(--accent-success)" : "var(--accent-vault)",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {album.is_vault ? <Unlock size={12} /> : <Lock size={12} />}
+                      {album.is_vault ? "Decrypt" : "Lock (L)"}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

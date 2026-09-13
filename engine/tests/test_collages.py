@@ -5,6 +5,7 @@ from PIL import Image
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from engine.config import settings
 from engine.database import get_db_connection, run_migrations
 from engine.main import app
 from engine.services.collage_service import (
@@ -327,5 +328,64 @@ async def test_album_cover_self_healing_on_delete_and_trash():
                 await conn.commit()
             finally:
                 await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_collages_smart_album_parity():
+    """Validates that the Collages album behaves as a protected system smart album.
+
+    Verifies:
+    1. DELETE /api/albums/{collages_id} returns HTTP 400.
+    2. POST /api/albums/{collages_id}/toggle-favorite returns HTTP 400.
+    3. Migrations reset is_favorite = 0 for Collages.
+    """
+    settings.ensure_directories()
+    await run_migrations()
+
+    # 1. Ensure 'Collages' album exists
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT id, name, is_favorite FROM albums WHERE LOWER(name) = 'collages';") as cur:
+            row = await cur.fetchone()
+        if not row:
+            cursor = await conn.execute("INSERT INTO albums (name, description) VALUES ('Collages', 'System collage collection');")
+            collages_id = cursor.lastrowid
+            await conn.commit()
+        else:
+            collages_id = row["id"]
+    finally:
+        await conn.close()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 2. Attempting to delete the Collages smart album must be rejected
+        del_res = await client.delete(f"/api/albums/{collages_id}")
+        assert del_res.status_code == 400
+        assert "System smart albums cannot be deleted" in del_res.json()["detail"]
+
+        # 3. Attempting to favorite the Collages smart album must be rejected
+        fav_res = await client.post(f"/api/albums/{collages_id}/toggle-favorite")
+        assert fav_res.status_code == 400
+        assert "System smart albums cannot be favorited" in fav_res.json()["detail"]
+
+    # 4. Verify migration self-healing resets is_favorite if it was somehow set
+    conn = await get_db_connection()
+    try:
+        await conn.execute("UPDATE albums SET is_favorite = 1 WHERE id = ?;", (collages_id,))
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    # Run migration sweep
+    await run_migrations()
+
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT is_favorite FROM albums WHERE id = ?;", (collages_id,)) as cur:
+            final_row = await cur.fetchone()
+            assert final_row["is_favorite"] == 0
+    finally:
+        await conn.close()
+
 
 

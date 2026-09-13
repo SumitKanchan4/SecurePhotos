@@ -35,7 +35,7 @@ export const AddToAlbumModal: React.FC<AddToAlbumModalProps> = ({
       const res = await fetch("http://127.0.0.1:8000/api/albums");
       if (res.ok) {
         const data: AlbumItem[] = await res.json();
-        setAlbums(data);
+        setAlbums(data.filter((a) => a.name.toLowerCase() !== "collages"));
       }
     } catch (err) {
       console.error("Failed to load albums:", err);
