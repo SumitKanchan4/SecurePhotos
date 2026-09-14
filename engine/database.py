@@ -247,11 +247,15 @@ CREATE TABLE IF NOT EXISTS vault_configs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     vault_type TEXT NOT NULL UNIQUE,          -- 'private' or 'documents'
     mvk_wrapped_password TEXT NOT NULL,      -- Master Key encrypted with Argon2id password key
+    mvk_wrapped_pin TEXT,                    -- Master Key encrypted with 4-digit PIN key
     mvk_wrapped_biometric TEXT,              -- Master Key encrypted with Windows Hello / TPM key
     mvk_wrapped_recovery TEXT NOT NULL,       -- Master Key encrypted with 24-word recovery key
     password_salt TEXT NOT NULL,             -- Randomized 16-byte salt for Argon2id
+    pin_salt TEXT,                           -- Randomized 16-byte salt for Argon2id PIN key
     password_hint TEXT,
-    totp_secret_encrypted TEXT,              -- Encrypted secret key for RFC 6238 TOTP
+    pin_failed_attempts INTEGER DEFAULT 0,   -- Counter for brute-force rate-limiting
+    has_pin BOOLEAN DEFAULT 0,               -- Flag indicating PIN is enrolled
+    totp_secret_encrypted TEXT,              -- Optional encrypted secret key for RFC 6238 TOTP
     has_biometrics BOOLEAN DEFAULT 0,
     is_configured BOOLEAN DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -527,6 +531,19 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
 
         # Smart album parity: System smart albums like Collages cannot be favorited
         await conn.execute("UPDATE albums SET is_favorite = 0 WHERE LOWER(name) = 'collages';")
+
+        # Multi-slot vault migrations: dynamically add PIN columns if not present
+        async with conn.execute("PRAGMA table_info(vault_configs);") as cursor:
+            existing_cols = {row["name"] for row in await cursor.fetchall()}
+        
+        if "mvk_wrapped_pin" not in existing_cols:
+            await conn.execute("ALTER TABLE vault_configs ADD COLUMN mvk_wrapped_pin TEXT;")
+        if "pin_salt" not in existing_cols:
+            await conn.execute("ALTER TABLE vault_configs ADD COLUMN pin_salt TEXT;")
+        if "pin_failed_attempts" not in existing_cols:
+            await conn.execute("ALTER TABLE vault_configs ADD COLUMN pin_failed_attempts INTEGER DEFAULT 0;")
+        if "has_pin" not in existing_cols:
+            await conn.execute("ALTER TABLE vault_configs ADD COLUMN has_pin BOOLEAN DEFAULT 0;")
 
         await conn.commit()
         logger.info("Database schema migrations executed successfully.")

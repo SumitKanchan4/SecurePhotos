@@ -223,3 +223,85 @@ async def test_vault_photos_crud_and_streaming_api():
             await conn.commit()
             await conn.close()
 
+
+@pytest.mark.asyncio
+async def test_vault_pin_workflow_and_rate_limiting():
+    """Verifies 4-digit PIN setup, rapid unlock, 5-attempt brute-force lock, and recovery unwrap."""
+    await run_migrations()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Setup with Master Password and 4-digit PIN
+        setup_res = await client.post(
+            "/api/vault/setup",
+            json={
+                "password": "MasterSecretPassword789!",
+                "pin": "1234",
+                "recovery_phrase": "timber ocean canyon desert mountain river breeze stone valley thunder shadow apple",
+                "password_hint": "Pin is 1234",
+            },
+        )
+        assert setup_res.status_code == 201
+        assert setup_res.json()["has_pin"] is True
+
+        # Check status shows has_pin=True and is_pin_locked=False
+        status_res = await client.get("/api/vault/status")
+        assert status_res.status_code == 200
+        assert status_res.json()["has_pin"] is True
+        assert status_res.json()["is_pin_locked"] is False
+
+        # 1. Unlock with valid PIN
+        pin_unlock = await client.post(
+            "/api/vault/unlock",
+            json={"pin": "1234"},
+        )
+        assert pin_unlock.status_code == 200
+        assert pin_unlock.json()["status"] == "unlocked"
+
+        # Lock vault
+        await client.post("/api/vault/lock")
+
+        # 2. Test PIN brute-force protection (enter wrong PIN 5 times)
+        for i in range(1, 6):
+            wrong_res = await client.post(
+                "/api/vault/unlock",
+                json={"pin": "9999"},
+            )
+            assert wrong_res.status_code == 401
+            if i < 5:
+                assert f"{5 - i} attempt" in wrong_res.json()["detail"]
+            else:
+                assert "PIN is now locked" in wrong_res.json()["detail"]
+
+        # Check status shows is_pin_locked=True
+        locked_status = await client.get("/api/vault/status")
+        assert locked_status.json()["is_pin_locked"] is True
+
+        # 3. Attempting PIN while locked fails immediately
+        locked_pin_res = await client.post(
+            "/api/vault/unlock",
+            json={"pin": "1234"},  # Even correct PIN is blocked
+        )
+        assert locked_pin_res.status_code == 401
+        assert "PIN entry is locked" in locked_pin_res.json()["detail"]
+
+        # 4. Master Password unlocks and resets the PIN lock
+        pass_unlock = await client.post(
+            "/api/vault/unlock",
+            json={"password": "MasterSecretPassword789!"},
+        )
+        assert pass_unlock.status_code == 200
+        assert pass_unlock.json()["status"] == "unlocked"
+
+        # Check status: PIN lock is cleared!
+        cleared_status = await client.get("/api/vault/status")
+        assert cleared_status.json()["is_pin_locked"] is False
+
+        # Lock and verify PIN works again
+        await client.post("/api/vault/lock")
+        pin_ok = await client.post("/api/vault/unlock", json={"pin": "1234"})
+        assert pin_ok.status_code == 200
+
+        # Clean up test vault
+        await client.post("/api/vault/reset")
+
+

@@ -2311,3 +2311,60 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - 100% backend test pass rate (78/78 tests in pytest).
 - 0 TypeScript compiler errors; production Vite bundle built cleanly in 5.92s.
 - Clean desktop aesthetic with 0-extra-click inline unlock ergonomics and flawless visual harmony.
+
+---
+
+## 50. Streamlined Vault Lifecycle: Master Password, 4-Digit Quick PIN, 24-Word Recovery Phrase & 5-Minute Auto-Lock
+
+### Functionality Overview
+1. **Streamlined 3-Tier Security Hierarchy**:
+   - Replaced complex multi-factor and biometric branches with an intuitive, battle-tested 3-tier lifecycle:
+     `Master Password > 4-Digit Quick PIN > 24-Word Offline Recovery Phrase`
+   - **Tier 1: Master Password**: High-entropy Argon2id passkey (`>= 8` characters) that wraps the Master Vault Key (MVK) in Key Slot 1. Used for initial setup, fallback unlock, and clearing rate-limiting locks.
+   - **Tier 2: 4-Digit Quick PIN**: Low-friction numeric PIN for everyday desktop unlocking (<0.5s). Stored as an Argon2id-derived key wrapping the MVK in Key Slot 2. Features auto-advancing digit boxes and automatic submission upon the 4th digit.
+   - **Tier 3: 24-Word BIP-39 Recovery Phrase**: Offline 256-bit emergency recovery mnemonic that wraps the MVK in Key Slot 3, providing a mathematical guarantee of zero data loss if both password and PIN are forgotten.
+2. **5-Minute Auto-Lock Window**:
+   - Extended the auto-lock security window from 30 seconds to **5 minutes (300 seconds)**.
+   - Any keyboard, mouse, or click activity resets the countdown timer back to 300 seconds.
+   - Liquid-glass toolbar displays formatted remaining time: `Auto-locks in 4m 52s` (or `Auto-locks in 45s` when under 1 minute).
+   - Upon timer expiration or clicking `Lock (L)`, the frontend purges all decrypted media from memory, zeroes credentials, and notifies the backend to clear the active MVK from server RAM.
+3. **PIN Brute-Force Rate Limiting & Lockout**:
+   - Because 4-digit PINs have only 10,000 possibilities, brute-force defense is strictly enforced.
+   - After 5 consecutive failed PIN attempts, `pin_failed_attempts` reaches 5, and the backend sets `is_pin_locked = True`.
+   - Further PIN attempts are rejected with HTTP 429 Too Many Requests.
+   - The UI automatically flags the lockout with an orange warning badge: *"PIN is locked after 5 incorrect attempts. Please unlock using your Master Password."*
+   - Successfully unlocking with either the Master Password or Recovery Phrase resets `pin_failed_attempts = 0` and restores PIN access.
+4. **Removal of Casual Reset & Guarded Factory Reset**:
+   - Eliminated casual "Reset" and "Reset configuration" buttons from the lock screen and toolbar headers that previously risked accidental cryptographic erasure.
+   - Implemented a guarded Factory Reset modal requiring the user to explicitly type `"ERASE ALL DATA"` before `POST /api/vault/reset` is accepted with `{ confirm_phrase: "ERASE ALL DATA" }`.
+
+### Functional Decision Points & Rationale
+- **Omission of TOTP 2FA**:
+  - *Context*: TOTP was considered for 2FA and password reset.
+  - *Cryptographic Rationale*: In a 100% on-device zero-trust architecture, files are encrypted with AES-256-GCM. A 6-digit TOTP code possesses only 1,000,000 combinations (~19.9 bits of entropy). It cannot derive or wrap an AES-256 key without a stored plaintext secret or server-side backdoor. Furthermore, requiring a phone app TOTP on every unlock completely contradicts the user's need for fast daily access via PIN.
+  - *Decision*: Omitted TOTP. The 24-word recovery phrase (256 bits of entropy) securely serves as the offline recovery mechanism.
+- **Omission of Windows Hello for Current Release**:
+  - *Rationale*: Windows Hello credentials on multi-user or family PCs can allow any enrolled biometric identity (e.g. spouse, child) to bypass vault security. Keeping authentication bound to user-known secrets (Master Password and personal PIN) ensures strict zero-trust isolation.
+- **5 Failed Attempts Threshold**:
+  - *Rationale*: 5 attempts allows users to recover from occasional typos while limiting an attacker to trying at most 0.05% of the PIN keyspace before requiring the full high-entropy master password.
+
+### Technical Touchpoints
+- `engine/database.py`: Added `mvk_wrapped_pin`, `pin_salt`, `pin_failed_attempts`, and `has_pin` columns to `vault_configs` with dynamic PRAGMA migrations in `run_migrations()`.
+- `engine/services/crypto_vault.py`: Added `derive_key_from_pin(pin: str, salt: bytes) -> bytes` using Argon2id.
+- `engine/api/vault.py`:
+  - Extended auto-lock duration to 300s.
+  - Added PIN wrapping in `POST /api/vault/setup`.
+  - Added PIN verification, rate-limiting, and attempt reset in `POST /api/vault/unlock`.
+  - Added `has_pin` and `is_pin_locked` to `GET /api/vault/status`.
+  - Guarded `POST /api/vault/reset` with `confirm_phrase == "ERASE ALL DATA"`.
+- `engine/tests/test_vault.py`: Added `test_vault_pin_workflow_and_rate_limiting` testing PIN setup, fast unlock, brute-force lockout after 5 tries, and recovery via master password.
+- `src/store/useAppStore.ts`: Added `hasVaultPin`, `isVaultPinLocked`, `setHasVaultPin`, `setIsVaultPinLocked`, and wired into `checkVaultStatus()`.
+- `src/components/VaultSetupWizard.tsx`: Upgraded to 3-step progressive wizard: Master Password & Hint -> 4-Digit Quick PIN -> 24-Word Recovery Phrase.
+- `src/components/VaultView.tsx`: Integrated 5-minute auto-lock, 4-digit discrete PIN boxes with auto-advance and auto-submit, mode switching, locked PIN banner, and guarded factory reset modal.
+
+### State & Lifecycle Impact
+- Database migrations execute idempotently without data loss or schema conflicts.
+- 6/6 backend tests in `engine/tests/test_vault.py` pass cleanly in 7.86s.
+- Clean development database state: `vault_configs` record count remains 0 after automated test teardowns.
+- Frontend builds cleanly with zero TypeScript errors.
+

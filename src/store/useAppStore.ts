@@ -25,6 +25,8 @@ interface AppState {
   isVaultConfigured: boolean;
   vaultPasswordHint: string | null;
   hasVaultTotp: boolean;
+  hasVaultPin: boolean;
+  isVaultPinLocked: boolean;
   prerequisites: SystemPrerequisites | null;
   totalPhotosCount: number;
   toast: { id: number; message: string; type: "info" | "success" | "warning" } | null;
@@ -43,6 +45,8 @@ interface AppState {
   setIsVaultConfigured: (configured: boolean) => void;
   setVaultPasswordHint: (hint: string | null) => void;
   setHasVaultTotp: (hasTotp: boolean) => void;
+  setHasVaultPin: (hasPin: boolean) => void;
+  setIsVaultPinLocked: (isPinLocked: boolean) => void;
   checkVaultStatus: () => Promise<void>;
   setPrerequisites: (prerequisites: SystemPrerequisites | null) => void;
   setTotalPhotosCount: (count: number) => void;
@@ -62,6 +66,8 @@ export const useAppStore = create<AppState>((set) => ({
   isVaultConfigured: false,
   vaultPasswordHint: null,
   hasVaultTotp: false,
+  hasVaultPin: false,
+  isVaultPinLocked: false,
   prerequisites: null,
   totalPhotosCount: 0,
   toast: null,
@@ -100,6 +106,8 @@ export const useAppStore = create<AppState>((set) => ({
   setIsVaultConfigured: (isVaultConfigured) => set({ isVaultConfigured }),
   setVaultPasswordHint: (vaultPasswordHint) => set({ vaultPasswordHint }),
   setHasVaultTotp: (hasVaultTotp) => set({ hasVaultTotp }),
+  setHasVaultPin: (hasVaultPin) => set({ hasVaultPin }),
+  setIsVaultPinLocked: (isVaultPinLocked) => set({ isVaultPinLocked }),
   checkVaultStatus: async () => {
     try {
       const res = await fetch("http://127.0.0.1:8000/api/vault/status");
@@ -110,6 +118,8 @@ export const useAppStore = create<AppState>((set) => ({
           isVaultUnlocked: Boolean(data.is_unlocked),
           vaultPasswordHint: data.password_hint || null,
           hasVaultTotp: Boolean(data.has_totp),
+          hasVaultPin: Boolean(data.has_pin),
+          isVaultPinLocked: Boolean(data.is_pin_locked),
         });
       }
     } catch (err) {

@@ -11,8 +11,8 @@ import {
   HelpCircle, 
   Sparkles, 
   KeyRound, 
-  RotateCcw,
-  ArrowRight
+  ArrowRight,
+  AlertTriangle
 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { PhotoGrid } from "./PhotoGrid";
@@ -24,12 +24,14 @@ interface VaultViewProps {
   onPhotoClick?: (index: number, photos?: PhotoItem[]) => void;
 }
 
+const AUTO_LOCK_SECONDS = 300; // 5 minutes
+
 /**
  * VaultView Component
  *
- * Flagship Zero-Trust Encrypted Vault matching the reference desktop UI.
- * Features a persistent 3-column liquid-glass toolbar, Option A seamless inline glass input,
- * zero marketing clutter, and an exact match to the empty/unlocked screenshot.
+ * Flagship Zero-Trust Encrypted Vault with 5-minute auto-lock,
+ * 4-digit quick PIN unlock with brute-force lock protection,
+ * Master Password fallback, 24-word recovery, and guarded factory reset.
  */
 export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   const { 
@@ -38,6 +40,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     isVaultConfigured,
     setIsVaultConfigured,
     vaultPasswordHint,
+    hasVaultPin,
+    isVaultPinLocked,
     checkVaultStatus,
     setActiveTab,
     showToast 
@@ -48,23 +52,41 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
   const [isSetupMode, setIsSetupMode] = useState(false);
 
-  // Login form state
+  // Authentication mode: "pin" | "password" | "recovery"
+  const [authMode, setAuthMode] = useState<"pin" | "password" | "recovery">("password");
+
+  // Form states
   const [password, setPassword] = useState("");
+  const [pin, setPin] = useState(["", "", "", ""]);
   const [recoveryPhrase, setRecoveryPhrase] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [useRecoveryPhrase, setUseRecoveryPhrase] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loginError, setLoginError] = useState("");
 
-  // 30-Second Auto-lock countdown timer
-  const [secondsRemaining, setSecondsRemaining] = useState(30);
+  // Guarded factory reset modal
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState("");
+  const [isResetting, setIsResetting] = useState(false);
+
+  // Auto-lock countdown timer (5 minutes = 300s)
+  const [secondsRemaining, setSecondsRemaining] = useState(AUTO_LOCK_SECONDS);
   const lastActivityRef = useRef<number>(Date.now());
+  const pinInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Check vault configuration on mount
   useEffect(() => {
     checkVaultStatus();
   }, [checkVaultStatus]);
+
+  // Adjust default auth mode based on configuration and lock status
+  useEffect(() => {
+    if (hasVaultPin && !isVaultPinLocked) {
+      setAuthMode("pin");
+    } else {
+      setAuthMode("password");
+    }
+  }, [hasVaultPin, isVaultPinLocked]);
 
   // Fetch decrypted vault photos whenever unlocked
   const fetchVaultPhotos = useCallback(async () => {
@@ -91,13 +113,13 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     }
   }, [isVaultUnlocked, fetchVaultPhotos]);
 
-  // Handle auto-lock countdown and activity tracking
+  // Handle 5-minute auto-lock countdown and activity tracking
   useEffect(() => {
     if (!isVaultUnlocked) return;
 
     const resetActivity = () => {
       lastActivityRef.current = Date.now();
-      setSecondsRemaining(30);
+      setSecondsRemaining(AUTO_LOCK_SECONDS);
     };
 
     window.addEventListener("mousemove", resetActivity);
@@ -106,7 +128,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
 
     const interval = setInterval(() => {
       const elapsed = Math.floor((Date.now() - lastActivityRef.current) / 1000);
-      const remaining = Math.max(0, 30 - elapsed);
+      const remaining = Math.max(0, AUTO_LOCK_SECONDS - elapsed);
       setSecondsRemaining(remaining);
 
       if (remaining <= 0) {
@@ -125,6 +147,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   const handleManualLock = async () => {
     setIsVaultUnlocked(false);
     setPassword("");
+    setPin(["", "", "", ""]);
     setRecoveryPhrase("");
     setLoginError("");
     setVaultPhotos([]);
@@ -133,22 +156,16 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     } catch (err) {
       console.error("Error locking vault:", err);
     }
+    await checkVaultStatus();
     showToast("Vault locked and RAM purged.", "info");
   };
 
-  const handleUnlockSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Generic unlock submission
+  const performUnlock = async (payload: { password?: string; pin?: string; recovery_phrase?: string }) => {
     setLoginError("");
     setIsSubmitting(true);
 
     try {
-      const payload: Record<string, string> = {};
-      if (useRecoveryPhrase) {
-        payload.recovery_phrase = recoveryPhrase.trim();
-      } else {
-        payload.password = password;
-      }
-
       const res = await fetch("http://127.0.0.1:8000/api/vault/unlock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -158,11 +175,19 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
       if (res.ok) {
         setIsVaultUnlocked(true);
         setPassword("");
+        setPin(["", "", "", ""]);
         setRecoveryPhrase("");
+        await checkVaultStatus();
         showToast("Private Vault unlocked.", "success");
       } else {
         const data = await res.json().catch(() => ({}));
-        setLoginError(data.detail || "Incorrect master password. Please try again.");
+        setLoginError(data.detail || "Authentication failed. Please try again.");
+        await checkVaultStatus();
+        if (payload.pin) {
+          // Clear pin inputs on failure
+          setPin(["", "", "", ""]);
+          pinInputRefs.current[0]?.focus();
+        }
       }
     } catch (err: unknown) {
       console.error("Unlock error:", err);
@@ -172,19 +197,83 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     }
   };
 
-  const handleResetVault = async () => {
-    if (!window.confirm("Are you sure you want to reset this vault? This allows you to set up a brand new master password.")) {
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!password) return;
+    performUnlock({ password });
+  };
+
+  const handleRecoverySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!recoveryPhrase.trim()) return;
+    performUnlock({ recovery_phrase: recoveryPhrase.trim() });
+  };
+
+  // PIN change with auto-submit on 4th digit
+  const handlePinDigitChange = (index: number, val: string) => {
+    const digit = val.replace(/\D/g, "").slice(-1);
+    const nextPin = [...pin];
+    nextPin[index] = digit;
+    setPin(nextPin);
+
+    if (digit && index < 3) {
+      pinInputRefs.current[index + 1]?.focus();
+    }
+
+    // Auto-submit if all 4 digits are entered
+    const completePin = nextPin.join("");
+    if (completePin.length === 4) {
+      performUnlock({ pin: completePin });
+    }
+  };
+
+  const handlePinDigitKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Backspace" && !pin[index] && index > 0) {
+      pinInputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  // Guarded factory reset
+  const handleGuardedReset = async () => {
+    if (resetConfirmText.trim() !== "ERASE ALL DATA") {
+      setLoginError("Please type 'ERASE ALL DATA' exactly to confirm factory reset.");
       return;
     }
+
+    setIsResetting(true);
     try {
-      await fetch("http://127.0.0.1:8000/api/vault/reset", { method: "POST" });
-      setIsVaultConfigured(false);
-      setIsVaultUnlocked(false);
-      setIsSetupMode(true);
-      showToast("Vault configuration cleared. You can now set up a new password.", "info");
+      const res = await fetch("http://127.0.0.1:8000/api/vault/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm_phrase: "ERASE ALL DATA" }),
+      });
+
+      if (res.ok) {
+        setIsVaultConfigured(false);
+        setIsVaultUnlocked(false);
+        setShowResetModal(false);
+        setResetConfirmText("");
+        setIsSetupMode(true);
+        await checkVaultStatus();
+        showToast("Vault reset complete. You can now configure a new vault.", "info");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.detail || "Reset failed.", "warning");
+      }
     } catch (err) {
       console.error("Reset vault error:", err);
+      showToast("Error resetting vault.", "warning");
+    } finally {
+      setIsResetting(false);
     }
+  };
+
+  // Formatted auto-lock timer string
+  const formatTimeRemaining = (totalSec: number) => {
+    if (totalSec < 60) return `${totalSec}s`;
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m}m ${s < 10 ? "0" : ""}${s}s`;
   };
 
   return (
@@ -213,7 +302,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
         }}
       >
         {/* Left Column: Security Status Badge */}
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-start", gap: "10px", minWidth: "140px" }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-start", gap: "10px", minWidth: "160px" }}>
           {isVaultUnlocked ? (
             <>
               <div 
@@ -237,14 +326,14 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               <span 
                 style={{ 
                   fontSize: "11px", 
-                  color: secondsRemaining <= 10 ? "var(--accent-danger, #ef4444)" : "var(--text-muted)", 
+                  color: secondsRemaining <= 30 ? "var(--accent-danger, #ef4444)" : "var(--text-muted)", 
                   display: "flex", 
                   alignItems: "center", 
                   gap: "4px",
                   fontFamily: "var(--font-mono)",
                 }}
               >
-                <Clock size={12} /> Auto-locks in {secondsRemaining}s
+                <Clock size={12} /> Auto-locks in {formatTimeRemaining(secondsRemaining)}
               </span>
             </>
           ) : !isVaultConfigured ? (
@@ -339,7 +428,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
         </div>
 
         {/* Right Column: Actions */}
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", minWidth: "140px" }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", minWidth: "160px" }}>
           {isVaultUnlocked ? (
             <>
               <button
@@ -435,28 +524,6 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                   <span>Hint</span>
                 </button>
               )}
-              <button
-                type="button"
-                onClick={handleResetVault}
-                className="clickable"
-                title="Reset vault configuration"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  padding: "6px 12px",
-                  borderRadius: "var(--radius-full)",
-                  backgroundColor: "var(--glass-pill-bg)",
-                  border: "1px solid var(--glass-border)",
-                  color: "var(--text-muted)",
-                  fontSize: "11px",
-                  fontWeight: 500,
-                  cursor: "pointer",
-                }}
-              >
-                <RotateCcw size={11} />
-                <span>Reset</span>
-              </button>
             </div>
           )}
         </div>
@@ -508,7 +575,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
             Protect Your Sensitive Media
           </h2>
           <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "440px", lineHeight: "1.5", margin: "0 0 24px 0" }}>
-            Create a personal encrypted vault with on-device AES-256-GCM encryption. Everything stays 100% on this device, protected by your master password.
+            Create a personal encrypted vault with on-device AES-256-GCM encryption. Everything stays 100% on this device, protected by your master password and quick PIN.
           </p>
           <button
             onClick={() => setIsSetupMode(true)}
@@ -534,7 +601,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
           </button>
         </div>
       ) : !isVaultUnlocked ? (
-        /* Locked Landing Screen with Option A: Seamless Inline Glass Input */
+        /* Locked Landing Screen with Quick PIN / Master Password / Recovery */
         <div 
           style={{
             flex: 1,
@@ -548,7 +615,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
             minHeight: "440px",
           }}
         >
-          {/* Circular Lock Emblem (Matches Reference Screenshot) */}
+          {/* Circular Lock Emblem */}
           <div 
             style={{
               width: "64px",
@@ -571,21 +638,46 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
           </h2>
 
           <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "440px", lineHeight: "1.5", margin: "0 0 24px 0" }}>
-            Photos and videos inside are protected with on-device encryption. Enter your master password to unlock.
+            {authMode === "pin" 
+              ? "Enter your 4-digit quick PIN to unlock instantly." 
+              : authMode === "password"
+                ? "Enter your master password to decrypt and unlock."
+                : "Enter your 24-word recovery phrase to restore access."}
           </p>
 
-          {/* Option A: Seamless Inline Glass Input Bar (0 Extra Clicks) */}
-          <form 
-            onSubmit={handleUnlockSubmit}
+          <div 
             style={{
               width: "100%",
-              maxWidth: useRecoveryPhrase ? "460px" : "380px",
+              maxWidth: authMode === "recovery" ? "460px" : "380px",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: "12px",
+              gap: "14px",
             }}
           >
+            {/* PIN Locked Warning Badge */}
+            {isVaultPinLocked && (
+              <div 
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  borderRadius: "var(--radius-md)",
+                  backgroundColor: "rgba(249, 115, 22, 0.12)",
+                  border: "1px solid rgba(249, 115, 22, 0.3)",
+                  color: "#fb923c",
+                  fontSize: "12px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                  lineHeight: "1.4",
+                }}
+              >
+                <ShieldAlert size={14} style={{ flexShrink: 0 }} />
+                <span>PIN is locked after 5 incorrect attempts. Please unlock using your Master Password.</span>
+              </div>
+            )}
+
             {loginError && (
               <div 
                 style={{
@@ -602,7 +694,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                   gap: "6px",
                 }}
               >
-                <ShieldAlert size={14} />
+                <ShieldAlert size={14} style={{ flexShrink: 0 }} />
                 <span>{loginError}</span>
               </div>
             )}
@@ -624,14 +716,187 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               </div>
             )}
 
-            {useRecoveryPhrase ? (
-              <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "10px" }}>
+            {/* ── Mode 1: 4-Digit Quick PIN Input ── */}
+            {authMode === "pin" && !isVaultPinLocked && (
+              <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
+                <div style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
+                  {[0, 1, 2, 3].map((idx) => (
+                    <input
+                      key={`unlock-pin-${idx}`}
+                      ref={(el) => { pinInputRefs.current[idx] = el; }}
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={pin[idx]}
+                      onChange={(e) => handlePinDigitChange(idx, e.target.value)}
+                      onKeyDown={(e) => handlePinDigitKeyDown(idx, e)}
+                      autoFocus={idx === 0}
+                      disabled={isSubmitting}
+                      style={{
+                        width: "50px",
+                        height: "56px",
+                        borderRadius: "var(--radius-md)",
+                        backgroundColor: "var(--glass-surface)",
+                        border: `1.5px solid ${pin[idx] ? "var(--accent-primary)" : "var(--glass-border)"}`,
+                        color: "var(--text-primary)",
+                        fontSize: "24px",
+                        fontWeight: 700,
+                        textAlign: "center",
+                        outline: "none",
+                        boxShadow: pin[idx] ? "0 0 12px rgba(59, 130, 246, 0.25)" : "var(--glass-shadow)",
+                        transition: "all 0.15s ease",
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {isSubmitting && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--accent-primary)" }}>
+                    <Loader2 size={13} className="spin-animation" />
+                    <span>Verifying PIN...</span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("password");
+                    setLoginError("");
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--accent-primary)",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    padding: "4px",
+                  }}
+                >
+                  Unlock with Master Password instead
+                </button>
+              </div>
+            )}
+
+            {/* ── Mode 2: Master Password Input ── */}
+            {authMode === "password" && (
+              <form onSubmit={handlePasswordSubmit} style={{ width: "100%", display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div 
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    display: "flex",
+                    alignItems: "center",
+                    backgroundColor: "var(--glass-surface)",
+                    backdropFilter: "blur(20px)",
+                    WebkitBackdropFilter: "blur(20px)",
+                    border: "1px solid var(--glass-border)",
+                    borderRadius: "var(--radius-full)",
+                    boxShadow: "var(--glass-shadow)",
+                    padding: "4px 5px 4px 16px",
+                    transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+                  }}
+                >
+                  <Lock size={15} style={{ color: "var(--text-muted)", marginRight: "10px", flexShrink: 0 }} />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Master Password..."
+                    autoFocus
+                    disabled={isSubmitting}
+                    style={{
+                      flex: 1,
+                      background: "transparent",
+                      border: "none",
+                      outline: "none",
+                      color: "var(--text-primary)",
+                      fontSize: "13px",
+                      padding: "6px 0",
+                      minWidth: 0,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    title={showPassword ? "Hide password" : "Show password"}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "var(--text-muted)",
+                      cursor: "pointer",
+                      padding: "6px 8px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || !password}
+                    className="clickable"
+                    style={{
+                      padding: "8px 18px",
+                      borderRadius: "var(--radius-full)",
+                      backgroundColor: "var(--accent-primary)",
+                      border: "none",
+                      color: "#ffffff",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: isSubmitting || !password ? "default" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      flexShrink: 0,
+                      opacity: isSubmitting || !password ? 0.6 : 1,
+                      boxShadow: "0 2px 8px rgba(59, 130, 246, 0.25)",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    {isSubmitting ? (
+                      <Loader2 size={13} className="spin-animation" />
+                    ) : (
+                      <Unlock size={13} />
+                    )}
+                    <span>{isSubmitting ? "Decrypting..." : "Unlock"}</span>
+                  </button>
+                </div>
+
+                {hasVaultPin && !isVaultPinLocked && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode("pin");
+                      setLoginError("");
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "var(--accent-primary)",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      padding: "2px",
+                    }}
+                  >
+                    Unlock with 4-Digit PIN instead
+                  </button>
+                )}
+              </form>
+            )}
+
+            {/* ── Mode 3: 24-Word Recovery Phrase ── */}
+            {authMode === "recovery" && (
+              <form onSubmit={handleRecoverySubmit} style={{ width: "100%", display: "flex", flexDirection: "column", gap: "10px" }}>
                 <textarea
                   value={recoveryPhrase}
                   onChange={(e) => setRecoveryPhrase(e.target.value)}
                   placeholder="Enter 24-word recovery phrase (separated by spaces)..."
                   rows={3}
                   autoFocus
+                  disabled={isSubmitting}
                   style={{
                     width: "100%",
                     boxSizing: "border-box",
@@ -669,157 +934,69 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                   }}
                 >
                   {isSubmitting ? <Loader2 size={14} className="spin-animation" /> : <Unlock size={14} />}
-                  <span>{isSubmitting ? "Verifying Phrase..." : "Unlock with Phrase"}</span>
+                  <span>{isSubmitting ? "Restoring Access..." : "Restore with Phrase"}</span>
                 </button>
-              </div>
-            ) : (
-              <div 
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  display: "flex",
-                  alignItems: "center",
-                  backgroundColor: "var(--glass-surface)",
-                  backdropFilter: "blur(20px)",
-                  WebkitBackdropFilter: "blur(20px)",
-                  border: "1px solid var(--glass-border)",
-                  borderRadius: "var(--radius-full)",
-                  boxShadow: "var(--glass-shadow)",
-                  padding: "4px 5px 4px 16px",
-                  transition: "border-color 0.2s ease, box-shadow 0.2s ease",
-                }}
-              >
-                <Lock size={15} style={{ color: "var(--text-muted)", marginRight: "10px", flexShrink: 0 }} />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Master Password..."
-                  autoFocus
-                  style={{
-                    flex: 1,
-                    background: "transparent",
-                    border: "none",
-                    outline: "none",
-                    color: "var(--text-primary)",
-                    fontSize: "13px",
-                    padding: "6px 0",
-                    minWidth: 0,
-                  }}
-                />
+
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  title={showPassword ? "Hide password" : "Show password"}
+                  onClick={() => {
+                    setAuthMode(hasVaultPin && !isVaultPinLocked ? "pin" : "password");
+                    setLoginError("");
+                  }}
                   style={{
                     background: "none",
                     border: "none",
                     color: "var(--text-muted)",
-                    cursor: "pointer",
-                    padding: "6px 8px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting || !password}
-                  className="clickable"
-                  style={{
-                    padding: "8px 18px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "var(--accent-primary)",
-                    border: "none",
-                    color: "#ffffff",
                     fontSize: "12px",
-                    fontWeight: 700,
-                    cursor: isSubmitting || !password ? "default" : "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    flexShrink: 0,
-                    opacity: isSubmitting || !password ? 0.6 : 1,
-                    boxShadow: "0 2px 8px rgba(59, 130, 246, 0.25)",
-                    transition: "all 0.15s ease",
+                    cursor: "pointer",
+                    padding: "4px",
                   }}
                 >
-                  {isSubmitting ? (
-                    <Loader2 size={13} className="spin-animation" />
-                  ) : (
-                    <Unlock size={13} />
-                  )}
-                  <span>{isSubmitting ? "Decrypting..." : "Unlock"}</span>
+                  Cancel and return to {hasVaultPin && !isVaultPinLocked ? "PIN" : "Password"}
+                </button>
+              </form>
+            )}
+
+            {/* Bottom Links: Recovery Link & Guarded Reset */}
+            {authMode !== "recovery" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "center", marginTop: "4px" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("recovery");
+                    setLoginError("");
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    fontSize: "11px",
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                    padding: "2px",
+                  }}
+                >
+                  Forgot password or PIN? Restore with Recovery Phrase
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowResetModal(true)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    fontSize: "10px",
+                    cursor: "pointer",
+                    marginTop: "8px",
+                    opacity: 0.7,
+                  }}
+                >
+                  Factory Reset Vault
                 </button>
               </div>
             )}
-
-            {/* Subtle Recovery & Setup Links */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "center", marginTop: "4px" }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setUseRecoveryPhrase(!useRecoveryPhrase);
-                  setLoginError("");
-                }}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "var(--text-muted)",
-                  fontSize: "11px",
-                  cursor: "pointer",
-                  textDecoration: "underline",
-                  padding: "2px",
-                }}
-              >
-                {useRecoveryPhrase 
-                  ? "Back to Master Password" 
-                  : "Forgot password? Unlock with Recovery Phrase"}
-              </button>
-
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "4px" }}>
-                <button
-                  type="button"
-                  onClick={() => setIsSetupMode(true)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--accent-primary)",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    padding: "2px 6px",
-                  }}
-                >
-                  Set up a new vault
-                </button>
-
-                <span style={{ color: "var(--border-subtle)", fontSize: "10px" }}>•</span>
-
-                <button
-                  type="button"
-                  onClick={handleResetVault}
-                  title="Clear current vault password configuration"
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--text-muted)",
-                    fontSize: "11px",
-                    cursor: "pointer",
-                    padding: "2px 6px",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "3px",
-                  }}
-                >
-                  <RotateCcw size={10} />
-                  <span>Reset configuration</span>
-                </button>
-              </div>
-            </div>
-          </form>
+          </div>
         </div>
       ) : (
         /* Unlocked State: Gallery or Empty Screen */
@@ -948,6 +1125,119 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
           )}
         </div>
       )}
+
+      {/* ── Guarded Factory Reset Modal ── */}
+      {showResetModal && (
+        <div 
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.75)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: "20px",
+          }}
+        >
+          <div 
+            style={{
+              width: "100%",
+              maxWidth: "440px",
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid rgba(239, 68, 68, 0.4)",
+              borderRadius: "var(--radius-lg)",
+              padding: "24px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
+              boxShadow: "0 16px 36px rgba(0, 0, 0, 0.5)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "var(--accent-danger, #ef4444)" }}>
+              <AlertTriangle size={24} />
+              <h3 style={{ fontSize: "16px", fontWeight: 700, margin: 0 }}>Factory Reset Encrypted Vault</h3>
+            </div>
+
+            <p style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: "1.5", margin: 0 }}>
+              Resetting will clear the master password, PIN, and cryptographic keys. Any encrypted photos currently stored in the vault will become permanently inaccessible without a backup.
+            </p>
+
+            <div>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", marginBottom: "6px" }}>
+                Type <strong style={{ color: "var(--text-primary)" }}>ERASE ALL DATA</strong> to confirm:
+              </label>
+              <input 
+                type="text"
+                value={resetConfirmText}
+                onChange={(e) => setResetConfirmText(e.target.value)}
+                placeholder="ERASE ALL DATA"
+                autoFocus
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  backgroundColor: "var(--glass-pill-bg)",
+                  border: "1px solid var(--glass-border)",
+                  borderRadius: "var(--radius-sm)",
+                  padding: "10px 12px",
+                  color: "var(--text-primary)",
+                  fontSize: "13px",
+                  fontFamily: "var(--font-mono)",
+                  outline: "none",
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: "4px" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowResetModal(false);
+                  setResetConfirmText("");
+                }}
+                disabled={isResetting}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "var(--glass-pill-bg)",
+                  border: "1px solid var(--glass-border)",
+                  color: "var(--text-secondary)",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleGuardedReset}
+                disabled={resetConfirmText.trim() !== "ERASE ALL DATA" || isResetting}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: resetConfirmText.trim() === "ERASE ALL DATA" ? "var(--accent-danger, #ef4444)" : "var(--glass-border)",
+                  border: "none",
+                  color: "#ffffff",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: resetConfirmText.trim() === "ERASE ALL DATA" && !isResetting ? "pointer" : "not-allowed",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                {isResetting && <Loader2 size={13} className="spin-animation" />}
+                <span>Permanently Reset</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

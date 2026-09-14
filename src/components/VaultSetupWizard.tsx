@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { 
   KeyRound, 
   Eye, 
@@ -8,8 +8,10 @@ import {
   Sparkles, 
   Lock, 
   ArrowRight, 
+  ArrowLeft,
   ShieldAlert, 
-  Loader2 
+  Loader2,
+  Hash
 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 
@@ -30,19 +32,33 @@ const SAMPLE_RECOVERY_WORDS = [
 /**
  * VaultSetupWizard Component
  *
- * Clean, focused first-time configuration wizard.
- * Matches the application's native sapphire blue and deep obsidian palette.
+ * Streamlined 3-step first-time vault configuration:
+ * Step 1: Master Password & Hint
+ * Step 2: 4-Digit Quick PIN (daily rapid unlock)
+ * Step 3: 24-Word Offline Recovery Phrase
  */
-export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, onSwitchToUnlock, onCancel }) => {
-  const showToast = useAppStore((state) => state.showToast);
-  const setIsVaultUnlocked = useAppStore((state) => state.setIsVaultUnlocked);
-  const setIsVaultConfigured = useAppStore((state) => state.setIsVaultConfigured);
+export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ 
+  onComplete, 
+  onSwitchToUnlock, 
+  onCancel 
+}) => {
+  const { showToast, setIsVaultUnlocked, setIsVaultConfigured, checkVaultStatus } = useAppStore();
 
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+
+  // Step 1: Password
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordHint, setPasswordHint] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+
+  // Step 2: PIN
+  const [pin, setPin] = useState(["", "", "", ""]);
+  const [confirmPin, setConfirmPin] = useState(["", "", "", ""]);
+  const pinInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const confirmPinInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Step 3: Recovery
   const [isCopied, setIsCopied] = useState(false);
   const [hasConfirmedSeed, setHasConfirmedSeed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -66,13 +82,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, 
   const strengthLabels = ["Too short", "Weak", "Fair", "Strong", "Very Strong"];
   const strengthColors = ["#ef4444", "#f97316", "#eab308", "#3b82f6", "#10b981"];
 
-  const handleCopyPhrase = () => {
-    navigator.clipboard.writeText(recoveryPhrase);
-    setIsCopied(true);
-    showToast("Recovery phrase copied to clipboard. Save it securely!", "success");
-    setTimeout(() => setIsCopied(false), 3000);
-  };
-
+  // Step 1 -> Step 2 validation
   const handleProceedToStep2 = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage("");
@@ -89,6 +99,74 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, 
     setStep(2);
   };
 
+  // PIN input handlers with auto-advance and backspace support
+  const handlePinChange = (
+    index: number, 
+    value: string, 
+    isConfirm: boolean
+  ) => {
+    const digit = value.replace(/\D/g, "").slice(-1);
+    const targetState = isConfirm ? [...confirmPin] : [...pin];
+    targetState[index] = digit;
+
+    if (isConfirm) {
+      setConfirmPin(targetState);
+    } else {
+      setPin(targetState);
+    }
+
+    // Auto-advance to next input if digit entered
+    if (digit) {
+      const refs = isConfirm ? confirmPinInputRefs : pinInputRefs;
+      if (index < 3) {
+        refs.current[index + 1]?.focus();
+      }
+    }
+  };
+
+  const handlePinKeyDown = (
+    index: number, 
+    e: React.KeyboardEvent<HTMLInputElement>, 
+    isConfirm: boolean
+  ) => {
+    const targetState = isConfirm ? confirmPin : pin;
+    const refs = isConfirm ? confirmPinInputRefs : pinInputRefs;
+
+    if (e.key === "Backspace") {
+      if (!targetState[index] && index > 0) {
+        refs.current[index - 1]?.focus();
+      }
+    }
+  };
+
+  // Step 2 -> Step 3 validation
+  const handleProceedToStep3 = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage("");
+
+    const pinStr = pin.join("");
+    const confirmPinStr = confirmPin.join("");
+
+    if (pinStr.length !== 4) {
+      setErrorMessage("Please enter a complete 4-digit quick PIN.");
+      return;
+    }
+    if (pinStr !== confirmPinStr) {
+      setErrorMessage("PIN confirmation does not match. Please re-enter.");
+      return;
+    }
+
+    setStep(3);
+  };
+
+  const handleCopyPhrase = () => {
+    navigator.clipboard.writeText(recoveryPhrase);
+    setIsCopied(true);
+    showToast("Recovery phrase copied to clipboard. Save it securely!", "success");
+    setTimeout(() => setIsCopied(false), 3000);
+  };
+
+  // Finalize setup
   const handleFinalizeSetup = async () => {
     if (!hasConfirmedSeed) {
       setErrorMessage("Please confirm that you have saved your 24-word recovery phrase.");
@@ -98,12 +176,15 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, 
     setIsSubmitting(true);
     setErrorMessage("");
 
+    const pinStr = pin.join("");
+
     try {
       const res = await fetch("http://127.0.0.1:8000/api/vault/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           password,
+          pin: pinStr.length === 4 ? pinStr : undefined,
           recovery_phrase: recoveryPhrase,
           password_hint: passwordHint.trim() || undefined,
           enable_totp: false,
@@ -125,6 +206,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, 
       if (unlockRes.ok) {
         setIsVaultConfigured(true);
         setIsVaultUnlocked(true);
+        await checkVaultStatus();
         showToast("Private Vault configured and unlocked successfully!", "success");
         onComplete();
       }
@@ -135,6 +217,12 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, 
       setIsSubmitting(false);
     }
   };
+
+  const stepTitles = [
+    "Create Master Password",
+    "Set 4-Digit Quick PIN",
+    "Save Recovery Phrase"
+  ];
 
   return (
     <div 
@@ -182,11 +270,11 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, 
               color: "var(--text-secondary)",
             }}
           >
-            <span style={{ color: step === 1 ? "var(--accent-primary)" : "var(--accent-success)" }}>
-              Step {step} of 2
+            <span style={{ color: "var(--accent-primary)" }}>
+              Step {step} of 3
             </span>
             <span>•</span>
-            <span>{step === 1 ? "Create Master Password" : "Save Recovery Phrase"}</span>
+            <span>{stepTitles[step - 1]}</span>
           </div>
 
           {onSwitchToUnlock && (
@@ -248,7 +336,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, 
                 <Lock size={15} style={{ color: "var(--text-muted)", marginRight: "8px" }} />
                 <input 
                   type={showPassword ? "text" : "password"}
-                  placeholder="Enter a strong master password (min 8 characters)..."
+                  placeholder="Enter master password (minimum 8 characters)..."
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoFocus
@@ -338,7 +426,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, 
               </div>
               <input 
                 type="text"
-                placeholder="e.g. Memory of first concert or favorite vacation"
+                placeholder="e.g. Favorite book title or vacation memory"
                 value={passwordHint}
                 onChange={(e) => setPasswordHint(e.target.value)}
                 style={{
@@ -376,32 +464,12 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, 
                 transition: "all 0.15s ease",
               }}
             >
-              <span>Continue to Recovery Phrase</span>
+              <span>Continue to Quick PIN</span>
               <ArrowRight size={15} />
             </button>
 
-            {onSwitchToUnlock && (
-              <div style={{ textAlign: "center", marginTop: "12px" }}>
-                <button
-                  type="button"
-                  onClick={onSwitchToUnlock}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--accent-primary)",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    textDecoration: "underline",
-                  }}
-                >
-                  Already configured? Switch to Unlock
-                </button>
-              </div>
-            )}
-
             {onCancel && (
-              <div style={{ textAlign: "center", marginTop: "6px" }}>
+              <div style={{ textAlign: "center", marginTop: "4px" }}>
                 <button
                   type="button"
                   onClick={onCancel}
@@ -420,8 +488,160 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, 
           </form>
         )}
 
-        {/* ── STEP 2: 24-Word Recovery Phrase ─────────────────────── */}
+        {/* ── STEP 2: Set 4-Digit Quick PIN ─────────────────────────── */}
         {step === 2 && (
+          <form onSubmit={handleProceedToStep3} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            <div style={{ textAlign: "center" }}>
+              <div 
+                style={{
+                  width: "48px",
+                  height: "48px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "rgba(59, 130, 246, 0.12)",
+                  border: "1px solid rgba(59, 130, 246, 0.25)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "var(--accent-primary)",
+                  marginBottom: "12px",
+                }}
+              >
+                <Hash size={22} />
+              </div>
+              <h3 style={{ fontSize: "16px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px 0" }}>
+                Create 4-Digit Quick PIN
+              </h3>
+              <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0, lineHeight: "1.4" }}>
+                Use this PIN for instant daily unlock (&lt;0.5s). After 5 incorrect attempts, your master password will be required.
+              </p>
+            </div>
+
+            {/* 4-Digit PIN Input */}
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "8px", textAlign: "center" }}>
+                Enter 4 Digits
+              </label>
+              <div style={{ display: "flex", justifyContent: "center", gap: "10px" }}>
+                {[0, 1, 2, 3].map((idx) => (
+                  <input
+                    key={`pin-${idx}`}
+                    ref={(el) => { pinInputRefs.current[idx] = el; }}
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={1}
+                    value={pin[idx]}
+                    onChange={(e) => handlePinChange(idx, e.target.value, false)}
+                    onKeyDown={(e) => handlePinKeyDown(idx, e, false)}
+                    autoFocus={idx === 0}
+                    style={{
+                      width: "48px",
+                      height: "52px",
+                      borderRadius: "var(--radius-md)",
+                      backgroundColor: "var(--bg-surface)",
+                      border: `1.5px solid ${pin[idx] ? "var(--accent-primary)" : "var(--glass-border)"}`,
+                      color: "var(--text-primary)",
+                      fontSize: "22px",
+                      fontWeight: 700,
+                      textAlign: "center",
+                      outline: "none",
+                      boxShadow: pin[idx] ? "0 0 12px rgba(59, 130, 246, 0.2)" : "none",
+                      transition: "all 0.15s ease",
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Confirm 4-Digit PIN Input */}
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "8px", textAlign: "center" }}>
+                Confirm 4 Digits
+              </label>
+              <div style={{ display: "flex", justifyContent: "center", gap: "10px" }}>
+                {[0, 1, 2, 3].map((idx) => (
+                  <input
+                    key={`confirm-pin-${idx}`}
+                    ref={(el) => { confirmPinInputRefs.current[idx] = el; }}
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={1}
+                    value={confirmPin[idx]}
+                    onChange={(e) => handlePinChange(idx, e.target.value, true)}
+                    onKeyDown={(e) => handlePinKeyDown(idx, e, true)}
+                    style={{
+                      width: "48px",
+                      height: "52px",
+                      borderRadius: "var(--radius-md)",
+                      backgroundColor: "var(--bg-surface)",
+                      border: `1.5px solid ${confirmPin[idx] ? "var(--accent-primary)" : "var(--glass-border)"}`,
+                      color: "var(--text-primary)",
+                      fontSize: "22px",
+                      fontWeight: 700,
+                      textAlign: "center",
+                      outline: "none",
+                      boxShadow: confirmPin[idx] ? "0 0 12px rgba(59, 130, 246, 0.2)" : "none",
+                      transition: "all 0.15s ease",
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="clickable"
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                  padding: "12px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "var(--glass-pill-bg)",
+                  border: "1px solid var(--glass-border)",
+                  color: "var(--text-secondary)",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <ArrowLeft size={14} />
+                <span>Back</span>
+              </button>
+
+              <button
+                type="submit"
+                className="clickable"
+                style={{
+                  flex: 2,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  padding: "12px 20px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "var(--accent-primary)",
+                  border: "none",
+                  color: "#ffffff",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  boxShadow: "0 4px 16px var(--accent-glow)",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <span>Continue to Recovery Phrase</span>
+                <ArrowRight size={15} />
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* ── STEP 3: 24-Word Recovery Phrase ─────────────────────── */}
+        {step === 3 && (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>
@@ -451,7 +671,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, 
             </div>
 
             <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0, lineHeight: "1.4" }}>
-              Write these words down or save them in a safe place. If you ever forget your master password, this phrase is the only way to recover your vault photos.
+              Write these words down or save them in a password manager. If you ever forget your master password and PIN, this phrase is the only way to recover your vault photos.
             </p>
 
             {/* Recovery Words Grid */}
@@ -464,6 +684,8 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, 
                 backgroundColor: "var(--bg-surface)",
                 borderRadius: "var(--radius-md)",
                 border: "1px solid var(--glass-border)",
+                maxHeight: "220px",
+                overflowY: "auto",
               }}
             >
               {SAMPLE_RECOVERY_WORDS.map((word, idx) => (
@@ -505,16 +727,20 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, 
                 onChange={(e) => setHasConfirmedSeed(e.target.checked)}
                 style={{ marginTop: "2px", accentColor: "var(--accent-primary)" }}
               />
-              <span>I have safely written down or copied these 24 recovery words.</span>
+              <span>I have safely written down or copied these 24 recovery words offline.</span>
             </label>
 
             <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
               <button
                 type="button"
-                onClick={() => setStep(1)}
+                onClick={() => setStep(2)}
                 className="clickable"
                 style={{
                   flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
                   padding: "12px",
                   borderRadius: "var(--radius-full)",
                   backgroundColor: "var(--glass-pill-bg)",
@@ -525,7 +751,8 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, 
                   cursor: "pointer",
                 }}
               >
-                Back
+                <ArrowLeft size={14} />
+                <span>Back</span>
               </button>
 
               <button

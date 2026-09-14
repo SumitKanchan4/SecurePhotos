@@ -42,10 +42,10 @@ def zero_memory(buffer: bytearray | bytes) -> None:
 
 
 def derive_key_from_password(password: str, salt: bytes) -> bytes:
-    """Derives a 256-bit AES key from a user password/PIN using Argon2id.
+    """Derives a 256-bit AES key from a user password using Argon2id.
 
     Args:
-        password: User plaintext password or PIN.
+        password: User plaintext password.
         salt: Randomized 16-byte cryptographic salt.
 
     Returns:
@@ -53,6 +53,28 @@ def derive_key_from_password(password: str, salt: bytes) -> bytes:
     """
     return argon2.low_level.hash_secret_raw(
         secret=password.encode("utf-8"),
+        salt=salt,
+        time_cost=ARGON2_TIME_COST,
+        memory_cost=ARGON2_MEMORY_COST,
+        parallelism=ARGON2_PARALLELISM,
+        hash_len=ARGON2_HASH_LEN,
+        type=argon2.low_level.Type.ID,
+    )
+
+
+def derive_key_from_pin(pin: str, salt: bytes) -> bytes:
+    """Derives a 256-bit AES key from a 4-digit numeric PIN using Argon2id.
+
+    Args:
+        pin: User 4-digit PIN string.
+        salt: Randomized 16-byte cryptographic salt.
+
+    Returns:
+        32-byte derived key.
+    """
+    clean_pin = pin.strip()
+    return argon2.low_level.hash_secret_raw(
+        secret=clean_pin.encode("utf-8"),
         salt=salt,
         time_cost=ARGON2_TIME_COST,
         memory_cost=ARGON2_MEMORY_COST,
