@@ -387,6 +387,7 @@ async def lock_album_to_vault(album_id: int) -> dict:
             rows = await cursor.fetchall()
 
         encrypted_count = 0
+        photo_ids = []
         for row in rows:
             photo_id = row["id"]
             orig_file = Path(row["filepath"])
@@ -412,13 +413,187 @@ async def lock_album_to_vault(album_id: int) -> dict:
                     (str(enc_file.resolve()), photo_id),
                 )
                 encrypted_count += 1
+                photo_ids.append(photo_id)
 
         await conn.execute("UPDATE albums SET is_vault = 1, vault_type = 'private' WHERE id = ?;", (album_id,))
         await conn.commit()
     finally:
         await conn.close()
 
-    return {"status": "album_locked", "photos_encrypted": encrypted_count}
+    return {"status": "album_locked", "photos_encrypted": encrypted_count, "photo_ids": photo_ids}
+
+
+@router.post("/albums/{album_id}/unlock", status_code=status.HTTP_200_OK)
+async def unlock_album_from_vault(album_id: int) -> dict:
+    """Decrypts all photos in an album and restores the album to the public library."""
+    mvk = get_active_mvk()
+    conn = await get_db_connection()
+
+    try:
+        # Query all encrypted photos in the album
+        async with conn.execute(
+            """
+            SELECT p.id, p.filepath, p.thumbnail_path, p.preview_path
+            FROM photos p
+            JOIN photo_album pa ON p.id = pa.photo_id
+            WHERE pa.album_id = ? AND p.is_encrypted = 1;
+            """,
+            (album_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        unlocked_count = 0
+        for row in rows:
+            photo_id = row["id"]
+            enc_file = Path(row["filepath"])
+            if enc_file.exists():
+                orig_file = enc_file.with_suffix("") if enc_file.suffix == ".enc" else enc_file.with_name("restored_" + enc_file.name)
+                with open(orig_file, "wb") as fout:
+                    for chunk in decrypt_file_chunked_stream(enc_file, mvk):
+                        fout.write(chunk)
+                enc_file.unlink()
+
+                restored_thumb_str = None
+                if row["thumbnail_path"]:
+                    t_enc = Path(row["thumbnail_path"])
+                    if t_enc.exists():
+                        t_orig = t_enc.with_suffix("") if t_enc.suffix == ".enc" else t_enc.with_name("restored_" + t_enc.name)
+                        with open(t_orig, "wb") as fout:
+                            for chunk in decrypt_file_chunked_stream(t_enc, mvk):
+                                fout.write(chunk)
+                        t_enc.unlink()
+                        restored_thumb_str = str(t_orig.resolve())
+
+                restored_prev_str = None
+                if row["preview_path"]:
+                    p_enc = Path(row["preview_path"])
+                    if p_enc.exists():
+                        p_orig = p_enc.with_suffix("") if p_enc.suffix == ".enc" else p_enc.with_name("restored_" + p_enc.name)
+                        with open(p_orig, "wb") as fout:
+                            for chunk in decrypt_file_chunked_stream(p_enc, mvk):
+                                fout.write(chunk)
+                        p_enc.unlink()
+                        restored_prev_str = str(p_orig.resolve())
+
+                await conn.execute(
+                    """
+                    UPDATE photos
+                    SET is_encrypted = 0,
+                        filepath = ?,
+                        thumbnail_path = COALESCE(?, thumbnail_path),
+                        preview_path = COALESCE(?, preview_path),
+                        vault_type = NULL
+                    WHERE id = ?;
+                    """,
+                    (str(orig_file.resolve()), restored_thumb_str, restored_prev_str, photo_id),
+                )
+                unlocked_count += 1
+
+        await conn.execute("UPDATE albums SET is_vault = 0, vault_type = NULL WHERE id = ?;", (album_id,))
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    return {"status": "album_unlocked", "photos_decrypted": unlocked_count}
+
+
+
+@router.get("/albums", status_code=status.HTTP_200_OK)
+async def list_vault_albums() -> List[dict]:
+    """Returns all locked albums in the private vault with cover photos and photo counts."""
+    get_active_mvk()
+    conn = await get_db_connection()
+    try:
+        query = """
+            SELECT 
+                a.id, a.name, a.description, a.is_vault, a.is_favorite, a.created_at,
+                COUNT(pa.photo_id) as photo_count,
+                COALESCE(a.cover_photo_id, (
+                    SELECT pa_sub.photo_id 
+                    FROM photo_album pa_sub 
+                    JOIN photos p_sub ON pa_sub.photo_id = p_sub.id 
+                    WHERE pa_sub.album_id = a.id AND p_sub.is_encrypted = 1
+                    ORDER BY p_sub.taken_at DESC 
+                    LIMIT 1
+                )) as cover_photo_id
+            FROM albums a
+            LEFT JOIN photo_album pa ON a.id = pa.album_id
+            LEFT JOIN photos p ON pa.photo_id = p.id AND p.is_encrypted = 1
+            WHERE a.is_vault = 1
+            GROUP BY a.id
+            ORDER BY a.created_at DESC;
+        """
+        async with conn.execute(query) as cursor:
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "name": r["name"],
+                    "description": r["description"],
+                    "is_vault": bool(r["is_vault"]),
+                    "is_favorite": bool(r["is_favorite"]),
+                    "photo_count": r["photo_count"],
+                    "cover_photo_id": r["cover_photo_id"],
+                    "created_at": str(r["created_at"]) if r["created_at"] else None,
+                }
+                for r in rows
+            ]
+    finally:
+        await conn.close()
+
+
+@router.get("/albums/{album_id}/photos", status_code=status.HTTP_200_OK)
+async def list_vault_album_photos(album_id: int) -> List[dict]:
+    """Returns decrypted photo metadata for photos in a specific locked album."""
+    get_active_mvk()
+    conn = await get_db_connection()
+    try:
+        query = """
+            SELECT 
+                p.id, p.filename, p.filepath, p.file_size, p.mime_type, p.width, p.height,
+                p.taken_at, p.camera_make, p.camera_model, p.latitude, p.longitude,
+                p.iso, p.aperture, p.shutter_speed, p.focal_length, p.is_favorite,
+                p.is_encrypted, p.is_optimized, p.is_enhanced, p.caption,
+                p.thumbnail_path, p.preview_path, p.is_document, p.ocr_text
+            FROM photo_album pa
+            JOIN photos p ON pa.photo_id = p.id
+            WHERE pa.album_id = ? AND p.is_encrypted = 1 AND p.trashed_at IS NULL
+            ORDER BY pa.added_at DESC, p.taken_at DESC;
+        """
+        async with conn.execute(query, (album_id,)) as cursor:
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "id": row["id"],
+                    "filename": row["filename"],
+                    "filepath": row["filepath"],
+                    "file_size": row["file_size"],
+                    "mime_type": row["mime_type"],
+                    "width": row["width"],
+                    "height": row["height"],
+                    "taken_at": row["taken_at"],
+                    "camera_make": row["camera_make"],
+                    "camera_model": row["camera_model"],
+                    "latitude": row["latitude"],
+                    "longitude": row["longitude"],
+                    "iso": row["iso"],
+                    "aperture": row["aperture"],
+                    "shutter_speed": row["shutter_speed"],
+                    "focal_length": row["focal_length"],
+                    "is_favorite": bool(row["is_favorite"]),
+                    "is_encrypted": bool(row["is_encrypted"]),
+                    "is_optimized": bool(row["is_optimized"]),
+                    "is_enhanced": bool(row["is_enhanced"]),
+                    "caption": row["caption"],
+                    "thumbnail_path": row["thumbnail_path"],
+                    "preview_path": row["preview_path"],
+                    "is_document": bool(row["is_document"]) if row["is_document"] is not None else False,
+                    "ocr_text": row["ocr_text"],
+                }
+                for row in rows
+            ]
+    finally:
+        await conn.close()
 
 
 @router.get("/photos", status_code=status.HTTP_200_OK)
@@ -432,7 +607,8 @@ async def list_vault_photos() -> List[dict]:
             SELECT id, filename, filepath, file_size, mime_type, width, height,
                    taken_at, camera_make, camera_model, latitude, longitude,
                    iso, aperture, shutter_speed, focal_length, is_favorite,
-                   is_encrypted, is_optimized, is_enhanced, caption, thumbnail_path, preview_path
+                   is_encrypted, is_optimized, is_enhanced, caption, thumbnail_path, preview_path,
+                   is_document, ocr_text
             FROM photos
             WHERE is_encrypted = 1 AND vault_type = 'private' AND trashed_at IS NULL
             ORDER BY taken_at DESC, id DESC;
@@ -464,6 +640,8 @@ async def list_vault_photos() -> List[dict]:
                     "caption": row["caption"],
                     "thumbnail_path": row["thumbnail_path"],
                     "preview_path": row["preview_path"],
+                    "is_document": bool(row["is_document"]) if row["is_document"] is not None else False,
+                    "ocr_text": row["ocr_text"],
                 }
                 for row in rows
             ]
@@ -658,6 +836,20 @@ async def restore_photos_from_vault(payload: VaultPhotosUnlockRequest) -> dict:
                     (str(orig_file.resolve()), restored_thumb_str, restored_prev_str, photo_id),
                 )
                 unlocked_count += 1
+
+        # Self-healing: if any locked album now has 0 encrypted photos, restore is_vault = 0
+        await conn.execute(
+            """
+            UPDATE albums
+            SET is_vault = 0, vault_type = NULL
+            WHERE is_vault = 1 AND id NOT IN (
+                SELECT DISTINCT pa.album_id
+                FROM photo_album pa
+                JOIN photos p ON pa.photo_id = p.id
+                WHERE p.is_encrypted = 1
+            );
+            """
+        )
 
         await conn.commit()
     finally:

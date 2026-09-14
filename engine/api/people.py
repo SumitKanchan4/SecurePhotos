@@ -87,9 +87,10 @@ async def list_people() -> List[PersonResponse]:
             if not cover_face:
                 async with conn.execute(
                     """
-                    SELECT id FROM faces
-                    WHERE person_id = ?
-                    ORDER BY is_anchor_medoid DESC, quality_score DESC
+                    SELECT f.id FROM faces f
+                    JOIN photos p ON f.photo_id = p.id
+                    WHERE f.person_id = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
+                    ORDER BY f.is_anchor_medoid DESC, f.quality_score DESC
                     LIMIT 1;
                     """,
                     (r["id"],),
@@ -201,7 +202,7 @@ async def get_face_crop(face_id: int):
             SELECT f.box_x, f.box_y, f.box_w, f.box_h, p.filepath
             FROM faces f
             JOIN photos p ON f.photo_id = p.id
-            WHERE f.id = ?;
+            WHERE f.id = ? AND p.is_encrypted = 0;
             """,
             (face_id,),
         ) as cursor:
@@ -301,7 +302,12 @@ async def tag_medoid_cluster(payload: TagClusterRequest) -> dict:
 
         # Update confirmed count
         async with conn.execute(
-            "SELECT COUNT(DISTINCT photo_id) AS cnt FROM faces WHERE person_id = ?;",
+            """
+            SELECT COUNT(DISTINCT f.photo_id) AS cnt 
+            FROM faces f 
+            JOIN photos p ON f.photo_id = p.id 
+            WHERE f.person_id = ? AND p.is_encrypted = 0 AND p.trashed_at IS NULL;
+            """,
             (person_id,),
         ) as c_cur:
             cnt_row = await c_cur.fetchone()
@@ -310,9 +316,10 @@ async def tag_medoid_cluster(payload: TagClusterRequest) -> dict:
         # Pick best medoid face as cover
         async with conn.execute(
             """
-            SELECT id FROM faces
-            WHERE person_id = ?
-            ORDER BY is_anchor_medoid DESC, quality_score DESC
+            SELECT f.id FROM faces f
+            JOIN photos p ON f.photo_id = p.id
+            WHERE f.person_id = ? AND p.is_encrypted = 0 AND p.trashed_at IS NULL
+            ORDER BY f.is_anchor_medoid DESC, f.quality_score DESC
             LIMIT 1;
             """,
             (person_id,),
@@ -383,7 +390,7 @@ async def get_person_photos(person_id: int):
                    p.width, p.height, p.taken_at, p.created_at, p.is_favorite
             FROM photos p
             JOIN faces f ON f.photo_id = p.id
-            WHERE f.person_id = ? AND p.trashed_at IS NULL
+            WHERE f.person_id = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
             GROUP BY p.id
             ORDER BY p.taken_at DESC, p.id DESC;
             """,

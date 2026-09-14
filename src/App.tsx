@@ -51,6 +51,7 @@ export const App: React.FC = () => {
     setActiveVolume,
     isVaultUnlocked,
     setIsVaultUnlocked,
+    isVaultConfigured,
     setPrerequisites,
     setTotalPhotosCount,
     showToast,
@@ -66,6 +67,11 @@ export const App: React.FC = () => {
   const [activeYear, setActiveYear] = useState<string>("All Years");
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isVaultUnlockModalOpen, setIsVaultUnlockModalOpen] = useState(false);
+  const [pendingVaultAction, setPendingVaultAction] = useState<{
+    type: "batch_photos" | "album";
+    albumId?: number;
+    isVaultAlbum?: boolean;
+  } | null>(null);
   const [isCollageModalOpen, setIsCollageModalOpen] = useState(false);
   const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
   const [activeStoryId, setActiveStoryId] = useState<number | null>(null);
@@ -366,7 +372,14 @@ export const App: React.FC = () => {
     if (selectedPhotoIds.size === 0) return;
     const ids = Array.from(selectedPhotoIds);
 
+    if (!isVaultConfigured) {
+      showToast("Please set up your Private Vault first.", "info");
+      setActiveTab("vault");
+      return;
+    }
+
     if (!isVaultUnlocked) {
+      setPendingVaultAction({ type: "batch_photos" });
       setIsVaultUnlockModalOpen(true);
       return;
     }
@@ -384,6 +397,7 @@ export const App: React.FC = () => {
         loadTimelineYears();
       } else if (res.status === 401) {
         setIsVaultUnlocked(false);
+        setPendingVaultAction({ type: "batch_photos" });
         setIsVaultUnlockModalOpen(true);
       }
     } catch (err) {
@@ -391,6 +405,58 @@ export const App: React.FC = () => {
       showToast("Failed to move photos to vault.", "warning");
     }
   };
+
+  const handleLockAlbumToVault = async (albumId: number, isVaultAlbum: boolean = false) => {
+    if (!isVaultConfigured) {
+      showToast("Please set up your Private Vault first.", "info");
+      setActiveTab("vault");
+      return;
+    }
+
+    if (!isVaultUnlocked) {
+      setPendingVaultAction({ type: "album", albumId, isVaultAlbum });
+      setIsVaultUnlockModalOpen(true);
+      return;
+    }
+
+    await executeAlbumVaultAction(albumId, isVaultAlbum);
+  };
+
+  const executeAlbumVaultAction = async (albumId: number, isVaultAlbum: boolean) => {
+    try {
+      const endpoint = isVaultAlbum
+        ? `http://127.0.0.1:8000/api/vault/albums/${albumId}/unlock`
+        : `http://127.0.0.1:8000/api/vault/albums/${albumId}/lock`;
+
+      const res = await fetch(endpoint, { method: "POST" });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (!isVaultAlbum && data.photo_ids && Array.isArray(data.photo_ids) && data.photo_ids.length > 0) {
+          const lockedSet = new Set<number>(data.photo_ids);
+          setPhotos((prev) => prev.filter((p) => !lockedSet.has(p.id)));
+        }
+        showToast(
+          isVaultAlbum 
+            ? "Album decrypted and restored to public library." 
+            : "Album and its photos encrypted and moved to Private Vault.", 
+          "success"
+        );
+        loadPhotos(activeYear);
+        loadTimelineYears();
+      } else if (res.status === 401) {
+        setIsVaultUnlocked(false);
+        setPendingVaultAction({ type: "album", albumId, isVaultAlbum });
+        setIsVaultUnlockModalOpen(true);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.detail || "Failed to update album vault status.", "warning");
+      }
+    } catch (err) {
+      console.error("Album vault action error:", err);
+      showToast("Error updating album vault status.", "warning");
+    }
+  };
+
 
   const handleBatchDownload = () => {
     if (selectedPhotoIds.size === 0) return;
@@ -472,7 +538,7 @@ export const App: React.FC = () => {
           ) : activeTab === "albums" ? (
             /* Albums Grid & Management */
             <AlbumsView 
-              onLockAlbumToVault={() => setIsVaultUnlockModalOpen(true)}
+              onLockAlbumToVault={(albumId, isVaultAlbum) => handleLockAlbumToVault(albumId, isVaultAlbum)}
               onPhotoClick={(idx, albumPhotos) => {
                 setLightboxPhotos(albumPhotos);
                 setLightboxIndex(idx);
@@ -1133,11 +1199,17 @@ export const App: React.FC = () => {
       {/* Vault Unlock Modal */}
       <VaultUnlockModal
         isOpen={isVaultUnlockModalOpen}
-        onClose={() => setIsVaultUnlockModalOpen(false)}
+        onClose={() => {
+          setIsVaultUnlockModalOpen(false);
+          setPendingVaultAction(null);
+        }}
         onUnlockSuccess={() => {
-          if (selectedPhotoIds.size > 0) {
+          if (pendingVaultAction?.type === "album" && pendingVaultAction.albumId) {
+            executeAlbumVaultAction(pendingVaultAction.albumId, !!pendingVaultAction.isVaultAlbum);
+          } else if (pendingVaultAction?.type === "batch_photos" || selectedPhotoIds.size > 0) {
             handleBatchMoveToVault();
           }
+          setPendingVaultAction(null);
         }}
       />
 

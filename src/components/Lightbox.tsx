@@ -340,10 +340,10 @@ export const Lightbox: React.FC<LightboxProps> = ({
             className="clickable"
             title={currentPhoto.is_encrypted ? "Restore to Public Library (L)" : "Move to Encrypted Vault (L)"}
             style={{
-              background: currentPhoto.is_encrypted ? "rgba(139, 92, 246, 0.15)" : "var(--glass-pill-bg)",
+              background: currentPhoto.is_encrypted ? "rgba(59, 130, 246, 0.15)" : "var(--glass-pill-bg)",
               borderRadius: "var(--radius-full)",
-              border: currentPhoto.is_encrypted ? "1px solid rgba(139, 92, 246, 0.4)" : "1px solid var(--glass-pill-border)",
-              color: currentPhoto.is_encrypted ? "var(--accent-vault)" : "var(--text-primary)",
+              border: currentPhoto.is_encrypted ? "1px solid rgba(59, 130, 246, 0.4)" : "1px solid var(--glass-pill-border)",
+              color: currentPhoto.is_encrypted ? "var(--accent-primary)" : "var(--text-primary)",
               padding: "4px 10px",
               display: "flex",
               alignItems: "center",

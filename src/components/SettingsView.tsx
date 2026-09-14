@@ -25,7 +25,7 @@ import { SystemPrerequisites } from "../types";
 
 export const SettingsView: React.FC = () => {
   const { theme, toggleTheme, prerequisites, setPrerequisites } = useAppStore();
-  const [autoLockDuration, setAutoLockDuration] = useState("30");
+  const [autoLockDuration, setAutoLockDuration] = useState("300");
   const [enableSpaceSaver, setEnableSpaceSaver] = useState(true);
   const [pauseOnBattery, setPauseOnBattery] = useState(true);
   const [qualityCrf, setQualityCrf] = useState(18);
@@ -482,9 +482,10 @@ export const SettingsView: React.FC = () => {
                   outline: "none",
                 }}
               >
-                <option value="30">30 Seconds (Default)</option>
                 <option value="60">1 Minute</option>
-                <option value="300">5 Minutes</option>
+                <option value="300">5 Minutes (Default)</option>
+                <option value="900">15 Minutes</option>
+                <option value="1800">30 Minutes</option>
               </select>
             </div>
 
@@ -657,7 +658,7 @@ export const SettingsView: React.FC = () => {
                   Argon2id KDF
                 </span>
                 <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(16, 185, 129, 0.1)", color: "var(--accent-success)", fontWeight: 600 }}>
-                  RFC 6238 TOTP
+                  Quick PIN & Phrase
                 </span>
               </div>
             </div>
@@ -675,20 +676,20 @@ export const SettingsView: React.FC = () => {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <Cpu size={15} style={{ color: "var(--accent-vault)" }} />
+                <Cpu size={15} style={{ color: "var(--accent-primary)" }} />
                 <span style={{ fontSize: "12px", fontWeight: 700 }}>Local SLM Intelligence</span>
               </div>
               <p style={{ fontSize: "11px", color: "var(--text-secondary)", margin: 0, lineHeight: 1.4 }}>
                 Face embeddings, semantic clustering, and document OCR execute 100% on your local machine with zero external cloud telemetry.
               </p>
               <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "auto" }}>
-                <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(139, 92, 246, 0.1)", color: "var(--accent-vault)", fontWeight: 600 }}>
+                <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(59, 130, 246, 0.1)", color: "var(--accent-primary)", fontWeight: 600 }}>
                   Local Clustering
                 </span>
-                <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(139, 92, 246, 0.1)", color: "var(--accent-vault)", fontWeight: 600 }}>
+                <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(59, 130, 246, 0.1)", color: "var(--accent-primary)", fontWeight: 600 }}>
                   Micro-quantized
                 </span>
-                <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(139, 92, 246, 0.1)", color: "var(--accent-vault)", fontWeight: 600 }}>
+                <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(59, 130, 246, 0.1)", color: "var(--accent-primary)", fontWeight: 600 }}>
                   Zero Cloud Egress
                 </span>
               </div>

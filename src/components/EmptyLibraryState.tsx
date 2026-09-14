@@ -220,7 +220,7 @@ export const EmptyLibraryState: React.FC<EmptyLibraryStateProps> = ({
             color: "var(--text-secondary, #cbd5e1)",
           }}
         >
-          <Lock size={14} style={{ color: "var(--accent-vault, #a855f7)" }} />
+          <Lock size={14} style={{ color: "var(--accent-primary, #3b82f6)" }} />
           <span>Protected Personal Vault</span>
         </div>
       </div>

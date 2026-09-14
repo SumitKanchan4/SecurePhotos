@@ -46,7 +46,7 @@ const getAlbumPalette = (name: string) => {
 };
 
 interface AlbumsViewProps {
-  onLockAlbumToVault?: (albumId: number) => void;
+  onLockAlbumToVault?: (albumId: number, isVault?: boolean) => void;
   onPhotoClick?: (idx: number, albumPhotos: PhotoItem[]) => void;
   onToggleFavorite?: (photoId: number) => void;
 }
@@ -1498,20 +1498,23 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
           {onLockAlbumToVault && (
             <button
               onClick={() => {
-                onLockAlbumToVault(activeAlbumId ?? 0);
-                showToast(`Moving ${selectedAlbumPhotoIds.size} item(s) to Vault. Please authenticate.`, "info");
+                const idToLock = activeAlbumId ?? 0;
+                onLockAlbumToVault(idToLock, false);
+                setAlbums((prev) => prev.filter((a) => a.id !== idToLock));
+                setActiveAlbumId(null);
+                showToast("Album and its photos encrypted and moved to Private Vault.", "info");
               }}
               className="clickable"
-              title="Encrypt and move selected items into Private Zero-Trust Vault"
+              title="Encrypt and move selected items into Private Vault"
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",
                 padding: "6px 14px",
                 borderRadius: "var(--radius-full)",
-                backgroundColor: "rgba(139, 92, 246, 0.15)",
-                border: "1px solid rgba(139, 92, 246, 0.35)",
-                color: "var(--accent-vault)",
+                backgroundColor: "rgba(59, 130, 246, 0.15)",
+                border: "1px solid rgba(59, 130, 246, 0.35)",
+                color: "var(--accent-primary)",
                 fontSize: "12px",
                 fontWeight: 600,
                 whiteSpace: "nowrap",
@@ -2126,7 +2129,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     <span 
                       title="Encrypted Vault Album"
                       style={{
-                        backgroundColor: "rgba(139, 92, 246, 0.9)",
+                        backgroundColor: "rgba(59, 130, 246, 0.9)",
                         color: "#ffffff",
                         padding: "3px 6px",
                         borderRadius: "var(--radius-xs)",
@@ -2204,13 +2207,16 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        onLockAlbumToVault?.(album.id);
+                        onLockAlbumToVault?.(album.id, album.is_vault);
+                        if (!album.is_vault) {
+                          setAlbums((prev) => prev.filter((a) => a.id !== album.id));
+                        }
                       }}
                       className="clickable"
                       style={{
                         background: "transparent",
                         border: "none",
-                        color: album.is_vault ? "var(--accent-success)" : "var(--accent-vault)",
+                        color: album.is_vault ? "var(--accent-success)" : "var(--accent-primary)",
                         fontSize: "11px",
                         fontWeight: 600,
                         display: "flex",
@@ -2220,7 +2226,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                       }}
                     >
                       {album.is_vault ? <Unlock size={12} /> : <Lock size={12} />}
-                      {album.is_vault ? "Decrypt" : "Lock (L)"}
+                      {album.is_vault ? "Decrypt" : "Lock"}
                     </button>
                   )}
                 </div>

@@ -57,7 +57,7 @@ async def get_video_summary() -> Dict[str, Any]:
         query = """
             SELECT id, filename, filepath, file_size, width, height, is_optimized, is_enhanced
             FROM photos
-            WHERE mime_type LIKE 'video/%' AND trashed_at IS NULL
+            WHERE mime_type LIKE 'video/%' AND trashed_at IS NULL AND is_encrypted = 0
             ORDER BY file_size DESC;
         """
         async with conn.execute(query) as cursor:
@@ -104,7 +104,7 @@ async def list_video_candidates() -> List[Dict[str, Any]]:
             SELECT id, filename, filepath, file_size, width, height, taken_at,
                    thumbnail_path, preview_path, is_favorite, is_optimized, is_enhanced
             FROM photos
-            WHERE mime_type LIKE 'video/%' AND trashed_at IS NULL
+            WHERE mime_type LIKE 'video/%' AND trashed_at IS NULL AND is_encrypted = 0
             ORDER BY file_size DESC;
         """
         async with conn.execute(query) as cursor:
@@ -175,6 +175,7 @@ async def get_video_optimization_progress() -> Dict[str, Any]:
             JOIN photos p ON p.id = q.photo_id
             WHERE q.status IN ('queued', 'processing')
               AND p.trashed_at IS NULL
+              AND p.is_encrypted = 0
             ORDER BY CASE WHEN q.status = 'processing' THEN 0 ELSE 1 END ASC, q.created_at ASC
             LIMIT 1;
             """

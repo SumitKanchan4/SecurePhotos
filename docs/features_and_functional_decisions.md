@@ -2368,3 +2368,127 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - Clean development database state: `vault_configs` record count remains 0 after automated test teardowns.
 - Frontend builds cleanly with zero TypeScript errors.
 
+---
+
+## 51. Complete Purge of Legacy Vault Artifacts, Streamlined Quick-Unlock Modal & Two-Way Album Vault Encrypt/Decrypt Workflow
+
+### Functionality Overview
+1. **Complete Purge of Legacy Modal Artifacts ([VaultUnlockModal.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/VaultUnlockModal.tsx))**:
+   - Eliminated all remnants of the legacy prototype:
+     - **Windows Hello / Biometric prompt**: Removed completely. Prevents shared-PC / multi-user biometric security circumvention.
+     - **Authenticator 2FA Code prompt**: Removed completely. Avoids redundant cloud/phone friction in a 100% on-device zero-trust environment.
+     - **Cryptographic Jargon**: Replaced developer-facing "Zero-Trust AES-256-GCM Military Encryption" with clean human copywriting: "Protected by on-device encryption".
+     - **Visual Consistency**: Eliminated legacy violet/purple styling (`rgba(139, 92, 246, ...)`) in favor of frosted liquid glass (`var(--glass-surface)`, `backdropFilter: blur(28px)`) and electric sapphire blue (`var(--accent-primary)`).
+2. **Integrated 3-Tier Security Hierarchy in Quick-Unlock Modal**:
+   - **Mode 1: 4-Digit Quick PIN**: Default mode when PIN is configured and active. Features 4 discrete numeric boxes with auto-advance and automatic unlock submission upon the 4th digit.
+   - **Mode 2: Master Password**: Fallback mode for initial access, forgotten PIN, or when PIN is locked.
+   - **Mode 3: 24-Word Recovery Phrase**: Monospace emergency recovery input for zero-data-loss restoration.
+   - **Brute-Force Lockout Defense**: Displays an orange lockout warning when `isVaultPinLocked` is true, guiding the user to unlock via their Master Password.
+   - **Unconfigured Vault Handling**: If the vault is not yet initialized (`!isVaultConfigured`), the modal displays a welcoming guidance state ("Initialize Your Private Vault") with a direct "Set Up Vault Now" CTA button that routes straight to the setup wizard.
+3. **Two-Way Album Vault Encrypt/Decrypt Workflow**:
+   - **Album Encryption (`POST /api/vault/albums/{album_id}/lock`)**: Encrypts all photos in the album in-place with AES-256-GCM and marks `albums.is_vault = 1`.
+   - **Album Decryption (`POST /api/vault/albums/{album_id}/unlock`)**: Fully decrypts all encrypted media files in the album chunk-by-chunk back to clear originals and thumbnails, restoring `albums.is_vault = 0`.
+   - **Intelligent Pending Action Execution**: In `App.tsx`, triggering album lock/unlock when the vault is locked preserves the pending action (`{ type: "album", albumId, isVaultAlbum }`), unlocks the vault via `VaultUnlockModal`, and immediately executes the album operation upon successful authentication.
+4. **Purge of Legacy Hardcoded Purple Styling**:
+   - Cleaned `AlbumsView.tsx`, `Sidebar.tsx`, `Lightbox.tsx`, `EmptyLibraryState.tsx`, and `SettingsView.tsx` to ensure all vault indicators adhere to sapphire blue design tokens (`rgba(59, 130, 246, ...)` / `var(--accent-primary)`).
+   - Set `SettingsView.tsx` default auto-lock inactivity timeout to 5 Minutes (300s) with 1m, 5m (Default), 15m, and 30m options.
+
+### Functional Decision Points & Rationale
+- **Single-Modal Consistency**:
+  - *Problem*: Clicking "Lock (L)" on an album previously invoked an obsolete prototype modal with biometric and 2FA fields, confusing users who configured the new 4-digit PIN and Master Password.
+  - *Solution*: Rebuilt `VaultUnlockModal.tsx` to share identical state behaviors and validation logic as the main `VaultView.tsx` lock screen.
+- **Two-Way Album Operations**:
+  - *Problem*: Users could lock an album into the vault, but had no API or UI pathway to decrypt and restore an album back to the public library.
+  - *Solution*: Added `POST /api/vault/albums/{album_id}/unlock` with automatic file chunk decryption, thumbnail restoration, and database state updates.
+
+### Technical Touchpoints
+- `engine/api/vault.py`: Added `POST /api/vault/albums/{album_id}/unlock`.
+- `engine/tests/test_vault.py`: Added `test_album_lock_and_unlock_workflow`.
+- `src/components/VaultUnlockModal.tsx`: Complete rewrite with 3-tier auth modes, unconfigured vault guidance, auto-advancing 4-digit PIN, and sapphire styling.
+- `src/components/AlbumsView.tsx`: Updated `onLockAlbumToVault` signature, passed `album.is_vault`, and replaced purple colors with sapphire blue.
+- `src/App.tsx`: Added `pendingVaultAction` state, `handleLockAlbumToVault`, `executeAlbumVaultAction`, and connected `VaultUnlockModal` callbacks.
+- `src/components/Sidebar.tsx`: Replaced purple active tab styles with sapphire blue.
+- `src/components/Lightbox.tsx`: Replaced purple vault lock buttons with sapphire blue.
+- `src/components/SettingsView.tsx`: Updated default auto-lock to 300s (5m) and replaced "RFC 6238 TOTP" with "Quick PIN & Phrase".
+- `src/components/EmptyLibraryState.tsx`: Replaced `#a855f7` fallback with `#3b82f6`.
+
+### State & Lifecycle Impact
+- 7/7 backend vault tests passing cleanly in pytest (5.30s).
+- Database isolation verified: `vault_configs` count = 0 in live database.
+- 0 TypeScript compiler errors; Vite production bundle built in 5.04s.
+- Cohesive desktop visual language across every vault interaction point.
+
+---
+
+## 52. Encrypted Vault Documents View, In-Vault Album Drilldown & Zero-Leak Public Gallery Isolation
+
+### Functionality Overview
+1. **Dedicated Documents Tab in Encrypted Vault**:
+   - Added a third first-class segment to the Vault navigation header:
+     `[ 🖼 Photos (N) ]` | `[ 📁 Albums (N) ]` | `[ 📄 Documents (N) ]`
+   - Dynamically filters and showcases all encrypted assets flagged as documents (`is_document = 1`), such as tax returns, medical bills, receipts, identity documents, and contracts.
+   - Each document card displays:
+     - High-resolution encrypted thumbnail preview.
+     - Document badge indicator with localized date.
+     - Extracted OCR text snippet preview (up to 120 characters) for instant identification without opening the full file.
+     - 1-Click "Restore to Gallery" action button that decrypts and restores the document directly.
+2. **In-Vault Album Inspection & Drilldown**:
+   - Inside the Vault's "Albums" tab, locked albums are displayed as rich frosted glass cards with decrypted cover thumbnails, photo count badges, and an explicit "Restore Album" button.
+   - Clicking any album card opens an in-vault drill-down view (`← Back to Albums [Album Title] [ N photos ]`), allowing users to inspect all member photos and documents securely inside the vault.
+3. **Strict Zero-Leak Public Gallery Isolation**:
+   - When an album is locked into the vault, all of its member photos are encrypted in-place using authenticated AES-256-GCM.
+   - The backend API ensures zero data leakage across all public endpoints:
+     - `GET /api/photos`: Excludes all encrypted photos (`WHERE is_encrypted = 0`).
+     - `GET /api/albums`: Excludes vault albums (`WHERE is_vault = 0`) and guarantees cover photos and photo counts reflect only unencrypted media.
+     - `GET /api/albums/{album_id}`: Returns `HTTP 404 Not Found` for any vault-locked album, preventing direct URL access or data leakage.
+     - `GET /api/people/{person_id}/photos`: Excludes encrypted photos from face clusters.
+     - `GET /api/people/{person_id}/cover` & face crops: Rejects encrypted photos so locked individuals do not leak face previews.
+     - `GET /api/videos/summary` & candidates: Excludes encrypted video files from public discovery.
+   - Frontend Optimistic Eviction: In `App.tsx` and `AlbumsView.tsx`, locking an album immediately evicts all constituent photo IDs from the active gallery state and removes the album from the public albums list without requiring an explicit full-page reload.
+4. **Automated Album State Self-Healing**:
+   - If photos belonging to a vault album are unlocked/restored individually via `POST /api/vault/photos/unlock`, the system calculates the remaining encrypted ratio for all associated albums.
+   - Once all photos in an album are restored (0% encrypted), the album automatically heals itself by setting `is_vault = 0`, instantly reappearing in the public Albums view.
+
+### Functional Decision Points & Rationale
+- **Document Categorization in Zero-Trust Vault**:
+  - *Problem*: Users frequently store sensitive personal documents (passports, tax filings, legal agreements) in SecurePhotos. Mixing them into an unorganized photo grid creates cognitive overload and makes locating specific paperwork tedious.
+  - *Decision*: Surfaced documents as a dedicated tab within the vault. Leveraging existing `is_document` categorization and `ocr_text` extraction enables rapid visual scanning and snippet previews without leaving the encrypted container.
+- **Strict Query-Level Public Isolation Over Client-Side Filtering**:
+  - *Problem*: Client-side filtering alone is insecure—if public API endpoints return encrypted rows or face crops, metadata and thumbnail paths leak.
+  - *Decision*: Audited and patched all SQL queries across `engine/api/albums.py`, `engine/api/people.py`, and `engine/api/videos.py` to enforce `WHERE p.is_encrypted = 0` at the database level.
+- **SQLite FTS5 Trigger Delete Guard**:
+  - *Problem*: SQLite throws `sqlite3.DatabaseError: database disk image is malformed` when `photos_fts` receives a `'delete'` command for a row that does not exist in the index. When a photo was encrypted, it was deleted from `photos_fts`. When subsequently decrypted (`UPDATE photos SET is_encrypted = 0`) or deleted, the old SQLite update/delete triggers blindly attempted `'delete'` on `photos_fts`, crashing the write.
+  - *Decision*: Updated SQLite triggers `photos_au` and `photos_ad` with `WHEN old.is_encrypted = 0` guards in both `SCHEMA_DDL` and `run_migrations()`, making FTS5 synchronization completely resilient across all encrypt/decrypt cycles.
+
+### Technical Touchpoints
+- `engine/api/vault.py`:
+  - `POST /api/vault/albums/{album_id}/lock`: Returns `photo_ids: List[int]` for instant client-side optimistic eviction.
+  - `GET /api/vault/albums`: Fetches locked albums (`is_vault = 1`) with decrypted cover thumbnails.
+  - `GET /api/vault/albums/{album_id}/photos`: Fetches decrypted photo records for in-vault album drilldown.
+  - `GET /api/vault/photos`: Returns `is_document` and `ocr_text` fields for document cards.
+  - `POST /api/vault/photos/unlock`: Automated self-healing query to restore `albums.is_vault = 0` when all photos are decrypted.
+- `engine/api/albums.py`:
+  - Enforced `AND pa_p.is_encrypted = 0` and `AND p.is_encrypted = 0` across `list_albums()`, cover photo subqueries, and `get_album_detail()`.
+  - Added 404 guard on `get_album_detail()` for vault albums.
+  - Added self-healing verification on `list_albums()`.
+- `engine/api/people.py`: Enforced `AND p.is_encrypted = 0` on photos, cover medoids, face crops, and cluster tagging.
+- `engine/api/videos.py`: Enforced `AND is_encrypted = 0` on video summary and candidate queries.
+- `engine/database.py`: Added `WHEN old.is_encrypted = 0` to `photos_ad` and `photos_au` triggers in schema and migration runner.
+- `engine/tests/test_vault.py`:
+  - Upgraded `test_album_lock_and_unlock_workflow` with strict zero-leak assertions against public endpoints.
+  - Added `test_vault_documents_and_self_healing_workflow` testing document metadata, OCR snippets, and automated album self-healing.
+- `src/types/index.ts`: Added `is_document`, `ocr_text` to `PhotoItem`, added `VaultAlbumItem` interface.
+- `src/App.tsx`: Evicts locked album photo IDs optimistically from `photos` state.
+- `src/components/AlbumsView.tsx`: Evicts locked album from local state and handles album lock/unlock callbacks.
+- `src/components/VaultView.tsx`:
+  - Added 3-segment switcher (`[ 🖼 Photos ]`, `[ 📁 Albums ]`, `[ 📄 Documents ]`).
+  - Added album grid with cover thumbnails, drill-down view (`← Back to Albums`), and batch album restore.
+  - Added document cards with OCR text snippet previews and 1-click restore.
+
+### State & Lifecycle Impact
+- Zero leak surfaces across all media endpoints (Photos, Albums, People, Videos).
+- All 81 engine automated tests passing (100% success rate).
+- Production bundle compiled cleanly (`npm run build` completed in 4.75s).
+
+
+

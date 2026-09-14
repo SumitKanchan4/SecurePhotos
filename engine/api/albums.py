@@ -67,6 +67,21 @@ async def list_albums() -> List[AlbumResponse]:
     """Lists all user albums with photo counts and cover thumbnails."""
     conn = await get_db_connection()
     try:
+        # Self-healing: restore any album to is_vault = 0 if it has 0 encrypted photos
+        await conn.execute(
+            """
+            UPDATE albums
+            SET is_vault = 0, vault_type = NULL
+            WHERE is_vault = 1 AND id NOT IN (
+                SELECT DISTINCT pa.album_id
+                FROM photo_album pa
+                JOIN photos p ON pa.photo_id = p.id
+                WHERE p.is_encrypted = 1
+            );
+            """
+        )
+        await conn.commit()
+
         query = """
             SELECT 
                 a.id, a.name, a.description, a.is_vault, a.vault_type, a.is_favorite,
@@ -76,8 +91,8 @@ async def list_albums() -> List[AlbumResponse]:
                 p.thumbnail_path AS cover_thumbnail_path
             FROM albums a
             LEFT JOIN photo_album pa ON a.id = pa.album_id
-            LEFT JOIN photos pa_p ON pa.photo_id = pa_p.id AND pa_p.trashed_at IS NULL
-            LEFT JOIN photos p ON a.cover_photo_id = p.id AND p.trashed_at IS NULL
+            LEFT JOIN photos pa_p ON pa.photo_id = pa_p.id AND pa_p.trashed_at IS NULL AND pa_p.is_encrypted = 0
+            LEFT JOIN photos p ON a.cover_photo_id = p.id AND p.trashed_at IS NULL AND p.is_encrypted = 0
             WHERE a.is_vault = 0
             GROUP BY a.id
             ORDER BY a.is_favorite DESC, a.created_at DESC;
@@ -91,14 +106,14 @@ async def list_albums() -> List[AlbumResponse]:
             cover_id = r["valid_cover_id"]
             cover_thumb = r["cover_thumbnail_path"] if cover_id else None
 
-            # If album has photos but cover photo is not set (or was deleted/trashed), grab latest active photo
+            # If album has photos but cover photo is not set (or was deleted/trashed/encrypted), grab latest active photo
             if photo_count > 0 and not cover_id:
                 async with conn.execute(
                     """
                     SELECT p.id, p.thumbnail_path 
                     FROM photo_album pa
                     JOIN photos p ON pa.photo_id = p.id
-                    WHERE pa.album_id = ? AND p.trashed_at IS NULL
+                    WHERE pa.album_id = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
                     ORDER BY p.taken_at DESC, p.id DESC
                     LIMIT 1;
                     """,
@@ -195,10 +210,10 @@ async def get_album_detail(album_id: int) -> AlbumDetailResponse:
         async with conn.execute("SELECT * FROM albums WHERE id = ?;", (album_id,)) as cursor:
             album = await cursor.fetchone()
 
-        if not album:
+        if not album or album["is_vault"]:
             raise HTTPException(status_code=404, detail="Album not found")
 
-        # Fetch non-trashed photos inside this album
+        # Fetch non-trashed, unencrypted photos inside this album
         query = """
             SELECT 
                 p.id, p.filename, p.filepath, p.file_size, p.mime_type, p.width, p.height,
@@ -208,7 +223,7 @@ async def get_album_detail(album_id: int) -> AlbumDetailResponse:
                 p.is_optimized, p.is_enhanced, p.caption, p.thumbnail_path, p.preview_path
             FROM photo_album pa
             JOIN photos p ON pa.photo_id = p.id
-            WHERE pa.album_id = ? AND p.trashed_at IS NULL
+            WHERE pa.album_id = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
             ORDER BY pa.added_at DESC, p.taken_at DESC;
         """
         async with conn.execute(query, (album_id,)) as cursor:

@@ -48,6 +48,8 @@ export interface PhotoItem {
   is_enhanced: boolean;
   caption?: string;
   content_tags?: string;
+  is_document?: boolean;
+  ocr_text?: string;
 }
 
 export interface AlbumItem {
@@ -61,6 +63,17 @@ export interface AlbumItem {
   is_favorite: boolean;
   photo_count?: number;
   created_at?: string;
+}
+
+export interface VaultAlbumItem {
+  id: number;
+  name: string;
+  description?: string;
+  is_vault: boolean;
+  is_favorite: boolean;
+  photo_count: number;
+  cover_photo_id?: number | null;
+  created_at?: string | null;
 }
 
 export interface PersonItem {

@@ -351,14 +351,15 @@ CREATE TRIGGER IF NOT EXISTS photos_ai AFTER INSERT ON photos WHEN new.is_encryp
   VALUES (new.id, new.filename, new.folder_name, new.caption, new.content_tags, new.ocr_text);
 END;
 
-CREATE TRIGGER IF NOT EXISTS photos_ad AFTER DELETE ON photos BEGIN
+CREATE TRIGGER IF NOT EXISTS photos_ad AFTER DELETE ON photos WHEN old.is_encrypted = 0 BEGIN
   INSERT INTO photos_fts(photos_fts, rowid, filename, folder_name, caption, content_tags, ocr_text)
   VALUES('delete', old.id, old.filename, old.folder_name, old.caption, old.content_tags, old.ocr_text);
 END;
 
 CREATE TRIGGER IF NOT EXISTS photos_au AFTER UPDATE OF filename, folder_name, caption, content_tags, ocr_text, is_encrypted ON photos BEGIN
   INSERT INTO photos_fts(photos_fts, rowid, filename, folder_name, caption, content_tags, ocr_text)
-  VALUES('delete', old.id, old.filename, old.folder_name, old.caption, old.content_tags, old.ocr_text);
+  SELECT 'delete', old.id, old.filename, old.folder_name, old.caption, old.content_tags, old.ocr_text
+  WHERE old.is_encrypted = 0;
   INSERT INTO photos_fts(rowid, filename, folder_name, caption, content_tags, ocr_text)
   SELECT new.id, new.filename, new.folder_name, new.caption, new.content_tags, new.ocr_text
   WHERE new.is_encrypted = 0;
@@ -484,14 +485,22 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
     try:
         await conn.executescript(SCHEMA_DDL)
 
-        # Drop legacy unscoped photos_au trigger if present and recreate scoped version
+        # Drop legacy unscoped photos_ad & photos_au triggers if present and recreate vault-safe versions
+        await conn.execute("DROP TRIGGER IF EXISTS photos_ad;")
         await conn.execute("DROP TRIGGER IF EXISTS photos_au;")
+        await conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS photos_ad AFTER DELETE ON photos WHEN old.is_encrypted = 0 BEGIN
+              INSERT INTO photos_fts(photos_fts, rowid, filename, folder_name, caption, content_tags, ocr_text)
+              VALUES('delete', old.id, old.filename, old.folder_name, old.caption, old.content_tags, old.ocr_text);
+            END;
+        """)
         await conn.execute("""
             CREATE TRIGGER IF NOT EXISTS photos_au AFTER UPDATE OF 
                 filename, folder_name, caption, content_tags, ocr_text, is_encrypted 
             ON photos BEGIN
               INSERT INTO photos_fts(photos_fts, rowid, filename, folder_name, caption, content_tags, ocr_text)
-              VALUES('delete', old.id, old.filename, old.folder_name, old.caption, old.content_tags, old.ocr_text);
+              SELECT 'delete', old.id, old.filename, old.folder_name, old.caption, old.content_tags, old.ocr_text
+              WHERE old.is_encrypted = 0;
               INSERT INTO photos_fts(rowid, filename, folder_name, caption, content_tags, ocr_text)
               SELECT new.id, new.filename, new.folder_name, new.caption, new.content_tags, new.ocr_text
               WHERE new.is_encrypted = 0;

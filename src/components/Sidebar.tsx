@@ -116,13 +116,13 @@ export const Sidebar: React.FC = () => {
                 padding: "9px 14px",
                 borderRadius: "var(--radius-md)",
                 border: isActive 
-                  ? (item.isVault ? "1px solid rgba(139, 92, 246, 0.35)" : "1px solid var(--glass-border-highlight)")
+                  ? (item.isVault ? "1px solid rgba(59, 130, 246, 0.35)" : "1px solid var(--glass-border-highlight)")
                   : "1px solid transparent",
                 background: isActive 
-                  ? (item.isVault ? "rgba(139, 92, 246, 0.15)" : "var(--glass-pill-active)")
+                  ? (item.isVault ? "rgba(59, 130, 246, 0.15)" : "var(--glass-pill-active)")
                   : "transparent",
                 color: isActive 
-                  ? (item.isVault ? "var(--accent-vault)" : "var(--text-primary)")
+                  ? (item.isVault ? "var(--accent-primary)" : "var(--text-primary)")
                   : "var(--text-secondary)",
                 fontWeight: isActive ? 600 : 450,
                 fontSize: "13px",
