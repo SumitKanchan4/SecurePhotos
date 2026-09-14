@@ -10,12 +10,16 @@ import {
   Lock, 
   ArrowRight,
   ShieldAlert,
-  Loader2
+  Loader2,
+  FileCheck,
+  EyeOff as EyeOffIcon,
+  HardDrive
 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 
 interface VaultSetupWizardProps {
   onComplete: () => void;
+  onSwitchToUnlock?: () => void;
 }
 
 // 24 standard BIP-39 mnemonic seed words for cryptographic recovery
@@ -29,11 +33,10 @@ const SAMPLE_RECOVERY_WORDS = [
 /**
  * VaultSetupWizard Component
  *
- * High-aesthetic liquid-glass first-time configuration wizard for the Zero-Trust Vault.
- * Guides the user through Master Password creation, 24-word recovery phrase backup,
- * and optional Authenticator app 2FA.
+ * Clean, native liquid-glass first-time configuration wizard.
+ * Matches the application's native sapphire blue and deep obsidian palette.
  */
-export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }) => {
+export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, onSwitchToUnlock }) => {
   const showToast = useAppStore((state) => state.showToast);
   const setIsVaultUnlocked = useAppStore((state) => state.setIsVaultUnlocked);
   const setIsVaultConfigured = useAppStore((state) => state.setIsVaultConfigured);
@@ -63,13 +66,13 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }
   };
 
   const strengthScore = getPasswordStrength();
-  const strengthLabels = ["Very Weak", "Weak", "Fair", "Strong", "Very Strong"];
-  const strengthColors = ["#ef4444", "#f97316", "#eab308", "#10b981", "#8b5cf6"];
+  const strengthLabels = ["Too short", "Weak", "Fair", "Strong", "Very Strong"];
+  const strengthColors = ["#ef4444", "#f97316", "#eab308", "#3b82f6", "#10b981"];
 
   const handleCopyPhrase = () => {
     navigator.clipboard.writeText(recoveryPhrase);
     setIsCopied(true);
-    showToast("Recovery phrase copied to clipboard. Store it safely!", "success");
+    showToast("Recovery phrase copied to clipboard. Save it securely!", "success");
     setTimeout(() => setIsCopied(false), 3000);
   };
 
@@ -78,11 +81,11 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }
     setErrorMessage("");
 
     if (password.length < 8) {
-      setErrorMessage("Password must be at least 8 characters long.");
+      setErrorMessage("Master password must be at least 8 characters long.");
       return;
     }
     if (password !== confirmPassword) {
-      setErrorMessage("Passwords do not match.");
+      setErrorMessage("Passwords do not match. Please re-enter.");
       return;
     }
 
@@ -141,12 +144,136 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }
       style={{
         flex: 1,
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center",
-        padding: "32px 24px",
+        justifyContent: "flex-start",
+        padding: "36px 24px",
         overflowY: "auto",
+        gap: "28px",
       }}
     >
+      {/* ── Section 1: What is the Encrypted Vault & Why it exists ── */}
+      <div 
+        style={{ 
+          maxWidth: "680px", 
+          width: "100%", 
+          display: "flex", 
+          flexDirection: "column", 
+          alignItems: "center", 
+          textAlign: "center", 
+          gap: "12px" 
+        }}
+      >
+        <div 
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "6px 14px",
+            borderRadius: "var(--radius-full)",
+            backgroundColor: "rgba(59, 130, 246, 0.10)",
+            border: "1px solid rgba(59, 130, 246, 0.25)",
+            color: "var(--accent-primary)",
+            fontSize: "12px",
+            fontWeight: 700,
+            letterSpacing: "0.02em",
+          }}
+        >
+          <ShieldCheck size={14} />
+          <span>ZERO-TRUST PRIVATE VAULT</span>
+        </div>
+
+        <h1
+          style={{
+            fontFamily: "Plus Jakarta Sans, sans-serif",
+            fontSize: "28px",
+            fontWeight: 800,
+            letterSpacing: "-0.03em",
+            color: "var(--text-primary)",
+            margin: 0,
+          }}
+        >
+          Set Up Your Private Vault
+        </h1>
+
+        <p style={{ fontSize: "14px", color: "var(--text-secondary)", margin: 0, lineHeight: "1.6", maxWidth: "560px" }}>
+          The Encrypted Vault is a mathematically isolated local safe inside SecurePhotos. Photos and documents moved here are encrypted on your computer and completely hidden from your public library, albums, and searches.
+        </p>
+
+        {/* 3 Pillar Informational Cards */}
+        <div 
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: "12px",
+            width: "100%",
+            marginTop: "8px",
+            textAlign: "left",
+          }}
+        >
+          <div 
+            style={{
+              padding: "14px",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--glass-surface)",
+              border: "1px solid var(--glass-border)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "6px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--accent-primary)" }}>
+              <HardDrive size={16} />
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>100% On-Device</span>
+            </div>
+            <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: "1.4" }}>
+              Encrypted locally with AES-256-GCM. Never uploaded to external servers or cloud accounts.
+            </p>
+          </div>
+
+          <div 
+            style={{
+              padding: "14px",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--glass-surface)",
+              border: "1px solid var(--glass-border)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "6px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--accent-success)" }}>
+              <EyeOffIcon size={16} />
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>Concealed Media</span>
+            </div>
+            <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: "1.4" }}>
+              Locked items disappear from the main gallery, albums, and people tags until unlocked with your password.
+            </p>
+          </div>
+
+          <div 
+            style={{
+              padding: "14px",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--glass-surface)",
+              border: "1px solid var(--glass-border)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "6px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--accent-primary)" }}>
+              <FileCheck size={16} />
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>Zero-Disk Traces</span>
+            </div>
+            <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: "1.4" }}>
+              Decrypted directly in memory while viewing. Zero unencrypted temporary files or thumbnails are saved to disk.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Section 2: Setup Form Card ── */}
       <div 
         className="liquid-glass-toolbar"
         style={{
@@ -157,51 +284,15 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }
           WebkitBackdropFilter: "blur(28px)",
           borderRadius: "var(--radius-lg)",
           border: "1px solid var(--glass-border)",
-          boxShadow: "0 24px 60px rgba(0, 0, 0, 0.4), 0 0 30px var(--accent-vault-glow)",
-          padding: "36px 32px",
+          boxShadow: "var(--glass-shadow)",
+          padding: "32px",
           display: "flex",
           flexDirection: "column",
-          gap: "24px",
-          position: "relative",
+          gap: "20px",
         }}
       >
-        {/* Header Icon & Title */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: "10px" }}>
-          <div 
-            style={{
-              width: "60px",
-              height: "60px",
-              borderRadius: "var(--radius-full)",
-              backgroundColor: "rgba(139, 92, 246, 0.15)",
-              border: "1px solid var(--accent-vault-glow)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--accent-vault)",
-              boxShadow: "0 0 20px var(--accent-vault-glow)",
-            }}
-          >
-            <ShieldCheck size={30} />
-          </div>
-
-          <h2
-            style={{
-              fontFamily: "Plus Jakarta Sans, sans-serif",
-              fontSize: "24px",
-              fontWeight: 800,
-              letterSpacing: "-0.03em",
-              color: "var(--text-primary)",
-              margin: 0,
-            }}
-          >
-            Create Your Private Vault
-          </h2>
-
-          <p style={{ fontSize: "13px", color: "var(--text-secondary)", margin: 0, lineHeight: "1.5", maxWidth: "420px" }}>
-            Protect your sensitive photos and personal documents with on-device zero-trust encryption. Zero cloud storage, 100% private.
-          </p>
-
-          {/* Stepper Progress Pill */}
+        {/* Stepper Progress Pill */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div 
             style={{ 
               display: "inline-flex", 
@@ -213,16 +304,33 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }
               border: "1px solid var(--glass-border)",
               fontSize: "11px",
               fontWeight: 600,
-              color: "var(--text-muted)",
-              marginTop: "4px"
+              color: "var(--text-secondary)",
             }}
           >
-            <span style={{ color: step === 1 ? "var(--accent-vault)" : "var(--accent-success)" }}>
+            <span style={{ color: step === 1 ? "var(--accent-primary)" : "var(--accent-success)" }}>
               Step {step} of 2
             </span>
             <span>•</span>
-            <span>{step === 1 ? "Set Master Password" : "Save Recovery Key"}</span>
+            <span>{step === 1 ? "Create Master Password" : "Save Recovery Phrase"}</span>
           </div>
+
+          {onSwitchToUnlock && (
+            <button
+              type="button"
+              onClick={onSwitchToUnlock}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--accent-primary)",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                padding: "2px 6px",
+              }}
+            >
+              Already set up? Unlock
+            </button>
+          )}
         </div>
 
         {errorMessage && (
@@ -250,7 +358,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }
           <form onSubmit={handleProceedToStep2} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <div>
               <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "6px" }}>
-                Master Password
+                Create Master Password
               </label>
               <div 
                 style={{
@@ -265,7 +373,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }
                 <Lock size={15} style={{ color: "var(--text-muted)", marginRight: "8px" }} />
                 <input 
                   type={showPassword ? "text" : "password"}
-                  placeholder="Enter a strong master password..."
+                  placeholder="Enter a strong master password (min 8 characters)..."
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoFocus
@@ -299,7 +407,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }
                         key={level}
                         style={{
                           flex: 1,
-                          backgroundColor: level <= strengthScore ? strengthColors[strengthScore - 1] || "#8b5cf6" : "var(--glass-border)",
+                          backgroundColor: level <= strengthScore ? strengthColors[strengthScore - 1] || "var(--accent-primary)" : "var(--glass-border)",
                           transition: "background-color 0.2s ease",
                         }}
                       />
@@ -314,7 +422,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }
 
             <div>
               <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "6px" }}>
-                Confirm Password
+                Confirm Master Password
               </label>
               <div 
                 style={{
@@ -355,7 +463,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }
               </div>
               <input 
                 type="text"
-                placeholder="e.g. Favorite childhood pet or school"
+                placeholder="e.g. Memory of first concert or favorite vacation"
                 value={passwordHint}
                 onChange={(e) => setPasswordHint(e.target.value)}
                 style={{
@@ -376,24 +484,24 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }
               type="submit"
               className="clickable"
               style={{
-                marginTop: "10px",
+                marginTop: "8px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 gap: "8px",
                 padding: "12px 20px",
                 borderRadius: "var(--radius-full)",
-                backgroundColor: "var(--accent-vault)",
+                backgroundColor: "var(--accent-primary)",
                 border: "none",
                 color: "#ffffff",
                 fontSize: "13px",
                 fontWeight: 700,
                 cursor: "pointer",
-                boxShadow: "0 4px 16px var(--accent-vault-glow)",
+                boxShadow: "0 4px 16px var(--accent-glow)",
                 transition: "all 0.15s ease",
               }}
             >
-              <span>Continue to Recovery Key</span>
+              <span>Continue to Recovery Phrase</span>
               <ArrowRight size={15} />
             </button>
           </form>
@@ -404,7 +512,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>
-                24-Word Emergency Recovery Phrase
+                Emergency 24-Word Recovery Phrase
               </span>
               <button
                 type="button"
@@ -430,7 +538,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }
             </div>
 
             <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0, lineHeight: "1.4" }}>
-              Write these words down in order. If you ever forget your master password, this phrase is the only way to recover your encrypted photos.
+              Write these words down or save them in a safe place. If you ever forget your master password, this phrase is the only way to recover your vault photos.
             </p>
 
             {/* Recovery Words Grid */}
@@ -452,7 +560,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }
                     display: "flex",
                     alignItems: "center",
                     gap: "6px",
-                    padding: "4px 8px",
+                    padding: "5px 8px",
                     backgroundColor: "var(--glass-pill-bg)",
                     borderRadius: "var(--radius-sm)",
                     fontSize: "11px",
@@ -482,9 +590,9 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }
                 type="checkbox"
                 checked={hasConfirmedSeed}
                 onChange={(e) => setHasConfirmedSeed(e.target.checked)}
-                style={{ marginTop: "2px", accentColor: "var(--accent-vault)" }}
+                style={{ marginTop: "2px", accentColor: "var(--accent-primary)" }}
               />
-              <span>I have safely written down or copied these 24 recovery words in a secure location.</span>
+              <span>I have safely written down or copied these 24 recovery words.</span>
             </label>
 
             <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
@@ -520,13 +628,13 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete }
                   gap: "8px",
                   padding: "12px 20px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: hasConfirmedSeed ? "var(--accent-vault)" : "var(--glass-border)",
+                  backgroundColor: hasConfirmedSeed ? "var(--accent-primary)" : "var(--glass-border)",
                   border: "none",
                   color: "#ffffff",
                   fontSize: "13px",
                   fontWeight: 700,
                   cursor: hasConfirmedSeed ? "pointer" : "not-allowed",
-                  boxShadow: hasConfirmedSeed ? "0 4px 16px var(--accent-vault-glow)" : "none",
+                  boxShadow: hasConfirmedSeed ? "0 4px 16px var(--accent-glow)" : "none",
                   opacity: isSubmitting ? 0.7 : 1,
                 }}
               >

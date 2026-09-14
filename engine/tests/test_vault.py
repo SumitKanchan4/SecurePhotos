@@ -118,6 +118,9 @@ async def test_vault_setup_and_unlock_api():
         lock_res = await client.post("/api/vault/lock")
         assert lock_res.status_code == 200
 
+        # Clean up test vault state so dev DB is not polluted
+        await client.post("/api/vault/reset")
+
 
 @pytest.mark.asyncio
 async def test_vault_photos_crud_and_streaming_api():
@@ -212,4 +215,11 @@ async def test_vault_photos_crud_and_streaming_api():
             await client.post("/api/vault/lock")
             unauth_res = await client.get("/api/vault/photos")
             assert unauth_res.status_code == 401
+
+            # Clean up test vault and test photo row
+            await client.post("/api/vault/reset")
+            conn = await get_db_connection()
+            await conn.execute("DELETE FROM photos WHERE id = ?;", (photo_id,))
+            await conn.commit()
+            await conn.close()
 

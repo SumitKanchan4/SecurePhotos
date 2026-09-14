@@ -233,6 +233,19 @@ async def lock_vault() -> dict:
     return {"status": "locked"}
 
 
+@router.post("/reset", status_code=status.HTTP_200_OK)
+async def reset_vault() -> dict:
+    """Resets vault configuration (clears vault_configs and locks memory)."""
+    lock_vault_memory()
+    conn = await get_db_connection()
+    try:
+        await conn.execute("DELETE FROM vault_configs WHERE vault_type = 'private';")
+        await conn.commit()
+    finally:
+        await conn.close()
+    return {"status": "vault_reset"}
+
+
 @router.get("/stream/{photo_id}")
 async def stream_vault_photo(photo_id: int):
     """Streams decrypted photo/video chunks directly to memory blob URLs with zero disk temp writes."""

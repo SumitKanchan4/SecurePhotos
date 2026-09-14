@@ -45,8 +45,8 @@
   --accent-success: #10b981;
   --accent-warning: #f59e0b;
   --accent-danger: #ef4444;
-  --accent-vault: #8b5cf6;
-  --accent-vault-glow: rgba(139, 92, 246, 0.25);
+  --accent-vault: #3b82f6;
+  --accent-vault-glow: rgba(59, 130, 246, 0.20);
 
   /* Shadows & Elevation */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -105,8 +105,8 @@
   --accent-success: #059669;
   --accent-warning: #d97706;
   --accent-danger: #dc2626;
-  --accent-vault: #7c3aed;
-  --accent-vault-glow: rgba(124, 58, 237, 0.15);
+  --accent-vault: #2563eb;
+  --accent-vault-glow: rgba(37, 99, 235, 0.15);
 
   /* Shadows & Elevation */
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
