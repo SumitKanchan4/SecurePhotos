@@ -396,6 +396,12 @@ async def test_album_lock_and_unlock_workflow():
             assert len(vault_album_photos.json()) == 1
             assert vault_album_photos.json()[0]["id"] == photo_id
 
+            # Verify GET /api/vault/photos contains album_names tag
+            vault_photos = await client.get("/api/vault/photos")
+            assert vault_photos.status_code == 200
+            vault_p = next(p for p in vault_photos.json() if p["id"] == photo_id)
+            assert vault_p["album_names"] == "Vault Test Album"
+
             # 2. Unlock album from vault
             unlock_res = await client.post(f"/api/vault/albums/{album_id}/unlock")
             assert unlock_res.status_code == 200
@@ -548,6 +554,80 @@ async def test_vault_documents_and_self_healing_workflow():
                 shutil.rmtree(test_dir, ignore_errors=True)
 
             await client.post("/api/vault/reset")
+
+
+@pytest.mark.asyncio
+async def test_vault_thumbnail_exif_rotation_preservation():
+    """Validates that portrait photos with EXIF orientation 6 maintain upright portrait orientation in vault thumbnails."""
+    from engine.database import get_db_connection
+    import piexif
+    from PIL import Image
+    import io
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post("/api/vault/reset")
+        await client.post(
+            "/api/vault/setup",
+            json={"password": "ExifVaultPass123!", "recovery_phrase": "exif test phrase"},
+        )
+        await client.post(
+            "/api/vault/unlock",
+            json={"password": "ExifVaultPass123!"},
+        )
+
+        test_dir = Path("data/tests_scratch")
+        test_dir.mkdir(parents=True, exist_ok=True)
+        img_path = test_dir / "portrait_orientation6.jpg"
+
+        # Create a 400x200 landscape raw image with EXIF orientation 6 (90 CW, meaning portrait upright 200x400)
+        img = Image.new("RGB", (400, 200), color="blue")
+        exif_bytes = piexif.dump({"0th": {piexif.ImageIFD.Orientation: 6}})
+        img.save(img_path, "JPEG", exif=exif_bytes)
+
+        conn = await get_db_connection()
+        photo_id = None
+        try:
+            cursor = await conn.execute(
+                """
+                INSERT INTO photos (filename, filepath, file_size, mime_type, taken_at)
+                VALUES ('portrait_orientation6.jpg', ?, ?, 'image/jpeg', '2023-01-01 12:00:00');
+                """,
+                (str(img_path.resolve()), img_path.stat().st_size),
+            )
+            photo_id = cursor.lastrowid
+            await conn.commit()
+
+            # Lock to vault (individual lock)
+            lock_res = await client.post("/api/vault/photos/lock", json={"photo_ids": [photo_id]})
+            assert lock_res.status_code == 200
+            assert lock_res.json()["locked_count"] == 1
+
+            # Request vault thumbnail
+            thumb_res = await client.get(f"/api/vault/thumbnail/{photo_id}")
+            assert thumb_res.status_code == 200
+            assert len(thumb_res.content) > 0
+
+            # Verify that resulting thumbnail has been rotated to portrait (height > width)
+            with Image.open(io.BytesIO(thumb_res.content)) as thumb_img:
+                assert thumb_img.height > thumb_img.width, f"Expected portrait orientation (height > width), got {thumb_img.width}x{thumb_img.height}"
+
+        finally:
+            if photo_id:
+                await conn.execute("DELETE FROM photos WHERE id = ?;", (photo_id,))
+                await conn.commit()
+            await conn.close()
+
+            if img_path.exists():
+                img_path.unlink()
+            enc_file = img_path.with_suffix(img_path.suffix + ".enc")
+            if enc_file.exists():
+                enc_file.unlink()
+            if test_dir.exists():
+                import shutil
+                shutil.rmtree(test_dir, ignore_errors=True)
+
+            await client.post("/api/vault/reset")
+
 
 
 

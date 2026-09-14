@@ -397,20 +397,36 @@ async def lock_album_to_vault(album_id: int) -> dict:
                 orig_file.unlink()  # Clean unencrypted original
 
                 # Encrypt thumbnail
+                enc_thumb_str = None
                 if row["thumbnail_path"]:
                     t_orig = Path(row["thumbnail_path"])
                     if t_orig.exists():
-                        t_enc = t_orig.with_suffix(".enc")
+                        t_enc = t_orig.with_suffix(t_orig.suffix + ".enc")
                         encrypt_file_chunked(t_orig, t_enc, mvk)
                         t_orig.unlink()
+                        enc_thumb_str = str(t_enc.resolve())
+
+                # Encrypt preview
+                enc_prev_str = None
+                if row["preview_path"]:
+                    p_orig = Path(row["preview_path"])
+                    if p_orig.exists():
+                        p_enc = p_orig.with_suffix(p_orig.suffix + ".enc")
+                        encrypt_file_chunked(p_orig, p_enc, mvk)
+                        p_orig.unlink()
+                        enc_prev_str = str(p_enc.resolve())
 
                 await conn.execute(
                     """
                     UPDATE photos
-                    SET is_encrypted = 1, filepath = ?, vault_type = 'private'
+                    SET is_encrypted = 1,
+                        filepath = ?,
+                        thumbnail_path = COALESCE(?, thumbnail_path),
+                        preview_path = COALESCE(?, preview_path),
+                        vault_type = 'private'
                     WHERE id = ?;
                     """,
-                    (str(enc_file.resolve()), photo_id),
+                    (str(enc_file.resolve()), enc_thumb_str, enc_prev_str, photo_id),
                 )
                 encrypted_count += 1
                 photo_ids.append(photo_id)
@@ -455,8 +471,10 @@ async def unlock_album_from_vault(album_id: int) -> dict:
 
                 restored_thumb_str = None
                 if row["thumbnail_path"]:
-                    t_enc = Path(row["thumbnail_path"])
-                    if t_enc.exists():
+                    t_cand = Path(row["thumbnail_path"])
+                    candidates = [t_cand, t_cand.with_suffix(".enc"), Path(str(t_cand) + ".enc")]
+                    t_enc = next((p for p in candidates if p.exists()), None)
+                    if t_enc:
                         t_orig = t_enc.with_suffix("") if t_enc.suffix == ".enc" else t_enc.with_name("restored_" + t_enc.name)
                         with open(t_orig, "wb") as fout:
                             for chunk in decrypt_file_chunked_stream(t_enc, mvk):
@@ -466,8 +484,10 @@ async def unlock_album_from_vault(album_id: int) -> dict:
 
                 restored_prev_str = None
                 if row["preview_path"]:
-                    p_enc = Path(row["preview_path"])
-                    if p_enc.exists():
+                    p_cand = Path(row["preview_path"])
+                    candidates = [p_cand, p_cand.with_suffix(".enc"), Path(str(p_cand) + ".enc")]
+                    p_enc = next((p for p in candidates if p.exists()), None)
+                    if p_enc:
                         p_orig = p_enc.with_suffix("") if p_enc.suffix == ".enc" else p_enc.with_name("restored_" + p_enc.name)
                         with open(p_orig, "wb") as fout:
                             for chunk in decrypt_file_chunked_stream(p_enc, mvk):
@@ -605,14 +625,20 @@ async def list_vault_photos() -> List[dict]:
     try:
         async with conn.execute(
             """
-            SELECT id, filename, filepath, file_size, original_file_size, mime_type, width, height,
-                   taken_at, camera_make, camera_model, latitude, longitude,
-                   iso, aperture, shutter_speed, focal_length, is_favorite,
-                   is_encrypted, is_optimized, is_enhanced, caption, thumbnail_path, preview_path,
-                   is_document, ocr_text
-            FROM photos
-            WHERE is_encrypted = 1 AND vault_type = 'private' AND trashed_at IS NULL
-            ORDER BY taken_at DESC, id DESC;
+            SELECT p.id, p.filename, p.filepath, p.file_size, p.original_file_size, p.mime_type, p.width, p.height,
+                   p.taken_at, p.camera_make, p.camera_model, p.latitude, p.longitude,
+                   p.iso, p.aperture, p.shutter_speed, p.focal_length, p.is_favorite,
+                   p.is_encrypted, p.is_optimized, p.is_enhanced, p.caption, p.thumbnail_path, p.preview_path,
+                   p.is_document, p.ocr_text,
+                   (
+                       SELECT GROUP_CONCAT(a.name, ', ')
+                       FROM photo_album pa
+                       JOIN albums a ON pa.album_id = a.id
+                       WHERE pa.photo_id = p.id
+                   ) AS album_names
+            FROM photos p
+            WHERE p.is_encrypted = 1 AND p.vault_type = 'private' AND p.trashed_at IS NULL
+            ORDER BY p.taken_at DESC, p.id DESC;
             """
         ) as cursor:
             rows = await cursor.fetchall()
@@ -644,6 +670,7 @@ async def list_vault_photos() -> List[dict]:
                     "preview_path": row["preview_path"],
                     "is_document": bool(row["is_document"]) if row["is_document"] is not None else False,
                     "ocr_text": row["ocr_text"],
+                    "album_names": row["album_names"],
                 }
                 for row in rows
             ]
@@ -671,16 +698,26 @@ async def get_vault_thumbnail(photo_id: int):
 
     # Try encrypted thumbnail file if present
     thumb_path = Path(row["thumbnail_path"]) if row["thumbnail_path"] else None
-    if thumb_path and thumb_path.exists():
+    active_enc_thumb = None
+    if thumb_path:
+        candidates = [
+            thumb_path,
+            thumb_path.with_suffix(thumb_path.suffix + ".enc"),
+            thumb_path.with_suffix(".enc"),
+        ]
+        active_enc_thumb = next((p for p in candidates if p.exists()), None)
+
+    if active_enc_thumb:
         try:
-            data = decrypt_file_to_bytes(thumb_path, mvk)
+            data = decrypt_file_to_bytes(active_enc_thumb, mvk)
+            media_type = "image/webp" if ".webp" in active_enc_thumb.name else "image/jpeg"
             return Response(
                 content=data,
-                media_type="image/jpeg",
+                media_type=media_type,
                 headers={"Cache-Control": "private, no-store, max-age=0"},
             )
         except Exception as e:
-            logger.warning("Failed to decrypt thumbnail %s: %s", thumb_path, e)
+            logger.warning("Failed to decrypt thumbnail %s: %s", active_enc_thumb, e)
 
     # Fallback: decrypt original in-memory and generate thumbnail on the fly
     orig_path = Path(row["filepath"])
@@ -689,8 +726,9 @@ async def get_vault_thumbnail(photo_id: int):
 
     try:
         data = decrypt_file_to_bytes(orig_path, mvk)
-        from PIL import Image
+        from PIL import Image, ImageOps
         img = Image.open(io.BytesIO(data))
+        img = ImageOps.exif_transpose(img)
         img.thumbnail((360, 360), Image.Resampling.LANCZOS)
         out = io.BytesIO()
         img.convert("RGB").save(out, format="JPEG", quality=85)

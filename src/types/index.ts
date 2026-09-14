@@ -51,6 +51,7 @@ export interface PhotoItem {
   content_tags?: string;
   is_document?: boolean;
   ocr_text?: string;
+  album_names?: string;
 }
 
 export interface AlbumItem {

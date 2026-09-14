@@ -2557,6 +2557,64 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - All 81 automated tests passing cleanly in 38.62s.
 - Clean TypeScript compilation and production bundle build in 5.02s.
 
+---
 
+## 54. Vault Lightbox Self-Healing, EXIF Rotation Preservation & Album Membership Badges
 
+### Functionality Overview
+1. **Self-Healing Lightbox for Encrypted Media**:
+   - When an encrypted photo is opened in Lightbox while the private vault is locked (or before vault authentication), the application prevents the broken image icon (`<img>` 401 error) by rendering an elegant, frosted **Locked Vault Shield**:
+     `🔒 Encrypted Private Asset — Authenticate with your PIN or Master Password to view or restore this photo.`
+   - Features dedicated action buttons: `[ 🔓 Unlock Vault ]` (or `[ Set Up Vault ]` if unconfigured) and `[ Restore Photo ]`.
+   - Clicking `[ Restore (L) ]` or pressing the `L` shortcut while locked no longer fails with an error toast (`"Error updating vault status."`). It seamlessly opens the `VaultUnlockModal`, records the pending restore action, and **automatically restores the photo to the public library immediately upon successful PIN or Master Password authentication**.
+2. **EXIF Orientation Preservation in Vault Thumbnails**:
+   - Solved the issue where portrait camera photos (e.g. `IMG_20210413_114053.jpg`, captured with landscape sensor hardware and marked with EXIF `Orientation: 6`) rendered sideways (rotated 90° CW).
+   - In `get_vault_thumbnail()` in `engine/api/vault.py`, added `ImageOps.exif_transpose(img)` to the in-memory thumbnail fallback so images are always properly oriented before Pillow resizes and serves them.
+   - Updated `get_vault_thumbnail()` to dynamically detect WebP vs JPEG content types (`media_type = "image/webp" if ".webp" in active_enc_thumb.name else "image/jpeg"`) and inspect `.enc` and `.webp.enc` candidates.
+   - In `lock_album_to_vault()`, resolved a bug where SQLite's `thumbnail_path` and `preview_path` were not updated to `.enc`, causing `Path.exists()` checks to fail and repeatedly triggering raw un-oriented fallbacks.
+   - In `run_migrations()` (`engine/database.py`), added an automatic startup self-heal that reconciles any existing encrypted photo records whose `thumbnail_path` in SQLite still points to `.webp` when `.enc` exists on disk.
+3. **Master Camera Roll with Album Membership Badging**:
+   - In `list_vault_photos()` (`GET /api/vault/photos`), integrated a SQL subquery returning `album_names` for each encrypted photo:
+     `SELECT GROUP_CONCAT(a.name, ', ') FROM photo_album pa JOIN albums a ON pa.album_id = a.id WHERE pa.photo_id = p.id AS album_names`.
+   - In `src/components/PhotoGrid.tsx`, added a discrete, frosted capsule badge `[ 📁 Album Name ]` at the bottom-right of photo cards when `photo.album_names` is present.
+   - Aligns with the Apple Photos / Google Photos master camera roll model: the `[ Photos ]` tab displays the complete master library of encrypted items, while the subtle badge immediately clarifies why album member photos are visible in the master grid without creating confusion or feeling like duplicates.
 
+### Functional Decision Points & Rationale
+- **Frosted Shield Fallback vs. Raw Image Request**:
+  - *Decision*: Replace broken `<img>` tags with a frosted lock shield whenever encrypted assets cannot be decrypted due to a locked vault.
+  - *Rationale*: A zero-trust photo vault should never surface raw browser broken-image icons to the end user. Surfacing a reassuring locked asset shield with a direct unlock button preserves application polish and communicates security rather than a software failure.
+- **Pending Action Auto-Execution**:
+  - *Decision*: Queue the photo restore action when `Restore (L)` is clicked while locked, executing it automatically post-unlock.
+  - *Rationale*: Forcing the user to manually unlock the vault in a separate modal and then re-click the restore button creates unnecessary friction. Preserving intent via pending callbacks delivers true self-healing UX.
+- **EXIF Transposition Before Scaling**:
+  - *Decision*: Apply `ImageOps.exif_transpose()` immediately upon opening image bytes in Pillow.
+  - *Rationale*: Mobile phone sensors physically capture raw pixel matrices in landscape orientation and rely on EXIF orientation tags. Pillow's `.thumbnail()` and `.resize()` operate on raw pixel coordinates; without transposing before downsampling, the orientation tag is stripped and the image displays sideways.
+- **Master Camera Roll Paradigm with Badges (Option A)**:
+  - *Decision*: Keep `[ Photos ]` as the master roll and add inline frosted album capsule badges.
+  - *Rationale*: Hiding album photos from the master roll (strict partitioning) can cause users to believe items were lost or deleted. Displaying an inline badge provides complete transparency, indicating exactly which collection an item belongs to while keeping the master feed unified.
+
+### Technical Touchpoints
+- `engine/api/vault.py`:
+  - `get_vault_thumbnail()`: Added `ImageOps.exif_transpose()`, multi-extension candidate resolution (`.enc`, `.webp.enc`), and dynamic MIME type header.
+  - `lock_album_to_vault()`: Encrypts preview, updates `thumbnail_path` and `preview_path` with `.enc` in SQLite.
+  - `unlock_album_from_vault()`: Decrypts thumbnails and previews with flexible `.enc` discovery.
+  - `list_vault_photos()`: Subquery for `album_names` via `photo_album` and `albums`.
+- `engine/database.py`:
+  - `run_migrations()`: Startup self-healing reconciling `thumbnail_path` to `.enc` for encrypted photos.
+- `engine/tests/test_vault.py`:
+  - Added `test_vault_thumbnail_exif_rotation_preservation` testing EXIF orientation 6 portrait maintenance.
+  - Added `album_names` assertion in `test_album_lock_and_unlock_workflow`.
+- `src/types/index.ts`: Added `album_names?: string;` to `PhotoItem`.
+- `src/components/PhotoGrid.tsx`: Added `Folder` icon and bottom-right frosted album capsule badge.
+- `src/components/Lightbox.tsx`:
+  - Added `onUnlockRequest` and `onVaultStatusChange` props.
+  - Rendered Frosted Vault Lock Shield for encrypted locked media.
+  - Updated `handleToggleVault()` to prompt unlock modal with pending auto-restore callback.
+- `src/App.tsx`:
+  - Expanded `pendingVaultAction` with `custom` callback support.
+  - Passed `onUnlockRequest` and `onVaultStatusChange` to `<Lightbox />`.
+
+### State & Lifecycle Impact
+- All 17 unit and integration tests passing (`engine/tests/test_vault.py`, `engine/tests/test_ingestion.py`).
+- Zero TypeScript errors; production bundle built cleanly in 4.74s.
+- Existing database records for photos 21 and 15 successfully self-healed.

@@ -68,9 +68,10 @@ export const App: React.FC = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isVaultUnlockModalOpen, setIsVaultUnlockModalOpen] = useState(false);
   const [pendingVaultAction, setPendingVaultAction] = useState<{
-    type: "batch_photos" | "album";
+    type: "batch_photos" | "album" | "custom";
     albumId?: number;
     isVaultAlbum?: boolean;
+    callback?: () => void;
   } | null>(null);
   const [isCollageModalOpen, setIsCollageModalOpen] = useState(false);
   const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
@@ -1208,6 +1209,8 @@ export const App: React.FC = () => {
             executeAlbumVaultAction(pendingVaultAction.albumId, !!pendingVaultAction.isVaultAlbum);
           } else if (pendingVaultAction?.type === "batch_photos" || selectedPhotoIds.size > 0) {
             handleBatchMoveToVault();
+          } else if (pendingVaultAction?.type === "custom" && pendingVaultAction.callback) {
+            pendingVaultAction.callback();
           }
           setPendingVaultAction(null);
         }}
@@ -1262,6 +1265,24 @@ export const App: React.FC = () => {
           }
         }}
         onToggleFavorite={handleToggleFavorite}
+        onUnlockRequest={(action) => {
+          if (action) {
+            setPendingVaultAction({ type: "custom", callback: action });
+          }
+          setIsVaultUnlockModalOpen(true);
+        }}
+        onVaultStatusChange={(photoId, isEncrypted) => {
+          if (!isEncrypted) {
+            loadPhotos(activeYear);
+            loadTimelineYears();
+            if (lightboxPhotos) {
+              setLightboxPhotos((prev) => (prev ? prev.filter((p) => p.id !== photoId) : null));
+            }
+          } else {
+            setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+            loadTimelineYears();
+          }
+        }}
       />
 
       {/* Confirmed Update Interactive Modal */}

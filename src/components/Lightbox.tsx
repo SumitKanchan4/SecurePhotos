@@ -35,6 +35,8 @@ interface LightboxProps {
   onNavigate: (index: number) => void;
   onDelete?: (photoId: number) => void;
   onToggleFavorite?: (photoId: number) => void;
+  onUnlockRequest?: (pendingAction?: () => void) => void;
+  onVaultStatusChange?: (photoId: number, isEncrypted: boolean) => void;
 }
 
 export const Lightbox: React.FC<LightboxProps> = ({
@@ -46,8 +48,12 @@ export const Lightbox: React.FC<LightboxProps> = ({
   onNavigate,
   onDelete,
   onToggleFavorite,
+  onUnlockRequest,
+  onVaultStatusChange,
 }) => {
   const showToast = useAppStore((state) => state.showToast);
+  const isVaultUnlocked = useAppStore((state) => state.isVaultUnlocked);
+  const isVaultConfigured = useAppStore((state) => state.isVaultConfigured);
   const [zoom, setZoom] = useState(1);
   const [showInfo, setShowInfo] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
@@ -125,35 +131,81 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const handleZoomIn = () => setZoom((z) => Math.min(z + 0.5, 4));
   const handleZoomOut = () => setZoom((z) => Math.max(z - 0.5, 1));
 
+  const executeRestore = async (photoId: number) => {
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/vault/photos/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo_ids: [photoId] }),
+      });
+      if (res.ok) {
+        showToast("Restored photo to public library.", "success");
+        if (currentPhoto) currentPhoto.is_encrypted = false;
+        onVaultStatusChange?.(photoId, false);
+        onClose();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.detail || "Failed to restore photo from vault.", "warning");
+      }
+    } catch (err) {
+      console.error("Restore error:", err);
+      showToast("Error updating vault status.", "warning");
+    }
+  };
+
+  const executeLock = async (photoId: number) => {
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/vault/photos/lock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo_ids: [photoId] }),
+      });
+      if (res.ok) {
+        showToast("Photo encrypted and moved into Private Vault.", "success");
+        if (currentPhoto) currentPhoto.is_encrypted = true;
+        onVaultStatusChange?.(photoId, true);
+        onClose();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.detail || "Failed to move photo into vault.", "warning");
+      }
+    } catch (err) {
+      console.error("Lock error:", err);
+      showToast("Error updating vault status.", "warning");
+    }
+  };
+
   const handleToggleVault = async () => {
     if (!currentPhoto) return;
     try {
       if (currentPhoto.is_encrypted) {
-        const res = await fetch("http://127.0.0.1:8000/api/vault/photos/unlock", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ photo_ids: [currentPhoto.id] }),
-        });
-        if (res.ok) {
-          showToast("Restored photo to public library.", "success");
-          currentPhoto.is_encrypted = false;
-          onClose();
-        } else if (res.status === 401) {
-          showToast("Vault is locked. Please unlock it in the Vault tab first.", "warning");
+        if (!isVaultUnlocked) {
+          if (onUnlockRequest) {
+            onUnlockRequest(async () => {
+              await executeRestore(currentPhoto.id);
+            });
+          } else {
+            showToast("Please unlock your Vault before restoring items.", "warning");
+          }
+          return;
         }
+        await executeRestore(currentPhoto.id);
       } else {
-        const res = await fetch("http://127.0.0.1:8000/api/vault/photos/lock", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ photo_ids: [currentPhoto.id] }),
-        });
-        if (res.ok) {
-          showToast("Photo encrypted and moved into Private Vault.", "success");
-          currentPhoto.is_encrypted = true;
-          onClose();
-        } else if (res.status === 401) {
-          showToast("Please unlock your Vault before moving items.", "warning");
+        if (!isVaultConfigured) {
+          showToast("Please set up your Private Vault first.", "info");
+          return;
         }
+        if (!isVaultUnlocked) {
+          if (onUnlockRequest) {
+            onUnlockRequest(async () => {
+              await executeLock(currentPhoto.id);
+            });
+          } else {
+            showToast("Please unlock your Vault before moving items.", "warning");
+          }
+          return;
+        }
+        await executeLock(currentPhoto.id);
       }
     } catch (err) {
       console.error("Vault toggle error:", err);
@@ -592,7 +644,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
             }}
           >
             {/* Instant Thumbnail Low-Res Backdrop while High-Res Loads (Photos only) */}
-            {!isVideo && !isPreviewLoaded && !previewHasError && (
+            {!isVideo && !isVaultItem && !isPreviewLoaded && !previewHasError && (
               <img
                 src={thumbnailUrl}
                 alt={currentPhoto.filename}
@@ -607,8 +659,122 @@ export const Lightbox: React.FC<LightboxProps> = ({
               />
             )}
 
-            {/* High-Resolution Media Image or Interactive Video Player */}
-            {currentPhoto.mime_type?.startsWith("video/") ? (
+            {/* If photo is encrypted and Vault is locked (or stream returned 401 error) */}
+            {isVaultItem && (!isVaultUnlocked || previewHasError) ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "44px 36px",
+                  borderRadius: "var(--radius-lg)",
+                  backgroundColor: "var(--glass-surface)",
+                  backdropFilter: "blur(24px)",
+                  WebkitBackdropFilter: "blur(24px)",
+                  border: "1px solid var(--glass-border)",
+                  boxShadow: "var(--glass-shadow)",
+                  maxWidth: "460px",
+                  textAlign: "center",
+                  zIndex: 15,
+                  animation: "fadeIn 0.2s ease",
+                }}
+              >
+                <div
+                  style={{
+                    width: "68px",
+                    height: "68px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "rgba(59, 130, 246, 0.12)",
+                    border: "1px solid rgba(59, 130, 246, 0.3)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: "20px",
+                    color: "var(--accent-primary)",
+                    boxShadow: "0 0 20px rgba(59, 130, 246, 0.2)",
+                  }}
+                >
+                  <Lock size={32} />
+                </div>
+                <h3
+                  style={{
+                    fontSize: "20px",
+                    fontWeight: 800,
+                    letterSpacing: "-0.02em",
+                    color: "var(--text-primary)",
+                    margin: "0 0 8px 0",
+                    fontFamily: "var(--font-sans)",
+                  }}
+                >
+                  Encrypted Private Asset
+                </h3>
+                <p
+                  style={{
+                    fontSize: "13px",
+                    lineHeight: "1.5",
+                    color: "var(--text-secondary)",
+                    margin: "0 0 24px 0",
+                  }}
+                >
+                  {!isVaultConfigured 
+                    ? "This photo is encrypted on-device. Set up your Private Vault to authenticate and view or restore this asset."
+                    : "This photo is protected by on-device encryption. Enter your PIN or Master Password to view or restore this photo."}
+                </p>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isVaultConfigured) {
+                        useAppStore.getState().setActiveTab("vault");
+                        onClose();
+                        return;
+                      }
+                      if (onUnlockRequest) {
+                        onUnlockRequest();
+                      } else {
+                        showToast("Please open the Vault tab to unlock.", "info");
+                      }
+                    }}
+                    className="clickable"
+                    style={{
+                      padding: "10px 22px",
+                      borderRadius: "var(--radius-full)",
+                      backgroundColor: "var(--accent-primary)",
+                      border: "none",
+                      color: "#ffffff",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "7px",
+                      boxShadow: "0 4px 14px rgba(59, 130, 246, 0.4)",
+                    }}
+                  >
+                    <Unlock size={15} />
+                    <span>{!isVaultConfigured ? "Set Up Vault" : "Unlock Vault"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleToggleVault}
+                    className="clickable"
+                    style={{
+                      padding: "10px 20px",
+                      borderRadius: "var(--radius-full)",
+                      backgroundColor: "var(--glass-pill-bg)",
+                      border: "1px solid var(--glass-pill-border)",
+                      color: "var(--text-primary)",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span>Restore Photo</span>
+                  </button>
+                </div>
+              </div>
+            ) : currentPhoto.mime_type?.startsWith("video/") ? (
               <div
                 style={{
                   position: "relative",

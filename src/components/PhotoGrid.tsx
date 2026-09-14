@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Check, Sparkles, Heart, Loader2, Image as ImageIcon, Clock, Play } from "lucide-react";
+import { Check, Sparkles, Heart, Loader2, Image as ImageIcon, Clock, Play, Folder } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { PhotoItem, OptimizationProgress, VideoOptimizationProgress } from "../types";
 
@@ -399,6 +399,41 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
           </div>
         );
       })()}
+
+      {/* 6c. Bottom-Right Album Membership Frosted Capsule Badge */}
+      {photo.album_names && (
+        <div
+          title={`In Album: ${photo.album_names}`}
+          style={{
+            position: "absolute",
+            bottom: "7px",
+            right: "7px",
+            zIndex: isHovered ? 1 : 3,
+            display: isHovered ? "none" : "flex",
+            alignItems: "center",
+            gap: "4px",
+            padding: "2px 7px",
+            borderRadius: "var(--radius-full)",
+            background: "rgba(10, 12, 18, 0.75)",
+            backdropFilter: "blur(10px)",
+            WebkitBackdropFilter: "blur(10px)",
+            border: "1px solid rgba(255, 255, 255, 0.2)",
+            color: "#ffffff",
+            fontSize: "9px",
+            fontWeight: 700,
+            letterSpacing: "0.2px",
+            boxShadow: "0 2px 6px rgba(0, 0, 0, 0.6)",
+            maxWidth: "110px",
+            overflow: "hidden",
+            pointerEvents: "none",
+          }}
+        >
+          <Folder size={9} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {photo.album_names}
+          </span>
+        </div>
+      )}
 
       {/* 6b. Favorite Heart Button (Top Right - Pinned to corner) */}
       <button

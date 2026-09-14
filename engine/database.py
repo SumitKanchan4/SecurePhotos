@@ -564,6 +564,21 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
             await conn.execute("UPDATE photos SET original_file_size = file_size WHERE original_file_size IS NULL;")
             logger.info("Migrated photos schema: added original_file_size column and backfilled baseline sizes.")
 
+        # Self-heal encrypted photos whose thumbnail_path in DB points to unencrypted .webp while .enc exists
+        async with conn.execute("SELECT id, thumbnail_path FROM photos WHERE is_encrypted = 1;") as cursor:
+            enc_photos = await cursor.fetchall()
+
+        for p in enc_photos:
+            p_id = p["id"]
+            t_path = p["thumbnail_path"]
+            if t_path and not Path(t_path).exists():
+                cand1 = Path(t_path).with_suffix(".enc")
+                cand2 = Path(str(t_path) + ".enc")
+                if cand1.exists():
+                    await conn.execute("UPDATE photos SET thumbnail_path = ? WHERE id = ?;", (str(cand1), p_id))
+                elif cand2.exists():
+                    await conn.execute("UPDATE photos SET thumbnail_path = ? WHERE id = ?;", (str(cand2), p_id))
+
         await conn.commit()
         logger.info("Database schema migrations executed successfully.")
     except Exception as e:
