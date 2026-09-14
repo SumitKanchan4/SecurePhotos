@@ -20,6 +20,8 @@ import {
   Download,
   Printer,
   Film,
+  Lock,
+  Unlock,
 } from "lucide-react";
 import { PhotoItem, OptimizationProgress } from "../types";
 import { useAppStore } from "../store/useAppStore";
@@ -63,9 +65,17 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const isOptimizingThis = Boolean(!isVideo && optimizationProgress?.is_active && optimizationProgress.active_photo_id === currentPhoto?.id);
   const isQueued = Boolean(!isVideo && optimizationProgress?.is_active && !currentPhoto?.is_optimized && !isOptimizingThis);
 
-  const previewUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/preview`;
-  const originalUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/original${videoVersion > 0 ? `?v=${videoVersion}` : ""}`;
-  const thumbnailUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/thumbnail`;
+  const isVaultItem = Boolean(currentPhoto?.is_encrypted);
+  const vaultStreamUrl = `http://127.0.0.1:8000/api/vault/stream/${currentPhoto?.id}`;
+  const previewUrl = isVaultItem 
+    ? vaultStreamUrl 
+    : `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/preview`;
+  const originalUrl = isVaultItem 
+    ? vaultStreamUrl 
+    : `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/original${videoVersion > 0 ? `?v=${videoVersion}` : ""}`;
+  const thumbnailUrl = isVaultItem 
+    ? `http://127.0.0.1:8000/api/vault/thumbnail/${currentPhoto?.id}` 
+    : `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/thumbnail`;
 
   // Display the enhanced proxy if completed; otherwise display the unprocessed original
   const primaryImageUrl = isCompleted ? previewUrl : originalUrl;
@@ -98,6 +108,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
         }
       } else if (e.key === "Delete" || e.key === "Backspace") {
         handleDelete();
+      } else if (e.key === "l" || e.key === "L") {
+        handleToggleVault();
       } else if (e.key === "i" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         setShowInfo((prev) => !prev);
@@ -106,12 +118,48 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, currentIndex, photos.length, onClose, onNavigate]);
+  }, [isOpen, currentIndex, photos.length, onClose, onNavigate, currentPhoto]);
 
   if (!isOpen || !currentPhoto) return null;
 
   const handleZoomIn = () => setZoom((z) => Math.min(z + 0.5, 4));
   const handleZoomOut = () => setZoom((z) => Math.max(z - 0.5, 1));
+
+  const handleToggleVault = async () => {
+    if (!currentPhoto) return;
+    try {
+      if (currentPhoto.is_encrypted) {
+        const res = await fetch("http://127.0.0.1:8000/api/vault/photos/unlock", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ photo_ids: [currentPhoto.id] }),
+        });
+        if (res.ok) {
+          showToast("Restored photo to public library.", "success");
+          currentPhoto.is_encrypted = false;
+          onClose();
+        } else if (res.status === 401) {
+          showToast("Vault is locked. Please unlock it in the Vault tab first.", "warning");
+        }
+      } else {
+        const res = await fetch("http://127.0.0.1:8000/api/vault/photos/lock", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ photo_ids: [currentPhoto.id] }),
+        });
+        if (res.ok) {
+          showToast("Photo encrypted and moved into Private Vault.", "success");
+          currentPhoto.is_encrypted = true;
+          onClose();
+        } else if (res.status === 401) {
+          showToast("Please unlock your Vault before moving items.", "warning");
+        }
+      }
+    } catch (err) {
+      console.error("Vault toggle error:", err);
+      showToast("Error updating vault status.", "warning");
+    }
+  };
 
   const copyStoragePath = () => {
     navigator.clipboard.writeText(currentPhoto.filepath);
@@ -284,6 +332,29 @@ export const Lightbox: React.FC<LightboxProps> = ({
           >
             <Heart size={15} fill={isFavorite ? "var(--accent-danger)" : "none"} />
             <span style={{ fontSize: "11px", fontWeight: 600 }}>{isFavorite ? "Liked" : "Like"}</span>
+          </button>
+
+          {/* Vault Lock / Restore Button */}
+          <button
+            onClick={handleToggleVault}
+            className="clickable"
+            title={currentPhoto.is_encrypted ? "Restore to Public Library (L)" : "Move to Encrypted Vault (L)"}
+            style={{
+              background: currentPhoto.is_encrypted ? "rgba(139, 92, 246, 0.15)" : "var(--glass-pill-bg)",
+              borderRadius: "var(--radius-full)",
+              border: currentPhoto.is_encrypted ? "1px solid rgba(139, 92, 246, 0.4)" : "1px solid var(--glass-pill-border)",
+              color: currentPhoto.is_encrypted ? "var(--accent-vault)" : "var(--text-primary)",
+              padding: "4px 10px",
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              cursor: "pointer",
+            }}
+          >
+            {currentPhoto.is_encrypted ? <Unlock size={14} /> : <Lock size={14} />}
+            <span style={{ fontSize: "11px", fontWeight: 600 }}>
+              {currentPhoto.is_encrypted ? "Restore (L)" : "Vault (L)"}
+            </span>
           </button>
 
           {/* Standard Download */}

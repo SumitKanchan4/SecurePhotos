@@ -64,10 +64,7 @@ export const VaultUnlockModal: React.FC<VaultUnlockModalProps> = ({
         setErrorMessage(data.detail || "Invalid password or authentication code.");
       }
     } catch {
-      // Offline fallback for preview
-      setIsVaultUnlocked(true);
-      onUnlockSuccess?.();
-      onClose();
+      setErrorMessage("Could not connect to vault authentication service.");
     } finally {
       setIsSubmitting(false);
     }

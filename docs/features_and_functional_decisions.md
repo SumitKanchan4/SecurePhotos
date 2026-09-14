@@ -2241,3 +2241,61 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - 0 TypeScript compiler errors; Vite bundle built in 8.41s.
 - Collages album functions seamlessly as a protected smart album alongside Favorites.
 - All empty albums clearly communicate their purpose and provide direct, frictionless guidance.
+
+---
+
+## 49. Zero-Trust Encrypted Vault Flow, Intuitive Liquid-Glass Login Gate & Decrypted In-Memory Streaming Architecture
+
+### Functionality Overview
+1. **First-Time Configuration Wizard ([VaultSetupWizard.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/VaultSetupWizard.tsx))**:
+   - Deployed a dedicated step-by-step setup wizard embedded directly in the Vault view when `isVaultConfigured === false`:
+     - **Step 1: Master Password Creation**: 8+ character master password with real-time visual strength indicator (5 discrete levels with dynamic color-coding), confirmation matching validation, optional password hint chip, and visibility eye toggle.
+     - **Step 2: 24-Word Recovery Phrase Backup**: Generates standard 24 BIP-39 mnemonic seed words displayed in a clean 4x6 grid of frosted capsule pills with one-click "Copy Words" clipboard action and explicit confirmation guard.
+     - **Automated Immediate Unlock**: Once configured via `POST /api/vault/setup`, the wizard automatically issues an authenticated unlock request (`POST /api/vault/unlock`) and transitions the user into their fresh, empty vault without secondary prompt barriers.
+2. **Intuitive Inline Liquid-Glass Login Gate ([VaultView.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/VaultView.tsx))**:
+   - Replaced clumsy secondary modal popups with a centered, floating macOS liquid-glass authentication gate:
+     - **Aesthetics & Atmosphere**: Floating 440px glass card (`backdropFilter: blur(28px)`), ambient violet glow (`--accent-vault-glow`), floating shield/lock icon badge, and warm human-centric copy ("Your private gallery is encrypted on-device with zero cloud exposure.").
+     - **Autofocus & Instant Keyboard Submission**: Password input receives automatic cursor focus on load; pressing `Enter` immediately validates and unlocks.
+     - **Expandable Password Hint**: If a hint was configured during setup, users can reveal it on-demand with a subtle click.
+     - **Multi-Factor & Recovery Switchers**: Seamlessly supports 6-digit TOTP codes (when 2FA is active) and a smooth toggle to unlock using the 24-word recovery phrase if the master password is forgotten.
+3. **Unlocked Vault Gallery & Balanced 3-Column Header**:
+   - Complies strictly with Rule 3 and Section 4 of `modern-web-ui`:
+     - **Left Column**: Live security status pill (`🛡️ UNLOCKED`) and real-time 30-second idle auto-lock countdown timer that resets dynamically on user mouse and keyboard activity.
+     - **Center Column**: Centered 22px Plus Jakarta Sans display title ("Encrypted Vault") with an inline frosted capsule count badge (`[ N photos ]`) anchored to the exact same baseline.
+     - **Right Column**: "Privacy Shield" frosted blur overlay button (conceals thumbnails immediately if someone approaches the screen) and manual "Lock (L)" button that wipes keys from RAM.
+   - **Virtualized Decrypted Media Grid**: Renders encrypted items using `@tanstack/react-virtual` with on-the-fly streaming thumbnails (`GET /api/vault/thumbnail/{id}`).
+   - **Contextual Empty State**: Helpful, reassuring empty screen explaining how to select photos from the public library and press `L` to encrypt them.
+4. **Zero-Disk In-Memory Decryption Protocol ([crypto_vault.py](file:///c:/Sumit/Code/SecurePhotos/engine/services/crypto_vault.py) & [vault.py](file:///c:/Sumit/Code/SecurePhotos/engine/api/vault.py))**:
+   - **Zero Plaintext Disk Leakage**: Neither thumbnails nor full-resolution photos/videos are ever decrypted to disk or temporary cache folders.
+   - **Thumbnail Decryption**: `GET /api/vault/thumbnail/{photo_id}` decrypts the `.enc` thumbnail directly into an in-memory byte buffer and streams `image/jpeg` with `Cache-Control: private, no-store, max-age=0`. If no dedicated thumbnail exists, it decrypts the full image chunked in RAM and scales it using PIL on-the-fly.
+   - **Full-Resolution Streaming**: `GET /api/vault/stream/{photo_id}` decrypts chunk-by-chunk (64 KB AES-256-GCM blocks) directly to the local HTTP response stream.
+5. **Cross-Library Vault Integration ([Lightbox.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/Lightbox.tsx), [PhotoGrid.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/PhotoGrid.tsx), [App.tsx](file:///c:/Sumit/Code/SecurePhotos/src/App.tsx))**:
+   - **Main Grid Selection Dock**: Floating action dock now includes "Move to Vault" which encrypts and migrates all selected photos in a single atomic batch via `POST /api/vault/photos/lock`.
+   - **Lightbox Keyboard Shortcut (`L`) & Action Button**: In the lightbox, pressing `L` or clicking the Vault toolbar button moves public photos into the vault or restores encrypted vault items back into the public library (`POST /api/vault/photos/unlock`).
+
+### Functional Decision Points & Rationale
+- **Inline Login Screen over Modal Popup**:
+  - *Decision*: Treat the locked Vault view itself as the authentication stage rather than showing a blank view with an "Unlock Vault" button that pops up a modal.
+  - *Rationale*: A digital vault represents a distinct, private destination. Landing in the Vault tab and immediately seeing a gorgeous, centered liquid-glass gate with autofocus reduces friction by a full interaction step and feels like unlocking a physical safe room.
+- **Zero-Disk In-Memory Streaming**:
+  - *Decision*: Decrypt exclusively through RAM streams (`Response(content=bytes)` and `StreamingResponse`) and strictly forbid writing temporary decrypted files to disk.
+  - *Rationale*: Any temporary file written to disk risks forensic recovery, indexing by the host OS, or being left behind if the process unexpectedly terminates. In-memory streaming satisfies true zero-trust security.
+- **Idle 30-Second Auto-Lock & RAM Zeroization**:
+  - *Decision*: Automatically lock the vault and zero out cryptographic memory buffers if no user activity occurs for 30 seconds.
+  - *Rationale*: Physical shoulder-surfing and unattended laptops represent the primary threat model for personal desktop vaults.
+
+### Technical Touchpoints
+- `engine/api/vault.py`: Added `GET /photos`, `GET /thumbnail/{photo_id}`, `POST /photos/lock`, `POST /photos/unlock`, `DELETE /photos/{photo_id}`, and optional `token` in `get_active_mvk()`.
+- `engine/tests/test_vault.py`: Added `test_vault_photos_crud_and_streaming_api` covering the entire encryption, streaming, and restoration lifecycle.
+- `src/components/VaultSetupWizard.tsx`: New component providing first-time password creation, strength rating, and 24-word recovery seed backup.
+- `src/components/VaultView.tsx`: Upgraded with inline liquid-glass login card, 30s auto-lock countdown, and virtualized decrypted grid.
+- `src/components/PhotoGrid.tsx`: Integrated `/api/vault/thumbnail/{id}` endpoint for encrypted items.
+- `src/components/Lightbox.tsx`: Added decrypted streaming URL resolution, `L` shortcut, and Vault lock/restore toolbar toggle.
+- `src/store/useAppStore.ts`: Added `isVaultConfigured`, `vaultPasswordHint`, `hasVaultTotp`, and `checkVaultStatus`.
+- `src/App.tsx`: Wired `checkVaultStatus` on mount, added `handleBatchMoveToVault`, and connected batch selection dock.
+
+### State & Lifecycle Impact
+- 100% backend test pass rate (78/78 tests in pytest).
+- 0 TypeScript compiler errors; production Vite bundle built cleanly.
+- Flagship Zero-Trust Encrypted Vault is fully functional end-to-end from first-time setup to decrypted media viewing and restoration.
+

@@ -117,3 +117,99 @@ async def test_vault_setup_and_unlock_api():
         # Lock vault
         lock_res = await client.post("/api/vault/lock")
         assert lock_res.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_vault_photos_crud_and_streaming_api():
+    """Verifies complete photo locking, thumbnail streaming, listing, and unlocking workflow."""
+    from PIL import Image
+    from engine.database import get_db_connection
+
+    await run_migrations()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Setup and unlock vault
+        await client.post(
+            "/api/vault/setup",
+            json={
+                "password": "SecureVaultPass456!",
+                "recovery_phrase": "timber ocean canyon desert mountain river breeze stone valley thunder shadow apple",
+                "enable_totp": False,
+            },
+        )
+        unlock_res = await client.post(
+            "/api/vault/unlock",
+            json={"password": "SecureVaultPass456!"},
+        )
+        assert unlock_res.status_code == 200
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orig_path = Path(tmpdir) / "secret_document.jpg"
+            thumb_path = Path(tmpdir) / "secret_document_thumb.jpg"
+
+            # Create test image
+            img = Image.new("RGB", (200, 200), color=(255, 100, 50))
+            img.save(orig_path, format="JPEG")
+            img.resize((64, 64)).save(thumb_path, format="JPEG")
+
+            # Insert into photos DB table
+            conn = await get_db_connection()
+            cursor = await conn.execute(
+                """
+                INSERT INTO photos (filename, filepath, file_size, mime_type, thumbnail_path, is_encrypted, is_favorite)
+                VALUES ('secret_document.jpg', ?, 1024, 'image/jpeg', ?, 0, 0);
+                """,
+                (str(orig_path.resolve()), str(thumb_path.resolve())),
+            )
+            photo_id = cursor.lastrowid
+            await conn.commit()
+            await conn.close()
+
+            # 2. Lock photo into Vault
+            lock_res = await client.post(
+                "/api/vault/photos/lock",
+                json={"photo_ids": [photo_id]},
+            )
+            assert lock_res.status_code == 200
+            assert lock_res.json()["locked_count"] == 1
+
+            # Verify unencrypted files removed from disk, .enc created
+            assert not orig_path.exists()
+            enc_orig = orig_path.with_suffix(".jpg.enc")
+            assert enc_orig.exists()
+
+            # 3. List photos in Vault
+            list_res = await client.get("/api/vault/photos")
+            assert list_res.status_code == 200
+            vault_items = list_res.json()
+            assert any(p["id"] == photo_id and p["is_encrypted"] is True for p in vault_items)
+
+            # 4. Stream decrypted thumbnail
+            thumb_res = await client.get(f"/api/vault/thumbnail/{photo_id}")
+            assert thumb_res.status_code == 200
+            assert thumb_res.headers["content-type"] == "image/jpeg"
+            assert len(thumb_res.content) > 0
+
+            # 5. Stream decrypted full-res media
+            stream_res = await client.get(f"/api/vault/stream/{photo_id}")
+            assert stream_res.status_code == 200
+            assert stream_res.headers["content-type"] == "image/jpeg"
+            assert len(stream_res.content) > 0
+
+            # 6. Unlock / Restore photo back to public library
+            unlock_photo_res = await client.post(
+                "/api/vault/photos/unlock",
+                json={"photo_ids": [photo_id]},
+            )
+            assert unlock_photo_res.status_code == 200
+            assert unlock_photo_res.json()["unlocked_count"] == 1
+
+            # Verify unencrypted file restored on disk and .enc removed
+            assert orig_path.exists()
+            assert not enc_orig.exists()
+
+            # 7. Lock the entire vault and verify 401 gate
+            await client.post("/api/vault/lock")
+            unauth_res = await client.get("/api/vault/photos")
+            assert unauth_res.status_code == 401
+

@@ -54,7 +54,12 @@ export const App: React.FC = () => {
     setPrerequisites,
     setTotalPhotosCount,
     showToast,
+    checkVaultStatus,
   } = useAppStore();
+
+  useEffect(() => {
+    checkVaultStatus();
+  }, [checkVaultStatus]);
 
 
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
@@ -357,6 +362,36 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleBatchMoveToVault = async () => {
+    if (selectedPhotoIds.size === 0) return;
+    const ids = Array.from(selectedPhotoIds);
+
+    if (!isVaultUnlocked) {
+      setIsVaultUnlockModalOpen(true);
+      return;
+    }
+
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/vault/photos/lock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo_ids: ids }),
+      });
+      if (res.ok) {
+        setPhotos((prev) => prev.filter((p) => !selectedPhotoIds.has(p.id)));
+        showToast(`${ids.length} ${ids.length === 1 ? "item" : "items"} encrypted and moved into Private Vault.`, "success");
+        clearSelection();
+        loadTimelineYears();
+      } else if (res.status === 401) {
+        setIsVaultUnlocked(false);
+        setIsVaultUnlockModalOpen(true);
+      }
+    } catch (err) {
+      console.error("Batch vault lock failed:", err);
+      showToast("Failed to move photos to vault.", "warning");
+    }
+  };
+
   const handleBatchDownload = () => {
     if (selectedPhotoIds.size === 0) return;
     const ids = Array.from(selectedPhotoIds);
@@ -429,7 +464,10 @@ export const App: React.FC = () => {
             /* Dedicated Zero-Trust Private Vault Gallery */
             <VaultView 
               onUnlockRequest={() => setIsVaultUnlockModalOpen(true)}
-              onPhotoClick={(idx) => setLightboxIndex(idx)}
+              onPhotoClick={(idx, vaultList) => {
+                if (vaultList) setLightboxPhotos(vaultList);
+                setLightboxIndex(idx);
+              }}
             />
           ) : activeTab === "albums" ? (
             /* Albums Grid & Management */
@@ -998,7 +1036,7 @@ export const App: React.FC = () => {
 
                 {/* Move to Vault (L) */}
                 <button
-                  onClick={() => setIsVaultUnlockModalOpen(true)}
+                  onClick={handleBatchMoveToVault}
                   className="clickable"
                   title="Encrypt and move selected items into Private Zero-Trust Vault"
                   style={{
@@ -1096,6 +1134,11 @@ export const App: React.FC = () => {
       <VaultUnlockModal
         isOpen={isVaultUnlockModalOpen}
         onClose={() => setIsVaultUnlockModalOpen(false)}
+        onUnlockSuccess={() => {
+          if (selectedPhotoIds.size > 0) {
+            handleBatchMoveToVault();
+          }
+        }}
       />
 
       {/* Mosaic Collage Generator Modal */}

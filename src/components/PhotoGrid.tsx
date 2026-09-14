@@ -60,7 +60,9 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
   const [hasError, setHasError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  const thumbnailUrl = `http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail?v=3`;
+  const thumbnailUrl = photo.is_encrypted
+    ? `http://127.0.0.1:8000/api/vault/thumbnail/${photo.id}`
+    : `http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail?v=3`;
   const isVideo = Boolean(photo.mime_type?.startsWith("video/"));
   const isPhoto = !isVideo;
   const isOptimizingThis = Boolean(isPhoto && optimizationProgress?.is_active && optimizationProgress.active_photo_id === photo.id);

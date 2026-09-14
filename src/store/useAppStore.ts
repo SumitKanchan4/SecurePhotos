@@ -22,6 +22,9 @@ interface AppState {
   isDriveConnected: boolean;
   systemHealth: SystemHealth | null;
   isVaultUnlocked: boolean;
+  isVaultConfigured: boolean;
+  vaultPasswordHint: string | null;
+  hasVaultTotp: boolean;
   prerequisites: SystemPrerequisites | null;
   totalPhotosCount: number;
   toast: { id: number; message: string; type: "info" | "success" | "warning" } | null;
@@ -37,6 +40,10 @@ interface AppState {
   setIsDriveConnected: (connected: boolean) => void;
   setSystemHealth: (health: SystemHealth | null) => void;
   setIsVaultUnlocked: (unlocked: boolean) => void;
+  setIsVaultConfigured: (configured: boolean) => void;
+  setVaultPasswordHint: (hint: string | null) => void;
+  setHasVaultTotp: (hasTotp: boolean) => void;
+  checkVaultStatus: () => Promise<void>;
   setPrerequisites: (prerequisites: SystemPrerequisites | null) => void;
   setTotalPhotosCount: (count: number) => void;
   showToast: (message: string, type?: "info" | "success" | "warning") => void;
@@ -52,6 +59,9 @@ export const useAppStore = create<AppState>((set) => ({
   isDriveConnected: true,
   systemHealth: null,
   isVaultUnlocked: false,
+  isVaultConfigured: false,
+  vaultPasswordHint: null,
+  hasVaultTotp: false,
   prerequisites: null,
   totalPhotosCount: 0,
   toast: null,
@@ -87,6 +97,25 @@ export const useAppStore = create<AppState>((set) => ({
   setIsDriveConnected: (isDriveConnected) => set({ isDriveConnected }),
   setSystemHealth: (systemHealth) => set({ systemHealth }),
   setIsVaultUnlocked: (isVaultUnlocked) => set({ isVaultUnlocked }),
+  setIsVaultConfigured: (isVaultConfigured) => set({ isVaultConfigured }),
+  setVaultPasswordHint: (vaultPasswordHint) => set({ vaultPasswordHint }),
+  setHasVaultTotp: (hasVaultTotp) => set({ hasVaultTotp }),
+  checkVaultStatus: async () => {
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/vault/status");
+      if (res.ok) {
+        const data = await res.json();
+        set({
+          isVaultConfigured: Boolean(data.is_configured),
+          isVaultUnlocked: Boolean(data.is_unlocked),
+          vaultPasswordHint: data.password_hint || null,
+          hasVaultTotp: Boolean(data.has_totp),
+        });
+      }
+    } catch (err) {
+      console.error("Failed to check vault status:", err);
+    }
+  },
   setPrerequisites: (prerequisites) => set({ prerequisites }),
   setTotalPhotosCount: (totalPhotosCount) => set({ totalPhotosCount }),
   showToast: (message, type = "info") => {
