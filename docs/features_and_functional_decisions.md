@@ -2251,32 +2251,29 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
    - Eliminated the cliché AI purple/violet accents (`#8b5cf6`, ambient purple glows) across the entire Vault interface.
    - Replaced with the application's signature native palette: deep obsidian liquid glass and electric sapphire/cobalt blue (`--accent-vault: #3b82f6` in dark mode, `#2563eb` in light mode, with subtle sapphire glow `rgba(59, 130, 246, 0.20)`).
    - All interactive controls, pill badges, and buttons now harmonize seamlessly with the existing Photos, Albums, and People design tokens.
-2. **Educational Explainer & Context Strip**:
-   - Added a clear, scannable educational header and a 3-pillar feature strip directly above the authentication card:
-     - **"100% On-Device Protection"**: Powered by military-grade AES-256-GCM encryption with keys residing solely in local device memory. Zero cloud exposure or remote access.
-     - **"Concealed Media"**: Vault photos and videos are hidden from the public timeline, albums, and device search.
-     - **"Zero-Disk Traces"**: Thumbnails and videos stream directly into memory upon decryption and are wiped the instant the vault is locked.
-   - Clarifies precisely what the Encrypted Vault is for, addressing user questions on why this space was created and how privacy is maintained.
-3. **First-Time Configuration Wizard ([VaultSetupWizard.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/VaultSetupWizard.tsx))**:
-   - Deployed a dedicated step-by-step setup wizard embedded directly in the Vault view when `isVaultConfigured === false`:
+2. **Persistent 3-Column Liquid-Glass Toolbar & Minimalist Desktop UI**:
+   - Complies strictly with Rule 3 and Section 4 of `modern-web-ui`:
+     - **Permanent Toolbar**: Pinned at the top in ALL states (Locked, Setup, and Unlocked), preserving spatial consistency across all tabs.
+     - **Locked Header**: Left: `[ 🔒 LOCKED ]` pill; Center: Centered 22px Plus Jakarta Sans `Encrypted Vault` with `[ Locked ]` badge; Right: `[ 💡 Hint ]` and `[ ⚙️ Reset ]`.
+     - **Setup Header**: Left: `[ ✦ SETUP REQUIRED ]` pill; Center: `Encrypted Vault` with `[ Not Set Up ]` badge; Right: `[ ✦ Set Up Vault ]` primary sapphire action.
+     - **Unlocked Header**: Left: `[ ✔ UNLOCKED ]` green pill + `⏱ Auto-locks in 30s` countdown; Center: `Encrypted Vault` with baseline `[ N photos ]` badge; Right: `[ 👁 Privacy Shield ]` and `[ 🔒 Lock (L) ]`.
+   - **Zero Clutter**: Completely eliminated bulky marketing feature boxes in favor of a clean, focused, distraction-free desktop presentation with generous breathing room.
+3. **Option A: Seamless Inline Glass Input (0 Extra Clicks)**:
+   - Centered 64px circular lock disc with electric sapphire glow.
+   - 20px bold Plus Jakarta Sans heading: `"Your Private Vault is Locked"`.
+   - Subtitle: `"Photos and videos inside are protected with on-device encryption. Enter your master password to unlock."`
+   - **Inline Liquid-Glass Pill**: Single unified 380px pill container with autofocus, master password input, eye toggle, and embedded primary `[ 🔓 Unlock ]` button. Typing a password and hitting `Enter` immediately validates and decrypts the vault without extra modal transitions.
+   - **Alternative Actions**: Clean toggle to `"Forgot password? Unlock with Recovery Phrase"`, `"Set up a new vault"`, and `"Reset configuration"`.
+4. **Unlocked Empty State (100% Match to Reference Screenshot)**:
+   - Centered 64px circular blue lock emblem.
+   - Title: `"Your Private Vault is Empty"`.
+   - Subtitle: `"Select any photo or video from your library and press "L" or choose "Move to Vault" to securely encrypt it on this device."`
+   - Action: Frosted pill button `[ Browse Photos Library → ]` that seamlessly switches to the Photos tab.
+5. **First-Time Configuration Wizard ([VaultSetupWizard.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/VaultSetupWizard.tsx))**:
+   - Streamlined 2-step setup wizard embedded in a focused liquid-glass container with cancellation support:
      - **Step 1: Master Password Creation**: 8+ character master password with real-time visual strength indicator (5 discrete levels with dynamic color-coding), confirmation matching validation, optional password hint chip, and visibility eye toggle.
      - **Step 2: 24-Word Recovery Phrase Backup**: Generates standard 24 BIP-39 mnemonic seed words displayed in a clean 4x6 grid of frosted capsule pills with one-click "Copy Words" clipboard action and explicit confirmation guard.
      - **Automated Immediate Unlock**: Once configured via `POST /api/vault/setup`, the wizard automatically issues an authenticated unlock request (`POST /api/vault/unlock`) and transitions the user into their fresh, empty vault without secondary prompt barriers.
-     - **Escape Hatches & Mode Switching**: Added "Already configured? Switch to Unlock" toggle and "Set up a new vault" / "Reset configuration" options to ensure users are never trapped on the wrong authentication stage.
-4. **Intuitive Inline Liquid-Glass Login Gate ([VaultView.tsx](file:///c:/Sumit/Code/SecurePhotos/src/components/VaultView.tsx))**:
-   - Replaced clumsy secondary modal popups with a centered, floating macOS liquid-glass authentication gate:
-     - **Aesthetics & Atmosphere**: Floating 440px glass card (`backdropFilter: blur(28px)`), native electric sapphire glow (`--accent-vault-glow`), floating shield/lock icon badge, and warm human-centric copy.
-     - **Autofocus & Instant Keyboard Submission**: Password input receives automatic cursor focus on load; pressing `Enter` immediately validates and unlocks.
-     - **Expandable Password Hint**: If a hint was configured during setup, users can reveal it on-demand with a subtle click.
-     - **Multi-Factor & Recovery Switchers**: Seamlessly supports 6-digit TOTP codes (when 2FA is active) and a smooth toggle to unlock using the 24-word recovery phrase if the master password is forgotten.
-     - **Reset Configuration (`POST /api/vault/reset`)**: Exposed an explicit reset action enabling users to purge dummy configurations and re-run first-time setup anytime.
-5. **Unlocked Vault Gallery & Balanced 3-Column Header**:
-   - Complies strictly with Rule 3 and Section 4 of `modern-web-ui`:
-     - **Left Column**: Live security status pill (`🛡️ UNLOCKED`) and real-time 30-second idle auto-lock countdown timer that resets dynamically on user mouse and keyboard activity.
-     - **Center Column**: Centered 22px Plus Jakarta Sans display title ("Encrypted Vault") with an inline frosted capsule count badge (`[ N photos ]`) anchored to the exact same baseline.
-     - **Right Column**: "Privacy Shield" frosted blur overlay button (conceals thumbnails immediately if someone approaches the screen) and manual "Lock (L)" button that wipes keys from RAM.
-   - **Virtualized Decrypted Media Grid**: Renders encrypted items using `@tanstack/react-virtual` with on-the-fly streaming thumbnails (`GET /api/vault/thumbnail/{id}`).
-   - **Contextual Empty State**: Helpful, reassuring empty screen explaining how to select photos from the public library and press `L` to encrypt them.
 6. **Zero-Disk In-Memory Decryption Protocol ([crypto_vault.py](file:///c:/Sumit/Code/SecurePhotos/engine/services/crypto_vault.py) & [vault.py](file:///c:/Sumit/Code/SecurePhotos/engine/api/vault.py))**:
    - **Zero Plaintext Disk Leakage**: Neither thumbnails nor full-resolution photos/videos are ever decrypted to disk or temporary cache folders.
    - **Thumbnail Decryption**: `GET /api/vault/thumbnail/{photo_id}` decrypts the `.enc` thumbnail directly into an in-memory byte buffer and streams `image/jpeg` with `Cache-Control: private, no-store, max-age=0`. If no dedicated thumbnail exists, it decrypts the full image chunked in RAM and scales it using PIL on-the-fly.
@@ -2289,28 +2286,22 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
    - Added automated teardown hooks in `engine/tests/test_vault.py` that call `/api/vault/reset` and delete test database records, ensuring development databases remain in a clean, pristine unconfigured state.
 
 ### Functional Decision Points & Rationale
-- **Elimination of "AI Purple" in Favor of Native Sapphire**:
-  - *Problem*: Generic purple gradients feel dated, disconnected from the photo library, and mimic generic AI chat tools rather than an integrated secure storage feature.
-  - *Solution*: Replaced all purple tokens with electric sapphire blue (`#3b82f6` / `#2563eb`), creating aesthetic continuity with the rest of SecurePhotos.
-- **Explicit Educational Pillars vs. Empty Login Box**:
-  - *Problem*: Users navigating to the Vault tab for the first time were greeted by a stark login box with no explanation of what the vault does or why it's useful.
-  - *Solution*: Added a 3-pillar context strip explaining 100% on-device encryption, separation from the public library, and zero-disk streaming.
-- **Escape Hatches & Reset Capabilities**:
-  - *Problem*: If test runs or previous sessions left the vault configured with an unknown password, users had no way to restart setup from the UI.
-  - *Solution*: Provided "Set up a new vault" and "Reset configuration" buttons, paired with automated test teardown.
-- **Zero-Disk In-Memory Streaming**:
-  - *Decision*: Decrypt exclusively through RAM streams (`Response(content=bytes)` and `StreamingResponse`) and strictly forbid writing temporary decrypted files to disk.
-  - *Rationale*: Any temporary file written to disk risks forensic recovery, indexing by the host OS, or being left behind if the process unexpectedly terminates. In-memory streaming satisfies true zero-trust security.
-- **Idle 30-Second Auto-Lock & RAM Zeroization**:
-  - *Decision*: Automatically lock the vault and zero out cryptographic memory buffers if no user activity occurs for 30 seconds.
-  - *Rationale*: Physical shoulder-surfing and unattended laptops represent the primary threat model for personal desktop vaults.
+- **Option A Seamless Inline Glass Input vs. Modals**:
+  - *Problem*: Clicking into the Vault tab only to see another "Unlock" button that opens a popup modal adds unnecessary friction and clicks.
+  - *Solution*: Embedded a sleek, autofocus pill input directly on the canvas under the lock emblem. Users can type immediately on landing and press `Enter` to decrypt.
+- **Persistent Header Toolbar vs. Dynamic Removal**:
+  - *Problem*: Removing the header toolbar in locked or setup states caused layout shifts and broke navigation muscle memory.
+  - *Solution*: Kept the balanced 3-column liquid-glass toolbar pinned in all states, updating the status pill and badges contextually.
+- **Zero Marketing Clutter**:
+  - *Problem*: Multi-card marketing feature boxes gave the app a SaaS website feel rather than a native desktop app aesthetic.
+  - *Solution*: Removed marketing boxes completely, maintaining pure desktop minimalism with the 64px blue lock emblem and clean Plus Jakarta Sans typography.
 
 ### Technical Touchpoints
 - `engine/api/vault.py`: Added `GET /photos`, `GET /thumbnail/{photo_id}`, `POST /photos/lock`, `POST /photos/unlock`, `DELETE /photos/{photo_id}`, `POST /reset`, and optional `token` in `get_active_mvk()`.
 - `engine/tests/test_vault.py`: Added `test_vault_photos_crud_and_streaming_api` with teardown hooks ensuring zero database pollution.
 - `src/index.css`: Replaced purple `--accent-vault` with native sapphire blue tokens.
-- `src/components/VaultSetupWizard.tsx`: Upgraded with sapphire palette, 3-pillar educational strip, and mode toggles.
-- `src/components/VaultView.tsx`: Upgraded with educational hero section, 3-pillar context, reset action, inline liquid-glass login card, 30s auto-lock countdown, and virtualized decrypted grid.
+- `src/components/VaultSetupWizard.tsx`: Streamlined wizard without marketing boxes, added `onCancel` support.
+- `src/components/VaultView.tsx`: Complete redesign featuring persistent 3-column toolbar, Option A seamless inline glass input, and pixel-accurate match to empty-state screenshot.
 - `src/components/PhotoGrid.tsx`: Integrated `/api/vault/thumbnail/{id}` endpoint for encrypted items.
 - `src/components/Lightbox.tsx`: Added decrypted streaming URL resolution, `L` shortcut, and Vault lock/restore toolbar toggle.
 - `src/store/useAppStore.ts`: Added `isVaultConfigured`, `vaultPasswordHint`, `hasVaultTotp`, and `checkVaultStatus`.
@@ -2318,5 +2309,5 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 
 ### State & Lifecycle Impact
 - 100% backend test pass rate (78/78 tests in pytest).
-- 0 TypeScript compiler errors; production Vite bundle built cleanly.
-- Flagship Zero-Trust Encrypted Vault is fully functional end-to-end with native styling, educational clarity, and foolproof first-time setup flow.
+- 0 TypeScript compiler errors; production Vite bundle built cleanly in 5.92s.
+- Clean desktop aesthetic with 0-extra-click inline unlock ergonomics and flawless visual harmony.

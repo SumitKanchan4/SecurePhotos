@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { 
-  ShieldCheck, 
   KeyRound, 
   Eye, 
   EyeOff, 
@@ -8,18 +7,16 @@ import {
   Check, 
   Sparkles, 
   Lock, 
-  ArrowRight,
-  ShieldAlert,
-  Loader2,
-  FileCheck,
-  EyeOff as EyeOffIcon,
-  HardDrive
+  ArrowRight, 
+  ShieldAlert, 
+  Loader2 
 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 
 interface VaultSetupWizardProps {
   onComplete: () => void;
   onSwitchToUnlock?: () => void;
+  onCancel?: () => void;
 }
 
 // 24 standard BIP-39 mnemonic seed words for cryptographic recovery
@@ -33,10 +30,10 @@ const SAMPLE_RECOVERY_WORDS = [
 /**
  * VaultSetupWizard Component
  *
- * Clean, native liquid-glass first-time configuration wizard.
+ * Clean, focused first-time configuration wizard.
  * Matches the application's native sapphire blue and deep obsidian palette.
  */
-export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, onSwitchToUnlock }) => {
+export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, onSwitchToUnlock, onCancel }) => {
   const showToast = useAppStore((state) => state.showToast);
   const setIsVaultUnlocked = useAppStore((state) => state.setIsVaultUnlocked);
   const setIsVaultConfigured = useAppStore((state) => state.setIsVaultConfigured);
@@ -146,134 +143,12 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, 
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: "flex-start",
-        padding: "36px 24px",
+        justifyContent: "center",
+        padding: "24px",
         overflowY: "auto",
-        gap: "28px",
       }}
     >
-      {/* ── Section 1: What is the Encrypted Vault & Why it exists ── */}
-      <div 
-        style={{ 
-          maxWidth: "680px", 
-          width: "100%", 
-          display: "flex", 
-          flexDirection: "column", 
-          alignItems: "center", 
-          textAlign: "center", 
-          gap: "12px" 
-        }}
-      >
-        <div 
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "6px 14px",
-            borderRadius: "var(--radius-full)",
-            backgroundColor: "rgba(59, 130, 246, 0.10)",
-            border: "1px solid rgba(59, 130, 246, 0.25)",
-            color: "var(--accent-primary)",
-            fontSize: "12px",
-            fontWeight: 700,
-            letterSpacing: "0.02em",
-          }}
-        >
-          <ShieldCheck size={14} />
-          <span>ZERO-TRUST PRIVATE VAULT</span>
-        </div>
-
-        <h1
-          style={{
-            fontFamily: "Plus Jakarta Sans, sans-serif",
-            fontSize: "28px",
-            fontWeight: 800,
-            letterSpacing: "-0.03em",
-            color: "var(--text-primary)",
-            margin: 0,
-          }}
-        >
-          Set Up Your Private Vault
-        </h1>
-
-        <p style={{ fontSize: "14px", color: "var(--text-secondary)", margin: 0, lineHeight: "1.6", maxWidth: "560px" }}>
-          The Encrypted Vault is a mathematically isolated local safe inside SecurePhotos. Photos and documents moved here are encrypted on your computer and completely hidden from your public library, albums, and searches.
-        </p>
-
-        {/* 3 Pillar Informational Cards */}
-        <div 
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: "12px",
-            width: "100%",
-            marginTop: "8px",
-            textAlign: "left",
-          }}
-        >
-          <div 
-            style={{
-              padding: "14px",
-              borderRadius: "var(--radius-md)",
-              backgroundColor: "var(--glass-surface)",
-              border: "1px solid var(--glass-border)",
-              display: "flex",
-              flexDirection: "column",
-              gap: "6px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--accent-primary)" }}>
-              <HardDrive size={16} />
-              <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>100% On-Device</span>
-            </div>
-            <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: "1.4" }}>
-              Encrypted locally with AES-256-GCM. Never uploaded to external servers or cloud accounts.
-            </p>
-          </div>
-
-          <div 
-            style={{
-              padding: "14px",
-              borderRadius: "var(--radius-md)",
-              backgroundColor: "var(--glass-surface)",
-              border: "1px solid var(--glass-border)",
-              display: "flex",
-              flexDirection: "column",
-              gap: "6px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--accent-success)" }}>
-              <EyeOffIcon size={16} />
-              <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>Concealed Media</span>
-            </div>
-            <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: "1.4" }}>
-              Locked items disappear from the main gallery, albums, and people tags until unlocked with your password.
-            </p>
-          </div>
-
-          <div 
-            style={{
-              padding: "14px",
-              borderRadius: "var(--radius-md)",
-              backgroundColor: "var(--glass-surface)",
-              border: "1px solid var(--glass-border)",
-              display: "flex",
-              flexDirection: "column",
-              gap: "6px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--accent-primary)" }}>
-              <FileCheck size={16} />
-              <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>Zero-Disk Traces</span>
-            </div>
-            <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: 0, lineHeight: "1.4" }}>
-              Decrypted directly in memory while viewing. Zero unencrypted temporary files or thumbnails are saved to disk.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Section 2: Setup Form Card ── */}
+      {/* Setup Form Card */}
       <div 
         className="liquid-glass-toolbar"
         style={{
@@ -504,6 +379,44 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ onComplete, 
               <span>Continue to Recovery Phrase</span>
               <ArrowRight size={15} />
             </button>
+
+            {onSwitchToUnlock && (
+              <div style={{ textAlign: "center", marginTop: "12px" }}>
+                <button
+                  type="button"
+                  onClick={onSwitchToUnlock}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--accent-primary)",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Already configured? Switch to Unlock
+                </button>
+              </div>
+            )}
+
+            {onCancel && (
+              <div style={{ textAlign: "center", marginTop: "6px" }}>
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel and go back
+                </button>
+              </div>
+            )}
           </form>
         )}
 
