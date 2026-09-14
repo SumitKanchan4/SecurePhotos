@@ -550,7 +550,7 @@ async def list_vault_album_photos(album_id: int) -> List[dict]:
     try:
         query = """
             SELECT 
-                p.id, p.filename, p.filepath, p.file_size, p.mime_type, p.width, p.height,
+                p.id, p.filename, p.filepath, p.file_size, p.original_file_size, p.mime_type, p.width, p.height,
                 p.taken_at, p.camera_make, p.camera_model, p.latitude, p.longitude,
                 p.iso, p.aperture, p.shutter_speed, p.focal_length, p.is_favorite,
                 p.is_encrypted, p.is_optimized, p.is_enhanced, p.caption,
@@ -568,6 +568,7 @@ async def list_vault_album_photos(album_id: int) -> List[dict]:
                     "filename": row["filename"],
                     "filepath": row["filepath"],
                     "file_size": row["file_size"],
+                    "original_file_size": row["original_file_size"] if "original_file_size" in row.keys() and row["original_file_size"] is not None else row["file_size"],
                     "mime_type": row["mime_type"],
                     "width": row["width"],
                     "height": row["height"],
@@ -604,7 +605,7 @@ async def list_vault_photos() -> List[dict]:
     try:
         async with conn.execute(
             """
-            SELECT id, filename, filepath, file_size, mime_type, width, height,
+            SELECT id, filename, filepath, file_size, original_file_size, mime_type, width, height,
                    taken_at, camera_make, camera_model, latitude, longitude,
                    iso, aperture, shutter_speed, focal_length, is_favorite,
                    is_encrypted, is_optimized, is_enhanced, caption, thumbnail_path, preview_path,
@@ -621,6 +622,7 @@ async def list_vault_photos() -> List[dict]:
                     "filename": row["filename"],
                     "filepath": row["filepath"],
                     "file_size": row["file_size"],
+                    "original_file_size": row["original_file_size"] if "original_file_size" in row.keys() and row["original_file_size"] is not None else row["file_size"],
                     "mime_type": row["mime_type"],
                     "width": row["width"],
                     "height": row["height"],

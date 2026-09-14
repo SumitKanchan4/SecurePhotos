@@ -26,6 +26,7 @@ export interface PhotoItem {
   filename: string;
   filepath: string;
   file_size: number;
+  original_file_size?: number;
   mime_type: string;
   width?: number;
   height?: number;

@@ -2490,5 +2490,73 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - All 81 engine automated tests passing (100% success rate).
 - Production bundle compiled cleanly (`npm run build` completed in 4.75s).
 
+---
+
+## 53. Baseline Media Size Capture & Storage Savings Analytics Roadmap
+
+### Functionality Overview
+1. **Raw Media Size Capture at Import**:
+   - Every ingested media item—whether camera photo, mobile snapshot, WhatsApp media, heavy 4K/vintage video clip, scanned document, or creative collage—now permanently records its raw, uncompressed source size in `photos.original_file_size` (in bytes) upon initial ingestion.
+2. **Immutable Baseline Preservation Across Processing Pipelines**:
+   - When a video undergoes visually lossless H.265/H.264 transcoding via `compress_video()`, the active `file_size` is updated to the newly compressed size while `original_file_size` remains untouched.
+   - When an image undergoes AI super-resolution, deblurring, or modern AVIF/WebP conversion, `original_file_size` is safeguarded, ensuring the exact baseline footprint is never lost.
+3. **API & Domain Type Serialization**:
+   - `PhotoResponse` in `engine/api/photos.py` exposes `original_file_size: Optional[int]`.
+   - `GET /api/photos`, `GET /api/albums/{id}`, `GET /api/vault/photos`, and `GET /api/vault/albums/{id}/photos` include `original_file_size` in their queries and projections.
+   - Frontend `PhotoItem` in `src/types/index.ts` declares `original_file_size?: number`.
+4. **Idempotent Migration & Automated Legacy Backfill**:
+   - `run_migrations()` dynamically detects if `original_file_size` is missing from `photos`, executes `ALTER TABLE photos ADD COLUMN original_file_size INTEGER;`, and backfills existing library media with `UPDATE photos SET original_file_size = file_size WHERE original_file_size IS NULL;`.
+
+### Functional Decision Points & Rationale
+- **Preserving True Baseline vs. Overwriting `file_size`**:
+  - *Problem*: Previously, when `compress_video()` or neural photo optimization reduced file size on disk, `photos.file_size` was directly updated with the new compressed size. Because no separate original size column existed, historical space savings could not be calculated.
+  - *Decision*: Decoupled the active storage footprint (`file_size`) from the historical imported size (`original_file_size`), establishing an immutable baseline for lifetime savings analytics.
+- **Storage Savings Computation Model**:
+  - Across the entire library, the total bytes saved can be computed instantly via a single SQLite aggregation:
+    ```sql
+    SELECT 
+        COUNT(*) as optimized_count,
+        SUM(CASE WHEN original_file_size > file_size THEN original_file_size - file_size ELSE 0 END) as total_saved_bytes,
+        SUM(original_file_size) as total_baseline_bytes,
+        SUM(file_size) as total_current_bytes
+    FROM photos
+    WHERE trashed_at IS NULL;
+    ```
+- **Future Enhancement Roadmap for UI Statistics**:
+  - **Phase 1: Dashboard "Storage Reclaimed" Stat Card**:
+    - Add a dedicated card in `DashboardView.tsx` alongside the App Storage breakdown displaying:
+      - Total Space Saved (e.g. `2.84 GB Saved (58% Total Reduction)`).
+      - Category breakdown: Space saved from Video Transcoding vs. Photo Optimization.
+  - **Phase 2: Lightbox & Inspector Space Savings Badges**:
+    - For any optimized asset where `original_file_size > file_size`, display a discreet, electric-sapphire pill badge in the Lightbox header and Photo Info drawer:
+      `[ ⚡ Saved 18.2 MB (64%) ]`.
+  - **Phase 3: Video Processing Queue ROI Summary**:
+    - In the Video Queue view, display cumulative throughput metrics showing how much disk space background processing has recovered this week/month.
+
+### Technical Touchpoints
+- `engine/database.py`:
+  - `SCHEMA_DDL`: Added `original_file_size INTEGER` to `photos` table.
+  - `run_migrations()`: Dynamic migration via `PRAGMA table_info(photos)` and backfill of `original_file_size = file_size`.
+- `engine/services/ingestion_service.py`: Added `original_file_size` to `INSERT INTO photos` with initial `file_size`.
+- `engine/services/video_service.py`:
+  - Added `orig_size = os.path.getsize(orig_path)` in `enhance_old_video()`.
+  - Included `original_file_size = COALESCE(original_file_size, ?)` in `compress_video()` and `enhance_old_video()`.
+  - Added 5-attempt retry loop with exponential backoff around `shutil.move` for Windows file-locking resilience.
+- `engine/api/photos.py`:
+  - Added `original_file_size: Optional[int] = None` to `PhotoResponse`.
+  - Included `original_file_size = COALESCE(original_file_size, file_size)` in background photo optimization update.
+  - Added `original_file_size` to `list_photos()` query and response mapping.
+- `engine/api/albums.py`: Added `p.original_file_size` to `get_album_detail()` query and response mapping.
+- `engine/api/vault.py`: Added `original_file_size` to `list_vault_album_photos()` and `list_vault_photos()`.
+- `src/types/index.ts`: Added `original_file_size?: number` to `PhotoItem`.
+- `engine/tests/test_ingestion.py`: Added assertions verifying `original_file_size` is recorded and exposed in API listing.
+- `engine/tests/test_videos.py`: Added assertions verifying `original_file_size` is preserved after video compression.
+
+### State & Lifecycle Impact
+- Zero database locking or migration overhead.
+- All 81 automated tests passing cleanly in 38.62s.
+- Clean TypeScript compilation and production bundle build in 5.02s.
+
+
 
 

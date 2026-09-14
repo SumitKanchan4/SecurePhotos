@@ -558,6 +558,7 @@ async def compress_video(
                 SET filepath = ?,
                     filename = ?,
                     file_size = ?,
+                    original_file_size = COALESCE(original_file_size, ?),
                     width = coalesce(?, width),
                     height = coalesce(?, height),
                     mime_type = 'video/mp4',
@@ -568,6 +569,7 @@ async def compress_video(
                     str(target_path),
                     target_path.name,
                     compressed_size,
+                    orig_size,
                     new_meta.get("width"),
                     new_meta.get("height"),
                     photo_id,
@@ -581,7 +583,14 @@ async def compress_video(
         trash_dir = Path(orig_path).parent / ".trash"
         trash_dir.mkdir(parents=True, exist_ok=True)
         trash_orig_path = trash_dir / f"{orig_p.name}.orig_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
-        shutil.move(orig_path, str(trash_orig_path))
+        for attempt in range(5):
+            try:
+                shutil.move(orig_path, str(trash_orig_path))
+                break
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                await asyncio.sleep(0.25 * (attempt + 1))
 
         # Refresh thumbnails for the new file
         if photo["thumbnail_path"]:
@@ -651,6 +660,7 @@ async def enhance_old_video(
     if not os.path.exists(orig_path):
         return {"success": False, "error": f"Source video file not found at {orig_path}"}
 
+    orig_size = os.path.getsize(orig_path)
     orig_p = Path(orig_path)
     clean_stem = orig_p.stem
     for sfx in ["_enhanced", "_4k", "_opt"]:
@@ -746,6 +756,7 @@ async def enhance_old_video(
                 SET filepath = ?,
                     filename = ?,
                     file_size = ?,
+                    original_file_size = COALESCE(original_file_size, ?),
                     width = ?,
                     height = ?,
                     mime_type = 'video/mp4',
@@ -757,6 +768,7 @@ async def enhance_old_video(
                     str(target_path),
                     target_path.name,
                     new_size,
+                    orig_size,
                     new_meta.get("width"),
                     new_meta.get("height"),
                     photo_id,

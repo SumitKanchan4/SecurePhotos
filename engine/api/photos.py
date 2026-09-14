@@ -21,6 +21,7 @@ class PhotoResponse(BaseModel):
     filename: str = ""
     filepath: str
     file_size: int
+    original_file_size: Optional[int] = None
     mime_type: str
     width: Optional[int] = None
     height: Optional[int] = None
@@ -193,7 +194,7 @@ async def run_background_optimization():
                             await conn.execute(
                                 """
                                 UPDATE photos 
-                                SET file_hash = ?, file_size = ?, width = ?, height = ?, 
+                                SET file_hash = ?, original_file_size = COALESCE(original_file_size, file_size), file_size = ?, width = ?, height = ?, 
                                     is_optimized = 1, is_enhanced = 1, preview_path = NULL 
                                 WHERE id = ?;
                                 """,
@@ -324,7 +325,7 @@ async def list_photos(
     conn = await get_db_connection()
     
     query = """
-        SELECT id, filename, filepath, file_size, mime_type, width, height,
+        SELECT id, filename, filepath, file_size, original_file_size, mime_type, width, height,
                taken_at, camera_make, camera_model,
                latitude, longitude, iso, aperture, shutter_speed, focal_length,
                is_favorite, is_encrypted,
@@ -354,6 +355,7 @@ async def list_photos(
                 filename=row["filename"],
                 filepath=row["filepath"],
                 file_size=row["file_size"],
+                original_file_size=row["original_file_size"] if "original_file_size" in row.keys() and row["original_file_size"] is not None else row["file_size"],
                 mime_type=row["mime_type"],
                 width=row["width"],
                 height=row["height"],

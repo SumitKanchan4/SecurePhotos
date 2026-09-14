@@ -482,13 +482,13 @@ async def ingest_single_photo(
     cursor = await conn.execute(
         """
         INSERT INTO photos (
-            filename, filepath, volume_uuid, file_size, mime_type,
+            filename, filepath, volume_uuid, file_size, original_file_size, mime_type,
             width, height, original_width, original_height, taken_at,
             camera_make, camera_model, latitude, longitude, iso,
             aperture, shutter_speed, focal_length, is_favorite, is_encrypted,
             thumbnail_path, preview_path, file_hash, is_managed, original_path
         ) VALUES (
-            ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?,
             ?, ?, ?, 0, 0,
@@ -499,6 +499,7 @@ async def ingest_single_photo(
             source_path.name,
             final_filepath,
             volume_uuid,
+            file_size,
             file_size,
             mime_type,
             metadata["width"],

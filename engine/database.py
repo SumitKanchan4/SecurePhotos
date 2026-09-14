@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS photos (
     filepath TEXT NOT NULL UNIQUE,
     volume_uuid TEXT,               -- Physical disk UUID for drive portability
     file_size INTEGER NOT NULL,
+    original_file_size INTEGER,     -- Raw baseline imported size in bytes for storage savings calculation
     mime_type TEXT DEFAULT 'image/jpeg',
     width INTEGER,
     height INTEGER,
@@ -553,6 +554,15 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
             await conn.execute("ALTER TABLE vault_configs ADD COLUMN pin_failed_attempts INTEGER DEFAULT 0;")
         if "has_pin" not in existing_cols:
             await conn.execute("ALTER TABLE vault_configs ADD COLUMN has_pin BOOLEAN DEFAULT 0;")
+
+        # Original media size migration: dynamically add original_file_size column if not present
+        async with conn.execute("PRAGMA table_info(photos);") as cursor:
+            existing_photo_cols = {row["name"] for row in await cursor.fetchall()}
+
+        if "original_file_size" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN original_file_size INTEGER;")
+            await conn.execute("UPDATE photos SET original_file_size = file_size WHERE original_file_size IS NULL;")
+            logger.info("Migrated photos schema: added original_file_size column and backfilled baseline sizes.")
 
         await conn.commit()
         logger.info("Database schema migrations executed successfully.")

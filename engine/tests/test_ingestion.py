@@ -124,13 +124,15 @@ async def test_managed_ingestion_and_deduplication():
             assert duplicate_id == photo_id  # Must return existing ID without duplicate insert
 
             # Check database record
-            async with conn.execute("SELECT id, filename, filepath, is_managed, width, height FROM photos WHERE id = ?;", (photo_id,)) as cursor:
+            async with conn.execute("SELECT id, filename, filepath, file_size, original_file_size, is_managed, width, height FROM photos WHERE id = ?;", (photo_id,)) as cursor:
                 row = await cursor.fetchone()
                 assert row is not None
                 assert row["filename"] == "original_photo.jpg"
                 assert row["is_managed"] == 1
                 assert row["width"] == 1280
                 assert row["height"] == 720
+                assert row["file_size"] == img_path.stat().st_size
+                assert row["original_file_size"] == row["file_size"]
                 managed_filepath = Path(row["filepath"])
         finally:
             await conn.close()
@@ -151,6 +153,10 @@ async def test_photos_api_listing_and_favorite():
         response = await client.get("/api/photos")
         assert response.status_code == 200
         assert isinstance(response.json(), list)
+        if response.json():
+            item = response.json()[0]
+            assert "original_file_size" in item
+            assert item["original_file_size"] is not None
 
 
 @pytest.mark.asyncio

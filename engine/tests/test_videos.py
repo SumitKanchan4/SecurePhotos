@@ -282,6 +282,7 @@ async def test_video_compression_workflow(tmp_path):
     conn = await get_db_connection()
     try:
         photo_id = await ingest_single_photo(conn, heavy_path, mode="managed")
+        await conn.execute("DELETE FROM video_processing_queue WHERE photo_id = ?;", (photo_id,))
         await conn.commit()
     finally:
         await conn.close()
@@ -293,6 +294,17 @@ async def test_video_compression_workflow(tmp_path):
     assert res["success"] is True, f"Compress failed: {res}"
     assert res["saved_bytes"] > 0
     assert res["compressed_bytes"] < res["original_bytes"]
+
+    # Verify in DB: file_size is compressed size and original_file_size is preserved
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT file_size, original_file_size FROM photos WHERE id = ?;", (photo_id,)) as cur:
+            row = await cur.fetchone()
+            assert row["file_size"] == res["compressed_bytes"]
+            assert row["original_file_size"] == res["original_bytes"]
+            assert row["original_file_size"] > row["file_size"]
+    finally:
+        await conn.close()
 
     # Verify original is moved to .trash folder
     trash_dir = Path(res["new_filepath"]).parent / ".trash"

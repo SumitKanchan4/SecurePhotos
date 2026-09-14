@@ -216,7 +216,7 @@ async def get_album_detail(album_id: int) -> AlbumDetailResponse:
         # Fetch non-trashed, unencrypted photos inside this album
         query = """
             SELECT 
-                p.id, p.filename, p.filepath, p.file_size, p.mime_type, p.width, p.height,
+                p.id, p.filename, p.filepath, p.file_size, p.original_file_size, p.mime_type, p.width, p.height,
                 p.taken_at, p.camera_make, p.camera_model,
                 p.latitude, p.longitude, p.iso, p.aperture, p.shutter_speed, p.focal_length,
                 p.is_favorite, p.is_encrypted,
@@ -235,6 +235,7 @@ async def get_album_detail(album_id: int) -> AlbumDetailResponse:
                 filename=r["filename"],
                 filepath=r["filepath"],
                 file_size=r["file_size"],
+                original_file_size=r["original_file_size"] if "original_file_size" in r.keys() and r["original_file_size"] is not None else r["file_size"],
                 mime_type=r["mime_type"],
                 width=r["width"],
                 height=r["height"],
