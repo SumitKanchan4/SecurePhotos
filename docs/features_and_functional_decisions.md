@@ -2721,4 +2721,57 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - All 10 automated unit tests passing (`engine/tests/test_vault.py`).
 - Instant theme toggle responsiveness with keyboard shortcut parity.
 
+---
+
+## 57. Full-Text & Smart Categorical Search Engine (FTS5, Zero-Leak Privacy & Spotlight Flyout)
+
+### Functionality Overview
+1. **Unified Multi-Entity Search API (`/api/search`)**:
+   - High-performance backend search endpoint executing concurrent matching across three distinct entities:
+     - **Recognized People**: Matches individuals by name from the `persons` table, returning face crop avatars, confirmed photo counts, and relationship tags.
+     - **Albums**: Matches album titles via fuzzy prefix/infix matching, returning cover thumbnails and item counts while strictly filtering out vault albums.
+     - **Photos & Media**: Queries SQLite FTS5 full-text index (`photos_fts`) across AI captions, OCR text, filenames, and dates, with automatic fallback to metadata LIKE queries.
+2. **Zero-Leak Privacy Isolation**:
+   - Guaranteed security enforcement: all queries unconditionally apply `p.is_encrypted = 0 AND p.trashed_at IS NULL`.
+   - Photos held in the encrypted Private Vault or in the 30-day Trash bin are strictly excluded from autocomplete, flyout previews, and search results to prevent privacy leaks.
+3. **Spotlight-Style Live Flyout (`TitleBar.tsx`)**:
+   - Apple Spotlight-grade dropdown flyout anchored below the search bar container with liquid glass blur (`backdropFilter: blur(28px)`).
+   - **Quick Category Chips**: When focused with an empty query, presents instant filters: `⭐ Favorites`, `🎥 Videos`, `📄 Documents & Receipts`, `📅 2026`, and `📅 2025`.
+   - **Live Debounced Autocomplete**: 180ms debounced queries displaying categorized results:
+     - People section with face crop avatars and relationship tags.
+     - Albums section with cover thumbnails and photo counts.
+     - Photos grid with micro-thumbnails, match reason pills (Caption, OCR, Filename, Date), and a direct "View all in gallery" action.
+   - **Global Keyboard Parity**: `Ctrl+K` (or `Cmd+K`) focuses search from anywhere in the app, `Escape` dismisses the flyout, and `Enter` commits the search to the gallery.
+4. **Gallery Search Mode Integration (`App.tsx` & `PhotoGrid.tsx`)**:
+   - In the photos tab, entering a search query dynamically switches the view to Search Results mode.
+   - Header toolbar updates with a `Search Filter Active` badge, 22px display title, baseline-aligned count capsule (`[ N matching photos ]`), and a prominent `[ ✕ Clear Search ]` pill.
+   - Timeline year ribbon is hidden during search to eliminate conflicting filter states.
+   - Dedicated user-friendly empty state with reassurance copy explaining that private vault items are kept private.
+
+### Functional Decision Points & Rationale
+- **Zero-Leak Vault Isolation vs. Unlocked In-Memory Search**:
+  - *Decision*: Keep Private Vault media strictly isolated from general search, even when the vault is unlocked.
+  - *Rationale*: Private Vault contents must only be browsable within the dedicated Private Vault view (`VaultView.tsx`) behind explicit authentication. Searching the public gallery should never expose private photos on screen in a shared environment.
+- **Unified Global Spotlight vs. View-Specific Filter**:
+  - *Decision*: Provide a single spotlight search bar in the TitleBar that surfaces people, albums, and photos simultaneously, while also filtering the main photo grid.
+  - *Rationale*: End users recall memories associatively (e.g. "Hawaii" could be an album name or a photo caption; "Elena" is a person). Multi-entity search eliminates guesswork.
+- **Human-Centric Copywriting & Reassurance (Rule 7)**:
+  - *Decision*: Avoid technical jargon such as "FTS5 query BM25 rank" or "SQLite match expression". Replace with user-first copy: "Private vault media and deleted items are protected and excluded from search."
+
+### Technical Touchpoints
+- **Backend**:
+  - `engine/api/search.py`: Comprehensive search router with input sanitizer, date intent detection, FTS5 + fallback queries, and parallel album/person/photo matching.
+  - `engine/main.py`: Mounted `search.router` under `/api/search`.
+  - `engine/tests/test_search.py`: 5 automated tests validating empty queries, FTS5 caption & OCR matching, zero-leak vault isolation, zero-leak trash isolation, and parallel album/person matching.
+- **Frontend**:
+  - `src/types/index.ts`: Registered `SearchPhotoItem`, `SearchAlbumItem`, `SearchPersonItem`, and `SearchResponse`.
+  - `src/components/TitleBar.tsx`: Spotlight flyout, category pills, click-outside dismissal, `Ctrl+K` shortcut, debounced search, and direct navigation.
+  - `src/App.tsx`: Debounced search query synchronization, `displayedPhotos` memoization, search active toolbar badge, baseline count capsule, clear button, and empty state.
+
+### State & Lifecycle Impact
+- 100% test pass rate across `engine/tests/test_search.py` (5/5) and `engine/tests/test_vault.py` (10/10).
+- Clean production build with zero TypeScript errors (`npm run build`).
+- 60fps virtualized rendering in `PhotoGrid` maintained during search filtering.
+
+
 

@@ -14,6 +14,7 @@ import {
   ChevronRight,
   X,
   CheckSquare,
+  Search,
 } from "lucide-react";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
@@ -37,7 +38,7 @@ import { AddToAlbumModal } from "./components/AddToAlbumModal";
 import { UpdateModal } from "./components/UpdateModal";
 import { ToastNotification } from "./components/ToastNotification";
 import { useAppStore } from "./store/useAppStore";
-import { PhotoItem, SystemPrerequisites, OptimizationProgress, VideoOptimizationProgress, TimelineYearsData } from "./types";
+import { PhotoItem, SystemPrerequisites, OptimizationProgress, VideoOptimizationProgress, TimelineYearsData, SearchResponse } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { check, Update } from "@tauri-apps/plugin-updater";
 
@@ -46,6 +47,8 @@ export const App: React.FC = () => {
     activeTab, 
     setActiveTab,
     toggleTheme, 
+    searchQuery,
+    setSearchQuery,
     selectedPhotoIds, 
     clearSelection,
     setActiveVolume,
@@ -78,6 +81,8 @@ export const App: React.FC = () => {
   const [activeStoryId, setActiveStoryId] = useState<number | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxPhotos, setLightboxPhotos] = useState<PhotoItem[] | null>(null);
+  const [searchResults, setSearchResults] = useState<PhotoItem[] | null>(null);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [optimizationProgress, setOptimizationProgress] = useState<OptimizationProgress | null>(null);
   const [videoProgress, setVideoProgress] = useState<VideoOptimizationProgress | null>(null);
   const [timelineData, setTimelineData] = useState<TimelineYearsData>({ total_count: 0, years: [] });
@@ -156,6 +161,58 @@ export const App: React.FC = () => {
       loadTimelineYears();
     }
   }, [activeTab, activeYear]);
+
+  // Debounced full-text & smart categorical search synchronization
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setSearchResults(null);
+      setIsSearchLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    setIsSearchLoading(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`http://127.0.0.1:8000/api/search?q=${encodeURIComponent(trimmed)}`);
+        if (res.ok && isMounted) {
+          const data: SearchResponse = await res.json();
+          const mapped: PhotoItem[] = data.photos.map((p) => ({
+            id: p.id,
+            filename: p.filename,
+            filepath: p.filepath,
+            file_size: 0,
+            mime_type: p.mime_type,
+            taken_at: p.taken_at || undefined,
+            is_favorite: p.is_favorite,
+            is_encrypted: false,
+            thumbnail_path: p.thumbnail_path || undefined,
+            caption: p.caption || undefined,
+            ocr_text: p.ocr_text || undefined,
+            is_document: p.is_document,
+            is_optimized: false,
+            is_enhanced: false,
+          }));
+          setSearchResults(mapped);
+        }
+      } catch (err) {
+        console.warn("Search query failed:", err);
+      } finally {
+        if (isMounted) setIsSearchLoading(false);
+      }
+    }, 200);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
+
+  const displayedPhotos = useMemo(() => {
+    return searchResults !== null ? searchResults : photos;
+  }, [searchResults, photos]);
 
   // Real-time polling for background photo 8K & video optimization progress
   useEffect(() => {
@@ -309,6 +366,7 @@ export const App: React.FC = () => {
 
   const handleDeletePhoto = (photoId: number) => {
     setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+    setSearchResults((prev) => (prev ? prev.filter((p) => p.id !== photoId) : null));
     loadTimelineYears();
     if (lightboxIndex !== null) {
       if (photos.length <= 1) {
@@ -323,6 +381,9 @@ export const App: React.FC = () => {
     // Optimistically update photos in library
     setPhotos((prev) =>
       prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p))
+    );
+    setSearchResults((prev) =>
+      prev ? prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p)) : null
     );
     // Optimistically update photos in active lightbox if present
     if (lightboxPhotos) {
@@ -339,12 +400,18 @@ export const App: React.FC = () => {
         setPhotos((prev) =>
           prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p))
         );
+        setSearchResults((prev) =>
+          prev ? prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p)) : null
+        );
       }
     } catch (err) {
       console.error("Failed to toggle favorite:", err);
       // Rollback on network failure
       setPhotos((prev) =>
         prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p))
+      );
+      setSearchResults((prev) =>
+        prev ? prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p)) : null
       );
     }
   };
@@ -360,6 +427,7 @@ export const App: React.FC = () => {
       });
       if (res.ok) {
         setPhotos((prev) => prev.filter((p) => !selectedPhotoIds.has(p.id)));
+        setSearchResults((prev) => (prev ? prev.filter((p) => !selectedPhotoIds.has(p.id)) : null));
         showToast(`Moved ${ids.length} photo(s) to Trash (held for 30 days)`, "info");
         clearSelection();
         loadTimelineYears();
@@ -393,6 +461,7 @@ export const App: React.FC = () => {
       });
       if (res.ok) {
         setPhotos((prev) => prev.filter((p) => !selectedPhotoIds.has(p.id)));
+        setSearchResults((prev) => (prev ? prev.filter((p) => !selectedPhotoIds.has(p.id)) : null));
         showToast(`${ids.length} ${ids.length === 1 ? "item" : "items"} encrypted and moved into Private Vault.`, "success");
         clearSelection();
         loadTimelineYears();
@@ -500,7 +569,29 @@ export const App: React.FC = () => {
       }}
     >
       {/* Frameless Window Custom Title Bar */}
-      <TitleBar />
+      <TitleBar 
+        onSelectPhoto={(photo, allPhotos) => {
+          const mapped: PhotoItem[] = allPhotos.map((p) => ({
+            id: p.id,
+            filename: p.filename,
+            filepath: p.filepath,
+            file_size: 0,
+            mime_type: p.mime_type,
+            taken_at: p.taken_at || undefined,
+            is_favorite: p.is_favorite,
+            is_encrypted: false,
+            thumbnail_path: p.thumbnail_path || undefined,
+            caption: p.caption || undefined,
+            ocr_text: p.ocr_text || undefined,
+            is_document: p.is_document,
+            is_optimized: false,
+            is_enhanced: false,
+          }));
+          setLightboxPhotos(mapped);
+          const targetIdx = allPhotos.findIndex((p) => p.id === photo.id);
+          setLightboxIndex(targetIdx >= 0 ? targetIdx : 0);
+        }}
+      />
 
       {/* Main Content Layout */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -600,7 +691,25 @@ export const App: React.FC = () => {
               >
                 {/* Left Column (flex: 1): Status / Live Optimization Badge */}
                 <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "10px", minWidth: "120px" }}>
-                  {videoProgress?.is_active ? (
+                  {searchQuery.trim() ? (
+                    <span 
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "4px 10px",
+                        borderRadius: "var(--radius-full)",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        backgroundColor: "rgba(59, 130, 246, 0.12)",
+                        color: "var(--accent-primary)",
+                        border: "1px solid rgba(59, 130, 246, 0.25)",
+                      }}
+                    >
+                      <Search size={12} style={{ color: "var(--accent-primary)" }} />
+                      Search Active
+                    </span>
+                  ) : videoProgress?.is_active ? (
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <span 
                         title={videoProgress.active_filename ? `Processing: ${videoProgress.active_filename}` : undefined}
@@ -689,7 +798,7 @@ export const App: React.FC = () => {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    Photos
+                    {searchQuery.trim() ? "Search Results" : "Photos"}
                   </h1>
                   <span 
                     style={{
@@ -705,246 +814,332 @@ export const App: React.FC = () => {
                       fontFamily: "var(--font-mono)",
                     }}
                   >
-                    {photos.length.toLocaleString()} {photos.length === 1 ? "photo" : "photos"}
+                    {isSearchLoading ? "Searching..." : `${displayedPhotos.length.toLocaleString()} ${displayedPhotos.length === 1 ? "photo" : "photos"}`}
                   </span>
                 </div>
 
                 {/* Right Column (flex: 1): Global Action Pills */}
                 <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px", minWidth: "120px" }}>
-                  <button
-                    className="clickable"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      padding: "6px 14px",
-                      borderRadius: "var(--radius-full)",
-                      backgroundColor: "var(--glass-pill-bg)",
-                      border: "1px solid var(--glass-pill-border)",
-                      color: "var(--text-primary)",
-                      fontSize: "12px",
-                      fontWeight: 500,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <FolderSync size={14} />
-                    Sync Folder
-                  </button>
-                  <button
-                    onClick={() => setIsImportModalOpen(true)}
-                    className="clickable"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      padding: "6px 16px",
-                      borderRadius: "var(--radius-full)",
-                      backgroundColor: "var(--accent-primary)",
-                      border: "none",
-                      color: "#ffffff",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      boxShadow: "0 2px 10px rgba(59, 130, 246, 0.25)",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <Plus size={15} />
-                    Import Media
-                  </button>
+                  {searchQuery.trim() ? (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="clickable"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "6px 14px",
+                        borderRadius: "var(--radius-full)",
+                        backgroundColor: "var(--glass-pill-bg)",
+                        border: "1px solid var(--glass-pill-border)",
+                        color: "var(--text-primary)",
+                        fontSize: "12px",
+                        fontWeight: 500,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <X size={14} />
+                      Clear Search
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        className="clickable"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "6px 14px",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "var(--glass-pill-bg)",
+                          border: "1px solid var(--glass-pill-border)",
+                          color: "var(--text-primary)",
+                          fontSize: "12px",
+                          fontWeight: 500,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <FolderSync size={14} />
+                        Sync Folder
+                      </button>
+                      <button
+                        onClick={() => setIsImportModalOpen(true)}
+                        className="clickable"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "6px 16px",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "var(--accent-primary)",
+                          border: "none",
+                          color: "#ffffff",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          boxShadow: "0 2px 10px rgba(59, 130, 246, 0.25)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <Plus size={15} />
+                        Import Media
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
               {/* Scalable Data-Driven Timeline Year Filter Ribbon with Chevrons & Edge Fade */}
-              <div 
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  padding: "8px 20px",
-                  fontSize: "12px",
-                  borderBottom: "1px solid var(--border-subtle)",
-                  backgroundColor: "var(--glass-surface)",
-                  backdropFilter: "blur(20px)",
-                  WebkitBackdropFilter: "blur(20px)",
-                  position: "relative",
-                }}
-              >
-                {/* Left Pinned Action Group (Timeline label + All Years pill) */}
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "5px", color: "var(--text-muted)", fontWeight: 600, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px", marginRight: "2px" }}>
-                    <Calendar size={13} style={{ color: "var(--accent-primary)" }} />
-                    <span>Timeline:</span>
-                  </div>
-
-                  {/* All Years Pill */}
-                  <button
-                    className="clickable"
-                    onClick={() => setActiveYear("All Years")}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      background: activeYear === "All Years" ? "var(--glass-pill-active)" : "var(--glass-pill-bg)",
-                      color: activeYear === "All Years" ? "var(--text-primary)" : "var(--text-secondary)",
-                      border: activeYear === "All Years" ? "1px solid var(--glass-border-highlight)" : "1px solid var(--glass-pill-border)",
-                      padding: "4px 12px",
-                      borderRadius: "var(--radius-full)",
-                      fontSize: "11px",
-                      fontWeight: activeYear === "All Years" ? 600 : 500,
-                      flexShrink: 0,
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    <span>All</span>
-                  </button>
-                </div>
-
-                {/* Subtle Vertical Glass Divider */}
-                {timelineData.years.length > 0 && (
-                  <div style={{ width: "1px", height: "18px", backgroundColor: "var(--glass-border-highlight)", flexShrink: 0 }} />
-                )}
-
-                {/* Scrollable Years Track with Chevrons and Edge Fade */}
-                {timelineData.years.length > 0 && (
-                  <div style={{ position: "relative", flex: 1, minWidth: 0, display: "flex", alignItems: "center" }}>
-                    {/* Left Scroll Chevron */}
-                    {canScrollLeft && (
-                      <button
-                        onClick={() => scrollTimeline(-240)}
-                        className="clickable"
-                        title="Scroll earlier years"
-                        style={{
-                          position: "absolute",
-                          left: "2px",
-                          zIndex: 10,
-                          width: "28px",
-                          height: "28px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "var(--glass-surface)",
-                          backdropFilter: "blur(16px)",
-                          WebkitBackdropFilter: "blur(16px)",
-                          border: "1px solid var(--glass-border-highlight)",
-                          boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          color: "var(--text-primary)",
-                          cursor: "pointer",
-                          transition: "all 0.15s ease",
-                        }}
-                      >
-                        <ChevronLeft size={15} />
-                      </button>
-                    )}
-
-                    {/* Scrollable Track */}
-                    <div 
-                      ref={timelineRibbonRef}
-                      onScroll={checkTimelineScroll}
-                      onWheel={(e) => {
-                        if (e.deltaY !== 0) {
-                          e.currentTarget.scrollLeft += e.deltaY;
-                          checkTimelineScroll();
-                        }
-                      }}
-                      style={{ 
-                        display: "flex", 
-                        alignItems: "center", 
-                        gap: "8px", 
-                        overflowX: "auto", 
-                        whiteSpace: "nowrap", 
-                        scrollbarWidth: "none", 
-                        padding: "4px 8px", 
-                        width: "100%",
-                        maskImage: canScrollLeft && canScrollRight
-                          ? "linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent)"
-                          : canScrollRight
-                          ? "linear-gradient(to right, black calc(100% - 32px), transparent)"
-                          : canScrollLeft
-                          ? "linear-gradient(to right, transparent, black 32px)"
-                          : "none",
-                        WebkitMaskImage: canScrollLeft && canScrollRight
-                          ? "linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent)"
-                          : canScrollRight
-                          ? "linear-gradient(to right, black calc(100% - 32px), transparent)"
-                          : canScrollLeft
-                          ? "linear-gradient(to right, transparent, black 32px)"
-                          : "none",
-                      }}
-                    >
-                      {timelineData.years.map((item) => {
-                        const isActive = activeYear === item.year;
-                        return (
-                          <button
-                            key={item.year}
-                            className="clickable"
-                            onClick={() => setActiveYear(item.year)}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "6px",
-                              background: isActive ? "var(--glass-pill-active)" : "var(--glass-pill-bg)",
-                              color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-                              border: isActive ? "1px solid var(--glass-border-highlight)" : "1px solid var(--glass-pill-border)",
-                              padding: "4px 12px",
-                              borderRadius: "var(--radius-full)",
-                              fontSize: "11px",
-                              fontWeight: isActive ? 600 : 500,
-                              flexShrink: 0,
-                              transition: "all 0.15s ease",
-                            }}
-                          >
-                            <span>{item.year}</span>
-                          </button>
-                        );
-                      })}
+              {!searchQuery.trim() && (
+                <div 
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "8px 20px",
+                    fontSize: "12px",
+                    borderBottom: "1px solid var(--border-subtle)",
+                    backgroundColor: "var(--glass-surface)",
+                    backdropFilter: "blur(20px)",
+                    WebkitBackdropFilter: "blur(20px)",
+                    position: "relative",
+                  }}
+                >
+                  {/* Left Pinned Action Group (Timeline label + All Years pill) */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "5px", color: "var(--text-muted)", fontWeight: 600, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px", marginRight: "2px" }}>
+                      <Calendar size={13} style={{ color: "var(--accent-primary)" }} />
+                      <span>Timeline:</span>
                     </div>
 
-                    {/* Right Scroll Chevron */}
-                    {canScrollRight && (
-                      <button
-                        onClick={() => scrollTimeline(240)}
-                        className="clickable"
-                        title="Scroll later years"
-                        style={{
-                          position: "absolute",
-                          right: "2px",
-                          zIndex: 10,
-                          width: "28px",
-                          height: "28px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "var(--glass-surface)",
-                          backdropFilter: "blur(16px)",
-                          WebkitBackdropFilter: "blur(16px)",
-                          border: "1px solid var(--glass-border-highlight)",
-                          boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          color: "var(--text-primary)",
-                          cursor: "pointer",
-                          transition: "all 0.15s ease",
+                    {/* All Years Pill */}
+                    <button
+                      className="clickable"
+                      onClick={() => setActiveYear("All Years")}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        background: activeYear === "All Years" ? "var(--glass-pill-active)" : "var(--glass-pill-bg)",
+                        color: activeYear === "All Years" ? "var(--text-primary)" : "var(--text-secondary)",
+                        border: activeYear === "All Years" ? "1px solid var(--glass-border-highlight)" : "1px solid var(--glass-pill-border)",
+                        padding: "4px 12px",
+                        borderRadius: "var(--radius-full)",
+                        fontSize: "11px",
+                        fontWeight: activeYear === "All Years" ? 600 : 500,
+                        flexShrink: 0,
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <span>All</span>
+                    </button>
+                  </div>
+
+                  {/* Subtle Vertical Glass Divider */}
+                  {timelineData.years.length > 0 && (
+                    <div style={{ width: "1px", height: "18px", backgroundColor: "var(--glass-border-highlight)", flexShrink: 0 }} />
+                  )}
+
+                  {/* Scrollable Years Track with Chevrons and Edge Fade */}
+                  {timelineData.years.length > 0 && (
+                    <div style={{ position: "relative", flex: 1, minWidth: 0, display: "flex", alignItems: "center" }}>
+                      {/* Left Scroll Chevron */}
+                      {canScrollLeft && (
+                        <button
+                          onClick={() => scrollTimeline(-240)}
+                          className="clickable"
+                          title="Scroll earlier years"
+                          style={{
+                            position: "absolute",
+                            left: "2px",
+                            zIndex: 10,
+                            width: "28px",
+                            height: "28px",
+                            borderRadius: "var(--radius-full)",
+                            backgroundColor: "var(--glass-surface)",
+                            backdropFilter: "blur(16px)",
+                            WebkitBackdropFilter: "blur(16px)",
+                            border: "1px solid var(--glass-border-highlight)",
+                            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "var(--text-primary)",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          <ChevronLeft size={15} />
+                        </button>
+                      )}
+
+                      {/* Scrollable Track */}
+                      <div 
+                        ref={timelineRibbonRef}
+                        onScroll={checkTimelineScroll}
+                        onWheel={(e) => {
+                          if (e.deltaY !== 0) {
+                            e.currentTarget.scrollLeft += e.deltaY;
+                            checkTimelineScroll();
+                          }
+                        }}
+                        style={{ 
+                          display: "flex", 
+                          alignItems: "center", 
+                          gap: "8px", 
+                          overflowX: "auto", 
+                          whiteSpace: "nowrap", 
+                          scrollbarWidth: "none", 
+                          padding: "4px 8px", 
+                          width: "100%",
+                          maskImage: canScrollLeft && canScrollRight
+                            ? "linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent)"
+                            : canScrollRight
+                            ? "linear-gradient(to right, black calc(100% - 32px), transparent)"
+                            : canScrollLeft
+                            ? "linear-gradient(to right, transparent, black 32px)"
+                            : "none",
+                          WebkitMaskImage: canScrollLeft && canScrollRight
+                            ? "linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent)"
+                            : canScrollRight
+                            ? "linear-gradient(to right, black calc(100% - 32px), transparent)"
+                            : canScrollLeft
+                            ? "linear-gradient(to right, transparent, black 32px)"
+                            : "none",
                         }}
                       >
-                        <ChevronRight size={15} />
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
+                        {timelineData.years.map((item) => {
+                          const isActive = activeYear === item.year;
+                          return (
+                            <button
+                              key={item.year}
+                              className="clickable"
+                              onClick={() => setActiveYear(item.year)}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                background: isActive ? "var(--glass-pill-active)" : "var(--glass-pill-bg)",
+                                color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                                border: isActive ? "1px solid var(--glass-border-highlight)" : "1px solid var(--glass-pill-border)",
+                                padding: "4px 12px",
+                                borderRadius: "var(--radius-full)",
+                                fontSize: "11px",
+                                fontWeight: isActive ? 600 : 500,
+                                flexShrink: 0,
+                                transition: "all 0.15s ease",
+                              }}
+                            >
+                              <span>{item.year}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Right Scroll Chevron */}
+                      {canScrollRight && (
+                        <button
+                          onClick={() => scrollTimeline(240)}
+                          className="clickable"
+                          title="Scroll later years"
+                          style={{
+                            position: "absolute",
+                            right: "2px",
+                            zIndex: 10,
+                            width: "28px",
+                            height: "28px",
+                            borderRadius: "var(--radius-full)",
+                            backgroundColor: "var(--glass-surface)",
+                            backdropFilter: "blur(16px)",
+                            WebkitBackdropFilter: "blur(16px)",
+                            border: "1px solid var(--glass-border-highlight)",
+                            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "var(--text-primary)",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          <ChevronRight size={15} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* 60 FPS Virtualized Grid / Empty State */}
-              <PhotoGrid 
-                photos={photos} 
-                optimizationProgress={optimizationProgress}
-                videoProgress={videoProgress}
-                onPhotoClick={(idx) => {
-                  setLightboxPhotos(null);
-                  setLightboxIndex(idx);
-                }} 
-                onImportClick={() => setIsImportModalOpen(true)}
-                onToggleFavorite={handleToggleFavorite}
-              />
+              {searchQuery.trim() !== "" && !isSearchLoading && displayedPhotos.length === 0 ? (
+                <div 
+                  style={{ 
+                    flex: 1,
+                    display: "flex", 
+                    flexDirection: "column", 
+                    alignItems: "center", 
+                    justifyContent: "center", 
+                    padding: "60px 20px",
+                    gap: "14px",
+                    color: "var(--text-secondary)"
+                  }}
+                >
+                  <div 
+                    style={{
+                      width: "56px",
+                      height: "56px",
+                      borderRadius: "var(--radius-full)",
+                      backgroundColor: "var(--glass-pill-bg)",
+                      border: "1px solid var(--glass-border)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "var(--text-muted)",
+                      boxShadow: "var(--glass-shadow)",
+                    }}
+                  >
+                    <Search size={26} />
+                  </div>
+                  <div style={{ fontSize: "17px", fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.01em" }}>
+                    No photos found for "{searchQuery}"
+                  </div>
+                  <div style={{ fontSize: "13px", color: "var(--text-muted)", maxWidth: "420px", textAlign: "center", lineHeight: "1.5" }}>
+                    Try searching by year (e.g. 2024), person name, or category tags. Vault photos and deleted items are protected and excluded from search.
+                  </div>
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="clickable"
+                    style={{
+                      marginTop: "10px",
+                      padding: "8px 20px",
+                      borderRadius: "var(--radius-full)",
+                      backgroundColor: "var(--glass-pill-bg)",
+                      border: "1px solid var(--glass-pill-border)",
+                      color: "var(--accent-primary)",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <X size={14} />
+                    <span>Clear Search Filter</span>
+                  </button>
+                </div>
+              ) : (
+                <PhotoGrid 
+                  photos={displayedPhotos} 
+                  optimizationProgress={optimizationProgress}
+                  videoProgress={videoProgress}
+                  onPhotoClick={(idx) => {
+                    setLightboxPhotos(displayedPhotos);
+                    setLightboxIndex(idx);
+                  }} 
+                  onImportClick={() => setIsImportModalOpen(true)}
+                  onToggleFavorite={handleToggleFavorite}
+                />
+              )}
 
               {/* ── Jira/Linear-Style Floating Bottom Batch Action Dock ──────────── */}
               <div
@@ -996,15 +1191,15 @@ export const App: React.FC = () => {
                 {/* Select All / Deselect All Toggle */}
                 <button
                   onClick={() => {
-                    if (selectedCount === photos.length) {
+                    if (selectedCount === displayedPhotos.length) {
                       clearSelection();
                     } else {
-                      const allIds = new Set(photos.map((p) => p.id));
+                      const allIds = new Set(displayedPhotos.map((p) => p.id));
                       useAppStore.setState({ selectedPhotoIds: allIds });
                     }
                   }}
                   className="clickable"
-                  title={selectedCount === photos.length ? "Deselect all items" : "Select all items in current view"}
+                  title={selectedCount === displayedPhotos.length ? "Deselect all items" : "Select all items in current view"}
                   style={{
                     padding: "5px 12px",
                     borderRadius: "var(--radius-full)",
@@ -1249,7 +1444,7 @@ export const App: React.FC = () => {
 
       {/* Immersive Fluid Lightbox */}
       <Lightbox
-        photos={lightboxPhotos ?? photos}
+        photos={lightboxPhotos ?? displayedPhotos}
         currentIndex={lightboxIndex ?? 0}
         isOpen={lightboxIndex !== null}
         optimizationProgress={optimizationProgress}

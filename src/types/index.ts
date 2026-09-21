@@ -303,3 +303,47 @@ export interface VideoOptimizationProgress {
   item_progress: number;
   total_reclaimed_bytes?: number;
 }
+
+export interface SearchPhotoItem {
+  id: number;
+  filename: string;
+  filepath: string;
+  mime_type: string;
+  thumbnail_path?: string | null;
+  taken_at?: string | null;
+  is_favorite: boolean;
+  is_document: boolean;
+  caption?: string | null;
+  ocr_text?: string | null;
+  match_reason?: string | null;
+}
+
+export interface SearchAlbumItem {
+  id: number;
+  name: string;
+  cover_photo_id?: number | null;
+  cover_thumbnail_path?: string | null;
+  photo_count: number;
+}
+
+export interface SearchPersonItem {
+  id: number;
+  name: string;
+  relationship_type?: string | null;
+  confirmed_count: number;
+  cover_face_id?: number | null;
+}
+
+export interface SearchResponse {
+  query: string;
+  total_photos: number;
+  photos: SearchPhotoItem[];
+  albums: SearchAlbumItem[];
+  people: SearchPersonItem[];
+  detected_intent?: {
+    type?: string | null;
+    year?: string | null;
+    month?: string | null;
+  } | null;
+  suggestions: string[];
+}
