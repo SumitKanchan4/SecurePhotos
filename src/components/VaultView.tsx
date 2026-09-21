@@ -124,6 +124,16 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     return vaultPhotos.filter((p) => Boolean(p.is_document) || p.mime_type?.includes("pdf") || p.filename?.toLowerCase().endsWith(".pdf") || p.vault_type === "documents");
   }, [vaultPhotos]);
 
+  // Memoized photo click handlers to prevent child PhotoCard re-renders on auto-lock countdown ticks
+  const handlePhotoClick = useCallback((idx: number) => {
+    onPhotoClick?.(idx, visualPhotos);
+  }, [onPhotoClick, visualPhotos]);
+
+  const handleAlbumPhotoClick = useCallback((idx: number) => {
+    onPhotoClick?.(idx, vaultAlbumPhotos);
+  }, [onPhotoClick, vaultAlbumPhotos]);
+
+
   // Check vault configuration on mount
   useEffect(() => {
     checkVaultStatus();
@@ -1388,7 +1398,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
             ) : (
               <PhotoGrid 
                 photos={vaultAlbumPhotos} 
-                onPhotoClick={(idx) => onPhotoClick?.(idx, vaultAlbumPhotos)} 
+                onPhotoClick={handleAlbumPhotoClick} 
               />
             )
           ) : activeVaultSection === "photos" ? (
@@ -1469,7 +1479,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
             ) : (
               <PhotoGrid 
                 photos={visualPhotos} 
-                onPhotoClick={(idx) => onPhotoClick?.(idx, visualPhotos)} 
+                onPhotoClick={handlePhotoClick} 
               />
             )
           ) : activeVaultSection === "albums" ? (

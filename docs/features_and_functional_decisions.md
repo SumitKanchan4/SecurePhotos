@@ -2618,3 +2618,61 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - All 17 unit and integration tests passing (`engine/tests/test_vault.py`, `engine/tests/test_ingestion.py`).
 - Zero TypeScript errors; production bundle built cleanly in 4.74s.
 - Existing database records for photos 21 and 15 successfully self-healed.
+
+---
+
+## 55. Elimination of Vault Grid Thrashing Loop, Scrollbar Gutter Stabilization & Relative Thumbnail Resolution
+
+### Functionality Overview
+1. **Elimination of Vault Image Flickering**:
+   - Resolved the high-frequency image flickering and skeleton flashing observed exclusively in the Encrypted Vault's "Photos" tab upon unlocking.
+   - Identified and dismantled an infinite ResizeObserver feedback loop triggered by boundary conditions between container heights and scrollbar injection.
+2. **Stable Scrollbar Gutter Geometry**:
+   - In `src/components/PhotoGrid.tsx`, set `scrollbarGutter: "stable"` and forced `overflowY: "scroll"` on the scrolling container (`parentRef`).
+   - Completely eliminates the 17px horizontal layout shift in Windows desktop environments when media galleries transition from non-scrollable to scrollable heights.
+3. **TanStack Virtualizer Hysteresis & Cache Thrash Prevention**:
+   - Guarded column updates (`prevCols !== cols`) and row height calculations (`Math.abs(prevHeight - itemHeight) >= 2`) with subpixel hysteresis thresholds to stop subpixel layout oscillations from propagating to React state.
+   - Removed redundant `ref={rowVirtualizer.measureElement}` bindings and an erroneous `rowVirtualizer.measure()` cache-clearing loop that was forcing TanStack Virtual to discard its size cache and re-notify listeners on every frame across uniform 1:1 grid rows.
+4. **Auto-Lock Countdown Re-render Isolation**:
+   - In `src/components/VaultView.tsx`, memoized `handlePhotoClick` and `handleAlbumPhotoClick` with `useCallback` dependencies.
+   - Prevents the 1-second auto-lock countdown timer (`secondsRemaining`) from generating new function references and invalidating `React.memo` on every mounted `PhotoCard`.
+5. **Backend Relative Path Resolution & Safe Video Handling**:
+   - In `engine/api/vault.py`, normalized all SQLite `filepath`, `thumbnail_path`, and `preview_path` lookups against `settings.data_dir` when stored as relative paths.
+   - Resolved an issue where photo 2407 (`.mp4`) failed to load its pre-generated thumbnail, fell back to in-memory decryption, and crashed PIL `Image.open` with HTTP 500. Added video MIME checks and graceful 404 handling.
+   - Ensured plain unencrypted thumbnails on disk are served directly if present, while `.enc` encrypted files are decrypted chunked via Master Vault Key (MVK).
+
+### Functional Decision Points & Rationale
+- **Stable Scrollbar Gutter vs. Overflow Auto**:
+  - *Decision*: Apply `scrollbarGutter: "stable"` and `overflowY: "scroll"` to `parentRef`.
+  - *Rationale*: In the Vault "Photos" tab with 10 photos across 4 columns (~504px content height in a ~490px container), `overflowY: "auto"` toggled the Windows 17px scrollbar continuously: content without scrollbar fit within width -> height exceeded viewport -> scrollbar added -> width shrank by 17px -> items recomputed -> height shrank below viewport -> scrollbar removed. Forcing stable scrollbar gutter prevents this oscillation permanently.
+- **Fixed 1:1 Grid Measurement vs. Dynamic Element Measurement**:
+  - *Decision*: Omit `rowVirtualizer.measureElement` and manual `measure()` cache purges on uniform grid rows.
+  - *Rationale*: TanStack Virtualizer already calculates exact row heights via `itemHeight = Math.floor(availableWidth / cols) + GAP`. Measuring DOM elements dynamically and invoking `measure()` on state updates resets the virtualizer's internal cache and calls `notify()`, creating synchronous re-render cascades.
+- **Subpixel Hysteresis (2px Guard)**:
+  - *Decision*: Only trigger `setRowHeight` if the height delta exceeds 2 physical pixels (`Math.abs(prev - next) >= 2`).
+  - *Rationale*: High-DPI displays (125%, 150% scaling) introduce floating-point rounding discrepancies (e.g. `245.2px` vs `245.6px`) on successive frames. Ignoring subpixel noise prevents spurious re-renders.
+- **Callback Memoization in VaultView**:
+  - *Decision*: Wrap photo selection handlers in `useCallback` bounded to photo array references.
+  - *Rationale*: Because vault thumbnails are served with `Cache-Control: private, no-store, max-age=0` for zero-trust security, any unnecessary re-render of `PhotoCard` forces the browser to re-request and re-decode decrypted image bytes, flashing skeleton shimmers. Memoization ensures child cards only render when their data actually changes.
+
+### Technical Touchpoints
+- `src/components/PhotoGrid.tsx`:
+  - Added `scrollbarGutter: "stable"` and `overflowY: "scroll"` to parent container styling.
+  - Added column change guard `prevCols !== cols` and subpixel height threshold `Math.abs(prevHeight - itemHeight) >= 2`.
+  - Removed `rowVirtualizer.measureElement` ref on row containers and removed `rowVirtualizer.measure()` call on resize.
+- `src/components/VaultView.tsx`:
+  - Wrapped `handlePhotoClick` and `handleAlbumPhotoClick` in `useCallback`.
+  - Passed memoized handlers to both `PhotoGrid` instances.
+- `engine/api/vault.py`:
+  - Imported `settings` from `engine.config`.
+  - Normalized `filepath`, `thumbnail_path`, and `preview_path` via `raw_path if raw_path.is_absolute() else (settings.data_dir / raw_path)` across `stream_vault_photo`, `lock_album_to_vault`, `unlock_album_from_vault`, `get_vault_thumbnail`, `lock_photos_to_vault`, `restore_photos_from_vault`, and `delete_vault_photo_permanently`.
+  - Supported plain disk files as well as `.enc` decrypted files in `get_vault_thumbnail`.
+  - Added video MIME detection in `get_vault_thumbnail` to prevent passing video bytes to PIL `Image.open`.
+- `engine/tests/test_vault.py`:
+  - Added automated test `test_vault_relative_thumbnail_and_video_handling` verifying relative thumbnail resolution and video thumbnail serving.
+
+### State & Lifecycle Impact
+- All 10 automated unit tests passing (`engine/tests/test_vault.py`) in 7.07s.
+- Zero TypeScript errors; production bundle built cleanly via `tsc && vite build` in 10.72s.
+- Completely stable 60fps scrolling and display in the encrypted vault gallery.
+

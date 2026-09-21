@@ -629,6 +629,75 @@ async def test_vault_thumbnail_exif_rotation_preservation():
             await client.post("/api/vault/reset")
 
 
+@pytest.mark.asyncio
+async def test_vault_relative_thumbnail_and_video_handling():
+    """Verifies that relative thumbnail paths resolve properly against settings.data_dir
+    and that videos with pre-generated thumbnails are handled gracefully without 500 errors.
+    """
+    from engine.config import settings
+    from engine.database import get_db_connection
+    from engine.main import app
+    from PIL import Image
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post("/api/vault/reset")
+        setup_res = await client.post(
+            "/api/vault/setup",
+            json={
+                "password": "TestPassword123!",
+                "recovery_phrase": "timber ocean canyon desert mountain river breeze stone valley thunder shadow apple",
+                "hint": "relative path test",
+            },
+        )
+        assert setup_res.status_code == 201
+        await client.post("/api/vault/unlock", json={"password": "TestPassword123!"})
+
+        test_dir = settings.data_dir / "thumbnails" / "test_vault_rel"
+        test_dir.mkdir(parents=True, exist_ok=True)
+        thumb_file = test_dir / "sample_thumb.webp"
+        
+        # Create a small valid WebP
+        with Image.new("RGB", (64, 64), color="blue") as img:
+            img.save(thumb_file, format="WEBP")
+
+        orig_file = test_dir / "sample_video.mp4"
+        orig_file.write_bytes(b"dummy video data header")
+
+        conn = await get_db_connection()
+        photo_id = None
+        try:
+            rel_thumb_path = "thumbnails/test_vault_rel/sample_thumb.webp"
+            cursor = await conn.execute(
+                """
+                INSERT INTO photos (filename, filepath, thumbnail_path, file_size, mime_type, taken_at)
+                VALUES ('sample_video.mp4', ?, ?, ?, 'video/mp4', '2023-01-01 12:00:00');
+                """,
+                (str(orig_file.resolve()), rel_thumb_path, orig_file.stat().st_size),
+            )
+            photo_id = cursor.lastrowid
+            await conn.commit()
+
+            # Lock to vault
+            lock_res = await client.post("/api/vault/photos/lock", json={"photo_ids": [photo_id]})
+            assert lock_res.status_code == 200
+
+            # Request vault thumbnail - must find relative thumbnail without 500 crash
+            thumb_res = await client.get(f"/api/vault/thumbnail/{photo_id}")
+            assert thumb_res.status_code == 200
+            assert len(thumb_res.content) > 0
+            assert "image/webp" in thumb_res.headers["content-type"]
+
+        finally:
+            if photo_id:
+                await conn.execute("DELETE FROM photos WHERE id = ?;", (photo_id,))
+                await conn.commit()
+            await conn.close()
+
+            import shutil
+            shutil.rmtree(test_dir, ignore_errors=True)
+            await client.post("/api/vault/reset")
+
+
+
 
 
 

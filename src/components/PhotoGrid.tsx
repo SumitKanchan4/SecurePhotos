@@ -530,8 +530,9 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
       const itemWidth = (width - (cols - 1) * gap) / cols;
       const cardAspectRatio = 1; // 1:1 Square (strictly matching Albums & People tabs)
       const itemHeight = Math.round(itemWidth / cardAspectRatio);
-      setColumns(cols);
-      setRowHeight(itemHeight);
+
+      setColumns((prevCols) => (prevCols !== cols ? cols : prevCols));
+      setRowHeight((prevHeight) => (Math.abs(prevHeight - itemHeight) >= 2 ? itemHeight : prevHeight));
     };
 
     updateGrid();
@@ -550,11 +551,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
     overscan: 2,
   });
 
-  // Force virtualizer to recalculate cached measurements whenever column layout or dimensions update
-  useEffect(() => {
-    rowVirtualizer.measure();
-  }, [columns, rowHeight, rowVirtualizer]);
-
   if (allPhotos.length === 0) {
     return (
       <EmptyLibraryState 
@@ -570,7 +566,8 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
       ref={parentRef}
       style={{
         flex: 1,
-        overflowY: "auto",
+        overflowY: "scroll",
+        scrollbarGutter: "stable",
         padding: "16px 16px 88px 16px",
         height: "100%",
         position: "relative",
@@ -590,7 +587,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
           return (
             <div
               key={virtualRow.key}
-              ref={rowVirtualizer.measureElement}
               data-index={virtualRow.index}
               style={{
                 position: "absolute",
