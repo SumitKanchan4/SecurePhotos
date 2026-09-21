@@ -2676,3 +2676,49 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - Zero TypeScript errors; production bundle built cleanly via `tsc && vite build` in 10.72s.
 - Completely stable 60fps scrolling and display in the encrypted vault gallery.
 
+---
+
+## 56. Settings View Modernization, Section 4 Liquid Glass Alignment & Human-Centric Copywriting
+
+### Functionality Overview
+1. **Section 4 Header Compliance**:
+   - Modernized `src/components/SettingsView.tsx` with the mandatory floating liquid-glass sticky toolbar (`liquid-glass-toolbar`).
+   - Implemented the balanced 3-column layout (`flex: 1` Left / `flex: 0 1 auto` Center / `flex: 1` Right):
+     - **Left**: Category pill badge `[ ⚙️ Preferences & System ]` in `var(--glass-badge-bg)`.
+     - **Center**: 22px Plus Jakarta Sans bold title (`Settings`) with baseline-aligned inline frosted capsule `[ v0.1.0 • 100% Private ]`.
+     - **Right**: Direct action pills for instant theme switching (`[ 🌙 Dark Mode ]` / `[ ☀️ Light Mode ]`) and update checking (`[ 🔄 Updates ]`).
+2. **Interactive Segmented Dual-Theme Selector**:
+   - Replaced the buried theme button with prominent side-by-side visual cards for **Dark Obsidian** and **Light Titanium**.
+   - Includes real-time active indicators, color swatches, descriptive mood copy, and a keyboard shortcut hint (`T`).
+3. **Pill Geometry & Frosted Liquid-Glass Hierarchy**:
+   - Upgraded all cards from blocky 8px rectangular containers to fluid `var(--radius-xl)` frosted glass panels with `24px` padding, subtle borders (`var(--glass-border)`), and soft drop shadows (`var(--glass-shadow)`).
+   - Standardized all buttons, badges, selectors, and switches to `var(--radius-full)` pill geometry.
+4. **Purge of Developer Jargon in Favor of Human-First Language (Rule 7)**:
+   - Completely removed developer-oriented systems jargon ("Local IPC Engine Port 8000", "FastAPI SQLite WAL backend", "Operating in WAL mode with composite B-Tree indexes", raw file paths).
+   - Re-anchored all copy around end-user mental models and reassurance: 100% on-device execution, zero cloud uploads, storage savings, and offline portability.
+
+### Functional Decision Points & Rationale
+- **Sticky Liquid-Glass Toolbar vs. Unstyled Text Header**:
+  - *Decision*: Adopt the standardized Section 4 sticky toolbar.
+  - *Rationale*: Maintains visual consistency across all top-level tabs (Photos, Albums, People, Vault, Settings). The sticky toolbar ensures theme switching and update checking are immediately reachable even when scrolling down longer configuration pages.
+- **Segmented Visual Cards for Themes**:
+  - *Decision*: Present theme choices as large interactive tiles rather than a standard dropdown or plain button.
+  - *Rationale*: Visual theme selection is one of the most personal desktop customization actions; showing real contrast swatches gives users immediate visual confidence in the active theme.
+- **Calibrated Human Quality Tiers on Slider**:
+  - *Decision*: Map technical CRF numbers (12–28) to four human-calibrated tiers: Studio Archival, Ultra-Quality 8K (Recommended), High Efficiency, and Maximum Space Saver.
+  - *Rationale*: Raw CRF values create cognitive hesitation. Clear human labels coupled with estimated file sizes and recommendations guide users effortlessly.
+
+### Technical Touchpoints
+- `src/components/SettingsView.tsx`:
+  - Implemented 3-column sticky liquid glass header with Plus Jakarta Sans typography.
+  - Added visual segmented theme selector.
+  - Added calibrated quality slider with color-coded tier capsules.
+  - Standardized all cards to `var(--radius-xl)` frosted liquid glass.
+  - Humanized all technical descriptions and status indicators.
+
+### State & Lifecycle Impact
+- Zero TypeScript compilation errors; production bundle built cleanly in 4.48s.
+- All 10 automated unit tests passing (`engine/tests/test_vault.py`).
+- Instant theme toggle responsiveness with keyboard shortcut parity.
+
+
