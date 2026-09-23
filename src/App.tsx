@@ -1460,6 +1460,12 @@ export const App: React.FC = () => {
         storyId={activeStoryId}
         isOpen={activeStoryId !== null}
         onClose={() => setActiveStoryId(null)}
+        onStoryDeleted={(id) => {
+          window.dispatchEvent(new CustomEvent("stories-changed", { detail: { storyId: id, action: "deleted" } }));
+        }}
+        onStorySaveToggled={(id, isSaved) => {
+          window.dispatchEvent(new CustomEvent("stories-changed", { detail: { storyId: id, action: "saved", isSaved } }));
+        }}
       />
 
       {/* Immersive Fluid Lightbox */}

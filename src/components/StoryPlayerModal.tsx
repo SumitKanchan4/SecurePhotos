@@ -11,7 +11,9 @@ import {
   ChevronRight,
   RefreshCw,
   Check,
-  Disc3
+  Disc3,
+  Bookmark,
+  Trash2
 } from "lucide-react";
 import { StoryModel, MusicTrackItem } from "../types";
 
@@ -21,6 +23,8 @@ interface StoryPlayerModalProps {
   storyId: number | null;
   isOpen: boolean;
   onClose: () => void;
+  onStoryDeleted?: (storyId: number) => void;
+  onStorySaveToggled?: (storyId: number, isSaved: boolean) => void;
 }
 
 /**
@@ -206,6 +210,8 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
   storyId,
   isOpen,
   onClose,
+  onStoryDeleted,
+  onStorySaveToggled,
 }) => {
   const [story, setStory] = useState<StoryModel | null>(null);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
@@ -279,6 +285,39 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
       setIsLoading(false);
     }
   }, []);
+
+  const handleToggleSave = async () => {
+    if (!story) return;
+    const nextSaved = !story.is_saved;
+    try {
+      const res = await fetch(`${API_BASE}/stories/${story.id}/save`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_saved: nextSaved }),
+      });
+      if (res.ok) {
+        setStory((prev) => (prev ? { ...prev, is_saved: nextSaved } : null));
+        onStorySaveToggled?.(story.id, nextSaved);
+      }
+    } catch (err) {
+      console.error("Failed to toggle story save:", err);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!story) return;
+    try {
+      const res = await fetch(`${API_BASE}/stories/${story.id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        onStoryDeleted?.(story.id);
+        onClose();
+      }
+    } catch (err) {
+      console.error("Failed to delete story:", err);
+    }
+  };
 
   // Fetch story and tracks on modal open
   useEffect(() => {
@@ -738,6 +777,51 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
             }}
           >
             {isPlaying ? <Pause size={15} /> : <Play size={15} />}
+          </button>
+
+          {/* Save Story Bookmark Toggle */}
+          <button
+            onClick={handleToggleSave}
+            className="clickable"
+            title={story?.is_saved ? "Remove from Saved Stories" : "Save Story to Keep Permanently"}
+            style={{
+              background: story?.is_saved ? "rgba(245, 158, 11, 0.25)" : "rgba(0, 0, 0, 0.55)",
+              backdropFilter: "blur(16px)",
+              border: `1px solid ${story?.is_saved ? "rgba(245, 158, 11, 0.5)" : "rgba(255, 255, 255, 0.15)"}`,
+              color: story?.is_saved ? "#fbbf24" : "#ffffff",
+              padding: "5px 12px",
+              borderRadius: "var(--radius-full)",
+              fontSize: "11px",
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+            }}
+          >
+            <Bookmark size={12} fill={story?.is_saved ? "#fbbf24" : "none"} />
+            <span>{story?.is_saved ? "Saved" : "Save"}</span>
+          </button>
+
+          {/* Delete Story Button */}
+          <button
+            onClick={handleDelete}
+            className="clickable"
+            title="Delete this Story"
+            style={{
+              background: "rgba(239, 68, 68, 0.2)",
+              backdropFilter: "blur(16px)",
+              border: "1px solid rgba(239, 68, 68, 0.35)",
+              color: "#f87171",
+              padding: "7px",
+              borderRadius: "var(--radius-full)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Trash2 size={14} />
           </button>
 
           {/* Close Modal */}

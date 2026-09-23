@@ -7,7 +7,7 @@ and custom audio soundtrack management with automatic mood tagging.
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -25,15 +25,23 @@ from engine.services.stories_service import (
     StoryModel,
     StorySlide,
     _resolve_audio_url_for_mood,
+    delete_story,
     generate_on_this_day_stories,
     generate_recent_highlights_story,
     generate_seasonal_retrospectives,
     generate_through_the_years_story,
     generate_vacation_and_trip_stories,
     generate_year_in_review_story,
+    prune_ephemeral_stories,
+    toggle_save_story,
 )
 
 router = APIRouter(prefix="/api/stories", tags=["Stories"])
+
+
+class SaveStoryRequest(BaseModel):
+    """Payload for saving/bookmarking a story."""
+    is_saved: bool = True
 
 
 class UpdateMusicMoodRequest(BaseModel):
@@ -54,59 +62,56 @@ class StoriesInsightsResponse(BaseModel):
 # ── 1. Story Listing & Timeline Synthesizer ──────────────────────────────────
 
 @router.get("", response_model=List[StoryModel], status_code=status.HTTP_200_OK)
-async def list_stories() -> List[StoryModel]:
-    """Returns all curated nostalgic stories for the stories carousel and cinema hub."""
+async def list_stories(
+    limit: int = 50,
+    offset: int = 0,
+) -> List[StoryModel]:
+    """Returns curated cinematic stories with lightweight card metadata, slides_count, and high-scale indexing."""
     conn = await get_db_connection()
     try:
+        # Pre-resolve mood audio URLs once upfront across the 4 mood keys (<0.1ms)
+        mood_urls = {
+            m: _resolve_audio_url_for_mood(m)
+            for m in ("acoustic", "upbeat", "nostalgic", "cinematic")
+        }
+
+        # Self-healing: if loading initial page and unbounded un-saved stories accumulated, prune down to cap
+        if offset == 0:
+            try:
+                await prune_ephemeral_stories(keep_cap=15)
+            except Exception:
+                pass
+
         async with conn.execute(
             """
-            SELECT s.id, s.title, s.story_type, s.vibe_mood, s.music_track_path, s.cover_photo_id
+            SELECT s.id, s.title, s.story_type, s.vibe_mood, s.music_track_path, s.cover_photo_id,
+                   COALESCE(s.is_saved, 0) as is_saved, s.created_at,
+                   COUNT(si.id) as slides_count
             FROM stories s
-            ORDER BY s.created_at DESC;
-            """
+            LEFT JOIN story_items si ON si.story_id = s.id
+            GROUP BY s.id
+            ORDER BY s.is_saved DESC, s.created_at DESC
+            LIMIT ? OFFSET ?;
+            """,
+            (limit, offset),
         ) as cursor:
             rows = await cursor.fetchall()
 
         stories = []
         for r in rows:
-            story_id = r["id"]
-            async with conn.execute(
-                """
-                SELECT si.photo_id, si.transition_type, si.focal_x, si.focal_y, p.filename, p.taken_at,
-                       strftime('%Y', p.taken_at) as yr
-                FROM story_items si
-                JOIN photos p ON si.photo_id = p.id
-                WHERE si.story_id = ?
-                ORDER BY si.sort_order ASC;
-                """,
-                (story_id,),
-            ) as s_cursor:
-                slide_rows = await s_cursor.fetchall()
-
-            slides = [
-                StorySlide(
-                    photo_id=sr["photo_id"],
-                    filename=sr["filename"],
-                    taken_at=sr["taken_at"],
-                    year_label=sr["yr"] or "2026",
-                    transition_type=sr["transition_type"],
-                    focal_x=sr["focal_x"],
-                    focal_y=sr["focal_y"],
-                )
-                for sr in slide_rows
-            ]
-
             mood = r["vibe_mood"] or "acoustic"
             stories.append(
                 StoryModel(
-                    id=story_id,
+                    id=r["id"],
                     title=r["title"],
                     story_type=r["story_type"],
                     vibe_mood=mood,
                     music_track_path=r["music_track_path"],
-                    audio_url=_resolve_audio_url_for_mood(mood),
+                    audio_url=mood_urls.get(mood),
                     cover_photo_id=r["cover_photo_id"],
-                    slides=slides,
+                    is_saved=bool(r["is_saved"]),
+                    slides_count=r["slides_count"],
+                    slides=[],  # Lightweight summary: slides fetched on-demand via GET /api/stories/{id}
                 )
             )
 
@@ -117,16 +122,7 @@ async def list_stories() -> List[StoryModel]:
 
 @router.post("/generate", response_model=List[StoryModel], status_code=status.HTTP_200_OK)
 async def generate_stories() -> List[StoryModel]:
-    """Curates and synthesizes multi-dimensional stories across the photo library.
-
-    Curates:
-    1. 'Through the Years' stories for top affinity / close persons.
-    2. 'On This Day' Flashback milestone anniversaries (Y-1, Y-2, Y-5, etc.).
-    3. Vacation & trip dense temporal bursts (3-10 days away).
-    4. Seasonal Retrospectives (Summer, Autumn, Winter, Spring highlights).
-    5. 'Year in Review' retrospectives.
-    6. 'Recent Highlights' golden moment fallback reel.
-    """
+    """Curates and synthesizes multi-dimensional stories, auto-pruning stale un-saved suggestions."""
     conn = await get_db_connection()
     try:
         # 1. Close people 'Through the Years' stories
@@ -152,6 +148,9 @@ async def generate_stories() -> List[StoryModel]:
 
         # 6. Recent Highlights / Golden Moments fallback story
         await generate_recent_highlights_story()
+
+        # 7. Prune older un-saved ephemeral stories to maintain a focused 10-15 reel
+        await prune_ephemeral_stories(keep_cap=15)
     finally:
         await conn.close()
 
@@ -348,7 +347,8 @@ async def get_story(story_id: int) -> StoryModel:
     try:
         async with conn.execute(
             """
-            SELECT s.id, s.title, s.story_type, s.vibe_mood, s.music_track_path, s.cover_photo_id
+            SELECT s.id, s.title, s.story_type, s.vibe_mood, s.music_track_path, s.cover_photo_id,
+                   COALESCE(s.is_saved, 0) as is_saved
             FROM stories s
             WHERE s.id = ?;
             """,
@@ -396,7 +396,33 @@ async def get_story(story_id: int) -> StoryModel:
             music_track_path=r["music_track_path"],
             audio_url=_resolve_audio_url_for_mood(mood),
             cover_photo_id=r["cover_photo_id"],
+            is_saved=bool(r["is_saved"]),
+            slides_count=len(slides),
             slides=slides,
         )
     finally:
         await conn.close()
+
+
+@router.delete("/{story_id}", status_code=status.HTTP_200_OK)
+async def remove_story(story_id: int):
+    """Deletes a story from database, cascading to slide items and unlinking cached exports."""
+    success = await delete_story(story_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Story with ID {story_id} was not found or could not be deleted.",
+        )
+    return {"status": "deleted", "id": story_id}
+
+
+@router.patch("/{story_id}/save", response_model=StoryModel, status_code=status.HTTP_200_OK)
+async def save_story_toggle(story_id: int, payload: SaveStoryRequest):
+    """Toggles the permanent saved state of a story (Google Photos-style keep)."""
+    success = await toggle_save_story(story_id, payload.is_saved)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Story with ID {story_id} was not found.",
+        )
+    return await get_story(story_id)

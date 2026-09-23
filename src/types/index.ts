@@ -204,6 +204,8 @@ export interface StoryModel {
   music_track_path: string;
   audio_url?: string | null;
   cover_photo_id?: number | null;
+  is_saved?: boolean;
+  slides_count?: number;
   slides: StorySlide[];
 }
 

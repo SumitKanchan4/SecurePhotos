@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS stories (
     cover_photo_id INTEGER REFERENCES photos(id) ON DELETE SET NULL,
     music_track_path TEXT,          -- Relative path to bundled or custom soundtrack
     rendered_video_path TEXT,       -- Optional cached 4K MP4 export
+    is_saved BOOLEAN DEFAULT 0,     -- Google Photos-style bookmark / permanent keep
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -563,6 +564,17 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
             await conn.execute("ALTER TABLE photos ADD COLUMN original_file_size INTEGER;")
             await conn.execute("UPDATE photos SET original_file_size = file_size WHERE original_file_size IS NULL;")
             logger.info("Migrated photos schema: added original_file_size column and backfilled baseline sizes.")
+
+        # Stories lifecycle migration: dynamically add is_saved and covering indexes
+        async with conn.execute("PRAGMA table_info(stories);") as cursor:
+            existing_story_cols = {row["name"] for row in await cursor.fetchall()}
+
+        if "is_saved" not in existing_story_cols:
+            await conn.execute("ALTER TABLE stories ADD COLUMN is_saved BOOLEAN DEFAULT 0;")
+            logger.info("Migrated stories schema: added is_saved column.")
+
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_stories_saved_created ON stories(is_saved, created_at DESC);")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_story_items_story_id ON story_items(story_id, sort_order ASC);")
 
         # Self-heal encrypted photos whose thumbnail_path in DB points to unencrypted .webp while .enc exists
         async with conn.execute("SELECT id, thumbnail_path FROM photos WHERE is_encrypted = 1;") as cursor:

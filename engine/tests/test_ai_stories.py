@@ -1,6 +1,7 @@
 """Automated Tests for 4K Super-Resolution, Social Affinity & Stories."""
 
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from PIL import Image
 import pytest
@@ -255,6 +256,87 @@ async def test_multidimensional_stories_curation():
             await conn.commit()
         finally:
             await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_ephemeral_stories_save_delete_and_lifecycle():
+    """Verifies Google Photos-style ephemeral retention, save toggling, and clean deletion."""
+    await run_migrations()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        # Create a test photo
+        conn = await get_db_connection()
+        photo_id = None
+        try:
+            cur = await conn.execute(
+                """
+                INSERT INTO photos (filepath, filename, file_size, taken_at, is_favorite, is_encrypted)
+                VALUES ('/dummy/ephemeral.jpg', 'ephemeral.jpg', 2048, '2025-01-01 10:00:00', 0, 0);
+                """
+            )
+            photo_id = cur.lastrowid
+
+            now_iso = datetime.now(timezone.utc).isoformat()
+            cur = await conn.execute(
+                """
+                INSERT INTO stories (title, story_type, vibe_mood, is_saved, created_at)
+                VALUES ('Ephemeral Memory Reel', 'milestone', 'cinematic', 0, ?);
+                """,
+                (now_iso,),
+            )
+            story_id = cur.lastrowid
+            await conn.execute(
+                """
+                INSERT INTO story_items (story_id, photo_id, sort_order, transition_type, focal_x, focal_y)
+                VALUES (?, ?, 0, 'fade', 0.5, 0.5);
+                """,
+                (story_id, photo_id),
+            )
+            await conn.commit()
+        finally:
+            await conn.close()
+
+        try:
+            # 1. Verify listing returns slides_count and is_saved
+            res = await ac.get("/api/stories")
+            assert res.status_code == 200
+            stories = res.json()
+            assert any(s["id"] == story_id and s["is_saved"] is False and s["slides_count"] >= 1 for s in stories)
+
+            # 2. Toggle Save Story
+            res = await ac.patch(f"/api/stories/{story_id}/save", json={"is_saved": True})
+            assert res.status_code == 200
+            data = res.json()
+            assert data["is_saved"] is True
+
+            # Verify persistent save state
+            res = await ac.get(f"/api/stories/{story_id}")
+            assert res.status_code == 200
+            assert res.json()["is_saved"] is True
+
+            # 3. Toggle back to unsaved
+            res = await ac.patch(f"/api/stories/{story_id}/save", json={"is_saved": False})
+            assert res.status_code == 200
+            assert res.json()["is_saved"] is False
+
+            # 4. Delete Story
+            res = await ac.delete(f"/api/stories/{story_id}")
+            assert res.status_code == 200
+            assert res.json()["status"] == "deleted"
+
+            # Verify deleted from DB
+            res = await ac.get(f"/api/stories/{story_id}")
+            assert res.status_code == 404
+        finally:
+            # Clean up photo
+            conn = await get_db_connection()
+            try:
+                if photo_id:
+                    await conn.execute("DELETE FROM photos WHERE id = ?;", (photo_id,))
+                await conn.commit()
+            finally:
+                await conn.close()
+
 
 
 

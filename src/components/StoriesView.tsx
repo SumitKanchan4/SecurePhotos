@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { 
   Sparkles, 
   Play, 
@@ -16,7 +16,9 @@ import {
   Plane,
   User,
   Sun,
-  Trash2
+  Trash2,
+  Bookmark,
+  Search
 } from "lucide-react";
 import { StoryModel, MusicTrackItem } from "../types";
 import { NavTab } from "../store/useAppStore";
@@ -79,7 +81,7 @@ function getArchetypeDetails(storyType?: string, title?: string) {
 }
 
 /**
- * StoriesView Component
+ * StoriesView Component (AI Cinema Studio)
  *
  * Dedicated cinema & memory theater for AI-curated nostalgia montages,
  * "Through the Years" journeys, Vacation bursts, On This Day anniversaries,
@@ -89,13 +91,13 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
   const [stories, setStories] = useState<StoryModel[]>([]);
   const [activeStoryIdx, setActiveStoryIdx] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   // Soundtracks modal state
   const [showMusicModal, setShowMusicModal] = useState<boolean>(false);
   const [musicTracks, setMusicTracks] = useState<MusicTrackItem[]>([]);
+  const [musicSearchQuery, setMusicSearchQuery] = useState<string>("");
   const [isLoadingMusic, setIsLoadingMusic] = useState<boolean>(false);
   const [isUploadingMusic, setIsUploadingMusic] = useState<boolean>(false);
   const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
@@ -105,8 +107,41 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const fetchStories = useCallback(async (showRefreshingState: boolean = false) => {
-    if (showRefreshingState) setIsRefreshing(true);
+  const handleDeleteStory = async (e: React.MouseEvent, storyId: number) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`${API_BASE}/stories/${storyId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setStories((prev) => prev.filter((s) => s.id !== storyId));
+        if (activeStoryIdx >= stories.length - 1) {
+          setActiveStoryIdx(Math.max(0, stories.length - 2));
+        }
+      }
+    } catch (err) {
+      console.error("Failed to delete story:", err);
+    }
+  };
+
+  const handleToggleSaveStory = async (e: React.MouseEvent, storyId: number, currentSaved?: boolean) => {
+    e.stopPropagation();
+    const nextSaved = !currentSaved;
+    try {
+      const res = await fetch(`${API_BASE}/stories/${storyId}/save`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_saved: nextSaved }),
+      });
+      if (res.ok) {
+        setStories((prev) => prev.map((s) => (s.id === storyId ? { ...s, is_saved: nextSaved } : s)));
+      }
+    } catch (err) {
+      console.error("Failed to toggle save story:", err);
+    }
+  };
+
+  const fetchStories = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/stories`);
       if (res.ok) {
@@ -119,7 +154,6 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
       setError(err instanceof Error ? err.message : "Failed to load curated stories");
     } finally {
       setIsLoading(false);
-      setIsRefreshing(false);
     }
   }, []);
 
@@ -141,6 +175,26 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
   useEffect(() => {
     fetchStories();
   }, [fetchStories]);
+
+  useEffect(() => {
+    const handleStoriesChanged = () => {
+      fetchStories();
+    };
+    window.addEventListener("stories-changed", handleStoriesChanged);
+    return () => window.removeEventListener("stories-changed", handleStoriesChanged);
+  }, [fetchStories]);
+
+  const filteredMusicTracks = useMemo(() => {
+    if (!musicSearchQuery.trim()) return musicTracks;
+    const q = musicSearchQuery.toLowerCase().trim();
+    return musicTracks.filter(
+      (t) =>
+        t.title.toLowerCase().includes(q) ||
+        (t.artist && t.artist.toLowerCase().includes(q)) ||
+        t.mood.toLowerCase().includes(q) ||
+        (t.detected_mood && t.detected_mood.toLowerCase().includes(q))
+    );
+  }, [musicTracks, musicSearchQuery]);
 
   useEffect(() => {
     if (showMusicModal) {
@@ -329,26 +383,8 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
           boxShadow: "var(--glass-shadow)",
         }}
       >
-        {/* Left Column (flex: 1) */}
-        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "10px" }}>
-          <span 
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "4px 10px",
-              borderRadius: "var(--radius-full)",
-              fontSize: "11px",
-              fontWeight: 600,
-              backgroundColor: "rgba(139, 92, 246, 0.12)",
-              color: "var(--accent-vault)",
-              border: "1px solid rgba(139, 92, 246, 0.25)",
-            }}
-          >
-            <Sparkles size={12} style={{ color: "var(--accent-vault)" }} />
-            AI Cinema Studio
-          </span>
-        </div>
+        {/* Left Column (flex: 1): Balanced breathing room */}
+        <div style={{ flex: 1 }} />
 
         {/* Center Column (flex: 0 1 auto): 22px Plus Jakarta Sans Title + Baseline Capsule */}
         <div 
@@ -370,7 +406,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
               fontFamily: "Plus Jakarta Sans, sans-serif"
             }}
           >
-            Curated Stories
+            AI Cinema Studio
           </h1>
           <span 
             style={{
@@ -415,61 +451,6 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
             <Music size={13} style={{ color: "var(--accent-primary)" }} />
             <span>Soundtracks</span>
           </button>
-
-          {/* Sync Button */}
-          <button
-            onClick={() => fetchStories(true)}
-            disabled={isRefreshing}
-            className="clickable"
-            title="Refresh Stories"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "6px 14px",
-              borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--glass-pill-bg)",
-              border: "1px solid var(--glass-border)",
-              color: "var(--text-secondary)",
-              fontSize: "12px",
-              fontWeight: 600,
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-            }}
-          >
-            <RefreshCw 
-              size={12} 
-              className={isRefreshing ? "spin-animation" : ""} 
-              style={{ color: isRefreshing ? "var(--accent-primary)" : "inherit" }} 
-            />
-            <span>Sync</span>
-          </button>
-
-          {/* Curate Stories Action */}
-          <button
-            onClick={handleGenerateStories}
-            disabled={isGenerating}
-            className="clickable"
-            title="Synthesize and curate new milestone stories"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "6px 16px",
-              borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--accent-primary)",
-              color: "#ffffff",
-              fontSize: "12px",
-              fontWeight: 700,
-              border: "none",
-              cursor: isGenerating ? "not-allowed" : "pointer",
-              boxShadow: "0 2px 10px rgba(59, 130, 246, 0.3)",
-              transition: "all 0.15s ease",
-            }}
-          >
-            <Sparkles size={13} className={isGenerating ? "spin-animation" : ""} />
-            <span>{isGenerating ? "Synthesizing..." : "Curate Stories"}</span>
-          </button>
         </div>
       </div>
 
@@ -507,12 +488,12 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
           }}
         >
           {/* Background Blurred Ambient Cover Photo */}
-          {activeStory.slides[0]?.photo_id && (
+          {(activeStory.cover_photo_id || activeStory.slides?.[0]?.photo_id) && (
             <div
               style={{
                 position: "absolute",
                 inset: 0,
-                backgroundImage: `url(${API_BASE}/photos/${activeStory.slides[0].photo_id}/preview)`,
+                backgroundImage: `url(${API_BASE}/photos/${activeStory.cover_photo_id || activeStory.slides[0].photo_id}/preview)`,
                 backgroundSize: "cover",
                 backgroundPosition: "center",
                 filter: "blur(20px) brightness(0.35)",
@@ -544,6 +525,27 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                   }}
                 >
                   {activeArchetype.label}
+                </span>
+              )}
+
+              {activeStory.is_saved && (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    backgroundColor: "rgba(59, 130, 246, 0.85)",
+                    color: "#ffffff",
+                    backdropFilter: "blur(10px)",
+                    padding: "4px 10px",
+                    borderRadius: "var(--radius-full)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    border: "1px solid rgba(255, 255, 255, 0.2)",
+                  }}
+                >
+                  <Bookmark size={11} fill="#ffffff" />
+                  Saved
                 </span>
               )}
 
@@ -630,7 +632,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
               {activeStory.title}
             </h2>
             <p style={{ fontSize: "13px", color: "rgba(255, 255, 255, 0.82)", margin: 0 }}>
-              {activeStory.slides.length} moments • Dynamic chromatic ambient light • Beat-synchronized Ken-Burns motion
+              {activeStory.slides_count || activeStory.slides?.length || 0} moments • Dynamic chromatic ambient light • Beat-synchronized Ken-Burns motion
             </p>
           </div>
 
@@ -658,6 +660,58 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
               <Play size={14} fill="#0f172a" />
               <span>Play Montage</span>
             </button>
+
+            <button
+              onClick={(e) => handleToggleSaveStory(e, activeStory.id, activeStory.is_saved)}
+              className="clickable"
+              title={activeStory.is_saved ? "Remove from Saved Stories" : "Save this story permanently"}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "10px 18px",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: activeStory.is_saved ? "var(--accent-primary)" : "rgba(255, 255, 255, 0.15)",
+                backdropFilter: "blur(12px)",
+                border: activeStory.is_saved ? "1px solid var(--accent-primary)" : "1px solid rgba(255, 255, 255, 0.3)",
+                color: "#ffffff",
+                fontWeight: 700,
+                fontSize: "13px",
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <Bookmark size={14} fill={activeStory.is_saved ? "#ffffff" : "none"} />
+              <span>{activeStory.is_saved ? "Saved" : "Save Story"}</span>
+            </button>
+
+            <button
+              onClick={(e) => handleDeleteStory(e, activeStory.id)}
+              className="clickable"
+              title="Delete story"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "38px",
+                height: "38px",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "rgba(239, 68, 68, 0.2)",
+                backdropFilter: "blur(12px)",
+                border: "1px solid rgba(239, 68, 68, 0.4)",
+                color: "#fca5a5",
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "rgba(239, 68, 68, 0.35)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "rgba(239, 68, 68, 0.2)";
+              }}
+            >
+              <Trash2 size={15} />
+            </button>
           </div>
         </div>
       ) : (
@@ -680,7 +734,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
             No Milestone Stories Curated Yet
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", maxWidth: "420px", margin: 0 }}>
-            Click &ldquo;Curate Stories&rdquo; to automatically synthesize nostalgic reels, year reviews, vacation getaways, and on-this-day memories.
+            Stories are synthesized automatically as memories unfold. You can also generate new cinematic highlights right now.
           </p>
           <button
             onClick={handleGenerateStories}
@@ -697,12 +751,12 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
               fontSize: "12px",
               fontWeight: 700,
               border: "none",
-              cursor: "pointer",
+              cursor: isGenerating ? "not-allowed" : "pointer",
               marginTop: "4px",
             }}
           >
             <Sparkles size={13} className={isGenerating ? "spin-animation" : ""} />
-            <span>Curate Stories Now</span>
+            <span>{isGenerating ? "Synthesizing..." : "Synthesize Highlights Now"}</span>
           </button>
         </div>
       )}
@@ -729,7 +783,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
           >
             {stories.map((story, idx) => {
               const isSelected = idx === activeStoryIdx;
-              const coverId = story.cover_photo_id || story.slides[0]?.photo_id;
+              const coverId = story.cover_photo_id || (story.slides && story.slides[0]?.photo_id);
               const cardArchetype = getArchetypeDetails(story.story_type, story.title);
 
               return (
@@ -797,8 +851,8 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                       }}
                     />
 
-                    {/* Top Floating Archetype & Vibe Badges */}
-                    <div style={{ position: "absolute", top: "8px", left: "8px", display: "flex", gap: "6px" }}>
+                    {/* Top Floating Archetype & Saved Badges */}
+                    <div style={{ position: "absolute", top: "8px", left: "8px", display: "flex", gap: "6px", alignItems: "center", zIndex: 2 }}>
                       <span 
                         style={{
                           fontSize: "10px",
@@ -813,6 +867,88 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                       >
                         {cardArchetype.label}
                       </span>
+                      {story.is_saved && (
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            backgroundColor: "rgba(59, 130, 246, 0.9)",
+                            color: "#ffffff",
+                            backdropFilter: "blur(8px)",
+                            padding: "2px 7px",
+                            borderRadius: "var(--radius-full)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "3px",
+                          }}
+                        >
+                          <Bookmark size={9} fill="#ffffff" />
+                          Saved
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Top Right Save & Delete Action Buttons */}
+                    <div 
+                      style={{ 
+                        position: "absolute", 
+                        top: "8px", 
+                        right: "8px", 
+                        display: "flex", 
+                        alignItems: "center", 
+                        gap: "5px",
+                        zIndex: 3,
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        onClick={(e) => handleToggleSaveStory(e, story.id, story.is_saved)}
+                        className="clickable"
+                        title={story.is_saved ? "Remove from saved" : "Save story"}
+                        style={{
+                          width: "28px",
+                          height: "28px",
+                          borderRadius: "50%",
+                          backgroundColor: story.is_saved ? "var(--accent-primary)" : "rgba(0, 0, 0, 0.55)",
+                          backdropFilter: "blur(6px)",
+                          border: story.is_saved ? "1px solid var(--accent-primary)" : "1px solid rgba(255, 255, 255, 0.25)",
+                          color: "#ffffff",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <Bookmark size={12} fill={story.is_saved ? "#ffffff" : "none"} />
+                      </button>
+                      <button
+                        onClick={(e) => handleDeleteStory(e, story.id)}
+                        className="clickable"
+                        title="Delete story"
+                        style={{
+                          width: "28px",
+                          height: "28px",
+                          borderRadius: "50%",
+                          backgroundColor: "rgba(0, 0, 0, 0.55)",
+                          backdropFilter: "blur(6px)",
+                          border: "1px solid rgba(255, 255, 255, 0.25)",
+                          color: "rgba(255, 255, 255, 0.8)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = "rgba(239, 68, 68, 0.85)";
+                          e.currentTarget.style.borderColor = "transparent";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = "rgba(0, 0, 0, 0.55)";
+                          e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.25)";
+                        }}
+                      >
+                        <Trash2 size={12} />
+                      </button>
                     </div>
 
                     {/* Play Icon Pill on Corner */}
@@ -842,7 +978,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                       {story.title}
                     </div>
                     <div style={{ fontSize: "11px", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span>{story.slides.length} moments</span>
+                      <span>{story.slides_count || story.slides?.length || 0} moments</span>
                       <span>•</span>
                       <span style={{ textTransform: "capitalize" }}>{story.vibe_mood} vibe</span>
                     </div>
@@ -1055,10 +1191,62 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                 </div>
               )}
 
+              {/* Search Bar */}
+              <div style={{ position: "relative", width: "100%" }}>
+                <Search 
+                  size={14} 
+                  style={{ 
+                    position: "absolute", 
+                    left: "14px", 
+                    top: "50%", 
+                    transform: "translateY(-50%)", 
+                    color: "var(--text-muted)",
+                    pointerEvents: "none",
+                  }} 
+                />
+                <input
+                  type="text"
+                  value={musicSearchQuery}
+                  onChange={(e) => setMusicSearchQuery(e.target.value)}
+                  placeholder="Search songs, artists, or moods..."
+                  style={{
+                    width: "100%",
+                    padding: "8px 32px 8px 36px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "var(--glass-pill-bg)",
+                    border: "1px solid var(--glass-border)",
+                    color: "var(--text-primary)",
+                    fontSize: "12px",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+                {musicSearchQuery && (
+                  <button
+                    onClick={() => setMusicSearchQuery("")}
+                    className="clickable"
+                    style={{
+                      position: "absolute",
+                      right: "12px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "none",
+                      border: "none",
+                      color: "var(--text-muted)",
+                      cursor: "pointer",
+                      fontSize: "14px",
+                      padding: 0,
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+
               {/* Sub-header Bar */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase" }}>
-                  All Soundtracks ({musicTracks.length})
+                  All Soundtracks ({filteredMusicTracks.length})
                 </span>
                 <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
                   Select or drag & drop multiple files anywhere
@@ -1071,7 +1259,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                   <div style={{ textAlign: "center", padding: "20px", color: "var(--text-secondary)", fontSize: "13px" }}>
                     Loading soundtracks...
                   </div>
-                ) : musicTracks.length === 0 ? (
+                ) : filteredMusicTracks.length === 0 ? (
                   <div
                     style={{
                       textAlign: "center",
@@ -1089,16 +1277,19 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                   >
                     <Disc3 size={32} style={{ color: "var(--accent-primary)" }} />
                     <div>
-                      <p style={{ margin: 0, fontWeight: 700, color: "var(--text-primary)" }}>No custom music added yet.</p>
+                      <p style={{ margin: 0, fontWeight: 700, color: "var(--text-primary)" }}>
+                        {musicSearchQuery ? "No matching soundtracks found." : "No custom music added yet."}
+                      </p>
                       <p style={{ margin: "4px 0 0 0", fontSize: "11px" }}>
-                        Click "+ Add Music" above or drag & drop audio files anywhere. Stories play dynamic ambient chords until you add tracks.
+                        {musicSearchQuery
+                          ? "Try a different search term or clear the filter."
+                          : "Click '+ Add Music' above or drag & drop audio files anywhere. Stories play dynamic ambient chords until you add tracks."}
                       </p>
                     </div>
                   </div>
                 ) : (
-                  musicTracks.map((trk) => {
+                  filteredMusicTracks.map((trk) => {
                     const isPlaying = previewTrackId === trk.id;
-                    const isAuto = trk.mood === "auto";
 
                     return (
                       <div
@@ -1150,33 +1341,12 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                               <span>{trk.duration_formatted}</span>
                               <span>•</span>
                               <span>{trk.file_size_formatted}</span>
-                            </div>
-                            {/* Auto Detect Statement */}
-                            <div style={{ fontSize: "11px", marginTop: "3px", display: "flex", alignItems: "center", gap: "6px" }}>
-                              {isAuto ? (
-                                <span style={{ color: "var(--accent-primary)", display: "inline-flex", alignItems: "center", gap: "5px", fontWeight: 600 }}>
-                                  is set to auto detect
-                                  {trk.detected_mood && (
-                                    <span
-                                      style={{
-                                        fontSize: "10px",
-                                        fontWeight: 700,
-                                        backgroundColor: "rgba(59, 130, 246, 0.15)",
-                                        color: "var(--accent-primary)",
-                                        padding: "1px 7px",
-                                        borderRadius: "var(--radius-full)",
-                                        border: "1px solid rgba(59, 130, 246, 0.25)",
-                                      }}
-                                    >
-                                      {trk.detected_mood.toUpperCase()}{trk.bpm ? ` • ${Math.round(trk.bpm)} BPM` : ""} ✨
-                                    </span>
-                                  )}
-                                </span>
-                              ) : (
-                                <span style={{ color: "var(--text-secondary)", opacity: 0.85 }}>
-                                  Manual override ({trk.mood.charAt(0).toUpperCase() + trk.mood.slice(1)})
-                                </span>
-                              )}
+                              {trk.bpm ? (
+                                <>
+                                  <span>•</span>
+                                  <span>{Math.round(trk.bpm)} BPM</span>
+                                </>
+                              ) : null}
                             </div>
                           </div>
                         </div>
@@ -1192,12 +1362,17 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                               border: "1px solid var(--glass-border)",
                               borderRadius: "var(--radius-full)",
                               fontSize: "12px",
-                              padding: "5px 10px",
+                              padding: "5px 12px",
                               cursor: "pointer",
                               fontWeight: 600,
+                              outline: "none",
                             }}
                           >
-                            <option value="auto">Auto</option>
+                            <option value="auto">
+                              {trk.mood === "auto" && trk.detected_mood
+                                ? `✨ Auto (${trk.detected_mood.charAt(0).toUpperCase() + trk.detected_mood.slice(1)})`
+                                : "✨ Auto Detect"}
+                            </option>
                             <option value="upbeat">Upbeat</option>
                             <option value="nostalgic">Nostalgic</option>
                             <option value="acoustic">Acoustic</option>

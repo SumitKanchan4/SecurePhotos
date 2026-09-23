@@ -13,7 +13,7 @@ import datetime
 import logging
 import struct
 from typing import Dict, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from engine.database import get_db_connection
 from engine.services.music_service import get_track_for_mood
@@ -66,10 +66,18 @@ class StoryModel(BaseModel):
     title: str
     story_type: str
     vibe_mood: str
-    music_track_path: str
+    music_track_path: Optional[str] = None
     audio_url: Optional[str] = None
     cover_photo_id: Optional[int] = None
+    is_saved: bool = False
+    slides_count: int = 0
     slides: List[StorySlide] = []
+
+    @model_validator(mode="after")
+    def populate_slides_count(self):
+        if not self.slides_count and self.slides:
+            self.slides_count = len(self.slides)
+        return self
 
 
 def _resolve_audio_url_for_mood(mood: str) -> Optional[str]:
@@ -606,7 +614,84 @@ async def generate_recent_highlights_story() -> Optional[StoryModel]:
             music_track_path=VIBE_TRACKS["acoustic"],
             audio_url=_resolve_audio_url_for_mood("acoustic"),
             cover_photo_id=slides[0].photo_id,
+            is_saved=False,
+            slides_count=len(slides),
             slides=slides,
         )
+    finally:
+        await conn.close()
+
+
+async def delete_story(story_id: int) -> bool:
+    """Deletes a story from database, cascading to story_items and unlinking cached video export."""
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT rendered_video_path FROM stories WHERE id = ?;", (story_id,)) as cur:
+            row = await cur.fetchone()
+            if not row:
+                return False
+            v_path = row["rendered_video_path"]
+            if v_path and os.path.exists(v_path):
+                try:
+                    os.unlink(v_path)
+                except Exception:
+                    pass
+
+        await conn.execute("DELETE FROM story_items WHERE story_id = ?;", (story_id,))
+        await conn.execute("DELETE FROM stories WHERE id = ?;", (story_id,))
+        await conn.commit()
+        return True
+    finally:
+        await conn.close()
+
+
+async def toggle_save_story(story_id: int, is_saved: bool) -> bool:
+    """Toggles the permanent saved state of a story."""
+    conn = await get_db_connection()
+    try:
+        cursor = await conn.execute(
+            "UPDATE stories SET is_saved = ? WHERE id = ?;",
+            (1 if is_saved else 0, story_id),
+        )
+        await conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        await conn.close()
+
+
+async def prune_ephemeral_stories(keep_cap: int = 15) -> int:
+    """Prunes older un-saved ephemeral stories beyond the keep_cap, preserving all saved stories permanently."""
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(
+            """
+            SELECT id, rendered_video_path
+            FROM stories
+            WHERE is_saved = 0
+            ORDER BY created_at DESC
+            LIMIT -1 OFFSET ?;
+            """,
+            (keep_cap,),
+        ) as cur:
+            stale_rows = await cur.fetchall()
+
+        if not stale_rows:
+            return 0
+
+        stale_ids = [r["id"] for r in stale_rows]
+        for r in stale_rows:
+            vp = r["rendered_video_path"]
+            if vp and os.path.exists(vp):
+                try:
+                    os.unlink(vp)
+                except Exception:
+                    pass
+
+        placeholders = ",".join("?" * len(stale_ids))
+        await conn.execute(f"DELETE FROM story_items WHERE story_id IN ({placeholders});", stale_ids)
+        await conn.execute(f"DELETE FROM stories WHERE id IN ({placeholders});", stale_ids)
+        await conn.commit()
+        logger.info(f"Pruned {len(stale_ids)} stale ephemeral stories beyond keep_cap of {keep_cap}.")
+        return len(stale_ids)
     finally:
         await conn.close()

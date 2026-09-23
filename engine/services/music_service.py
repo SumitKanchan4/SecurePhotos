@@ -266,14 +266,30 @@ def detect_mood_from_audio(
     return "auto", True, detected_mood, bpm
 
 
+# Global in-memory cache for ultra-fast story loading
+_MUSIC_CACHE: Optional[List[MusicTrack]] = None
+
+
+def invalidate_music_cache() -> None:
+    """Invalidates the in-memory music library cache."""
+    global _MUSIC_CACHE
+    _MUSIC_CACHE = None
+
+
 def scan_music_library() -> List[MusicTrack]:
-    """Scans the music directory recursively, indexing and genuinely auto-tagging all tracks."""
+    """Scans the music directory, utilizing manifest metadata caching and in-memory cache for sub-millisecond lookups."""
+    global _MUSIC_CACHE
+    if _MUSIC_CACHE is not None:
+        return _MUSIC_CACHE
+
     settings.ensure_directories()
     music_dir = settings.music_dir
     manifest = load_manifest()
+    manifest_dirty = False
 
     tracks: List[MusicTrack] = []
     if not music_dir.exists():
+        _MUSIC_CACHE = tracks
         return tracks
 
     for root, _, files in os.walk(music_dir):
@@ -282,51 +298,74 @@ def scan_music_library() -> List[MusicTrack]:
             if ext in SUPPORTED_AUDIO_EXTENSIONS:
                 f_path = Path(root) / f
                 track_id = hashlib.sha256(str(f_path.resolve()).encode("utf-8")).hexdigest()[:12]
-                file_size = f_path.stat().st_size
+                f_stat = f_path.stat()
+                file_size = f_stat.st_size
+                mtime = f_stat.st_mtime
 
-                # Extract audio tags
-                audio_meta = probe_audio_file(f_path)
-
-                # Check manifest for user override
-                if track_id in manifest:
-                    entry = manifest[track_id]
+                entry = manifest.get(track_id, {})
+                # Check if we have valid cached metadata for this exact file modification
+                if entry and entry.get("mtime") == mtime and "title" in entry and "duration" in entry:
+                    title = entry["title"]
+                    artist = entry.get("artist", "Local Soundtrack")
+                    duration = float(entry["duration"])
                     mood = entry.get("mood", "auto")
                     auto_tagged = entry.get("auto_tagged", mood == "auto")
                     detected_mood = entry.get("detected_mood")
                     bpm = entry.get("bpm")
                 else:
-                    mood, auto_tagged, detected_mood, bpm = detect_mood_from_audio(
-                        filepath=f_path,
-                        genre=audio_meta.get("genre"),
-                    )
-                    # Cache in manifest to avoid repeated FFT calculations
+                    # New or modified file: probe once and analyze
+                    audio_meta = probe_audio_file(f_path)
+                    title = audio_meta["title"]
+                    artist = audio_meta["artist"]
+                    duration = audio_meta["duration"]
+
+                    if track_id in manifest and "mood" in manifest[track_id]:
+                        mood = manifest[track_id]["mood"]
+                        auto_tagged = manifest[track_id].get("auto_tagged", mood == "auto")
+                        detected_mood = manifest[track_id].get("detected_mood")
+                        bpm = manifest[track_id].get("bpm")
+                    else:
+                        mood, auto_tagged, detected_mood, bpm = detect_mood_from_audio(
+                            filepath=f_path,
+                            genre=audio_meta.get("genre"),
+                        )
+
                     manifest[track_id] = {
+                        "title": title,
+                        "artist": artist,
+                        "duration": duration,
+                        "mtime": mtime,
+                        "file_size": file_size,
                         "mood": mood,
                         "auto_tagged": auto_tagged,
                         "detected_mood": detected_mood,
                         "bpm": bpm,
                     }
-                    save_manifest(manifest)
+                    manifest_dirty = True
 
                 tracks.append(
                     MusicTrack(
                         id=track_id,
                         filename=f,
                         filepath=str(f_path.resolve()),
-                        title=audio_meta["title"],
-                        artist=audio_meta["artist"],
+                        title=title,
+                        artist=artist,
                         mood=mood,
                         detected_mood=detected_mood,
                         bpm=bpm,
                         auto_tagged=auto_tagged,
-                        duration_seconds=audio_meta["duration"],
-                        duration_formatted=format_duration(audio_meta["duration"]),
+                        duration_seconds=duration,
+                        duration_formatted=format_duration(duration),
                         file_size_formatted=format_size(file_size),
                         file_size_bytes=file_size,
                         stream_url=f"/api/stories/music/{track_id}/stream",
                     )
                 )
 
+    if manifest_dirty:
+        save_manifest(manifest)
+
+    _MUSIC_CACHE = tracks
     return tracks
 
 
@@ -371,6 +410,7 @@ def update_track_mood(track_id: str, new_mood: str) -> bool:
     entry["auto_tagged"] = (new_mood == "auto")
     manifest[track_id] = entry
     save_manifest(manifest)
+    invalidate_music_cache()
     return True
 
 
@@ -391,6 +431,7 @@ def delete_track(track_id: str) -> bool:
     if track_id in manifest:
         del manifest[track_id]
         save_manifest(manifest)
+    invalidate_music_cache()
     return True
 
 
@@ -421,13 +462,20 @@ def save_uploaded_music(
             genre=audio_meta.get("genre"),
         )
 
+    f_stat = target_path.stat()
     manifest[track_id] = {
+        "title": audio_meta["title"],
+        "artist": audio_meta["artist"],
+        "duration": audio_meta["duration"],
+        "mtime": f_stat.st_mtime,
+        "file_size": len(file_bytes),
         "mood": mood,
         "auto_tagged": auto_tagged,
         "detected_mood": detected_mood,
         "bpm": bpm,
     }
     save_manifest(manifest)
+    invalidate_music_cache()
 
     file_size = len(file_bytes)
     return MusicTrack(
