@@ -2,6 +2,9 @@
 
 This document captures high-value architectural improvements, user experience features, and cryptographic safeguards planned for future iterations of SecurePhotos.
 
+> [!IMPORTANT]
+> **Active Implementation Queue**: For immediate next-session items (Cinema Audio preview fix, Saved Stories album, title generator, long album name overflow fix, and direct import to album), see [docs/next_session_agenda.md](file:///c:/Sumit/Code/SecurePhotos/docs/next_session_agenda.md).
+
 ---
 
 ## 1. In-App Vault Export & Guided Off-Boarding / Uninstaller Wizard
