@@ -66,29 +66,59 @@ async def test_stories_and_people_apis():
             assert isinstance(data["slides"], list)
 
 
-def test_music_auto_tagging_logic():
-    """Verifies automated mood deduction from filename keywords and genre metadata."""
-    from engine.services.music_service import auto_detect_mood
+def test_music_acoustic_analysis_and_genre_tagging():
+    """Verifies genuine acoustic DSP waveform analysis and ID3 genre mapping without filename guessing."""
+    import math
+    import struct
+    import wave
+    from engine.services.music_service import detect_mood_from_audio, analyze_audio_acoustics
 
-    # Keyword based
-    assert auto_detect_mood(filename="summer_beach_upbeat_dance.mp3", genre=None) == "upbeat"
-    assert auto_detect_mood(filename="grandma_childhood_nostalgic_piano.mp3", genre=None) == "nostalgic"
-    assert auto_detect_mood(filename="morning_coffee_acoustic_guitar.wav", genre=None) == "acoustic"
-    assert auto_detect_mood(filename="epic_orchestra_cinematic_trailer.flac", genre=None) == "cinematic"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dummy_file = Path(tmpdir) / "dummy.mp3"
+        dummy_file.write_bytes(b"dummy")
 
-    # Genre based
-    assert auto_detect_mood(filename="track01.mp3", genre="Pop / Dance") == "upbeat"
-    assert auto_detect_mood(filename="track02.mp3", genre="Soundtrack / Cinematic Score") == "cinematic"
-    assert auto_detect_mood(filename="track03.mp3", genre="Folk & Acoustic") == "acoustic"
-    assert auto_detect_mood(filename="track04.mp3", genre="Classic Oldies / Ballad") == "nostalgic"
+        # 1. ID3 Genre based mapping
+        mood, auto_tagged, detected_mood, _ = detect_mood_from_audio(dummy_file, genre="Pop / Dance")
+        assert mood == "auto"
+        assert auto_tagged is True
+        assert detected_mood == "upbeat"
 
-    # Fallback default
-    assert auto_detect_mood(filename="mystery_audio.wav", genre=None) == "nostalgic"
+        mood, _, detected_mood, _ = detect_mood_from_audio(dummy_file, genre="Soundtrack / Epic Score")
+        assert detected_mood == "cinematic"
+
+        mood, _, detected_mood, _ = detect_mood_from_audio(dummy_file, genre="Acoustic / Folk")
+        assert detected_mood == "acoustic"
+
+        mood, _, detected_mood, _ = detect_mood_from_audio(dummy_file, genre="Piano / Ambient Ballad")
+        assert detected_mood == "nostalgic"
+
+        # 2. Genuine DSP acoustic waveform analysis on synthetic audio
+        sample_rate = 22050
+        duration = 2.0
+        n_samples = int(sample_rate * duration)
+        wav_path = Path(tmpdir) / "synth_acoustic.wav"
+        with wave.open(str(wav_path), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            raw_data = bytearray()
+            for n in range(n_samples):
+                val = int(32767 * 0.15 * math.sin(2 * math.pi * 440 * n / sample_rate))
+                raw_data.extend(struct.pack("<h", val))
+            wf.writeframes(raw_data)
+
+        acoustics = analyze_audio_acoustics(wav_path)
+        assert "bpm" in acoustics
+        assert "rms" in acoustics
+        assert "spectral_centroid" in acoustics
+        assert acoustics["rms"] > 0
+        assert acoustics["spectral_centroid"] < 1000
+        assert acoustics["detected_mood"] == "acoustic"
 
 
 @pytest.mark.asyncio
 async def test_music_management_and_streaming_api():
-    """Verifies music listing, audio file upload, auto-tagging response, patch, and streaming."""
+    """Verifies music listing, audio file upload, auto-tagging, patch, deletion, and streaming."""
     await run_migrations()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -100,17 +130,17 @@ async def test_music_management_and_streaming_api():
         # 2. Upload dummy audio track
         fake_audio_content = b"ID3\x03\x00\x00\x00\x00\x00#TIT2\x00\x00\x00\r\x00\x00\x00Summer Journey\xff\xfb\x90\x04"
         files = {
-            "file": ("upbeat_summer_vibes.mp3", fake_audio_content, "audio/mpeg")
+            "file": ("summer_journey.mp3", fake_audio_content, "audio/mpeg")
         }
         res_upload = await client.post("/api/stories/music/upload", files=files)
         assert res_upload.status_code == 200
         track_data = res_upload.json()
-        assert track_data["filename"] == "upbeat_summer_vibes.mp3"
-        assert track_data["mood"] == "upbeat"
+        assert track_data["filename"] == "summer_journey.mp3"
+        assert track_data["mood"] == "auto"
         assert track_data["auto_tagged"] is True
         track_id = track_data["id"]
 
-        # 3. Patch mood tag
+        # 3. Patch mood tag to manual override
         res_patch = await client.patch(
             f"/api/stories/music/{track_id}",
             json={"mood": "cinematic"}
@@ -120,10 +150,30 @@ async def test_music_management_and_streaming_api():
         assert patched_data["mood"] == "cinematic"
         assert patched_data["auto_tagged"] is False
 
-        # 4. Stream audio
+        # 4. Patch back to auto
+        res_patch_auto = await client.patch(
+            f"/api/stories/music/{track_id}",
+            json={"mood": "auto"}
+        )
+        assert res_patch_auto.status_code == 200
+        assert res_patch_auto.json()["mood"] == "auto"
+        assert res_patch_auto.json()["auto_tagged"] is True
+
+        # 5. Stream audio
         res_stream = await client.get(f"/api/stories/music/{track_id}/stream")
         assert res_stream.status_code == 200
         assert len(res_stream.content) > 0
+
+        # 6. Delete audio track
+        res_del = await client.delete(f"/api/stories/music/{track_id}")
+        assert res_del.status_code == 200
+        del_data = res_del.json()
+        assert del_data["status"] == "deleted"
+        assert del_data["id"] == track_id
+
+        # Verify it no longer exists
+        res_stream_404 = await client.get(f"/api/stories/music/{track_id}/stream")
+        assert res_stream_404.status_code == 404
 
 
 @pytest.mark.asyncio

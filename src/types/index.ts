@@ -212,7 +212,9 @@ export interface MusicTrackItem {
   filename: string;
   title: string;
   artist: string;
-  mood: "nostalgic" | "upbeat" | "acoustic" | "cinematic" | string;
+  mood: "auto" | "nostalgic" | "upbeat" | "acoustic" | "cinematic" | string;
+  detected_mood?: string | null;
+  bpm?: number | null;
   auto_tagged: boolean;
   detected_genre?: string | null;
   duration_seconds: number;

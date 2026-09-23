@@ -15,7 +15,8 @@ import {
   Calendar,
   Plane,
   User,
-  Sun
+  Sun,
+  Trash2
 } from "lucide-react";
 import { StoryModel, MusicTrackItem } from "../types";
 import { NavTab } from "../store/useAppStore";
@@ -97,6 +98,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
   const [musicTracks, setMusicTracks] = useState<MusicTrackItem[]>([]);
   const [isLoadingMusic, setIsLoadingMusic] = useState<boolean>(false);
   const [isUploadingMusic, setIsUploadingMusic] = useState<boolean>(false);
+  const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
   const [musicFeedback, setMusicFeedback] = useState<string | null>(null);
   const [previewTrackId, setPreviewTrackId] = useState<string | null>(null);
 
@@ -173,32 +175,65 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
 
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const file = files[0];
+    const fileList = Array.from(files);
 
     setIsUploadingMusic(true);
     setMusicFeedback(null);
+    let successCount = 0;
+
     try {
-      const formData = new FormData();
-      formData.append("file", file);
+      for (const file of fileList) {
+        const formData = new FormData();
+        formData.append("file", file);
 
-      const res = await fetch(`${API_BASE}/stories/music/upload`, {
-        method: "POST",
-        body: formData,
-      });
+        const res = await fetch(`${API_BASE}/stories/music/upload`, {
+          method: "POST",
+          body: formData,
+        });
 
-      if (res.ok) {
-        const track: MusicTrackItem = await res.json();
-        setMusicTracks((prev) => [track, ...prev.filter((t) => t.id !== track.id)]);
-        const moodName = track.mood.charAt(0).toUpperCase() + track.mood.slice(1);
-        setMusicFeedback(`"${track.title || track.filename}" auto-tagged as "${moodName}" ✨`);
+        if (res.ok) {
+          const track: MusicTrackItem = await res.json();
+          setMusicTracks((prev) => [track, ...prev.filter((t) => t.id !== track.id)]);
+          successCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        setMusicFeedback(
+          successCount === 1
+            ? `Soundtrack added and set to auto detect ✨`
+            : `Added ${successCount} soundtracks, all set to auto detect ✨`
+        );
       } else {
-        setMusicFeedback("Failed to upload audio file.");
+        setMusicFeedback("Failed to upload audio files.");
       }
     } catch (err) {
       console.error("Upload error:", err);
       setMusicFeedback("Network error uploading audio.");
     } finally {
       setIsUploadingMusic(false);
+    }
+  };
+
+  const handleDeleteTrack = async (trackId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/stories/music/${trackId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setMusicTracks((prev) => prev.filter((t) => t.id !== trackId));
+        if (previewTrackId === trackId && previewAudioRef.current) {
+          previewAudioRef.current.pause();
+          previewAudioRef.current = null;
+          setPreviewTrackId(null);
+        }
+        setMusicFeedback("Soundtrack removed.");
+      } else {
+        setMusicFeedback("Failed to delete soundtrack.");
+      }
+    } catch (err) {
+      console.error("Delete error:", err);
+      setMusicFeedback("Network error deleting soundtrack.");
     }
   };
 
@@ -212,6 +247,11 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
       if (res.ok) {
         const updated: MusicTrackItem = await res.json();
         setMusicTracks((prev) => prev.map((t) => (t.id === trackId ? updated : t)));
+        setMusicFeedback(
+          newMood === "auto"
+            ? "Mood is set to auto detect ✨"
+            : `Mood updated to ${newMood.charAt(0).toUpperCase() + newMood.slice(1)}`
+        );
       }
     } catch (err) {
       console.error("Failed to update mood:", err);
@@ -855,7 +895,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                padding: "18px 24px",
+                padding: "16px 24px",
                 borderBottom: "1px solid var(--glass-border)",
               }}
             >
@@ -877,95 +917,156 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                 <div>
                   <h2 style={{ fontSize: "16px", fontWeight: 800, margin: 0 }}>Story Soundtracks</h2>
                   <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0 }}>
-                    100% private on-device music library with automated mood detection
+                    100% private on-device music library
                   </p>
                 </div>
               </div>
 
-              <button
-                onClick={() => setShowMusicModal(false)}
-                className="clickable"
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "var(--text-secondary)",
-                  cursor: "pointer",
-                  padding: "4px",
-                  borderRadius: "var(--radius-full)",
-                }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div style={{ padding: "20px 24px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "18px" }}>
-              {/* Dropzone for Audio Files */}
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleFileUpload(e.dataTransfer.files);
-                }}
-                onClick={() => fileInputRef.current?.click()}
-                className="clickable"
-                style={{
-                  border: "2px dashed var(--glass-border)",
-                  borderRadius: "var(--radius-md)",
-                  padding: "24px 20px",
-                  textAlign: "center",
-                  backgroundColor: "rgba(255, 255, 255, 0.02)",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "8px",
-                  cursor: "pointer",
-                  transition: "background-color 0.15s ease",
-                }}
-              >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <input
                   ref={fileInputRef}
                   type="file"
+                  multiple
                   accept="audio/mp3,audio/wav,audio/m4a,audio/aac,audio/flac,audio/ogg,.mp3,.m4a,.wav,.aac,.flac,.ogg"
                   style={{ display: "none" }}
                   onChange={(e) => handleFileUpload(e.target.files)}
                 />
-                <Upload size={24} style={{ color: "var(--accent-primary)" }} />
-                <div style={{ fontSize: "13px", fontWeight: 700 }}>
-                  {isUploadingMusic ? "Analyzing & Auto-Tagging..." : "Drop audio files here or click to browse"}
-                </div>
-                <div style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
-                  MP3, M4A, WAV, AAC, FLAC • Mood is automatically tagged from metadata
-                </div>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploadingMusic}
+                  className="clickable"
+                  title="Add soundtrack files (select or drop multiple)"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "7px 16px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "var(--accent-primary)",
+                    color: "#ffffff",
+                    border: "none",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    cursor: isUploadingMusic ? "not-allowed" : "pointer",
+                    boxShadow: "0 2px 10px var(--accent-glow)",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <Upload size={13} />
+                  <span>{isUploadingMusic ? "Adding..." : "+ Add Music"}</span>
+                </button>
+
+                <button
+                  onClick={() => setShowMusicModal(false)}
+                  className="clickable"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-secondary)",
+                    cursor: "pointer",
+                    padding: "4px",
+                    borderRadius: "var(--radius-full)",
+                  }}
+                >
+                  <X size={18} />
+                </button>
               </div>
+            </div>
+
+            {/* Modal Body: Track-First with Drag & Drop Area */}
+            <div 
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDraggingOver(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDraggingOver(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDraggingOver(false);
+                handleFileUpload(e.dataTransfer.files);
+              }}
+              style={{ 
+                padding: "20px 24px", 
+                overflowY: "auto", 
+                display: "flex", 
+                flexDirection: "column", 
+                gap: "14px",
+                position: "relative",
+              }}
+            >
+              {/* Drag-over Visual Overlay */}
+              {isDraggingOver && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: "12px",
+                    borderRadius: "var(--radius-md)",
+                    border: "2px dashed var(--accent-primary)",
+                    backgroundColor: "rgba(59, 130, 246, 0.15)",
+                    backdropFilter: "blur(8px)",
+                    zIndex: 20,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                    pointerEvents: "none",
+                  }}
+                >
+                  <Upload size={32} style={{ color: "var(--accent-primary)" }} />
+                  <span style={{ fontSize: "14px", fontWeight: 700, color: "#ffffff" }}>
+                    Drop audio files here to add to library
+                  </span>
+                  <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                    Supports multiple files (MP3, M4A, WAV, AAC, FLAC)
+                  </span>
+                </div>
+              )}
 
               {/* Feedback Alert */}
               {musicFeedback && (
                 <div
                   style={{
-                    padding: "8px 12px",
-                    borderRadius: "var(--radius-md)",
-                    backgroundColor: "rgba(59, 130, 246, 0.15)",
-                    border: "1px solid rgba(59, 130, 246, 0.3)",
+                    padding: "8px 14px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "rgba(59, 130, 246, 0.12)",
+                    border: "1px solid rgba(59, 130, 246, 0.25)",
                     fontSize: "12px",
-                    color: "var(--text-primary)",
+                    color: "var(--accent-primary)",
+                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
                   }}
                 >
-                  {musicFeedback}
+                  <span>{musicFeedback}</span>
+                  <button
+                    onClick={() => setMusicFeedback(null)}
+                    style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", padding: "0 4px" }}
+                  >
+                    ×
+                  </button>
                 </div>
               )}
 
+              {/* Sub-header Bar */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase" }}>
+                  All Soundtracks ({musicTracks.length})
+                </span>
+                <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                  Select or drag & drop multiple files anywhere
+                </span>
+              </div>
+
               {/* Track List */}
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase" }}>
-                  Available Soundtracks ({musicTracks.length})
-                </div>
-
                 {isLoadingMusic ? (
                   <div style={{ textAlign: "center", padding: "20px", color: "var(--text-secondary)", fontSize: "13px" }}>
                     Loading soundtracks...
@@ -974,23 +1075,31 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                   <div
                     style={{
                       textAlign: "center",
-                      padding: "28px 16px",
+                      padding: "36px 16px",
                       borderRadius: "var(--radius-md)",
                       backgroundColor: "rgba(255, 255, 255, 0.02)",
-                      border: "1px solid var(--border-subtle)",
+                      border: "1px dashed var(--glass-border)",
                       color: "var(--text-secondary)",
                       fontSize: "13px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "10px",
                     }}
                   >
-                    <Disc3 size={28} style={{ color: "var(--accent-primary)", marginBottom: "6px" }} />
-                    <p style={{ margin: 0 }}>No custom music uploaded yet.</p>
-                    <p style={{ margin: "4px 0 0 0", fontSize: "11px" }}>
-                      Stories currently play dynamic procedural ambient chords until you add audio files.
-                    </p>
+                    <Disc3 size={32} style={{ color: "var(--accent-primary)" }} />
+                    <div>
+                      <p style={{ margin: 0, fontWeight: 700, color: "var(--text-primary)" }}>No custom music added yet.</p>
+                      <p style={{ margin: "4px 0 0 0", fontSize: "11px" }}>
+                        Click "+ Add Music" above or drag & drop audio files anywhere. Stories play dynamic ambient chords until you add tracks.
+                      </p>
+                    </div>
                   </div>
                 ) : (
                   musicTracks.map((trk) => {
                     const isPlaying = previewTrackId === trk.id;
+                    const isAuto = trk.mood === "auto";
+
                     return (
                       <div
                         key={trk.id}
@@ -998,22 +1107,23 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "space-between",
-                          padding: "10px 14px",
+                          padding: "12px 14px",
                           borderRadius: "var(--radius-md)",
-                          backgroundColor: "rgba(255, 255, 255, 0.03)",
-                          border: "1px solid var(--border-subtle)",
+                          backgroundColor: isPlaying ? "rgba(59, 130, 246, 0.08)" : "rgba(255, 255, 255, 0.03)",
+                          border: `1px solid ${isPlaying ? "rgba(59, 130, 246, 0.3)" : "var(--border-subtle)"}`,
                           gap: "12px",
+                          transition: "all 0.15s ease",
                         }}
                       >
                         {/* Play/Pause Preview Button & Track Details */}
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1, minWidth: 0 }}>
                           <button
                             onClick={() => handleTogglePreview(trk)}
                             className="clickable"
                             title={isPlaying ? "Stop Preview" : "Preview Soundtrack"}
                             style={{
-                              width: "32px",
-                              height: "32px",
+                              width: "34px",
+                              height: "34px",
                               borderRadius: "50%",
                               backgroundColor: isPlaying ? "var(--accent-primary)" : "var(--glass-pill-bg)",
                               border: "1px solid var(--glass-border)",
@@ -1023,42 +1133,56 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                               justifyContent: "center",
                               cursor: "pointer",
                               flexShrink: 0,
+                              boxShadow: isPlaying ? "0 0 10px var(--accent-glow)" : "none",
+                              transition: "all 0.15s ease",
                             }}
                           >
-                            {isPlaying ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                            {isPlaying ? <VolumeX size={15} /> : <Volume2 size={15} />}
                           </button>
 
-                          <div style={{ minWidth: 0 }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
                             <div style={{ fontSize: "13px", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                               {trk.title}
                             </div>
-                            <div style={{ fontSize: "11px", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px" }}>
-                              <span>{trk.artist || "Unknown Artist"}</span>
+                            <div style={{ fontSize: "11px", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
+                              <span>{trk.artist || "Local Soundtrack"}</span>
                               <span>•</span>
                               <span>{trk.duration_formatted}</span>
                               <span>•</span>
                               <span>{trk.file_size_formatted}</span>
                             </div>
+                            {/* Auto Detect Statement */}
+                            <div style={{ fontSize: "11px", marginTop: "3px", display: "flex", alignItems: "center", gap: "6px" }}>
+                              {isAuto ? (
+                                <span style={{ color: "var(--accent-primary)", display: "inline-flex", alignItems: "center", gap: "5px", fontWeight: 600 }}>
+                                  is set to auto detect
+                                  {trk.detected_mood && (
+                                    <span
+                                      style={{
+                                        fontSize: "10px",
+                                        fontWeight: 700,
+                                        backgroundColor: "rgba(59, 130, 246, 0.15)",
+                                        color: "var(--accent-primary)",
+                                        padding: "1px 7px",
+                                        borderRadius: "var(--radius-full)",
+                                        border: "1px solid rgba(59, 130, 246, 0.25)",
+                                      }}
+                                    >
+                                      {trk.detected_mood.toUpperCase()}{trk.bpm ? ` • ${Math.round(trk.bpm)} BPM` : ""} ✨
+                                    </span>
+                                  )}
+                                </span>
+                              ) : (
+                                <span style={{ color: "var(--text-secondary)", opacity: 0.85 }}>
+                                  Manual override ({trk.mood.charAt(0).toUpperCase() + trk.mood.slice(1)})
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
 
-                        {/* Mood Tag & Manual Override Selector */}
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
-                          {trk.auto_tagged && (
-                            <span
-                              style={{
-                                fontSize: "10px",
-                                fontWeight: 700,
-                                color: "var(--accent-primary)",
-                                backgroundColor: "rgba(59, 130, 246, 0.15)",
-                                padding: "2px 6px",
-                                borderRadius: "var(--radius-full)",
-                              }}
-                            >
-                              Auto ✨
-                            </span>
-                          )}
-
+                        {/* Controls on the Right: Tag Dropdown & Delete Button */}
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
                           <select
                             value={trk.mood}
                             onChange={(e) => handleUpdateMood(trk.id, e.target.value)}
@@ -1067,16 +1191,45 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                               color: "var(--text-primary)",
                               border: "1px solid var(--glass-border)",
                               borderRadius: "var(--radius-full)",
-                              fontSize: "11px",
-                              padding: "4px 8px",
+                              fontSize: "12px",
+                              padding: "5px 10px",
                               cursor: "pointer",
+                              fontWeight: 600,
                             }}
                           >
-                            <option value="nostalgic">Nostalgic</option>
+                            <option value="auto">Auto</option>
                             <option value="upbeat">Upbeat</option>
+                            <option value="nostalgic">Nostalgic</option>
                             <option value="acoustic">Acoustic</option>
                             <option value="cinematic">Cinematic</option>
                           </select>
+
+                          <button
+                            onClick={() => handleDeleteTrack(trk.id)}
+                            className="clickable"
+                            title="Remove soundtrack"
+                            style={{
+                              width: "30px",
+                              height: "30px",
+                              borderRadius: "var(--radius-full)",
+                              backgroundColor: "rgba(239, 68, 68, 0.08)",
+                              border: "1px solid rgba(239, 68, 68, 0.2)",
+                              color: "#ef4444",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                              transition: "all 0.15s ease",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = "rgba(239, 68, 68, 0.2)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = "rgba(239, 68, 68, 0.08)";
+                            }}
+                          >
+                            <Trash2 size={13} />
+                          </button>
                         </div>
                       </div>
                     );
@@ -1098,7 +1251,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                 onClick={() => setShowMusicModal(false)}
                 className="clickable"
                 style={{
-                  padding: "6px 18px",
+                  padding: "6px 20px",
                   borderRadius: "var(--radius-full)",
                   backgroundColor: "var(--glass-pill-bg)",
                   border: "1px solid var(--glass-border)",

@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from engine.database import get_db_connection
 from engine.services.music_service import (
     MusicTrack,
+    delete_track,
     get_track_by_id,
     get_track_for_mood,
     scan_music_library,
@@ -296,6 +297,18 @@ async def update_track(
             detail="Track not found.",
         )
     return track
+
+
+@router.delete("/music/{track_id}", status_code=status.HTTP_200_OK)
+async def delete_music_track(track_id: str):
+    """Deletes an audio soundtrack from the music library and manifest."""
+    success = delete_track(track_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Track not found or could not be deleted.",
+        )
+    return {"status": "deleted", "id": track_id, "track_id": track_id}
 
 
 @router.get("/music/{track_id}/stream", status_code=status.HTTP_200_OK)
