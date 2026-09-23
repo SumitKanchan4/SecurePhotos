@@ -619,13 +619,13 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Side-by-Side Photo Comparison Layout (Consistent 210px Cards) */}
+                  {/* Side-by-Side Photo Comparison Layout (50/50 Grid for Pairs) */}
                   <div
                     style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "14px",
-                      alignItems: "flex-start",
+                      display: "grid",
+                      gridTemplateColumns: group.photos.length === 2 ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fit, minmax(260px, 1fr))",
+                      gap: "16px",
+                      alignItems: "start",
                     }}
                   >
                     {group.photos.map((photo, pIdx) => {
@@ -637,16 +637,15 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                         <div
                           key={photo.id}
                           style={{
-                            width: "210px",
-                            flex: "0 0 210px",
+                            width: "100%",
                             borderRadius: "var(--radius-md)",
                             border: isSelected ? "2px solid var(--accent-primary)" : "1px solid var(--border-subtle)",
                             backgroundColor: "var(--bg-surface-elevated)",
                             boxShadow: isSelected ? "0 0 14px var(--accent-glow)" : "var(--shadow-sm)",
-                            padding: "10px",
+                            padding: "12px",
                             display: "flex",
                             flexDirection: "column",
-                            gap: "8px",
+                            gap: "10px",
                             position: "relative",
                             transition: "all 0.15s ease",
                           }}
@@ -659,7 +658,8 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                             style={{
                               position: "relative",
                               width: "100%",
-                              aspectRatio: "1",
+                              aspectRatio: group.photos.length === 2 ? "16/10" : "1",
+                              maxHeight: "380px",
                               borderRadius: "var(--radius-sm)",
                               overflow: "hidden",
                               backgroundColor: "var(--bg-app)",
@@ -771,13 +771,28 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                           </div>
 
                           {/* Concise Metadata Row */}
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "11px" }}>
-                            <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--text-primary)" }}>
-                              {photo.width && photo.height ? `${photo.width} × ${photo.height}` : "Original"}
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "11px", gap: "8px" }}>
+                            <span 
+                              style={{ 
+                                fontFamily: "var(--font-mono)", 
+                                fontWeight: 600, 
+                                color: "var(--text-primary)",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                              title={photo.filename}
+                            >
+                              {photo.filename}
                             </span>
-                            <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>
-                              {formatBytes(photo.file_size)}
-                            </span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                              <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>
+                                {photo.width && photo.height ? `${photo.width} × ${photo.height}` : "Original"}
+                              </span>
+                              <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--text-primary)" }}>
+                                {formatBytes(photo.file_size)}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       );

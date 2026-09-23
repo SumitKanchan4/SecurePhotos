@@ -58,6 +58,9 @@ class DuplicateSummaryResponse(BaseModel):
     total_groups: int
     total_duplicate_photos: int
     reclaimable_bytes: int
+    exact_groups: int = 0
+    similar_groups: int = 0
+    total_library_photos: int = 0
 
 
 class ResolveGroupRequest(BaseModel):

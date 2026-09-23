@@ -2922,6 +2922,58 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - 100% test pass rate across all 93 backend tests.
 - 0 TypeScript compiler errors; clean Vite production build.
 
+---
+
+## 61. Unified Bento Optimization & Side-by-Side Duplicates Engine HUD
+
+### Functionality Overview
+1. **Side-by-Side Bento Grid Alignment**:
+   - Replaced previously stacked full-width clutter and optimizer cards on the Dashboard with a unified, balanced 2-column Bento Grid row (`repeat(auto-fit, minmax(360px, 1fr))`) matching the layout geometry of the drive space cards above.
+   - **Tile 1 (Left): Duplicates & Clutter Reclaimer**:
+     - Visualizes reclaimable photo space using an SVG Circular Donut Chart showing duplicate ratio against total library photos.
+     - Center display highlights total reclaimable megabytes/gigabytes in bold mono typography.
+     - Displays exact duplicate groups vs similar photo bursts alongside 1-click "Review Duplicates" and "Rescan" actions.
+   - **Tile 2 (Right): Media & Video Optimization Engine**:
+     - Eliminates empty "0 candidates" dead-end screens by surfacing a live on-device telemetry HUD directly on the dashboard.
+     - Displays radial progress gauge tracking modernized assets (H.265/AV1 videos and WebP/AVIF proxies) against total library items.
+     - Real-time service state indicator pill:
+       - `● Transcoding in Background` (glowing emerald pill with active item progress bar and filename)
+       - `⏸ Engine Paused` (amber pill with 1-click "Resume Engine" action)
+       - `✓ All Media Modernized` (slate pill confirming zero bulky legacy codecs remain)
+     - Interactive controls allow users to Pause, Resume, or Trigger background optimization on demand.
+2. **Side-by-Side Balanced Duplicates View**:
+   - In `DuplicatesView`, duplicate pairs are rendered in a 50/50 responsive grid (`gridTemplateColumns: repeat(2, minmax(0, 1fr))`) instead of cramped 210px flex items that left vast blank space on desktop screens.
+   - Photo cards utilize a wide `16/10` aspect ratio for 2-photo pairs with a maximum height of 380px, enabling instant side-by-side visual comparison.
+   - Metadata rows display filename with text-overflow ellipsis, pixel dimensions (`W × H`), and human-formatted file sizes to immediately reveal differences in resolution and compression.
+
+### Functional Decision Points & Rationale
+- **Live Optimization Telemetry Card vs. Static Dead-End Screen**:
+  - *Problem*: The ingestion pipeline automatically optimizes and enqueues modern media in the background. Navigating to an external "Video Optimizer" view only to see "0 candidates" confused users and felt like a broken workflow.
+  - *Decision*: Surfaced continuous telemetry and control buttons directly on the Dashboard.
+  - *Rationale*: Keeps users informed about on-device modernization without forcing context switching.
+- **50/50 Grid Columns for Photo Duplicate Groups**:
+  - *Problem*: Fixed 210px cards in a flex wrap container left 70% of widescreen desktop viewports empty when comparing 2-photo duplicate pairs.
+  - *Decision*: Adopted a dynamic CSS Grid rule: `group.photos.length === 2 ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fit, minmax(260px, 1fr))"`.
+  - *Rationale*: Maximizes screen real estate and makes visual differences between pairs obvious at a glance.
+
+### Technical Touchpoints
+- **Backend API**:
+  - `engine/services/duplicate_service.py`: Updated `get_duplicate_summary()` to return `exact_groups`, `similar_groups`, and `total_library_photos`.
+  - `engine/api/duplicates.py`: Updated `DuplicateSummaryResponse` schema with group breakdowns and total photo counts.
+  - `engine/api/system.py`: Added `GET /api/system/optimization-status`, `POST /api/system/optimization/pause`, `POST /api/system/optimization/resume`, and `POST /api/system/optimization/trigger`.
+  - `engine/tests/test_dashboard_api.py`: Automated tests verifying telemetry counts and pause/resume/trigger control endpoints.
+- **Frontend UI**:
+  - `src/types/index.ts`: Updated `DuplicateSummaryResponse` and added `OptimizationStatusResponse` interface.
+  - `src/components/DashboardView.tsx`: Integrated side-by-side Bento Grid row with SVG Donut Chart, SVG Radial Optimization Gauge, live status pills, and background service controls.
+  - `src/components/DuplicatesView.tsx`: Upgraded duplicate group layout to 50/50 responsive comparison grid with rich metadata rows.
+
+### State & Lifecycle Impact
+- Background video processing service responds to pause/resume signals without database locks.
+- Real-time polling occurs only when optimization service status is `"processing"`, minimizing CPU cycles when idle.
+- 93/93 backend tests passing (100%).
+- Frontend builds cleanly with zero TypeScript errors.
+
+
 
 
 

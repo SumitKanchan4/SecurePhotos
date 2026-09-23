@@ -264,7 +264,25 @@ export interface DuplicateSummaryResponse {
   total_groups: number;
   total_duplicate_photos: number;
   reclaimable_bytes: number;
+  exact_groups?: number;
+  similar_groups?: number;
+  total_library_photos?: number;
 }
+
+export interface OptimizationStatusResponse {
+  service_status: "processing" | "paused" | "idle";
+  videos_total: number;
+  videos_optimized: number;
+  videos_pending: number;
+  images_total: number;
+  images_optimized: number;
+  images_pending: number;
+  overall_progress_percent: number;
+  active_filename?: string | null;
+  active_item_progress: number;
+  reclaimed_bytes: number;
+}
+
 
 export interface VideoOptimizationPlan {
   status: 'compressible' | 'enhanceable' | 'already_optimized' | 'standard';

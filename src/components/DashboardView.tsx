@@ -19,8 +19,16 @@ import {
   Flame,
   ArrowRight,
   Copy,
+  CheckCircle2,
+  Zap,
 } from "lucide-react";
-import { DashboardOverview, StoriesInsights, DuplicateSummaryResponse, PhotoItem, VideoSummary } from "../types";
+import { 
+  DashboardOverview, 
+  StoriesInsights, 
+  DuplicateSummaryResponse, 
+  OptimizationStatusResponse,
+  PhotoItem, 
+} from "../types";
 import { NavTab } from "../store/useAppStore";
 import { DuplicatesView } from "./DuplicatesView";
 import { VideoOptimizerView } from "./VideoOptimizerView";
@@ -56,20 +64,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
   const [stats, setStats] = useState<DashboardOverview | null>(null);
   const [insights, setInsights] = useState<StoriesInsights | null>(null);
   const [dupSummary, setDupSummary] = useState<DuplicateSummaryResponse | null>(null);
-  const [videoSummary, setVideoSummary] = useState<VideoSummary | null>(null);
+  const [optStatus, setOptStatus] = useState<OptimizationStatusResponse | null>(null);
   const [activeSubView, setActiveSubView] = useState<"overview" | "duplicates" | "video-optimizer">("overview");
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [isRescanningDuplicates, setIsRescanningDuplicates] = useState<boolean>(false);
+  const [isTriggeringOptimization, setIsTriggeringOptimization] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchDashboardData = useCallback(async (showRefreshingState: boolean = false) => {
     if (showRefreshingState) setIsRefreshing(true);
     try {
-      const [dashRes, insRes, dupRes, vidRes] = await Promise.all([
+      const [dashRes, insRes, dupRes, optRes] = await Promise.all([
         fetch("http://127.0.0.1:8000/api/system/dashboard"),
         fetch("http://127.0.0.1:8000/api/stories/insights"),
         fetch("http://127.0.0.1:8000/api/duplicates/summary").catch(() => null),
-        fetch("http://127.0.0.1:8000/api/videos/summary").catch(() => null),
+        fetch("http://127.0.0.1:8000/api/system/optimization-status").catch(() => null),
       ]);
 
       if (!dashRes.ok) throw new Error(`Dashboard API error: ${dashRes.statusText}`);
@@ -86,9 +96,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
         setDupSummary(dupData);
       }
 
-      if (vidRes && vidRes.ok) {
-        const vidData: VideoSummary = await vidRes.json();
-        setVideoSummary(vidData);
+      if (optRes && optRes.ok) {
+        const optData: OptimizationStatusResponse = await optRes.json();
+        setOptStatus(optData);
       }
 
       setError(null);
@@ -104,6 +114,63 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
   useEffect(() => {
     fetchDashboardData();
   }, [fetchDashboardData]);
+
+  // Periodic polling when background optimization is processing
+  useEffect(() => {
+    if (optStatus?.service_status !== "processing") return;
+    const interval = setInterval(() => {
+      fetch("http://127.0.0.1:8000/api/system/optimization-status")
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          if (data) setOptStatus(data);
+        })
+        .catch(() => {});
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [optStatus?.service_status]);
+
+  const handleRescanDuplicates = async () => {
+    setIsRescanningDuplicates(true);
+    try {
+      await fetch("http://127.0.0.1:8000/api/duplicates/scan", { method: "POST" });
+      await fetchDashboardData(false);
+    } catch (e) {
+      console.error("Failed to rescan duplicates:", e);
+    } finally {
+      setIsRescanningDuplicates(false);
+    }
+  };
+
+  const handleTriggerOptimization = async () => {
+    setIsTriggeringOptimization(true);
+    try {
+      await fetch("http://127.0.0.1:8000/api/system/optimization/trigger", { method: "POST" });
+      await fetchDashboardData(false);
+    } catch (e) {
+      console.error("Failed to trigger optimization:", e);
+    } finally {
+      setIsTriggeringOptimization(false);
+    }
+  };
+
+  const handlePauseOptimization = async () => {
+    try {
+      await fetch("http://127.0.0.1:8000/api/system/optimization/pause", { method: "POST" });
+      await fetchDashboardData(false);
+    } catch (e) {
+      console.error("Failed to pause optimization:", e);
+    }
+  };
+
+  const handleResumeOptimization = async () => {
+    try {
+      await fetch("http://127.0.0.1:8000/api/system/optimization/resume", { method: "POST" });
+      await fetchDashboardData(false);
+    } catch (e) {
+      console.error("Failed to resume optimization:", e);
+    }
+  };
+
 
   if (activeSubView === "duplicates") {
     return (
@@ -641,248 +708,522 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
         </div>
       </div>
 
-      {/* ── BENTO ROW 1.5: Disk Space Reclaimer & Duplicate Optimizer ─ */}
-      <div
-        className="glass-panel"
-        style={{
-          borderRadius: "var(--radius-md)",
-          border: "1px solid var(--border-subtle)",
-          backgroundColor: "var(--bg-surface)",
-          padding: "16px 20px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
+      {/* ── BENTO GRID ROW 2: Duplicates & Media Optimization Engine (Side-by-Side) ─ */}
+      <div 
+        style={{ 
+          display: "grid", 
+          gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", 
           gap: "16px",
-          flex: "0 0 auto",
+          alignItems: "stretch",
           flexShrink: 0,
-          minHeight: "76px",
-          boxSizing: "border-box",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0, flex: 1 }}>
-          <div
-            style={{
-              width: "44px",
-              height: "44px",
-              borderRadius: "var(--radius-md)",
-              backgroundColor: dupSummary && dupSummary.total_groups > 0 
-                ? "rgba(239, 68, 68, 0.12)" 
-                : "rgba(16, 185, 129, 0.12)",
-              border: `1px solid ${
-                dupSummary && dupSummary.total_groups > 0 
-                  ? "rgba(239, 68, 68, 0.25)" 
-                  : "rgba(16, 185, 129, 0.25)"
-              }`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: dupSummary && dupSummary.total_groups > 0 ? "#ef4444" : "var(--accent-success)",
-              flexShrink: 0,
-            }}
-          >
-            <Copy size={20} />
-          </div>
-
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "14px", fontWeight: 700, whiteSpace: "nowrap" }}>
-                Duplicates & Clutter Reclaimer
-              </span>
-              {dupSummary && dupSummary.total_groups > 0 ? (
-                <span
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    padding: "2px 8px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(239, 68, 68, 0.12)",
-                    color: "#ef4444",
-                    border: "1px solid rgba(239, 68, 68, 0.25)",
-                    fontFamily: "var(--font-mono)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {dupSummary.total_groups} Groups ({formatBytes(dupSummary.reclaimable_bytes)} Reclaimable)
+        {/* Bento Tile 1: Duplicates & Clutter Reclaimer (with Donut / Pie Chart) */}
+        <div
+          className="glass-panel"
+          style={{
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--border-subtle)",
+            backgroundColor: "var(--bg-surface)",
+            padding: "20px",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            minHeight: "240px",
+            boxSizing: "border-box",
+          }}
+        >
+          {/* Top Row: Title & Status Chip */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div
+                style={{
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "var(--radius-md)",
+                  backgroundColor: dupSummary && dupSummary.total_groups > 0 ? "rgba(239, 68, 68, 0.12)" : "rgba(16, 185, 129, 0.12)",
+                  border: `1px solid ${dupSummary && dupSummary.total_groups > 0 ? "rgba(239, 68, 68, 0.25)" : "rgba(16, 185, 129, 0.25)"}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: dupSummary && dupSummary.total_groups > 0 ? "#ef4444" : "var(--accent-success)",
+                  flexShrink: 0,
+                }}
+              >
+                <Copy size={18} />
+              </div>
+              <div>
+                <span style={{ fontSize: "14px", fontWeight: 700, display: "block" }}>
+                  Duplicates & Clutter
                 </span>
-              ) : (
-                <span
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    padding: "2px 8px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(16, 185, 129, 0.12)",
-                    color: "var(--accent-success)",
-                    border: "1px solid rgba(16, 185, 129, 0.25)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  ✓ Optimized & Clean
+                <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                  Space reclamation & burst cleanup
                 </span>
-              )}
+              </div>
             </div>
 
-            <p style={{ margin: "3px 0 0 0", fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.4 }}>
-              {dupSummary && dupSummary.total_groups > 0
-                ? "Compare duplicate & burst shots side-by-side, inspect in full Lightbox, and safely reclaim storage."
-                : "No duplicate or redundant burst photos detected in your active media library."}
-            </p>
+            {dupSummary && dupSummary.total_groups > 0 ? (
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  padding: "3px 10px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "rgba(239, 68, 68, 0.12)",
+                  color: "#ef4444",
+                  border: "1px solid rgba(239, 68, 68, 0.25)",
+                  fontFamily: "var(--font-mono)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {dupSummary.total_groups} Groups Detected
+              </span>
+            ) : (
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  padding: "3px 10px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "rgba(16, 185, 129, 0.12)",
+                  color: "var(--accent-success)",
+                  border: "1px solid rgba(16, 185, 129, 0.25)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                ✓ Library Clean & Unique
+              </span>
+            )}
+          </div>
+
+          {/* Middle Row: Donut Chart + Detailed Metrics */}
+          <div style={{ display: "flex", alignItems: "center", gap: "20px", margin: "14px 0" }}>
+            {/* SVG Circular Donut Chart (Radius 34, Circumference ~213.6) */}
+            <div style={{ position: "relative", width: "84px", height: "84px", flexShrink: 0 }}>
+              <svg width="84" height="84" viewBox="0 0 80 80" style={{ transform: "rotate(-90deg)" }}>
+                {/* Background Ring */}
+                <circle
+                  cx="40"
+                  cy="40"
+                  r={34}
+                  fill="transparent"
+                  stroke="rgba(255, 255, 255, 0.08)"
+                  strokeWidth="7"
+                />
+                {dupSummary && dupSummary.total_groups > 0 ? (
+                  <>
+                    {/* Exact Matches Segment (Emerald) */}
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r={34}
+                      fill="transparent"
+                      stroke="#10b981"
+                      strokeWidth="7"
+                      strokeDasharray={`${Math.max(12, ((dupSummary.exact_groups || 1) / Math.max(1, dupSummary.total_groups)) * 213.6 * 0.75)} 213.6`}
+                      strokeDashoffset="0"
+                      strokeLinecap="round"
+                    />
+                    {/* Similar Bursts Segment (Rose/Red) */}
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r={34}
+                      fill="transparent"
+                      stroke="#ef4444"
+                      strokeWidth="7"
+                      strokeDasharray={`${Math.max(12, ((dupSummary.similar_groups || 1) / Math.max(1, dupSummary.total_groups)) * 213.6 * 0.75)} 213.6`}
+                      strokeDashoffset={`-${Math.max(12, ((dupSummary.exact_groups || 1) / Math.max(1, dupSummary.total_groups)) * 213.6 * 0.75)}`}
+                      strokeLinecap="round"
+                    />
+                  </>
+                ) : (
+                  /* 100% Clean Ring */
+                  <circle
+                    cx="40"
+                    cy="40"
+                    r={34}
+                    fill="transparent"
+                    stroke="#10b981"
+                    strokeWidth="7"
+                    strokeDasharray="213.6 213.6"
+                    strokeDashoffset="0"
+                  />
+                )}
+              </svg>
+              {/* Center Donut Text */}
+              <div 
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  pointerEvents: "none",
+                  textAlign: "center",
+                }}
+              >
+                {dupSummary && dupSummary.total_groups > 0 ? (
+                  <>
+                    <span style={{ fontSize: "11px", fontWeight: 800, fontFamily: "var(--font-mono)", color: "#ef4444", lineHeight: 1.1 }}>
+                      {formatBytes(dupSummary.reclaimable_bytes)}
+                    </span>
+                    <span style={{ fontSize: "8px", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      Reclaim
+                    </span>
+                  </>
+                ) : (
+                  <CheckCircle2 size={20} style={{ color: "var(--accent-success)" }} />
+                )}
+              </div>
+            </div>
+
+            {/* Metrics Breakdown */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", flex: 1, fontSize: "11px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: "var(--text-secondary)" }}>Redundant Copies:</span>
+                <strong style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
+                  {dupSummary ? `${dupSummary.total_duplicate_photos} photos` : "0 photos"}
+                </strong>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: "var(--text-secondary)" }}>Cluster Types:</span>
+                <strong style={{ fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>
+                  {dupSummary?.exact_groups || 0} Exact • {dupSummary?.similar_groups || 0} Similar
+                </strong>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: "var(--text-secondary)" }}>Potential Space Savings:</span>
+                <strong style={{ fontFamily: "var(--font-mono)", color: "var(--accent-success)" }}>
+                  +{formatBytes(dupSummary?.reclaimable_bytes || 0)}
+                </strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Action Row */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", paddingTop: "8px", borderTop: "1px solid var(--border-subtle)" }}>
+            <button
+              onClick={handleRescanDuplicates}
+              disabled={isRescanningDuplicates}
+              className="clickable"
+              title="Rescan library for duplicates"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                padding: "6px 12px",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "var(--glass-pill-bg)",
+                border: "1px solid var(--glass-border)",
+                color: "var(--text-secondary)",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: isRescanningDuplicates ? "not-allowed" : "pointer",
+              }}
+            >
+              <RefreshCw size={11} className={isRescanningDuplicates ? "spin-animation" : ""} />
+              <span>{isRescanningDuplicates ? "Scanning..." : "Rescan"}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveSubView("duplicates")}
+              className="clickable"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "7px 18px",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: dupSummary && dupSummary.total_groups > 0 ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+                border: `1px solid ${dupSummary && dupSummary.total_groups > 0 ? "transparent" : "var(--glass-border)"}`,
+                color: dupSummary && dupSummary.total_groups > 0 ? "#ffffff" : "var(--text-primary)",
+                fontSize: "12px",
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: dupSummary && dupSummary.total_groups > 0 ? "0 2px 10px var(--accent-glow)" : "none",
+                transition: "all 0.15s ease",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span>{dupSummary && dupSummary.total_groups > 0 ? "Review Duplicates" : "View Duplicates"}</span>
+              <ArrowRight size={13} />
+            </button>
           </div>
         </div>
 
-        <button
-          onClick={() => setActiveSubView("duplicates")}
-          className="clickable"
+        {/* Bento Tile 2: Media & Video Optimization Engine (with Live Transcoder Status & Manual Controls) */}
+        <div
+          className="glass-panel"
           style={{
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--border-subtle)",
+            backgroundColor: "var(--bg-surface)",
+            padding: "20px",
             display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "9px 20px",
-            borderRadius: "var(--radius-full)",
-            backgroundColor: dupSummary && dupSummary.total_groups > 0 ? "var(--accent-primary)" : "var(--glass-pill-bg)",
-            border: `1px solid ${dupSummary && dupSummary.total_groups > 0 ? "transparent" : "var(--glass-border)"}`,
-            color: dupSummary && dupSummary.total_groups > 0 ? "#ffffff" : "var(--text-primary)",
-            fontSize: "12px",
-            fontWeight: 700,
-            cursor: "pointer",
-            boxShadow: dupSummary && dupSummary.total_groups > 0 ? "0 2px 10px var(--accent-glow)" : "none",
-            transition: "all 0.15s ease",
-            whiteSpace: "nowrap",
-            flexShrink: 0,
+            flexDirection: "column",
+            justifyContent: "space-between",
+            minHeight: "240px",
+            boxSizing: "border-box",
           }}
         >
-          <span>{dupSummary && dupSummary.total_groups > 0 ? "Review & Reclaim Space" : "View Duplicates Space"}</span>
-          <ArrowRight size={14} />
-        </button>
-      </div>
-
-      {/* ── BENTO ROW 1.6: Video Space Saver & Vintage Restorer ─────── */}
-      <div
-        className="glass-panel"
-        style={{
-          borderRadius: "var(--radius-md)",
-          border: "1px solid var(--border-subtle)",
-          backgroundColor: "var(--bg-surface)",
-          padding: "16px 20px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "16px",
-          flex: "0 0 auto",
-          flexShrink: 0,
-          minHeight: "76px",
-          boxSizing: "border-box",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0, flex: 1 }}>
-          <div
-            style={{
-              width: "44px",
-              height: "44px",
-              borderRadius: "var(--radius-md)",
-              backgroundColor: videoSummary && (videoSummary.compressible_count > 0 || videoSummary.enhanceable_count > 0)
-                ? "rgba(245, 158, 11, 0.12)" 
-                : "rgba(16, 185, 129, 0.12)",
-              border: `1px solid ${
-                videoSummary && (videoSummary.compressible_count > 0 || videoSummary.enhanceable_count > 0)
-                  ? "rgba(245, 158, 11, 0.25)" 
-                  : "rgba(16, 185, 129, 0.25)"
-              }`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: videoSummary && (videoSummary.compressible_count > 0 || videoSummary.enhanceable_count > 0) ? "#f59e0b" : "var(--accent-success)",
-              flexShrink: 0,
-            }}
-          >
-            <Film size={20} />
-          </div>
-
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "14px", fontWeight: 700, whiteSpace: "nowrap" }}>
-                Video Space Saver & Vintage Restorer
-              </span>
-              {videoSummary && videoSummary.compressible_count > 0 ? (
-                <span
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    padding: "2px 8px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(245, 158, 11, 0.12)",
-                    color: "#f59e0b",
-                    border: "1px solid rgba(245, 158, 11, 0.25)",
-                    fontFamily: "var(--font-mono)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {videoSummary.compressible_count} Heavy Videos (~{formatBytes(videoSummary.potential_savings_bytes)} Reclaimable)
+          {/* Top Row: Title & Engine Status Pill */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div
+                style={{
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "var(--radius-md)",
+                  backgroundColor: optStatus?.service_status === "processing" 
+                    ? "rgba(59, 130, 246, 0.15)" 
+                    : optStatus?.service_status === "paused"
+                    ? "rgba(245, 158, 11, 0.15)"
+                    : "rgba(16, 185, 129, 0.12)",
+                  border: `1px solid ${
+                    optStatus?.service_status === "processing"
+                      ? "rgba(59, 130, 246, 0.3)"
+                      : optStatus?.service_status === "paused"
+                      ? "rgba(245, 158, 11, 0.3)"
+                      : "rgba(16, 185, 129, 0.25)"
+                  }`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: optStatus?.service_status === "processing" ? "var(--accent-primary)" : optStatus?.service_status === "paused" ? "#f59e0b" : "var(--accent-success)",
+                  flexShrink: 0,
+                }}
+              >
+                <Sparkles size={18} className={optStatus?.service_status === "processing" ? "spin-animation" : ""} />
+              </div>
+              <div>
+                <span style={{ fontSize: "14px", fontWeight: 700, display: "block" }}>
+                  Media & Video Optimization
                 </span>
-              ) : videoSummary && videoSummary.enhanceable_count > 0 ? (
-                <span
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    padding: "2px 8px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(59, 130, 246, 0.12)",
-                    color: "var(--accent-primary)",
-                    border: "1px solid rgba(59, 130, 246, 0.25)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {videoSummary.enhanceable_count} Vintage Videos Ready for HD
+                <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                  On-device visual transcoding engine
                 </span>
-              ) : (
-                <span
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    padding: "2px 8px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(16, 185, 129, 0.12)",
-                    color: "var(--accent-success)",
-                    border: "1px solid rgba(16, 185, 129, 0.25)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  ✓ Videos Highly Optimized (H.265/AV1)
-                </span>
-              )}
+              </div>
             </div>
 
-            <p style={{ margin: "3px 0 0 0", fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.4 }}>
-              Visually lossless H.265 transcoding with audio copy, 30-day trash safety, and vintage upscaling.
-            </p>
+            {/* Live Engine Status Badge */}
+            {optStatus?.service_status === "processing" ? (
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  padding: "3px 10px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "rgba(59, 130, 246, 0.15)",
+                  color: "var(--accent-primary)",
+                  border: "1px solid rgba(59, 130, 246, 0.3)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "var(--accent-primary)", boxShadow: "0 0 6px var(--accent-primary)" }} />
+                Transcoding in Background
+              </span>
+            ) : optStatus?.service_status === "paused" ? (
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  padding: "3px 10px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "rgba(245, 158, 11, 0.15)",
+                  color: "#f59e0b",
+                  border: "1px solid rgba(245, 158, 11, 0.3)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                ⏸ Engine Paused
+              </span>
+            ) : (
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  padding: "3px 10px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "rgba(16, 185, 129, 0.12)",
+                  color: "var(--accent-success)",
+                  border: "1px solid rgba(16, 185, 129, 0.25)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                ✓ All Media Modernized
+              </span>
+            )}
+          </div>
+
+          {/* Middle Row: Progress Gauge + Processed Counts */}
+          <div style={{ display: "flex", alignItems: "center", gap: "20px", margin: "14px 0" }}>
+            {/* SVG Radial Progress Gauge (Radius 34, Circumference ~213.6) */}
+            <div style={{ position: "relative", width: "84px", height: "84px", flexShrink: 0 }}>
+              <svg width="84" height="84" viewBox="0 0 80 80" style={{ transform: "rotate(-90deg)" }}>
+                <circle
+                  cx="40"
+                  cy="40"
+                  r={34}
+                  fill="transparent"
+                  stroke="rgba(255, 255, 255, 0.08)"
+                  strokeWidth="7"
+                />
+                <circle
+                  cx="40"
+                  cy="40"
+                  r={34}
+                  fill="transparent"
+                  stroke={optStatus?.overall_progress_percent === 100 ? "#10b981" : "#3b82f6"}
+                  strokeWidth="7"
+                  strokeDasharray={`${Math.max(8, ((optStatus?.overall_progress_percent ?? 100) / 100) * 213.6)} 213.6`}
+                  strokeDashoffset="0"
+                  strokeLinecap="round"
+                  style={{ transition: "stroke-dasharray 0.5s ease" }}
+                />
+              </svg>
+              {/* Center Gauge Text */}
+              <div 
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  pointerEvents: "none",
+                  textAlign: "center",
+                }}
+              >
+                <span style={{ fontSize: "13px", fontWeight: 800, fontFamily: "var(--font-mono)", color: optStatus?.overall_progress_percent === 100 ? "var(--accent-success)" : "var(--accent-primary)", lineHeight: 1.1 }}>
+                  {optStatus?.overall_progress_percent ?? 100}%
+                </span>
+                <span style={{ fontSize: "8px", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Optimized
+                </span>
+              </div>
+            </div>
+
+            {/* Metrics Breakdown */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", flex: 1, fontSize: "11px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: "var(--text-secondary)" }}>Videos Modernized:</span>
+                <strong style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
+                  {optStatus?.videos_optimized ?? (stats?.media_counts.videos || 0)} / {optStatus?.videos_total ?? (stats?.media_counts.videos || 0)} (H.265/AV1)
+                </strong>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: "var(--text-secondary)" }}>Image Proxies:</span>
+                <strong style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
+                  {optStatus?.images_optimized ?? (stats?.media_counts.images || 0)} / {optStatus?.images_total ?? (stats?.media_counts.images || 0)} (AVIF/WebP)
+                </strong>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: "var(--text-secondary)" }}>Compression Savings:</span>
+                <strong style={{ fontFamily: "var(--font-mono)", color: "var(--accent-success)" }}>
+                  +{formatBytes(optStatus?.reclaimed_bytes || 0)} Saved
+                </strong>
+              </div>
+
+              {/* Active Transcode Micro Progress Indicator */}
+              {optStatus?.service_status === "processing" && optStatus.active_filename && (
+                <div style={{ marginTop: "2px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--accent-primary)" }}>
+                    <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap", maxWidth: "160px" }}>
+                      {optStatus.active_filename}
+                    </span>
+                    <span>{optStatus.active_item_progress}%</span>
+                  </div>
+                  <div style={{ height: "3px", width: "100%", backgroundColor: "rgba(59, 130, 246, 0.2)", borderRadius: "var(--radius-full)", overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${optStatus.active_item_progress}%`, backgroundColor: "var(--accent-primary)", transition: "width 0.3s ease" }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Bottom Action Row: Live Manual Controls */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px", paddingTop: "8px", borderTop: "1px solid var(--border-subtle)" }}>
+            {optStatus?.service_status === "processing" ? (
+              <button
+                onClick={handlePauseOptimization}
+                className="clickable"
+                title="Pause background transcode worker"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "7px 16px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "rgba(245, 158, 11, 0.15)",
+                  border: "1px solid rgba(245, 158, 11, 0.3)",
+                  color: "#f59e0b",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                <span>Pause Engine</span>
+              </button>
+            ) : optStatus?.service_status === "paused" ? (
+              <button
+                onClick={handleResumeOptimization}
+                className="clickable"
+                title="Resume background transcode worker"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "7px 16px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "var(--accent-primary)",
+                  border: "none",
+                  color: "#ffffff",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  boxShadow: "0 2px 8px var(--accent-glow)",
+                }}
+              >
+                <span>Resume Engine</span>
+              </button>
+            ) : (
+              <button
+                onClick={handleTriggerOptimization}
+                disabled={isTriggeringOptimization}
+                className="clickable"
+                title="Manually trigger on-device optimization scan"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "7px 16px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "var(--glass-pill-bg)",
+                  border: "1px solid var(--glass-border)",
+                  color: "var(--text-primary)",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: isTriggeringOptimization ? "not-allowed" : "pointer",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <Zap size={13} style={{ color: "var(--accent-primary)" }} />
+                <span>{isTriggeringOptimization ? "Checking..." : optStatus && optStatus.videos_pending > 0 ? "Optimize Now" : "Re-Check Library"}</span>
+              </button>
+            )}
           </div>
         </div>
-
-        <button
-          onClick={() => setActiveSubView("video-optimizer")}
-          className="clickable"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "9px 20px",
-            borderRadius: "var(--radius-full)",
-            backgroundColor: videoSummary && (videoSummary.compressible_count > 0 || videoSummary.enhanceable_count > 0) ? "var(--accent-primary)" : "var(--glass-pill-bg)",
-            border: `1px solid ${videoSummary && (videoSummary.compressible_count > 0 || videoSummary.enhanceable_count > 0) ? "transparent" : "var(--glass-border)"}`,
-            color: videoSummary && (videoSummary.compressible_count > 0 || videoSummary.enhanceable_count > 0) ? "#ffffff" : "var(--text-primary)",
-            fontSize: "12px",
-            fontWeight: 700,
-            cursor: "pointer",
-            boxShadow: videoSummary && (videoSummary.compressible_count > 0 || videoSummary.enhanceable_count > 0) ? "0 2px 10px var(--accent-glow)" : "none",
-            transition: "all 0.15s ease",
-            whiteSpace: "nowrap",
-            flexShrink: 0,
-          }}
-        >
-          <span>Open Video Optimizer</span>
-          <ArrowRight size={14} />
-        </button>
       </div>
+
 
       {/* ── BENTO GRID ROW 2: High-Density Library Media Catalog Strip ── */}
       <div style={{ flexShrink: 0 }}>

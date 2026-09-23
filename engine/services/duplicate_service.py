@@ -584,11 +584,20 @@ async def get_duplicate_summary(conn: aiosqlite.Connection) -> Dict[str, Any]:
     total_groups = len(groups)
     total_duplicate_photos = sum(len(g["photos"]) - 1 for g in groups)
     total_reclaimable_bytes = sum(g["reclaimable_bytes"] for g in groups)
+    exact_groups = sum(1 for g in groups if g.get("match_type") == "exact")
+    similar_groups = total_groups - exact_groups
+
+    async with conn.execute("SELECT count(*) FROM photos WHERE trashed_at IS NULL AND is_encrypted = 0;") as cur:
+        row = await cur.fetchone()
+        total_library_photos = row[0] if row else 0
 
     return {
         "total_groups": total_groups,
         "total_duplicate_photos": total_duplicate_photos,
         "reclaimable_bytes": total_reclaimable_bytes,
+        "exact_groups": exact_groups,
+        "similar_groups": similar_groups,
+        "total_library_photos": total_library_photos,
     }
 
 

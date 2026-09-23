@@ -286,3 +286,154 @@ async def get_dashboard_overview() -> DashboardOverviewResponse:
         )
     finally:
         await conn.close()
+
+
+# ── Media & Video Optimization Telemetry & Controls ──────────────────────────
+
+class MediaOptimizationStatus(BaseModel):
+    """Consolidated media and video background optimization telemetry."""
+    service_status: str              # 'processing' | 'paused' | 'idle'
+    videos_total: int
+    videos_optimized: int
+    videos_pending: int
+    images_total: int
+    images_optimized: int
+    images_pending: int
+    overall_progress_percent: int
+    active_filename: Optional[str] = None
+    active_item_progress: int = 0
+    reclaimed_bytes: int = 0
+
+
+@router.get("/optimization-status", response_model=MediaOptimizationStatus, status_code=status.HTTP_200_OK)
+async def get_optimization_status() -> MediaOptimizationStatus:
+    """Returns real-time processing counts, worker state, and active transcode telemetry."""
+    from engine.services.video_queue_service import get_queue_status
+
+    conn = await get_db_connection()
+    try:
+        # Video stats
+        async with conn.execute(
+            """
+            SELECT 
+                COUNT(*) as total,
+                COALESCE(SUM(CASE WHEN is_optimized = 1 THEN 1 ELSE 0 END), 0) as optimized
+            FROM photos
+            WHERE mime_type LIKE 'video/%' AND trashed_at IS NULL AND is_encrypted = 0;
+            """
+        ) as cur:
+            v_row = await cur.fetchone()
+            v_total = v_row[0] if v_row else 0
+            v_optimized = v_row[1] if v_row else 0
+            v_pending = max(0, v_total - v_optimized)
+
+        # Image stats
+        async with conn.execute(
+            """
+            SELECT 
+                COUNT(*) as total,
+                COALESCE(SUM(CASE WHEN preview_path IS NOT NULL AND preview_path != '' THEN 1 ELSE 0 END), 0) as optimized
+            FROM photos
+            WHERE mime_type NOT LIKE 'video/%' AND trashed_at IS NULL AND is_encrypted = 0;
+            """
+        ) as cur:
+            img_row = await cur.fetchone()
+            img_total = img_row[0] if img_row else 0
+            img_optimized = img_row[1] if img_row else 0
+            img_pending = max(0, img_total - img_optimized)
+
+        # Space reclaimed from optimization
+        async with conn.execute(
+            """
+            SELECT COALESCE(SUM(original_file_size - file_size), 0) as saved
+            FROM photos
+            WHERE original_file_size > file_size AND trashed_at IS NULL;
+            """
+        ) as cur:
+            s_row = await cur.fetchone()
+            reclaimed_bytes = s_row[0] if s_row else 0
+
+        # Queue worker state
+        queue_info = await get_queue_status()
+        is_paused = queue_info.get("is_paused", False)
+        is_running = queue_info.get("is_worker_running", False)
+        active_job = queue_info.get("active_job")
+        queued_count = queue_info.get("queued_count", 0)
+
+        if is_paused:
+            service_status = "paused"
+        elif is_running or queued_count > 0:
+            service_status = "processing"
+        else:
+            service_status = "idle"
+
+        active_filename = None
+        active_progress = 0
+        if active_job:
+            active_filename = active_job.get("filename")
+            active_progress = active_job.get("progress", 45)
+
+        total_items = max(1, v_total + img_total)
+        optimized_items = v_optimized + img_optimized
+        overall_pct = min(100, int((optimized_items / total_items) * 100))
+
+        return MediaOptimizationStatus(
+            service_status=service_status,
+            videos_total=v_total,
+            videos_optimized=v_optimized,
+            videos_pending=v_pending,
+            images_total=img_total,
+            images_optimized=img_optimized,
+            images_pending=img_pending,
+            overall_progress_percent=overall_pct,
+            active_filename=active_filename,
+            active_item_progress=active_progress,
+            reclaimed_bytes=reclaimed_bytes,
+        )
+    finally:
+        await conn.close()
+
+
+@router.post("/optimization/pause", status_code=status.HTTP_200_OK)
+async def pause_optimization():
+    """Pauses background video and media transcoding."""
+    from engine.services.video_queue_service import pause_video_queue
+    pause_video_queue()
+    return {"status": "paused"}
+
+
+@router.post("/optimization/resume", status_code=status.HTTP_200_OK)
+async def resume_optimization():
+    """Resumes background video and media transcoding."""
+    from engine.services.video_queue_service import resume_video_queue, start_video_queue_worker
+    resume_video_queue()
+    start_video_queue_worker()
+    return {"status": "running"}
+
+
+@router.post("/optimization/trigger", status_code=status.HTTP_200_OK)
+async def trigger_optimization():
+    """Manually triggers optimization for all unoptimized videos and media."""
+    from engine.services.video_queue_service import enqueue_video_for_processing, resume_video_queue, start_video_queue_worker
+    resume_video_queue()
+
+    conn = await get_db_connection()
+    enqueued = 0
+    try:
+        async with conn.execute(
+            """
+            SELECT id FROM photos
+            WHERE mime_type LIKE 'video/%' AND is_optimized = 0 AND trashed_at IS NULL AND is_encrypted = 0
+            ORDER BY file_size DESC;
+            """
+        ) as cur:
+            rows = await cur.fetchall()
+
+        for r in rows:
+            await enqueue_video_for_processing(r[0], action="compress")
+            enqueued += 1
+
+        start_video_queue_worker()
+        return {"status": "started", "enqueued_count": enqueued}
+    finally:
+        await conn.close()
