@@ -53,5 +53,16 @@ async def test_stories_and_people_apis():
 
         res_generate = await client.post("/api/stories/generate")
         assert res_generate.status_code == 200
-        assert isinstance(res_generate.json(), list)
+        generated = res_generate.json()
+        assert isinstance(generated, list)
+
+        if len(generated) > 0:
+            story_id = generated[0]["id"]
+            res_single = await client.get(f"/api/stories/{story_id}")
+            assert res_single.status_code == 200
+            data = res_single.json()
+            assert data["id"] == story_id
+            assert "slides" in data
+            assert isinstance(data["slides"], list)
+
 

@@ -347,3 +347,29 @@ export interface SearchResponse {
   } | null;
   suggestions: string[];
 }
+
+export type DocumentCategory = 'receipt' | 'identity' | 'tax' | 'medical' | 'legal' | 'warranty' | 'other' | 'all';
+
+export interface DocumentItem {
+  id: number;
+  title: string;
+  filename: string;
+  filepath: string;
+  category: string;
+  date: string;
+  file_size: string;
+  file_size_bytes: number;
+  mime_type: string;
+  extracted_text: string;
+  is_encrypted: boolean;
+  vault_type?: string | null;
+  thumbnail_path?: string | null;
+  preview_path?: string | null;
+}
+
+export interface DocumentScanResult {
+  total_scanned: number;
+  newly_detected: number;
+  categories: Record<string, number>;
+}
+

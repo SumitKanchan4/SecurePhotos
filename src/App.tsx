@@ -648,7 +648,27 @@ export const App: React.FC = () => {
             />
           ) : activeTab === "documents" ? (
             /* OCR Scanned Documents & Invoices */
-            <DocumentsView />
+            <DocumentsView 
+              onDocumentClick={(idx, docList) => {
+                const photoItems: PhotoItem[] = docList.map((d) => ({
+                  id: d.id,
+                  filename: d.filename,
+                  filepath: d.filepath,
+                  file_size: d.file_size_bytes,
+                  mime_type: d.mime_type,
+                  taken_at: d.date,
+                  is_favorite: false,
+                  is_encrypted: d.is_encrypted,
+                  is_optimized: false,
+                  is_enhanced: false,
+                  thumbnail_path: d.thumbnail_path ?? undefined,
+                  preview_path: d.preview_path ?? undefined,
+                  caption: d.title,
+                }));
+                setLightboxPhotos(photoItems);
+                setLightboxIndex(idx);
+              }}
+            />
           ) : activeTab === "trash" ? (
             /* 30-Day Trash & Soft-Delete Safe */
             <TrashView />

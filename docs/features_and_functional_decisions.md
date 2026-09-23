@@ -2773,5 +2773,95 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - Clean production build with zero TypeScript errors (`npm run build`).
 - 60fps virtualized rendering in `PhotoGrid` maintained during search filtering.
 
+---
+
+## 58. On-Device Document Intelligence, Categorization & Receipts Workspace
+
+### Functionality Overview
+1. **Dedicated Document Intelligence Service (`engine/services/document_service.py`)**:
+   - High-precision keyword and pattern analyzer classifying documents into 6 primary categories:
+     - `receipt`: Store receipts, invoices, bills, POS slips, payment confirmations.
+     - `identity`: Passports, driver licenses, citizenship, national identity cards, IDs.
+     - `tax`: IRS 1040, W-2, 1099, fiscal records, deductions, and tax filings.
+     - `medical`: Prescriptions, doctor notes, lab reports, clinic invoices.
+     - `legal`: Contracts, leases, agreements, NDAs, deeds, notarized certificates.
+     - `warranty`: Product manuals, warranties, serial numbers, guarantee certificates.
+   - Deterministic candidate detector analyzing filenames, PDF MIME types, and OCR text tokens.
+2. **Document Management API (`/api/documents`)**:
+   - `GET /api/documents`: Returns list of all active documents with optional category filtering and real-time text search.
+   - `POST /api/documents/scan`: Triggers an on-demand library scan to detect and categorize unscanned documents.
+   - `PATCH /api/documents/{photo_id}`: Allows users to update document category, custom title, or notes.
+   - `POST /api/documents/{photo_id}/toggle`: Marks or unmarks any photo as a document.
+3. **Section 4 Compliant Documents Workspace (`DocumentsView.tsx`)**:
+   - Balanced 3-column sticky toolbar (`flex: 1` Left / `flex: 0 1 auto` Center / `flex: 1` Right).
+   - Centered 22px Plus Jakarta Sans title (`Documents & Receipts`) with baseline count capsule (`[ N documents ]`).
+   - Category pill filter ribbon with horizontal mouse-wheel scrolling (`All`, `Receipts & Bills`, `Passports & IDs`, `Tax & Financial`, `Medical & Health`, `Legal & Contracts`, `Warranties & Manuals`).
+   - Real-time debounced OCR search input and 1-click "Scan Documents" trigger.
+   - Document cards with real thumbnail preview, category badge & icon, OCR text snippet preview, category popover selector, and click-to-inspect Lightbox integration.
+   - Human-centric empty state with 1-click scan button.
+
+### Functional Decision Points & Rationale
+- **Deterministic Keyword Categorization vs. Cloud Vision APIs**:
+  - *Decision*: Rely strictly on on-device regex/keyword token analysis and local metadata matching.
+  - *Rationale*: Zero-cloud architecture. User financial receipts, tax filings, and passports must never leave the local machine or be sent to third-party cloud OCR services.
+- **Direct Lightbox Integration for Documents**:
+  - *Decision*: Map documents directly to `PhotoItem` objects when clicked so they open in the full-resolution Lightbox.
+  - *Rationale*: Users frequently need to zoom in and pan across high-resolution text, receipts, and forms to read fine print or serial numbers. Lightbox zoom & pan (`Ctrl+I` metadata drawer) provides the ideal reading environment.
+
+### Technical Touchpoints
+- **Backend**:
+  - `engine/services/document_service.py`: Classification, heuristic detection, and metadata updates.
+  - `engine/api/documents.py`: Mounted under `/api/documents`.
+  - `engine/main.py`: Router registration.
+  - `engine/tests/test_documents.py`: 2 automated tests verifying listing, scanning, category filtering, search, and patch operations.
+- **Frontend**:
+  - `src/types/index.ts`: `DocumentCategory`, `DocumentItem`, and `DocumentScanResult` interfaces.
+  - `src/components/DocumentsView.tsx`: Full interactive workspace.
+  - `src/App.tsx`: Wired `onDocumentClick` to Lightbox viewer.
+
+### State & Lifecycle Impact
+- 100% test pass rate across `engine/tests/test_documents.py` (2/2).
+- Zero TypeScript build errors in `npm run build`.
+
+---
+
+## 59. Stories Cinematic Player & Dynamic Fallback Generation
+
+### Functionality Overview
+1. **Real Media Streaming Player (`StoryPlayerModal.tsx`)**:
+   - Complete replacement of mock static slides with live photo streaming from `/api/photos/{id}/preview` (with automatic fallback to `/original`).
+   - Dynamic subject-focused 4K Ken-Burns cinematic motion using `focal_x` and `focal_y` anchor coordinates.
+   - Segmented progress bar reflecting the exact number of slides in the story with smooth 4.5s timing.
+   - Full keyboard navigation: `ArrowLeft` (previous slide), `ArrowRight` (next slide), `Space` (pause/resume), `Escape` (exit).
+   - Touch/click edge navigation zones for intuitive slide skipping.
+2. **Procedural Web Audio Ambient Soundscape**:
+   - Zero-dependency harmonic synthesizer built natively with the Web Audio API (`AudioContext`).
+   - Generates warm, relaxing chord progressions (C Major, A Minor, F Major, G Major) with lowpass filter smoothing (800Hz) and gentle attack/release envelopes.
+   - Volume mute/unmute control and automatic cleanup on modal dismiss.
+3. **Dynamic Single Story API & Fallback Generation**:
+   - `GET /api/stories/{story_id}` endpoint returning the full story model with ordered slides, focal coordinates, and year labels.
+   - `generate_recent_highlights_story()` in `engine/services/stories_service.py`: Generates "Golden Moments & Highlights" stories from top-rated or recent photos even when face recognition hasn't clustered multi-year timelines.
+
+### Functional Decision Points & Rationale
+- **Web Audio API Procedural Soundscape vs. Bundled Audio Files**:
+  - *Decision*: Generate warm ambient chords procedurally via Web Audio oscillators and biquad lowpass filters.
+  - *Rationale*: Eliminates multi-megabyte MP3 asset bundle dependencies, prevents 404 broken audio links, and ensures smooth, gapless ambient music across all platforms.
+- **Focal-Point Centered Ken-Burns Transforms**:
+  - *Decision*: Anchor CSS `transform-origin` to `focal_x` and `focal_y` detected during facial scanning.
+  - *Rationale*: Panning and zooming toward the subject's face prevents awkward crops and creates an authentic Apple/Google Photos cinematic feel.
+
+### Technical Touchpoints
+- **Backend**:
+  - `engine/services/stories_service.py`: Added `generate_recent_highlights_story()`.
+  - `engine/api/stories.py`: Added `GET /api/stories/{story_id}` endpoint and wired highlights generation into `POST /api/stories/generate`.
+  - `engine/tests/test_ai_stories.py`: Updated tests verifying single story retrieval and slides integrity.
+- **Frontend**:
+  - `src/components/StoryPlayerModal.tsx`: Complete real photo streaming player, Ken-Burns motion, and procedural soundscape generator.
+
+### State & Lifecycle Impact
+- 100% test pass rate across `engine/tests/test_ai_stories.py` (3/3).
+- Clean production bundle (`npm run build`).
+
+
 
 

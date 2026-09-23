@@ -236,3 +236,72 @@ async def generate_year_in_review_story(year: Optional[str] = None) -> Optional[
     finally:
         await conn.close()
 
+
+async def generate_recent_highlights_story() -> Optional[StoryModel]:
+    """Generates a dynamic 'Library Highlights' story from top photos.
+
+    Selects favorite or high-quality recent photos across the library (minimum 2 photos).
+    """
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(
+            """
+            SELECT id, filename, taken_at, strftime('%Y', taken_at) as yr
+            FROM photos
+            WHERE trashed_at IS NULL AND is_encrypted = 0
+            ORDER BY is_favorite DESC, id DESC
+            LIMIT 12;
+            """
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        if len(rows) < 2:
+            return None
+
+        slides = [
+            StorySlide(
+                photo_id=r["id"],
+                filename=r["filename"],
+                taken_at=r["taken_at"],
+                year_label=r["yr"] or "Highlights",
+                transition_type="zoom_in",
+                focal_x=0.5,
+                focal_y=0.5,
+            )
+            for r in rows
+        ]
+
+        title = "Golden Moments & Highlights"
+        cursor = await conn.execute(
+            """
+            INSERT INTO stories (title, story_type, vibe_mood, cover_photo_id, music_track_path)
+            VALUES (?, 'highlights', 'acoustic', ?, ?);
+            """,
+            (title, slides[0].photo_id, VIBE_TRACKS["acoustic"]),
+        )
+        story_id = cursor.lastrowid
+
+        for idx, slide in enumerate(slides):
+            await conn.execute(
+                """
+                INSERT INTO story_items (story_id, photo_id, sort_order, transition_type, focal_x, focal_y)
+                VALUES (?, ?, ?, ?, ?, ?);
+                """,
+                (story_id, slide.photo_id, idx, slide.transition_type, slide.focal_x, slide.focal_y),
+            )
+
+        await conn.commit()
+
+        return StoryModel(
+            id=story_id,
+            title=title,
+            story_type="highlights",
+            vibe_mood="acoustic",
+            music_track_path=VIBE_TRACKS["acoustic"],
+            cover_photo_id=slides[0].photo_id,
+            slides=slides,
+        )
+    finally:
+        await conn.close()
+
+

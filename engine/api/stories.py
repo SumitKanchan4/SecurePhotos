@@ -83,6 +83,7 @@ async def generate_stories() -> List[StoryModel]:
     from engine.services.stories_service import (
         generate_through_the_years_story,
         generate_year_in_review_story,
+        generate_recent_highlights_story,
     )
 
     conn = await get_db_connection()
@@ -98,10 +99,73 @@ async def generate_stories() -> List[StoryModel]:
 
         # 2. Generate Year in Review highlight stories
         await generate_year_in_review_story()
+
+        # 3. Generate Recent Highlights / Golden Moments fallback story
+        await generate_recent_highlights_story()
     finally:
         await conn.close()
 
     return await list_stories()
+
+
+@router.get("/{story_id}", response_model=StoryModel, status_code=status.HTTP_200_OK)
+async def get_story(story_id: int) -> StoryModel:
+    """Returns a specific curated story with its ordered slide items and transitions."""
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(
+            """
+            SELECT s.id, s.title, s.story_type, s.vibe_mood, s.music_track_path, s.cover_photo_id
+            FROM stories s
+            WHERE s.id = ?;
+            """,
+            (story_id,),
+        ) as cursor:
+            r = await cursor.fetchone()
+            if not r:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Story with ID {story_id} was not found.",
+                )
+
+        async with conn.execute(
+            """
+            SELECT si.photo_id, si.transition_type, si.focal_x, si.focal_y, p.filename, p.taken_at,
+                   strftime('%Y', p.taken_at) as yr
+            FROM story_items si
+            JOIN photos p ON si.photo_id = p.id
+            WHERE si.story_id = ?
+            ORDER BY si.sort_order ASC;
+            """,
+            (story_id,),
+        ) as s_cursor:
+            slide_rows = await s_cursor.fetchall()
+
+        slides = [
+            StorySlide(
+                photo_id=sr["photo_id"],
+                filename=sr["filename"],
+                taken_at=sr["taken_at"],
+                year_label=sr["yr"] or "2026",
+                transition_type=sr["transition_type"],
+                focal_x=sr["focal_x"],
+                focal_y=sr["focal_y"],
+            )
+            for sr in slide_rows
+        ]
+
+        return StoryModel(
+            id=r["id"],
+            title=r["title"],
+            story_type=r["story_type"],
+            vibe_mood=r["vibe_mood"],
+            music_track_path=r["music_track_path"],
+            cover_photo_id=r["cover_photo_id"],
+            slides=slides,
+        )
+    finally:
+        await conn.close()
+
 
 
 class StoriesInsightsResponse(BaseModel):

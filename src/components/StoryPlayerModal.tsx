@@ -1,16 +1,19 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { 
   X, 
   Play, 
   Pause, 
   Volume2, 
   VolumeX, 
-  Download, 
   Sparkles, 
   Music,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  RefreshCw
 } from "lucide-react";
+import { StoryModel } from "../types";
+
+const API_BASE = "http://127.0.0.1:8000/api";
 
 interface StoryPlayerModalProps {
   storyId: number | null;
@@ -18,49 +21,231 @@ interface StoryPlayerModalProps {
   onClose: () => void;
 }
 
-const mockStorySlides = [
-  { id: 1, year: "2014", title: "First Steps in the Garden", durationMs: 4000 },
-  { id: 2, year: "2017", title: "Starting Kindergarten", durationMs: 4000 },
-  { id: 3, year: "2020", title: "Summer Seaside Camping", durationMs: 4000 },
-  { id: 4, year: "2023", title: "School Science Fair Winner", durationMs: 4000 },
-  { id: 5, year: "2026", title: "Middle School Graduation", durationMs: 4000 },
-];
+/**
+ * Procedural Web Audio Soundscape Generator tailored for Story Vibes.
+ * Generates harmonic chords in real time with zero external MP3 dependencies.
+ */
+class StorySoundscapeGenerator {
+  private ctx: AudioContext | null = null;
+  private isPlaying: boolean = false;
+  private masterGain: GainNode | null = null;
+  private chordTimer: number | null = null;
+
+  // Harmonious chord progressions tailored for nostalgia and reflection
+  private chords = [
+    [261.63, 329.63, 392.00, 523.25], // C Major
+    [220.00, 261.63, 329.63, 440.00], // A Minor
+    [174.61, 220.00, 261.63, 349.23], // F Major
+    [196.00, 246.94, 293.66, 392.00], // G Major
+  ];
+  private chordIndex = 0;
+
+  public async start() {
+    if (this.isPlaying) return;
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      this.ctx = new AudioCtx();
+      this.isPlaying = true;
+
+      this.masterGain = this.ctx.createGain();
+      this.masterGain.gain.setValueAtTime(0.001, this.ctx.currentTime);
+      this.masterGain.gain.exponentialRampToValueAtTime(0.28, this.ctx.currentTime + 1.2);
+      this.masterGain.connect(this.ctx.destination);
+
+      if (this.ctx.state === "suspended") {
+        await this.ctx.resume().catch(() => {});
+      }
+
+      this.schedulePad();
+    } catch (err) {
+      console.warn("Audio autoplay blocked or unsupported:", err);
+    }
+  }
+
+  public setMute(muted: boolean) {
+    if (!this.masterGain || !this.ctx) return;
+    this.masterGain.gain.setValueAtTime(muted ? 0.0001 : 0.28, this.ctx.currentTime);
+  }
+
+  private schedulePad() {
+    if (!this.ctx || !this.isPlaying || !this.masterGain) return;
+
+    if (this.ctx.state === "suspended") {
+      this.ctx.resume().then(() => {
+        if (this.isPlaying) this.schedulePad();
+      }).catch(() => {});
+      return;
+    }
+
+    const chord = this.chords[this.chordIndex % this.chords.length];
+    this.chordIndex++;
+
+    const now = this.ctx.currentTime;
+    const duration = 5.0; // 5 seconds per harmonic chord transition
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(800, now);
+    filter.Q.setValueAtTime(1.0, now);
+    filter.connect(this.masterGain);
+
+    chord.forEach((freq, idx) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const oscGain = this.ctx.createGain();
+
+      osc.type = idx % 2 === 0 ? "sine" : "triangle";
+      osc.frequency.setValueAtTime(freq, now);
+      osc.detune.setValueAtTime((idx - 1.5) * 5, now);
+
+      oscGain.gain.setValueAtTime(0.001, now);
+      oscGain.gain.linearRampToValueAtTime(0.07, now + 1.2);
+      oscGain.gain.setValueAtTime(0.07, now + duration - 1.5);
+      oscGain.gain.linearRampToValueAtTime(0.001, now + duration);
+
+      osc.connect(oscGain);
+      oscGain.connect(filter);
+
+      osc.start(now);
+      osc.stop(now + duration + 0.1);
+    });
+
+    this.chordTimer = window.setTimeout(() => {
+      if (this.isPlaying) this.schedulePad();
+    }, 4500);
+  }
+
+  public stop() {
+    this.isPlaying = false;
+    if (this.chordTimer) {
+      clearTimeout(this.chordTimer);
+      this.chordTimer = null;
+    }
+    if (this.masterGain && this.ctx) {
+      try {
+        this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, this.ctx.currentTime);
+        this.masterGain.gain.linearRampToValueAtTime(0.0001, this.ctx.currentTime + 0.4);
+        setTimeout(() => {
+          this.ctx?.close().catch(() => {});
+          this.ctx = null;
+        }, 500);
+      } catch {
+        this.ctx = null;
+      }
+    }
+  }
+}
 
 export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
   storyId,
   isOpen,
   onClose,
 }) => {
+  const [story, setStory] = useState<StoryModel | null>(null);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const soundscapeRef = useRef<StorySoundscapeGenerator | null>(null);
+
+  // Fetch story details from backend
+  const fetchStory = useCallback(async (id: number) => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/stories/${id}`);
+      if (res.ok) {
+        const data: StoryModel = await res.json();
+        setStory(data);
+        setCurrentSlideIndex(0);
+      } else {
+        // Fallback: try loading all stories and find matching ID
+        const allRes = await fetch(`${API_BASE}/stories`);
+        if (allRes.ok) {
+          const allStories: StoryModel[] = await allRes.json();
+          const found = allStories.find((s) => s.id === id);
+          if (found) {
+            setStory(found);
+            setCurrentSlideIndex(0);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load story:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (!isOpen || !isPlaying) return;
+    if (isOpen && storyId !== null) {
+      fetchStory(storyId);
+      setIsPlaying(true);
+
+      // Initialize ambient soundscape
+      soundscapeRef.current = new StorySoundscapeGenerator();
+      soundscapeRef.current.start();
+    } else {
+      soundscapeRef.current?.stop();
+      soundscapeRef.current = null;
+    }
+
+    return () => {
+      soundscapeRef.current?.stop();
+      soundscapeRef.current = null;
+    };
+  }, [isOpen, storyId, fetchStory]);
+
+  // Handle Mute toggle
+  const toggleMute = () => {
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    soundscapeRef.current?.setMute(nextMuted);
+  };
+
+  // Slides advancement timer
+  useEffect(() => {
+    if (!isOpen || !isPlaying || !story || story.slides.length === 0) return;
 
     const timer = setTimeout(() => {
-      if (currentSlideIndex < mockStorySlides.length - 1) {
+      if (currentSlideIndex < story.slides.length - 1) {
         setCurrentSlideIndex((prev) => prev + 1);
       } else {
-        setIsPlaying(false);
+        // Loop back to start or pause
+        setCurrentSlideIndex(0);
       }
-    }, mockStorySlides[currentSlideIndex].durationMs);
+    }, 4500);
 
     return () => clearTimeout(timer);
-  }, [isOpen, isPlaying, currentSlideIndex]);
+  }, [isOpen, isPlaying, currentSlideIndex, story]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      } else if (e.key === "ArrowLeft") {
+        setCurrentSlideIndex((prev) => Math.max(0, prev - 1));
+      } else if (e.key === "ArrowRight") {
+        if (story && story.slides.length > 0) {
+          setCurrentSlideIndex((prev) => (prev + 1) % story.slides.length);
+        }
+      } else if (e.key === " ") {
+        e.preventDefault();
+        setIsPlaying((prev) => !prev);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose, story]);
 
   if (!isOpen || storyId === null) return null;
 
-  const currentSlide = mockStorySlides[currentSlideIndex];
-
-  const handleExport4K = () => {
-    setIsExporting(true);
-    setTimeout(() => {
-      setIsExporting(false);
-      alert("4K Beat-Synced Video Montage exported to external drive: creatives/montages/Alice_Through_The_Years_4K.mp4");
-    }, 1200);
-  };
+  const slides = story?.slides || [];
+  const currentSlide = slides[currentSlideIndex];
 
   return (
     <div 
@@ -86,19 +271,21 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
           zIndex: 40,
         }}
       >
-        {mockStorySlides.map((slide, idx) => {
+        {slides.map((slide, idx) => {
           const isPassed = idx < currentSlideIndex;
           const isCurrent = idx === currentSlideIndex;
 
           return (
             <div 
-              key={slide.id}
+              key={slide.photo_id}
+              onClick={() => setCurrentSlideIndex(idx)}
               style={{
                 flex: 1,
                 height: "3px",
                 backgroundColor: "rgba(255, 255, 255, 0.25)",
                 borderRadius: "var(--radius-full)",
                 overflow: "hidden",
+                cursor: "pointer",
               }}
             >
               <div 
@@ -106,7 +293,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                   height: "100%",
                   width: isPassed ? "100%" : isCurrent ? "100%" : "0%",
                   backgroundColor: "#ffffff",
-                  transition: isCurrent ? "width 4s linear" : "none",
+                  transition: isCurrent && isPlaying ? "width 4.5s linear" : "none",
                 }}
               />
             </div>
@@ -129,21 +316,24 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <span 
-            style={{
-              backgroundColor: "rgba(0, 0, 0, 0.4)",
-              backdropFilter: "blur(12px)",
-              padding: "4px 10px",
-              borderRadius: "var(--radius-full)",
-              fontSize: "12px",
-              fontWeight: 700,
-              fontFamily: "var(--font-mono)",
-            }}
-          >
-            {currentSlide.year}
-          </span>
-          <span style={{ fontSize: "14px", fontWeight: 600, textShadow: "0 2px 4px rgba(0,0,0,0.6)" }}>
-            {currentSlide.title}
+          {currentSlide && (
+            <span 
+              style={{
+                backgroundColor: "rgba(0, 0, 0, 0.5)",
+                backdropFilter: "blur(16px)",
+                padding: "4px 10px",
+                borderRadius: "var(--radius-full)",
+                fontSize: "12px",
+                fontWeight: 700,
+                fontFamily: "var(--font-mono)",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+              }}
+            >
+              {currentSlide.year_label}
+            </span>
+          )}
+          <span style={{ fontSize: "15px", fontWeight: 700, textShadow: "0 2px 8px rgba(0,0,0,0.8)" }}>
+            {story?.title || "Curated Story"}
           </span>
         </div>
 
@@ -151,52 +341,91 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
           {/* Vibe Soundtrack Badge */}
           <div 
             style={{
-              backgroundColor: "rgba(0, 0, 0, 0.4)",
-              backdropFilter: "blur(12px)",
-              padding: "4px 10px",
+              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              backdropFilter: "blur(16px)",
+              padding: "4px 12px",
               borderRadius: "var(--radius-full)",
               fontSize: "11px",
+              fontWeight: 600,
               display: "flex",
               alignItems: "center",
               gap: "6px",
+              border: "1px solid rgba(255, 255, 255, 0.15)",
             }}
           >
-            <Music size={12} />
-            <span>Nostalgic Piano (BPM: 74)</span>
+            <Music size={12} style={{ color: "var(--accent-primary)" }} />
+            <span style={{ textTransform: "capitalize" }}>
+              {story?.vibe_mood ? `${story.vibe_mood} Ambient` : "Nostalgic Ambient"}
+            </span>
           </div>
 
+          {/* Sound Mute Toggle */}
           <button
-            onClick={() => setIsMuted(!isMuted)}
+            onClick={toggleMute}
             className="clickable"
+            title={isMuted ? "Unmute Ambient Music" : "Mute Music"}
             style={{
-              background: "rgba(0, 0, 0, 0.4)",
-              border: "none",
+              background: "rgba(0, 0, 0, 0.5)",
+              backdropFilter: "blur(16px)",
+              border: "1px solid rgba(255, 255, 255, 0.15)",
               color: "#ffffff",
-              padding: "6px",
+              padding: "7px",
               borderRadius: "var(--radius-full)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+            {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
           </button>
 
+          {/* Play / Pause Toggle */}
+          <button
+            onClick={() => setIsPlaying(!isPlaying)}
+            className="clickable"
+            title={isPlaying ? "Pause (Space)" : "Play (Space)"}
+            style={{
+              background: "rgba(0, 0, 0, 0.5)",
+              backdropFilter: "blur(16px)",
+              border: "1px solid rgba(255, 255, 255, 0.15)",
+              color: "#ffffff",
+              padding: "7px",
+              borderRadius: "var(--radius-full)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {isPlaying ? <Pause size={15} /> : <Play size={15} />}
+          </button>
+
+          {/* Close Modal */}
           <button
             onClick={onClose}
             className="clickable"
+            title="Close (Esc)"
             style={{
-              background: "rgba(0, 0, 0, 0.4)",
-              border: "none",
+              background: "rgba(0, 0, 0, 0.5)",
+              backdropFilter: "blur(16px)",
+              border: "1px solid rgba(255, 255, 255, 0.15)",
               color: "#ffffff",
-              padding: "6px",
+              padding: "7px",
               borderRadius: "var(--radius-full)",
-              marginLeft: "6px",
+              marginLeft: "4px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
       </div>
 
-      {/* Main Cinematic Video / Photo Viewport with Ken-Burns Motion */}
+      {/* Main Cinematic Viewport with Ken-Burns Motion */}
       <div 
         style={{
           flex: 1,
@@ -205,129 +434,149 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
           justifyContent: "center",
           position: "relative",
           overflow: "hidden",
+          backgroundColor: "#05060a",
         }}
       >
+        {isLoading ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", color: "var(--text-secondary)" }}>
+            <RefreshCw size={28} className="spin" style={{ color: "var(--accent-primary)" }} />
+            <span style={{ fontSize: "14px" }}>Loading Memory Story...</span>
+          </div>
+        ) : currentSlide ? (
+          <div 
+            style={{
+              position: "relative",
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "hidden",
+            }}
+          >
+            {/* Real Photo with Subject-Focused Ken-Burns Motion */}
+            <img
+              key={currentSlide.photo_id}
+              src={`${API_BASE}/photos/${currentSlide.photo_id}/preview`}
+              onError={(e) => {
+                // Fallback to original image if 8K preview proxy is not yet generated
+                (e.target as HTMLImageElement).src = `${API_BASE}/photos/${currentSlide.photo_id}/original`;
+              }}
+              alt={currentSlide.filename}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                transformOrigin: `${((currentSlide.focal_x ?? 0.5) * 100).toFixed(1)}% ${((currentSlide.focal_y ?? 0.5) * 100).toFixed(1)}%`,
+                transform: isPlaying ? "scale(1.14)" : "scale(1.0)",
+                transition: "transform 4.5s cubic-bezier(0.25, 1, 0.5, 1)",
+              }}
+            />
+          </div>
+        ) : (
+          <div style={{ color: "var(--text-secondary)", textAlign: "center" }}>
+            <Sparkles size={36} style={{ color: "var(--accent-primary)", marginBottom: "8px" }} />
+            <p>No photos found in this story.</p>
+          </div>
+        )}
+
+        {/* Previous Slide Touch Zone / Button */}
         <div 
+          onClick={() => setCurrentSlideIndex((prev) => Math.max(0, prev - 1))}
           style={{
             position: "absolute",
-            inset: 0,
-            background: "radial-gradient(circle, rgba(20,25,38,1) 0%, rgba(5,6,10,1) 100%)",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: "25%",
+            cursor: "pointer",
             display: "flex",
-            flexDirection: "column",
             alignItems: "center",
-            justifyContent: "center",
-            transform: isPlaying ? "scale(1.08) translate(10px, -5px)" : "scale(1.0)",
-            transition: "transform 4s ease-out",
+            paddingLeft: "20px",
+            opacity: 0,
+            transition: "opacity 0.2s ease",
+            zIndex: 30,
           }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = "0")}
         >
-          <Sparkles size={72} style={{ color: "var(--accent-primary)", opacity: 0.8, marginBottom: "20px" }} />
-          <h2 style={{ fontSize: "28px", fontWeight: 800, color: "#ffffff", letterSpacing: "-0.5px" }}>
-            {currentSlide.title}
-          </h2>
-          <p style={{ fontSize: "14px", color: "var(--text-secondary)", marginTop: "6px" }}>
-            4K 60fps Ken-Burns Motion • Synchronized Beat Cut
-          </p>
+          <div 
+            style={{
+              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              backdropFilter: "blur(12px)",
+              borderRadius: "var(--radius-full)",
+              padding: "10px",
+              color: "#ffffff",
+            }}
+          >
+            <ChevronLeft size={24} />
+          </div>
         </div>
 
-        {/* Navigation Overlays */}
-        {currentSlideIndex > 0 && (
-          <button
-            onClick={() => setCurrentSlideIndex(currentSlideIndex - 1)}
-            className="clickable"
+        {/* Next Slide Touch Zone / Button */}
+        <div 
+          onClick={() => {
+            if (slides.length > 0) {
+              setCurrentSlideIndex((prev) => (prev + 1) % slides.length);
+            }
+          }}
+          style={{
+            position: "absolute",
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: "25%",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            paddingRight: "20px",
+            opacity: 0,
+            transition: "opacity 0.2s ease",
+            zIndex: 30,
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = "0")}
+        >
+          <div 
             style={{
-              position: "absolute",
-              left: "24px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              background: "rgba(0, 0, 0, 0.3)",
-              border: "none",
-              color: "#ffffff",
-              padding: "10px",
+              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              backdropFilter: "blur(12px)",
               borderRadius: "var(--radius-full)",
-              zIndex: 30,
+              padding: "10px",
+              color: "#ffffff",
             }}
           >
-            <ChevronLeft size={28} />
-          </button>
-        )}
-
-        {currentSlideIndex < mockStorySlides.length - 1 && (
-          <button
-            onClick={() => setCurrentSlideIndex(currentSlideIndex + 1)}
-            className="clickable"
-            style={{
-              position: "absolute",
-              right: "24px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              background: "rgba(0, 0, 0, 0.3)",
-              border: "none",
-              color: "#ffffff",
-              padding: "10px",
-              borderRadius: "var(--radius-full)",
-              zIndex: 30,
-            }}
-          >
-            <ChevronRight size={28} />
-          </button>
-        )}
+            <ChevronRight size={24} />
+          </div>
+        </div>
       </div>
 
-      {/* Bottom Floating Control Bar */}
+      {/* Bottom Footer Info Overlay */}
       <div 
         style={{
           position: "absolute",
-          bottom: "24px",
-          left: "50%",
-          transform: "translateX(-50%)",
+          bottom: "20px",
+          left: "24px",
+          right: "24px",
           display: "flex",
           alignItems: "center",
-          gap: "12px",
-          backgroundColor: "rgba(14, 16, 23, 0.85)",
-          backdropFilter: "blur(16px)",
-          padding: "8px 18px",
-          borderRadius: "var(--radius-full)",
-          border: "1px solid var(--border-subtle)",
+          justifyContent: "space-between",
+          color: "rgba(255, 255, 255, 0.7)",
+          fontSize: "12px",
           zIndex: 40,
+          pointerEvents: "none",
         }}
       >
-        <button
-          onClick={() => setIsPlaying(!isPlaying)}
-          className="clickable"
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "#ffffff",
-            display: "flex",
-            alignItems: "center",
-            padding: "4px",
-          }}
-        >
-          {isPlaying ? <Pause size={18} /> : <Play size={18} fill="#ffffff" />}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <span>{currentSlideIndex + 1} of {slides.length}</span>
+          <span>•</span>
+          <span>{currentSlide?.filename || ""}</span>
+        </div>
 
-        <div style={{ width: "1px", height: "18px", backgroundColor: "var(--border-subtle)" }} />
-
-        <button
-          onClick={handleExport4K}
-          disabled={isExporting}
-          className="clickable"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            background: "var(--accent-primary)",
-            border: "none",
-            color: "#ffffff",
-            padding: "6px 14px",
-            borderRadius: "var(--radius-full)",
-            fontSize: "12px",
-            fontWeight: 600,
-          }}
-        >
-          <Download size={14} />
-          {isExporting ? "Rendering 4K MP4..." : "Export 4K Video"}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontSize: "11px", opacity: 0.8 }}>Space: Pause/Play • ←/→: Navigate • Esc: Exit</span>
+        </div>
       </div>
     </div>
   );
