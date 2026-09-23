@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { 
   Sparkles, 
   Play, 
@@ -6,10 +6,21 @@ import {
   Music, 
   ChevronLeft, 
   ChevronRight, 
-  Layers
+  Layers,
+  Upload,
+  X,
+  Volume2,
+  VolumeX,
+  Disc3,
+  Calendar,
+  Plane,
+  User,
+  Sun
 } from "lucide-react";
-import { StoryModel } from "../types";
+import { StoryModel, MusicTrackItem } from "../types";
 import { NavTab } from "../store/useAppStore";
+
+const API_BASE = "http://127.0.0.1:8000/api";
 
 interface StoriesViewProps {
   onPlayStory: (storyId: number) => void;
@@ -17,10 +28,61 @@ interface StoriesViewProps {
 }
 
 /**
+ * Story archetype details helper for Google Photos-style badges and styling.
+ */
+function getArchetypeDetails(storyType?: string, title?: string) {
+  switch (storyType) {
+    case "on_this_day":
+      return {
+        label: "📅 On This Day",
+        icon: Calendar,
+        bg: "rgba(245, 158, 11, 0.2)",
+        color: "#fbbf24",
+        border: "rgba(245, 158, 11, 0.4)",
+      };
+    case "vacation_adventure":
+      return {
+        label: "✈️ Vacation Memories",
+        icon: Plane,
+        bg: "rgba(14, 165, 233, 0.2)",
+        color: "#38bdf8",
+        border: "rgba(14, 165, 233, 0.4)",
+      };
+    case "through_the_years":
+      return {
+        label: "👤 Growth Journey",
+        icon: User,
+        bg: "rgba(16, 185, 129, 0.2)",
+        color: "#34d399",
+        border: "rgba(16, 185, 129, 0.4)",
+      };
+    case "seasonal_highlight": {
+      const sIcon = title?.includes("Summer") ? "☀️" : title?.includes("Winter") ? "❄️" : title?.includes("Spring") ? "🌸" : "🍂";
+      return {
+        label: `${sIcon} Seasonal Retrospective`,
+        icon: Sun,
+        bg: "rgba(168, 85, 247, 0.2)",
+        color: "#c084fc",
+        border: "rgba(168, 85, 247, 0.4)",
+      };
+    }
+    default:
+      return {
+        label: "✨ Curated Story",
+        icon: Sparkles,
+        bg: "rgba(59, 130, 246, 0.2)",
+        color: "#60a5fa",
+        border: "rgba(59, 130, 246, 0.4)",
+      };
+  }
+}
+
+/**
  * StoriesView Component
  *
  * Dedicated cinema & memory theater for AI-curated nostalgia montages,
- * "Through the Years" journeys, and milestone reels with beat-synchronized soundtracks.
+ * "Through the Years" journeys, Vacation bursts, On This Day anniversaries,
+ * and user soundtracks with automated mood tagging.
  */
 export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
   const [stories, setStories] = useState<StoryModel[]>([]);
@@ -30,10 +92,21 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Soundtracks modal state
+  const [showMusicModal, setShowMusicModal] = useState<boolean>(false);
+  const [musicTracks, setMusicTracks] = useState<MusicTrackItem[]>([]);
+  const [isLoadingMusic, setIsLoadingMusic] = useState<boolean>(false);
+  const [isUploadingMusic, setIsUploadingMusic] = useState<boolean>(false);
+  const [musicFeedback, setMusicFeedback] = useState<string | null>(null);
+  const [previewTrackId, setPreviewTrackId] = useState<string | null>(null);
+
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const fetchStories = useCallback(async (showRefreshingState: boolean = false) => {
     if (showRefreshingState) setIsRefreshing(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/stories");
+      const res = await fetch(`${API_BASE}/stories`);
       if (res.ok) {
         const storiesData: StoryModel[] = await res.json();
         setStories(storiesData);
@@ -48,14 +121,42 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
     }
   }, []);
 
+  const fetchMusicTracks = useCallback(async () => {
+    setIsLoadingMusic(true);
+    try {
+      const res = await fetch(`${API_BASE}/stories/music`);
+      if (res.ok) {
+        const tracks: MusicTrackItem[] = await res.json();
+        setMusicTracks(tracks);
+      }
+    } catch (err) {
+      console.error("Failed to load music tracks:", err);
+    } finally {
+      setIsLoadingMusic(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchStories();
   }, [fetchStories]);
 
+  useEffect(() => {
+    if (showMusicModal) {
+      fetchMusicTracks();
+    } else {
+      // Stop preview audio if closing modal
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+        previewAudioRef.current = null;
+        setPreviewTrackId(null);
+      }
+    }
+  }, [showMusicModal, fetchMusicTracks]);
+
   const handleGenerateStories = async () => {
     setIsGenerating(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/stories/generate", {
+      const res = await fetch(`${API_BASE}/stories/generate`, {
         method: "POST",
       });
       if (res.ok) {
@@ -70,6 +171,73 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
     }
   };
 
+  const handleFileUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+
+    setIsUploadingMusic(true);
+    setMusicFeedback(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch(`${API_BASE}/stories/music/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (res.ok) {
+        const track: MusicTrackItem = await res.json();
+        setMusicTracks((prev) => [track, ...prev.filter((t) => t.id !== track.id)]);
+        const moodName = track.mood.charAt(0).toUpperCase() + track.mood.slice(1);
+        setMusicFeedback(`"${track.title || track.filename}" auto-tagged as "${moodName}" ✨`);
+      } else {
+        setMusicFeedback("Failed to upload audio file.");
+      }
+    } catch (err) {
+      console.error("Upload error:", err);
+      setMusicFeedback("Network error uploading audio.");
+    } finally {
+      setIsUploadingMusic(false);
+    }
+  };
+
+  const handleUpdateMood = async (trackId: string, newMood: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/stories/music/${trackId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mood: newMood }),
+      });
+      if (res.ok) {
+        const updated: MusicTrackItem = await res.json();
+        setMusicTracks((prev) => prev.map((t) => (t.id === trackId ? updated : t)));
+      }
+    } catch (err) {
+      console.error("Failed to update mood:", err);
+    }
+  };
+
+  const handleTogglePreview = (track: MusicTrackItem) => {
+    if (previewTrackId === track.id) {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+        previewAudioRef.current = null;
+      }
+      setPreviewTrackId(null);
+    } else {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+      }
+      const audio = new Audio(track.stream_url);
+      audio.volume = 0.6;
+      audio.play().catch((e) => console.warn("Audio play error:", e));
+      audio.onended = () => setPreviewTrackId(null);
+      previewAudioRef.current = audio;
+      setPreviewTrackId(track.id);
+    }
+  };
+
   if (isLoading && stories.length === 0) {
     return (
       <div 
@@ -77,10 +245,10 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
           flex: 1, 
           display: "flex", 
           alignItems: "center", 
-          justifyContent: "center",
-          flexDirection: "column",
-          gap: "12px",
-          color: "var(--text-secondary)"
+          justifyContent: "center", 
+          flexDirection: "column", 
+          gap: "12px", 
+          color: "var(--text-secondary)" 
         }}
       >
         <RefreshCw size={24} className="spin-animation" style={{ color: "var(--accent-primary)" }} />
@@ -90,6 +258,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
   }
 
   const activeStory = stories.length > 0 ? stories[activeStoryIdx % stories.length] : null;
+  const activeArchetype = activeStory ? getArchetypeDetails(activeStory.story_type, activeStory.title) : null;
 
   return (
     <div 
@@ -99,9 +268,9 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
         padding: "20px 24px", 
         display: "flex", 
         flexDirection: "column", 
-        gap: "20px",
-        maxHeight: "100%",
-        boxSizing: "border-box",
+        gap: "20px", 
+        maxHeight: "100%", 
+        boxSizing: "border-box", 
       }}
     >
       {/* ── Section 4 Compliant Dual-Theme 3-Column Balanced Header ────── */}
@@ -183,6 +352,31 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
 
         {/* Right Column (flex: 1): Action Pill Buttons */}
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px" }}>
+          {/* Soundtracks Studio Button */}
+          <button
+            onClick={() => setShowMusicModal(true)}
+            className="clickable"
+            title="Manage Story Soundtracks & Auto-Tagged Music"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "6px 14px",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "var(--glass-pill-bg)",
+              border: "1px solid var(--glass-border)",
+              color: "var(--text-secondary)",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <Music size={13} style={{ color: "var(--accent-primary)" }} />
+            <span>Soundtracks</span>
+          </button>
+
+          {/* Sync Button */}
           <button
             onClick={() => fetchStories(true)}
             disabled={isRefreshing}
@@ -211,11 +405,12 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
             <span>Sync</span>
           </button>
 
+          {/* Curate Stories Action */}
           <button
             onClick={handleGenerateStories}
             disabled={isGenerating}
             className="clickable"
-            title="Synthesize and curate new AI stories"
+            title="Synthesize and curate new milestone stories"
             style={{
               display: "flex",
               alignItems: "center",
@@ -244,9 +439,9 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
             padding: "10px 14px", 
             borderRadius: "var(--radius-md)", 
             backgroundColor: "rgba(239, 68, 68, 0.1)", 
-            border: "1px solid rgba(239, 68, 68, 0.25)",
-            color: "var(--accent-danger)",
-            fontSize: "12px"
+            border: "1px solid rgba(239, 68, 68, 0.25)", 
+            color: "var(--accent-danger)", 
+            fontSize: "12px" 
           }}
         >
           {error}
@@ -259,71 +454,76 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
           className="glass-panel"
           style={{
             borderRadius: "var(--radius-lg)",
-            border: "1px solid rgba(255, 255, 255, 0.12)",
-            position: "relative",
             overflow: "hidden",
+            position: "relative",
+            minHeight: "260px",
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",
-            padding: "28px",
-            minHeight: "280px",
-            background: "linear-gradient(135deg, rgba(24, 20, 56, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%)",
-            boxShadow: "0 12px 40px rgba(0, 0, 0, 0.4)",
+            padding: "24px 30px",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
+            background: "linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.85) 100%)",
+            border: "1px solid var(--glass-border)",
           }}
         >
-          {/* Ambient Glow Aura */}
-          <div 
-            style={{
-              position: "absolute",
-              top: "-50px",
-              right: "-50px",
-              width: "220px",
-              height: "220px",
-              borderRadius: "50%",
-              backgroundColor: "rgba(139, 92, 246, 0.3)",
-              filter: "blur(65px)",
-              pointerEvents: "none",
-            }}
-          />
+          {/* Background Blurred Ambient Cover Photo */}
+          {activeStory.slides[0]?.photo_id && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                backgroundImage: `url(${API_BASE}/photos/${activeStory.slides[0].photo_id}/preview)`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                filter: "blur(20px) brightness(0.35)",
+                opacity: 0.65,
+                transform: "scale(1.05)",
+                zIndex: 0,
+              }}
+            />
+          )}
 
-          {/* Top Bar: Vibe Tag + Navigation Controls */}
+          {/* Top Row Badges & Carousel Navigation */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 2 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span 
-                style={{
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  backgroundColor: "rgba(139, 92, 246, 0.25)",
-                  color: "#ddd6fe",
-                  border: "1px solid rgba(139, 92, 246, 0.4)",
-                  padding: "4px 12px",
-                  borderRadius: "var(--radius-full)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                }}
-              >
-                <Sparkles size={12} style={{ color: "#a78bfa" }} />
-                Featured Reel
-              </span>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              {/* Dynamic Story Archetype Badge */}
+              {activeArchetype && (
+                <span 
+                  style={{
+                    backgroundColor: activeArchetype.bg,
+                    color: activeArchetype.color,
+                    border: `1px solid ${activeArchetype.border}`,
+                    padding: "4px 12px",
+                    borderRadius: "var(--radius-full)",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    backdropFilter: "blur(12px)",
+                  }}
+                >
+                  {activeArchetype.label}
+                </span>
+              )}
 
               <span 
                 style={{
                   fontSize: "11px",
                   fontWeight: 600,
-                  color: "rgba(255, 255, 255, 0.8)",
-                  backgroundColor: "rgba(0, 0, 0, 0.4)",
+                  color: "rgba(255, 255, 255, 0.85)",
+                  backgroundColor: "rgba(0, 0, 0, 0.45)",
+                  backdropFilter: "blur(10px)",
                   padding: "4px 10px",
                   borderRadius: "var(--radius-full)",
                   display: "flex",
                   alignItems: "center",
                   gap: "5px",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
                 }}
               >
-                <Music size={11} />
-                {activeStory.vibe_mood}
+                <Music size={11} style={{ color: "var(--accent-primary)" }} />
+                <span style={{ textTransform: "capitalize" }}>{activeStory.vibe_mood} Vibe</span>
               </span>
             </div>
 
@@ -349,7 +549,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                 >
                   <ChevronLeft size={16} />
                 </button>
-                <span style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.7)", fontFamily: "var(--font-mono)", padding: "0 4px" }}>
+                <span style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.8)", fontFamily: "var(--font-mono)", padding: "0 4px" }}>
                   {activeStoryIdx + 1} / {stories.length}
                 </span>
                 <button
@@ -389,8 +589,8 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
             >
               {activeStory.title}
             </h2>
-            <p style={{ fontSize: "13px", color: "rgba(255, 255, 255, 0.8)", margin: 0 }}>
-              {activeStory.slides.length} cinematic moments • Beat-synchronized soundtrack • Automated pan & zoom Ken Burns
+            <p style={{ fontSize: "13px", color: "rgba(255, 255, 255, 0.82)", margin: 0 }}>
+              {activeStory.slides.length} moments • Dynamic chromatic ambient light • Beat-synchronized Ken-Burns motion
             </p>
           </div>
 
@@ -440,7 +640,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
             No Milestone Stories Curated Yet
           </h3>
           <p style={{ fontSize: "13px", color: "var(--text-muted)", maxWidth: "420px", margin: 0 }}>
-            Click &ldquo;Curate Stories&rdquo; to automatically synthesize nostalgic reels, year reviews, and close friend journeys.
+            Click &ldquo;Curate Stories&rdquo; to automatically synthesize nostalgic reels, year reviews, vacation getaways, and on-this-day memories.
           </p>
           <button
             onClick={handleGenerateStories}
@@ -490,6 +690,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
             {stories.map((story, idx) => {
               const isSelected = idx === activeStoryIdx;
               const coverId = story.cover_photo_id || story.slides[0]?.photo_id;
+              const cardArchetype = getArchetypeDetails(story.story_type, story.title);
 
               return (
                 <div
@@ -523,7 +724,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                   >
                     {coverId ? (
                       <img 
-                        src={`http://127.0.0.1:8000/api/photos/${coverId}/thumbnail`} 
+                        src={`${API_BASE}/photos/${coverId}/thumbnail`} 
                         alt={story.title}
                         style={{
                           width: "100%",
@@ -552,31 +753,27 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                       style={{
                         position: "absolute",
                         inset: 0,
-                        background: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 60%)",
+                        background: "linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 60%)",
                       }}
                     />
 
-                    {/* Top Floating Vibe Badge */}
-                    <span 
-                      style={{
-                        position: "absolute",
-                        top: "8px",
-                        left: "8px",
-                        fontSize: "10px",
-                        fontWeight: 600,
-                        backgroundColor: "rgba(0, 0, 0, 0.55)",
-                        backdropFilter: "blur(6px)",
-                        color: "#ffffff",
-                        padding: "2px 8px",
-                        borderRadius: "var(--radius-full)",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "4px",
-                      }}
-                    >
-                      <Music size={10} />
-                      {story.vibe_mood}
-                    </span>
+                    {/* Top Floating Archetype & Vibe Badges */}
+                    <div style={{ position: "absolute", top: "8px", left: "8px", display: "flex", gap: "6px" }}>
+                      <span 
+                        style={{
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          backgroundColor: cardArchetype.bg,
+                          color: cardArchetype.color,
+                          border: `1px solid ${cardArchetype.border}`,
+                          backdropFilter: "blur(8px)",
+                          padding: "2px 8px",
+                          borderRadius: "var(--radius-full)",
+                        }}
+                      >
+                        {cardArchetype.label}
+                      </span>
+                    </div>
 
                     {/* Play Icon Pill on Corner */}
                     <div 
@@ -607,12 +804,313 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
                     <div style={{ fontSize: "11px", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "6px" }}>
                       <span>{story.slides.length} moments</span>
                       <span>•</span>
-                      <span style={{ textTransform: "capitalize" }}>{story.story_type.replace(/_/g, " ")}</span>
+                      <span style={{ textTransform: "capitalize" }}>{story.vibe_mood} vibe</span>
                     </div>
                   </div>
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ── SOUNDTRACK STUDIO MODAL (Upload & Auto-Tagging) ──────────────── */}
+      {showMusicModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.7)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            zIndex: 4000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowMusicModal(false);
+          }}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              width: "100%",
+              maxWidth: "680px",
+              maxHeight: "85vh",
+              display: "flex",
+              flexDirection: "column",
+              borderRadius: "var(--radius-lg)",
+              backgroundColor: "var(--glass-surface)",
+              backdropFilter: "blur(24px)",
+              border: "1px solid var(--glass-border)",
+              boxShadow: "var(--glass-shadow)",
+              overflow: "hidden",
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "18px 24px",
+                borderBottom: "1px solid var(--glass-border)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "rgba(59, 130, 246, 0.15)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--accent-primary)",
+                  }}
+                >
+                  <Music size={18} />
+                </div>
+                <div>
+                  <h2 style={{ fontSize: "16px", fontWeight: 800, margin: 0 }}>Story Soundtracks</h2>
+                  <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0 }}>
+                    100% private on-device music library with automated mood detection
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowMusicModal(false)}
+                className="clickable"
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                  padding: "4px",
+                  borderRadius: "var(--radius-full)",
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: "20px 24px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "18px" }}>
+              {/* Dropzone for Audio Files */}
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleFileUpload(e.dataTransfer.files);
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                className="clickable"
+                style={{
+                  border: "2px dashed var(--glass-border)",
+                  borderRadius: "var(--radius-md)",
+                  padding: "24px 20px",
+                  textAlign: "center",
+                  backgroundColor: "rgba(255, 255, 255, 0.02)",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  cursor: "pointer",
+                  transition: "background-color 0.15s ease",
+                }}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="audio/mp3,audio/wav,audio/m4a,audio/aac,audio/flac,audio/ogg,.mp3,.m4a,.wav,.aac,.flac,.ogg"
+                  style={{ display: "none" }}
+                  onChange={(e) => handleFileUpload(e.target.files)}
+                />
+                <Upload size={24} style={{ color: "var(--accent-primary)" }} />
+                <div style={{ fontSize: "13px", fontWeight: 700 }}>
+                  {isUploadingMusic ? "Analyzing & Auto-Tagging..." : "Drop audio files here or click to browse"}
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                  MP3, M4A, WAV, AAC, FLAC • Mood is automatically tagged from metadata
+                </div>
+              </div>
+
+              {/* Feedback Alert */}
+              {musicFeedback && (
+                <div
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: "var(--radius-md)",
+                    backgroundColor: "rgba(59, 130, 246, 0.15)",
+                    border: "1px solid rgba(59, 130, 246, 0.3)",
+                    fontSize: "12px",
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  {musicFeedback}
+                </div>
+              )}
+
+              {/* Track List */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase" }}>
+                  Available Soundtracks ({musicTracks.length})
+                </div>
+
+                {isLoadingMusic ? (
+                  <div style={{ textAlign: "center", padding: "20px", color: "var(--text-secondary)", fontSize: "13px" }}>
+                    Loading soundtracks...
+                  </div>
+                ) : musicTracks.length === 0 ? (
+                  <div
+                    style={{
+                      textAlign: "center",
+                      padding: "28px 16px",
+                      borderRadius: "var(--radius-md)",
+                      backgroundColor: "rgba(255, 255, 255, 0.02)",
+                      border: "1px solid var(--border-subtle)",
+                      color: "var(--text-secondary)",
+                      fontSize: "13px",
+                    }}
+                  >
+                    <Disc3 size={28} style={{ color: "var(--accent-primary)", marginBottom: "6px" }} />
+                    <p style={{ margin: 0 }}>No custom music uploaded yet.</p>
+                    <p style={{ margin: "4px 0 0 0", fontSize: "11px" }}>
+                      Stories currently play dynamic procedural ambient chords until you add audio files.
+                    </p>
+                  </div>
+                ) : (
+                  musicTracks.map((trk) => {
+                    const isPlaying = previewTrackId === trk.id;
+                    return (
+                      <div
+                        key={trk.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "10px 14px",
+                          borderRadius: "var(--radius-md)",
+                          backgroundColor: "rgba(255, 255, 255, 0.03)",
+                          border: "1px solid var(--border-subtle)",
+                          gap: "12px",
+                        }}
+                      >
+                        {/* Play/Pause Preview Button & Track Details */}
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: 0 }}>
+                          <button
+                            onClick={() => handleTogglePreview(trk)}
+                            className="clickable"
+                            title={isPlaying ? "Stop Preview" : "Preview Soundtrack"}
+                            style={{
+                              width: "32px",
+                              height: "32px",
+                              borderRadius: "50%",
+                              backgroundColor: isPlaying ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+                              border: "1px solid var(--glass-border)",
+                              color: "#ffffff",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {isPlaying ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                          </button>
+
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: "13px", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {trk.title}
+                            </div>
+                            <div style={{ fontSize: "11px", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                              <span>{trk.artist || "Unknown Artist"}</span>
+                              <span>•</span>
+                              <span>{trk.duration_formatted}</span>
+                              <span>•</span>
+                              <span>{trk.file_size_formatted}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Mood Tag & Manual Override Selector */}
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                          {trk.auto_tagged && (
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                fontWeight: 700,
+                                color: "var(--accent-primary)",
+                                backgroundColor: "rgba(59, 130, 246, 0.15)",
+                                padding: "2px 6px",
+                                borderRadius: "var(--radius-full)",
+                              }}
+                            >
+                              Auto ✨
+                            </span>
+                          )}
+
+                          <select
+                            value={trk.mood}
+                            onChange={(e) => handleUpdateMood(trk.id, e.target.value)}
+                            style={{
+                              backgroundColor: "var(--glass-surface)",
+                              color: "var(--text-primary)",
+                              border: "1px solid var(--glass-border)",
+                              borderRadius: "var(--radius-full)",
+                              fontSize: "11px",
+                              padding: "4px 8px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <option value="nostalgic">Nostalgic</option>
+                            <option value="upbeat">Upbeat</option>
+                            <option value="acoustic">Acoustic</option>
+                            <option value="cinematic">Cinematic</option>
+                          </select>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div
+              style={{
+                padding: "14px 24px",
+                borderTop: "1px solid var(--glass-border)",
+                display: "flex",
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                onClick={() => setShowMusicModal(false)}
+                className="clickable"
+                style={{
+                  padding: "6px 18px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "var(--glass-pill-bg)",
+                  border: "1px solid var(--glass-border)",
+                  color: "var(--text-primary)",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -202,9 +202,26 @@ export interface StoryModel {
   story_type: string;
   vibe_mood: string;
   music_track_path: string;
+  audio_url?: string | null;
   cover_photo_id?: number | null;
   slides: StorySlide[];
 }
+
+export interface MusicTrackItem {
+  id: string;
+  filename: string;
+  title: string;
+  artist: string;
+  mood: "nostalgic" | "upbeat" | "acoustic" | "cinematic" | string;
+  auto_tagged: boolean;
+  detected_genre?: string | null;
+  duration_seconds: number;
+  duration_formatted: string;
+  file_size_bytes: number;
+  file_size_formatted: string;
+  stream_url: string;
+}
+
 
 export interface StoriesInsights {
   total_stories: number;

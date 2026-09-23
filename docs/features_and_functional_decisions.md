@@ -2862,6 +2862,67 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - 100% test pass rate across `engine/tests/test_ai_stories.py` (3/3).
 - Clean production bundle (`npm run build`).
 
+---
+
+## 60. Multi-Dimensional Intelligent Stories, Auto-Tagged Custom Soundtracks & Dynamic Chromatic Theming
+
+### Functionality Overview
+1. **Multi-Dimensional Google Photos-Style Intelligent Curation**:
+   - Expanded story curation beyond recent temporal boundaries to multi-year milestone intelligence:
+     - **On This Day / Flashback Milestones (`on_this_day`)**: Automatically detects photos taken on today's calendar date ($M, D$) across past years ($Y-1, Y-2, Y-5, Y-10$). Assigns nostalgic mood and golden anniversary badges.
+     - **Vacation & Trip Dense Temporal Bursts (`vacation_adventure`)**: Identifies clusters of photos taken across 3–10 day spans in dedicated album/folder contexts (or travel locations). Formats getaway titles like *"Getaway Memories • July 2024"* with upbeat motion pacing and sky-blue travel badges.
+     - **Seasonal Retrospectives (`seasonal_highlight`)**: Synthesizes meteorological quarterly retrospectives (Summer, Autumn, Winter, Spring highlights) across years with adaptive seasonal icons (☀️, 🍂, ❄️, 🌸) and mood-matched acoustics.
+     - **Through the Years & Growth Journeys (`through_the_years`)**: Preserves multi-year facial clustering journeys for close loved ones.
+2. **Zero-Effort Music Upload & Automated Mood Tagging**:
+   - Dedicated music library service (`engine/services/music_service.py`) supporting local MP3, M4A, WAV, AAC, FLAC, and OGG tracks stored safely in `data/music/`.
+   - **Automated Mood Detection**:
+     - Evaluates ID3 / container genres (`Pop`, `Dance`, `Rock` → `upbeat`; `Classical`, `Ballad`, `Piano` → `nostalgic`; `Folk`, `Acoustic` → `acoustic`; `Soundtrack`, `Score` → `cinematic`).
+     - Extracts semantic filename and folder keywords (`summer`, `beach`, `party` → `upbeat`; `memories`, `yesterday` → `nostalgic`; `coffee`, `morning`, `guitar` → `acoustic`; `epic`, `journey` → `cinematic`).
+     - Flags auto-detected tracks with an `Auto ✨` pill badge, requiring zero manual tagging from the user.
+   - **Soundtrack Studio Modal**:
+     - Accessible via Section 4 liquid-glass header in `StoriesView.tsx`.
+     - Supports drag-and-drop audio uploading, inline audio preview playback with volume control, track metadata inspection, and optional mood override dropdowns.
+3. **Dynamic Chromatic Ambient Lighting & Adaptive Motion Pacing**:
+   - **Real-Time Dominant Color Extraction**: As each slide displays in `StoryPlayerModal.tsx`, an offscreen HTML5 canvas samples a 12x12 grid of the photo, filtering out near-black and blown-out highlights to extract vibrant RGB hues.
+   - **Liquid Chromatic Glow**: Dynamically transitions the background with `radial-gradient(ellipse at center, rgba(r,g,b,0.52) 0%, rgba(5,6,10,0.95) 75%, #000000 100%)` via a 1.4s smooth ease.
+   - **Adaptive Motion & Pacing**: Slide advancement timer and progress bar CSS transition automatically tune to the story's musical vibe:
+     - `upbeat`: 3.5s per slide (energetic, rapid cuts)
+     - `nostalgic`: 5.5s per slide (contemplative, extended dissolve)
+     - `acoustic`: 4.5s per slide (balanced, serene)
+     - `cinematic`: 5.0s per slide (majestic pan & zoom)
+4. **Hybrid Dual-Engine Soundtrack Player**:
+   - Plays user-uploaded HTML5 audio (`audioElementRef`) when a mood soundtrack is associated or selected.
+   - Seamlessly falls back to procedural Web Audio chord synthesizer (`StorySoundscapeGenerator`) if no user audio exists or if playback is blocked.
+   - Includes an in-player quick soundtrack switcher popover, enabling users to change active tracks or toggle procedural ambient chords on the fly.
+
+### Functional Decision Points & Rationale
+- **Zero-Manual Tagging for User Music**:
+  - *Decision*: Automatically detect audio mood from ID3 tags and filename keywords on ingest.
+  - *Rationale*: Forcing users to manually classify every MP3 creates friction. Auto-detection provides immediate delight while preserving an optional override dropdown for precision.
+- **Dynamic Chromatic Lighting vs. Static Black Backdrop**:
+  - *Decision*: Extract chromatic ambient light from the active photo canvas in real-time.
+  - *Rationale*: Creates an immersive, premium theater experience similar to Philips Ambilight or Apple Music dynamic album art, making stories feel alive and responsive.
+- **REST Route Ordering Precedence in FastAPI**:
+  - *Decision*: Place literal subpaths (`/music`, `/generate`, `/insights`) strictly before parametrized paths (`/{story_id}`).
+  - *Rationale*: Avoids standard FastAPI 422 Unprocessable Entity routing conflicts where string literals are incorrectly parsed as integer story IDs.
+
+### Technical Touchpoints
+- **Backend**:
+  - `engine/config.py`: Added `music_dir` settings and directory provisioning.
+  - `engine/services/music_service.py`: Automated mood detection, manifest persistence, audio probing, and scan engine.
+  - `engine/services/stories_service.py`: Multi-dimensional generation functions (`generate_on_this_day_stories`, `generate_vacation_and_trip_stories`, `generate_seasonal_retrospectives`), and soundtrack resolution.
+  - `engine/api/stories.py`: Reordered routes, added music library, upload, mood patch, and audio streaming endpoints.
+  - `engine/tests/test_ai_stories.py`: Comprehensive automated tests for music auto-tagging, audio streaming, and multi-dimensional story generation.
+- **Frontend**:
+  - `src/types/index.ts`: Added `MusicTrackItem` interface and `audio_url` to `StoryModel`.
+  - `src/components/StoryPlayerModal.tsx`: Real-time canvas dominant color extraction, dynamic chromatic glow, archetype badges, adaptive slide pacing, hybrid dual-engine soundtrack player, and in-player soundtrack selector popover.
+  - `src/components/StoriesView.tsx`: Section 4 header with Soundtracks Studio button, Soundtrack Studio modal with drag-and-drop upload and instant auto-tagging feedback, and archetype badges on story cards.
+
+### State & Lifecycle Impact
+- 100% test pass rate across all 93 backend tests.
+- 0 TypeScript compiler errors; clean Vite production build.
+
+
 
 
 

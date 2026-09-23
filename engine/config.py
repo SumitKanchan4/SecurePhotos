@@ -98,6 +98,11 @@ class AppConfig(BaseSettings):
         """Returns the root directory for managed date-sharded original media."""
         return self.data_dir / "originals"
 
+    @property
+    def music_dir(self) -> Path:
+        """Returns the directory holding user-provided story music and soundtracks."""
+        return self.data_dir / "music"
+
     def ensure_directories(self) -> None:
         """Creates all required directory structures idempotently, migrating legacy data if present."""
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -105,6 +110,7 @@ class AppConfig(BaseSettings):
         self.previews_dir.mkdir(parents=True, exist_ok=True)
         self.models_dir.mkdir(parents=True, exist_ok=True)
         self.originals_dir.mkdir(parents=True, exist_ok=True)
+        self.music_dir.mkdir(parents=True, exist_ok=True)
 
         # Automatic legacy migration from ~/.securephotos_data if present
         try:

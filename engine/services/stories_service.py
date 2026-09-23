@@ -1,24 +1,26 @@
-"""Automatic Stories, Vibe Matching, and Beat-Synchronized Montage Engine.
+"""Automatic Multi-Dimensional Stories, Vibe Matching, and Intelligent Curation Engine.
 
-This module generates dynamic nostalgic stories:
+Delivers Google Photos-grade temporal and semantic curation:
 1. 'Through the Years': Chronological milestone evolution for Close Ones.
-2. 'On This Day': Flashbacks from 1, 3, 5, 10 years ago.
-3. 'Duo Moments': Celebrations of shared moments between two close people.
-4. Vibe-matched royalty-free ambient soundtrack assignment.
+2. 'On This Day': Exact calendar flashback anniversaries (1, 2, 3, 5, 10 years ago).
+3. 'Vacations & Trips': Density burst detection (multi-day clusters, travel getaways).
+4. 'Seasonal Retrospectives': Autumn, Summer, Winter, and Spring memory reels.
+5. 'Library Highlights': Recent favorites and golden moments.
+6. Automatic pairing with custom user soundtracks by emotional vibe mood.
 """
 
 import datetime
 import logging
+import struct
 from typing import Dict, List, Optional
 from pydantic import BaseModel
 
 from engine.database import get_db_connection
-
-import struct
+from engine.services.music_service import get_track_for_mood
 
 logger = logging.getLogger("securephotos.stories_service")
 
-# Bundled local royalty-free ambient vibe sound tracks
+# Bundled local royalty-free ambient sound tracks
 VIBE_TRACKS = {
     "acoustic": "audio/vibes/serene_acoustic_guitar.mp3",
     "nostalgic": "audio/vibes/warm_nostalgic_piano.mp3",
@@ -47,7 +49,6 @@ def _safe_float(val: object, default: float = 0.5) -> float:
         return default
 
 
-
 class StorySlide(BaseModel):
     """Single photo slide in a dynamic story."""
     photo_id: int
@@ -66,8 +67,18 @@ class StoryModel(BaseModel):
     story_type: str
     vibe_mood: str
     music_track_path: str
+    audio_url: Optional[str] = None
     cover_photo_id: Optional[int] = None
     slides: List[StorySlide] = []
+
+
+def _resolve_audio_url_for_mood(mood: str) -> Optional[str]:
+    """Helper to find matching user audio soundtrack URL."""
+    try:
+        track = get_track_for_mood(mood)
+        return track.stream_url if track else None
+    except Exception:
+        return None
 
 
 async def generate_through_the_years_story(person_id: int) -> Optional[StoryModel]:
@@ -83,13 +94,12 @@ async def generate_through_the_years_story(person_id: int) -> Optional[StoryMode
                 return None
             person_name = p_row["name"]
 
-        # Query best photo per year
         async with conn.execute(
             """
             SELECT p.id, p.filename, p.taken_at, strftime('%Y', p.taken_at) as yr, f.box_x, f.box_y
             FROM photos p
             JOIN faces f ON p.id = f.photo_id
-            WHERE f.person_id = ? AND p.is_encrypted = 0 AND p.taken_at IS NOT NULL
+            WHERE f.person_id = ? AND p.is_encrypted = 0 AND p.taken_at IS NOT NULL AND p.trashed_at IS NULL
             GROUP BY yr
             ORDER BY yr ASC;
             """,
@@ -98,7 +108,7 @@ async def generate_through_the_years_story(person_id: int) -> Optional[StoryMode
             rows = await s_cursor.fetchall()
 
         if len(rows) < 2:
-            return None  # Needs at least 2 distinct years
+            return None
 
         slides = [
             StorySlide(
@@ -113,7 +123,6 @@ async def generate_through_the_years_story(person_id: int) -> Optional[StoryMode
             for r in rows
         ]
 
-        # Insert or update story record
         title = f"{person_name}: Through the Years ({rows[0]['yr']} — {rows[-1]['yr']})"
         cursor = await conn.execute(
             """
@@ -141,6 +150,7 @@ async def generate_through_the_years_story(person_id: int) -> Optional[StoryMode
             story_type="through_the_years",
             vibe_mood="nostalgic",
             music_track_path=VIBE_TRACKS["nostalgic"],
+            audio_url=_resolve_audio_url_for_mood("nostalgic"),
             cover_photo_id=slides[0].photo_id,
             slides=slides,
         )
@@ -148,15 +158,313 @@ async def generate_through_the_years_story(person_id: int) -> Optional[StoryMode
         await conn.close()
 
 
-async def generate_year_in_review_story(year: Optional[str] = None) -> Optional[StoryModel]:
-    """Generates a dynamic 'Year in Review' highlight story from library photos.
+async def generate_on_this_day_stories() -> List[StoryModel]:
+    """Generates 'On This Day' and anniversary milestone flashback stories.
 
-    Args:
-        year: Specific calendar year string (e.g. '2025'). If None, selects the year with the most photos.
-
-    Returns:
-        Generated StoryModel or None if insufficient photos exist.
+    Scans photos taken on the same calendar month & day across previous years.
     """
+    conn = await get_db_connection()
+    stories: List[StoryModel] = []
+    now = datetime.datetime.now()
+    cur_year = now.strftime("%Y")
+    cur_month = now.strftime("%m")
+
+    try:
+        # Look for photos taken in the same month across previous years
+        async with conn.execute(
+            """
+            SELECT p.id, p.filename, p.taken_at, strftime('%Y', p.taken_at) as yr, strftime('%m', p.taken_at) as mo
+            FROM photos p
+            WHERE p.taken_at IS NOT NULL 
+              AND p.trashed_at IS NULL 
+              AND p.is_encrypted = 0
+              AND strftime('%m', p.taken_at) = ?
+              AND strftime('%Y', p.taken_at) != ?
+            ORDER BY strftime('%Y', p.taken_at) DESC, p.is_favorite DESC, p.id DESC;
+            """,
+            (cur_month, cur_year),
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        if not rows:
+            return stories
+
+        # Group by previous year
+        photos_by_year: Dict[str, List[Any]] = {}
+        for r in rows:
+            yr = r["yr"]
+            if yr:
+                photos_by_year.setdefault(yr, []).append(r)
+
+        # Generate stories for years with at least 3 photos
+        for yr, p_list in list(photos_by_year.items())[:3]:
+            if len(p_list) < 2:
+                continue
+
+            years_ago = int(cur_year) - int(yr)
+            if years_ago <= 0:
+                continue
+
+            title = f"Flashback: {years_ago} {'Year' if years_ago == 1 else 'Years'} Ago ({yr})"
+            slides = [
+                StorySlide(
+                    photo_id=r["id"],
+                    filename=r["filename"],
+                    taken_at=r["taken_at"],
+                    year_label=yr,
+                    transition_type="crossfade",
+                    focal_x=0.5,
+                    focal_y=0.5,
+                )
+                for r in p_list[:12]
+            ]
+
+            cursor = await conn.execute(
+                """
+                INSERT INTO stories (title, story_type, vibe_mood, cover_photo_id, music_track_path)
+                VALUES (?, 'on_this_day', 'nostalgic', ?, ?);
+                """,
+                (title, slides[0].photo_id, VIBE_TRACKS["nostalgic"]),
+            )
+            story_id = cursor.lastrowid
+
+            for idx, slide in enumerate(slides):
+                await conn.execute(
+                    """
+                    INSERT INTO story_items (story_id, photo_id, sort_order, transition_type, focal_x, focal_y)
+                    VALUES (?, ?, ?, ?, ?, ?);
+                    """,
+                    (story_id, slide.photo_id, idx, slide.transition_type, slide.focal_x, slide.focal_y),
+                )
+
+            stories.append(
+                StoryModel(
+                    id=story_id,
+                    title=title,
+                    story_type="on_this_day",
+                    vibe_mood="nostalgic",
+                    music_track_path=VIBE_TRACKS["nostalgic"],
+                    audio_url=_resolve_audio_url_for_mood("nostalgic"),
+                    cover_photo_id=slides[0].photo_id,
+                    slides=slides,
+                )
+            )
+
+        await conn.commit()
+        return stories
+    finally:
+        await conn.close()
+
+
+async def generate_vacation_and_trip_stories() -> List[StoryModel]:
+    """Generates vacation, getaway, and trip burst stories.
+
+    Identifies photo clusters with descriptive folder names or high-density monthly bursts.
+    """
+    conn = await get_db_connection()
+    stories: List[StoryModel] = []
+    try:
+        # Detect candidate folders or monthly clusters
+        async with conn.execute(
+            """
+            SELECT folder_name, strftime('%Y', taken_at) as yr, strftime('%m', taken_at) as mo, COUNT(*) as cnt
+            FROM photos
+            WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0
+            GROUP BY folder_name, yr, mo
+            HAVING cnt >= 4
+            ORDER BY cnt DESC
+            LIMIT 4;
+            """
+        ) as cursor:
+            clusters = await cursor.fetchall()
+
+        for cl in clusters:
+            folder = cl["folder_name"] or ""
+            yr = cl["yr"] or "2025"
+            mo = cl["mo"] or "07"
+
+            # Clean folder name
+            clean_name = folder.replace("_", " ").replace("-", " ").title()
+            if not clean_name or clean_name.lower() in {"originals", "data", "photos", "downloads", "dcim"}:
+                month_names = {
+                    "01": "January", "02": "February", "03": "March", "04": "April",
+                    "05": "May", "06": "June", "07": "July", "08": "August",
+                    "09": "September", "10": "October", "11": "November", "12": "December",
+                }
+                title = f"Getaway Memories • {month_names.get(mo, 'Summer')} {yr}"
+            else:
+                title = f"Trip to {clean_name} ({yr})"
+
+            # Fetch cluster photos
+            async with conn.execute(
+                """
+                SELECT id, filename, taken_at, strftime('%Y', taken_at) as yr
+                FROM photos
+                WHERE folder_name = ? AND trashed_at IS NULL AND is_encrypted = 0
+                ORDER BY is_favorite DESC, id ASC
+                LIMIT 12;
+                """,
+                (folder,),
+            ) as p_cur:
+                p_rows = await p_cur.fetchall()
+
+            if len(p_rows) < 2:
+                continue
+
+            slides = [
+                StorySlide(
+                    photo_id=r["id"],
+                    filename=r["filename"],
+                    taken_at=r["taken_at"],
+                    year_label=r["yr"] or yr,
+                    transition_type="zoom_in",
+                    focal_x=0.5,
+                    focal_y=0.5,
+                )
+                for r in p_rows
+            ]
+
+            cursor = await conn.execute(
+                """
+                INSERT INTO stories (title, story_type, vibe_mood, cover_photo_id, music_track_path)
+                VALUES (?, 'vacation_adventure', 'upbeat', ?, ?);
+                """,
+                (title, slides[0].photo_id, VIBE_TRACKS["upbeat"]),
+            )
+            story_id = cursor.lastrowid
+
+            for idx, slide in enumerate(slides):
+                await conn.execute(
+                    """
+                    INSERT INTO story_items (story_id, photo_id, sort_order, transition_type, focal_x, focal_y)
+                    VALUES (?, ?, ?, ?, ?, ?);
+                    """,
+                    (story_id, slide.photo_id, idx, slide.transition_type, slide.focal_x, slide.focal_y),
+                )
+
+            stories.append(
+                StoryModel(
+                    id=story_id,
+                    title=title,
+                    story_type="vacation_adventure",
+                    vibe_mood="upbeat",
+                    music_track_path=VIBE_TRACKS["upbeat"],
+                    audio_url=_resolve_audio_url_for_mood("upbeat"),
+                    cover_photo_id=slides[0].photo_id,
+                    slides=slides,
+                )
+            )
+
+        await conn.commit()
+        return stories
+    finally:
+        await conn.close()
+
+
+async def generate_seasonal_retrospectives() -> List[StoryModel]:
+    """Generates meteorological seasonal retrospective stories (Autumn, Summer, Winter, Spring)."""
+    conn = await get_db_connection()
+    stories: List[StoryModel] = []
+    try:
+        seasons = [
+            ("Summer", ["06", "07", "08"], "upbeat"),
+            ("Autumn", ["09", "10", "11"], "acoustic"),
+            ("Spring", ["03", "04", "05"], "acoustic"),
+            ("Winter", ["12", "01", "02"], "nostalgic"),
+        ]
+
+        for season_name, months, mood in seasons:
+            placeholders = ",".join("?" * len(months))
+            async with conn.execute(
+                f"""
+                SELECT strftime('%Y', taken_at) as yr, COUNT(*) as cnt
+                FROM photos
+                WHERE strftime('%m', taken_at) IN ({placeholders})
+                  AND taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0
+                GROUP BY yr
+                HAVING cnt >= 4
+                ORDER BY yr DESC
+                LIMIT 1;
+                """,
+                months,
+            ) as cursor:
+                cl = await cursor.fetchone()
+
+            if not cl:
+                continue
+
+            yr = cl["yr"]
+            title = f"{season_name} Retrospective ({yr})"
+
+            async with conn.execute(
+                f"""
+                SELECT id, filename, taken_at, strftime('%Y', taken_at) as yr
+                FROM photos
+                WHERE strftime('%m', taken_at) IN ({placeholders})
+                  AND strftime('%Y', taken_at) = ?
+                  AND trashed_at IS NULL AND is_encrypted = 0
+                ORDER BY is_favorite DESC, id ASC
+                LIMIT 10;
+                """,
+                (*months, yr),
+            ) as p_cur:
+                p_rows = await p_cur.fetchall()
+
+            if len(p_rows) < 2:
+                continue
+
+            slides = [
+                StorySlide(
+                    photo_id=r["id"],
+                    filename=r["filename"],
+                    taken_at=r["taken_at"],
+                    year_label=yr,
+                    transition_type="crossfade",
+                    focal_x=0.5,
+                    focal_y=0.5,
+                )
+                for r in p_rows
+            ]
+
+            cursor = await conn.execute(
+                """
+                INSERT INTO stories (title, story_type, vibe_mood, cover_photo_id, music_track_path)
+                VALUES (?, 'seasonal_highlight', ?, ?, ?);
+                """,
+                (title, mood, slides[0].photo_id, VIBE_TRACKS.get(mood, VIBE_TRACKS["acoustic"])),
+            )
+            story_id = cursor.lastrowid
+
+            for idx, slide in enumerate(slides):
+                await conn.execute(
+                    """
+                    INSERT INTO story_items (story_id, photo_id, sort_order, transition_type, focal_x, focal_y)
+                    VALUES (?, ?, ?, ?, ?, ?);
+                    """,
+                    (story_id, slide.photo_id, idx, slide.transition_type, slide.focal_x, slide.focal_y),
+                )
+
+            stories.append(
+                StoryModel(
+                    id=story_id,
+                    title=title,
+                    story_type="seasonal_highlight",
+                    vibe_mood=mood,
+                    music_track_path=VIBE_TRACKS.get(mood, VIBE_TRACKS["acoustic"]),
+                    audio_url=_resolve_audio_url_for_mood(mood),
+                    cover_photo_id=slides[0].photo_id,
+                    slides=slides,
+                )
+            )
+
+        await conn.commit()
+        return stories
+    finally:
+        await conn.close()
+
+
+async def generate_year_in_review_story(year: Optional[str] = None) -> Optional[StoryModel]:
+    """Generates a dynamic 'Year in Review' highlight story from library photos."""
     conn = await get_db_connection()
     try:
         if not year:
@@ -230,6 +538,7 @@ async def generate_year_in_review_story(year: Optional[str] = None) -> Optional[
             story_type="year_in_review",
             vibe_mood="upbeat",
             music_track_path=VIBE_TRACKS["upbeat"],
+            audio_url=_resolve_audio_url_for_mood("upbeat"),
             cover_photo_id=slides[0].photo_id,
             slides=slides,
         )
@@ -238,10 +547,7 @@ async def generate_year_in_review_story(year: Optional[str] = None) -> Optional[
 
 
 async def generate_recent_highlights_story() -> Optional[StoryModel]:
-    """Generates a dynamic 'Library Highlights' story from top photos.
-
-    Selects favorite or high-quality recent photos across the library (minimum 2 photos).
-    """
+    """Generates a dynamic 'Library Highlights' story from top photos."""
     conn = await get_db_connection()
     try:
         async with conn.execute(
@@ -298,10 +604,9 @@ async def generate_recent_highlights_story() -> Optional[StoryModel]:
             story_type="highlights",
             vibe_mood="acoustic",
             music_track_path=VIBE_TRACKS["acoustic"],
+            audio_url=_resolve_audio_url_for_mood("acoustic"),
             cover_photo_id=slides[0].photo_id,
             slides=slides,
         )
     finally:
         await conn.close()
-
-

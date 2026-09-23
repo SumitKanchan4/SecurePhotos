@@ -9,9 +9,11 @@ import {
   Music,
   ChevronLeft,
   ChevronRight,
-  RefreshCw
+  RefreshCw,
+  Check,
+  Disc3
 } from "lucide-react";
-import { StoryModel } from "../types";
+import { StoryModel, MusicTrackItem } from "../types";
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
@@ -23,7 +25,7 @@ interface StoryPlayerModalProps {
 
 /**
  * Procedural Web Audio Soundscape Generator tailored for Story Vibes.
- * Generates harmonic chords in real time with zero external MP3 dependencies.
+ * Generates harmonic chords in real time when no custom audio file is provided.
  */
 class StorySoundscapeGenerator {
   private ctx: AudioContext | null = null;
@@ -50,7 +52,7 @@ class StorySoundscapeGenerator {
 
       this.masterGain = this.ctx.createGain();
       this.masterGain.gain.setValueAtTime(0.001, this.ctx.currentTime);
-      this.masterGain.gain.exponentialRampToValueAtTime(0.28, this.ctx.currentTime + 1.2);
+      this.masterGain.gain.exponentialRampToValueAtTime(0.24, this.ctx.currentTime + 1.2);
       this.masterGain.connect(this.ctx.destination);
 
       if (this.ctx.state === "suspended") {
@@ -65,7 +67,7 @@ class StorySoundscapeGenerator {
 
   public setMute(muted: boolean) {
     if (!this.masterGain || !this.ctx) return;
-    this.masterGain.gain.setValueAtTime(muted ? 0.0001 : 0.28, this.ctx.currentTime);
+    this.masterGain.gain.setValueAtTime(muted ? 0.0001 : 0.24, this.ctx.currentTime);
   }
 
   private schedulePad() {
@@ -125,15 +127,78 @@ class StorySoundscapeGenerator {
     if (this.masterGain && this.ctx) {
       try {
         this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, this.ctx.currentTime);
-        this.masterGain.gain.linearRampToValueAtTime(0.0001, this.ctx.currentTime + 0.4);
+        this.masterGain.gain.linearRampToValueAtTime(0.0001, this.ctx.currentTime + 0.3);
         setTimeout(() => {
           this.ctx?.close().catch(() => {});
           this.ctx = null;
-        }, 500);
+        }, 400);
       } catch {
         this.ctx = null;
       }
     }
+  }
+}
+
+/**
+ * Story archetype metadata helper providing badge colors, icons, and human-first labels.
+ */
+function getArchetypeDetails(storyType?: string, title?: string) {
+  switch (storyType) {
+    case "on_this_day":
+      return {
+        label: "📅 On This Day",
+        bg: "rgba(245, 158, 11, 0.2)",
+        color: "#fbbf24",
+        border: "rgba(245, 158, 11, 0.4)",
+      };
+    case "vacation_adventure":
+      return {
+        label: "✈️ Vacation Memories",
+        bg: "rgba(14, 165, 233, 0.2)",
+        color: "#38bdf8",
+        border: "rgba(14, 165, 233, 0.4)",
+      };
+    case "through_the_years":
+      return {
+        label: "👤 Growth Journey",
+        bg: "rgba(16, 185, 129, 0.2)",
+        color: "#34d399",
+        border: "rgba(16, 185, 129, 0.4)",
+      };
+    case "seasonal_highlight": {
+      const sIcon = title?.includes("Summer") ? "☀️" : title?.includes("Winter") ? "❄️" : title?.includes("Spring") ? "🌸" : "🍂";
+      return {
+        label: `${sIcon} Seasonal Retrospective`,
+        bg: "rgba(168, 85, 247, 0.2)",
+        color: "#c084fc",
+        border: "rgba(168, 85, 247, 0.4)",
+      };
+    }
+    default:
+      return {
+        label: "✨ Curated Story",
+        bg: "rgba(59, 130, 246, 0.2)",
+        color: "#60a5fa",
+        border: "rgba(59, 130, 246, 0.4)",
+      };
+  }
+}
+
+/**
+ * Determines slide motion duration based on story vibe and music pacing.
+ */
+function getSlidePacing(vibeMood?: string): number {
+  switch (vibeMood) {
+    case "upbeat":
+      return 3500;
+    case "nostalgic":
+      return 5500;
+    case "acoustic":
+      return 4500;
+    case "cinematic":
+      return 5000;
+    default:
+      return 4500;
   }
 }
 
@@ -147,7 +212,31 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Dynamic chromatic ambient color [r, g, b]
+  const [ambientColor, setAmbientColor] = useState<[number, number, number]>([15, 23, 42]);
+
+  // Audio system state
+  const [availableTracks, setAvailableTracks] = useState<MusicTrackItem[]>([]);
+  const [activeAudioUrl, setActiveAudioUrl] = useState<string | null>(null);
+  const [activeTrackTitle, setActiveTrackTitle] = useState<string>("Procedural Ambient Chords");
+  const [showSoundtrackMenu, setShowSoundtrackMenu] = useState(false);
+
   const soundscapeRef = useRef<StorySoundscapeGenerator | null>(null);
+  const audioElementRef = useRef<HTMLAudioElement | null>(null);
+
+  // Fetch available tracks for the in-player soundtrack picker
+  const fetchMusicTracks = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/stories/music`);
+      if (res.ok) {
+        const tracks: MusicTrackItem[] = await res.json();
+        setAvailableTracks(tracks);
+      }
+    } catch {
+      // Audio tracks load failed; fallback to procedural
+    }
+  }, []);
 
   // Fetch story details from backend
   const fetchStory = useCallback(async (id: number) => {
@@ -158,6 +247,13 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         const data: StoryModel = await res.json();
         setStory(data);
         setCurrentSlideIndex(0);
+        if (data.audio_url) {
+          setActiveAudioUrl(data.audio_url);
+          setActiveTrackTitle(`${data.vibe_mood ? data.vibe_mood.charAt(0).toUpperCase() + data.vibe_mood.slice(1) : "Curated"} Soundtrack`);
+        } else {
+          setActiveAudioUrl(null);
+          setActiveTrackTitle("Procedural Ambient Chords");
+        }
       } else {
         // Fallback: try loading all stories and find matching ID
         const allRes = await fetch(`${API_BASE}/stories`);
@@ -167,6 +263,13 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
           if (found) {
             setStory(found);
             setCurrentSlideIndex(0);
+            if (found.audio_url) {
+              setActiveAudioUrl(found.audio_url);
+              setActiveTrackTitle(`${found.vibe_mood ? found.vibe_mood.charAt(0).toUpperCase() + found.vibe_mood.slice(1) : "Curated"} Soundtrack`);
+            } else {
+              setActiveAudioUrl(null);
+              setActiveTrackTitle("Procedural Ambient Chords");
+            }
           }
         }
       }
@@ -177,31 +280,142 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
     }
   }, []);
 
+  // Fetch story and tracks on modal open
   useEffect(() => {
     if (isOpen && storyId !== null) {
       fetchStory(storyId);
+      fetchMusicTracks();
       setIsPlaying(true);
-
-      // Initialize ambient soundscape
-      soundscapeRef.current = new StorySoundscapeGenerator();
-      soundscapeRef.current.start();
+      setShowSoundtrackMenu(false);
     } else {
-      soundscapeRef.current?.stop();
-      soundscapeRef.current = null;
+      stopAllAudio();
     }
 
     return () => {
-      soundscapeRef.current?.stop();
-      soundscapeRef.current = null;
+      stopAllAudio();
     };
-  }, [isOpen, storyId, fetchStory]);
+  }, [isOpen, storyId, fetchStory, fetchMusicTracks]);
+
+  // Dynamic chromatic color extraction from current slide
+  useEffect(() => {
+    if (!isOpen || !story || story.slides.length === 0) return;
+    const currentSlide = story.slides[currentSlideIndex];
+    if (!currentSlide) return;
+
+    const imgUrl = `${API_BASE}/photos/${currentSlide.photo_id}/preview`;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = imgUrl;
+
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 12;
+        canvas.height = 12;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0, 12, 12);
+        const data = ctx.getImageData(0, 0, 12, 12).data;
+        let r = 0, g = 0, b = 0, count = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const br = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          // Filter out pure near-black or blown-out white to keep vibrant color atmosphere
+          if (br > 20 && br < 235) {
+            r += data[i];
+            g += data[i + 1];
+            b += data[i + 2];
+            count++;
+          }
+        }
+        if (count > 0) {
+          setAmbientColor([Math.round(r / count), Math.round(g / count), Math.round(b / count)]);
+        }
+      } catch {
+        // Fallback default ambient
+        setAmbientColor([15, 23, 42]);
+      }
+    };
+  }, [isOpen, story, currentSlideIndex]);
+
+  // Audio Playback Controller
+  const stopAllAudio = () => {
+    if (audioElementRef.current) {
+      audioElementRef.current.pause();
+      audioElementRef.current.src = "";
+      audioElementRef.current = null;
+    }
+    if (soundscapeRef.current) {
+      soundscapeRef.current.stop();
+      soundscapeRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      stopAllAudio();
+      return;
+    }
+
+    if (activeAudioUrl) {
+      // User-provided soundtrack via HTML5 Audio
+      if (soundscapeRef.current) {
+        soundscapeRef.current.stop();
+        soundscapeRef.current = null;
+      }
+
+      if (!audioElementRef.current || audioElementRef.current.src !== activeAudioUrl) {
+        if (audioElementRef.current) {
+          audioElementRef.current.pause();
+        }
+        const audio = new Audio(activeAudioUrl);
+        audio.loop = true;
+        audio.volume = 0.5;
+        audio.muted = isMuted;
+        audioElementRef.current = audio;
+      }
+
+      if (isPlaying) {
+        audioElementRef.current.play().catch((e) => {
+          console.warn("HTML5 audio playback blocked, falling back to procedural synthesizer:", e);
+          soundscapeRef.current = new StorySoundscapeGenerator();
+          soundscapeRef.current.start();
+          soundscapeRef.current.setMute(isMuted);
+        });
+      } else {
+        audioElementRef.current.pause();
+      }
+    } else {
+      // Procedural Web Audio Synthesizer fallback
+      if (audioElementRef.current) {
+        audioElementRef.current.pause();
+        audioElementRef.current = null;
+      }
+
+      if (isPlaying) {
+        if (!soundscapeRef.current) {
+          soundscapeRef.current = new StorySoundscapeGenerator();
+          soundscapeRef.current.start();
+          soundscapeRef.current.setMute(isMuted);
+        }
+      } else {
+        soundscapeRef.current?.stop();
+        soundscapeRef.current = null;
+      }
+    }
+  }, [isOpen, activeAudioUrl, isPlaying]);
 
   // Handle Mute toggle
   const toggleMute = () => {
     const nextMuted = !isMuted;
     setIsMuted(nextMuted);
+    if (audioElementRef.current) {
+      audioElementRef.current.muted = nextMuted;
+    }
     soundscapeRef.current?.setMute(nextMuted);
   };
+
+  // Adaptive slide pacing
+  const pacingMs = getSlidePacing(story?.vibe_mood);
 
   // Slides advancement timer
   useEffect(() => {
@@ -211,13 +425,13 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
       if (currentSlideIndex < story.slides.length - 1) {
         setCurrentSlideIndex((prev) => prev + 1);
       } else {
-        // Loop back to start or pause
+        // Loop back to start
         setCurrentSlideIndex(0);
       }
-    }, 4500);
+    }, pacingMs);
 
     return () => clearTimeout(timer);
-  }, [isOpen, isPlaying, currentSlideIndex, story]);
+  }, [isOpen, isPlaying, currentSlideIndex, story, pacingMs]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -246,6 +460,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
 
   const slides = story?.slides || [];
   const currentSlide = slides[currentSlideIndex];
+  const archetype = getArchetypeDetails(story?.story_type, story?.title);
 
   return (
     <div 
@@ -259,7 +474,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         userSelect: "none",
       }}
     >
-      {/* Top Segmented Progress Bar */}
+      {/* Top Segmented Progress Bar with Dynamic Pacing */}
       <div 
         style={{
           position: "absolute",
@@ -293,7 +508,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                   height: "100%",
                   width: isPassed ? "100%" : isCurrent ? "100%" : "0%",
                   backgroundColor: "#ffffff",
-                  transition: isCurrent && isPlaying ? "width 4.5s linear" : "none",
+                  transition: isCurrent && isPlaying ? `width ${pacingMs}ms linear` : "none",
                 }}
               />
             </div>
@@ -301,7 +516,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         })}
       </div>
 
-      {/* Top Header Overlay */}
+      {/* Top Header Overlay with Liquid Glass & Archetype Badge */}
       <div 
         style={{
           position: "absolute",
@@ -315,11 +530,31 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
           zIndex: 40,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        {/* Left: Archetype Badge & Slide Timeline */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          {/* Dynamic Story Archetype Badge */}
+          <span 
+            style={{
+              backgroundColor: archetype.bg,
+              color: archetype.color,
+              border: `1px solid ${archetype.border}`,
+              padding: "4px 12px",
+              borderRadius: "var(--radius-full)",
+              fontSize: "12px",
+              fontWeight: 700,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              backdropFilter: "blur(16px)",
+            }}
+          >
+            {archetype.label}
+          </span>
+
           {currentSlide && (
             <span 
               style={{
-                backgroundColor: "rgba(0, 0, 0, 0.5)",
+                backgroundColor: "rgba(0, 0, 0, 0.55)",
                 backdropFilter: "blur(16px)",
                 padding: "4px 10px",
                 borderRadius: "var(--radius-full)",
@@ -332,16 +567,21 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
               {currentSlide.year_label}
             </span>
           )}
-          <span style={{ fontSize: "15px", fontWeight: 700, textShadow: "0 2px 8px rgba(0,0,0,0.8)" }}>
+
+          <span style={{ fontSize: "15px", fontWeight: 700, textShadow: "0 2px 8px rgba(0,0,0,0.85)" }}>
             {story?.title || "Curated Story"}
           </span>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          {/* Vibe Soundtrack Badge */}
-          <div 
+        {/* Right: Sound Control, Play/Pause, Close */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", position: "relative" }}>
+          {/* Soundtrack Selector & Vibe Badge */}
+          <button
+            onClick={() => setShowSoundtrackMenu(!showSoundtrackMenu)}
+            className="clickable"
+            title="Choose Story Soundtrack"
             style={{
-              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              backgroundColor: "rgba(0, 0, 0, 0.55)",
               backdropFilter: "blur(16px)",
               padding: "4px 12px",
               borderRadius: "var(--radius-full)",
@@ -350,14 +590,113 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              border: "1px solid rgba(255, 255, 255, 0.15)",
+              border: "1px solid rgba(255, 255, 255, 0.18)",
+              color: "#ffffff",
+              cursor: "pointer",
             }}
           >
             <Music size={12} style={{ color: "var(--accent-primary)" }} />
-            <span style={{ textTransform: "capitalize" }}>
-              {story?.vibe_mood ? `${story.vibe_mood} Ambient` : "Nostalgic Ambient"}
+            <span style={{ maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {activeTrackTitle}
             </span>
-          </div>
+          </button>
+
+          {/* Soundtrack Selector Popover */}
+          {showSoundtrackMenu && (
+            <div
+              style={{
+                position: "absolute",
+                top: "40px",
+                right: "120px",
+                width: "280px",
+                backgroundColor: "rgba(18, 20, 29, 0.95)",
+                backdropFilter: "blur(24px)",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                borderRadius: "var(--radius-lg)",
+                boxShadow: "0 16px 36px rgba(0,0,0,0.6)",
+                padding: "10px",
+                zIndex: 60,
+                display: "flex",
+                flexDirection: "column",
+                gap: "6px",
+              }}
+            >
+              <div style={{ fontSize: "11px", fontWeight: 700, color: "rgba(255,255,255,0.6)", textTransform: "uppercase", padding: "4px 8px" }}>
+                Select Soundtrack
+              </div>
+
+              {/* Procedural Web Audio Option */}
+              <div
+                onClick={() => {
+                  setActiveAudioUrl(null);
+                  setActiveTrackTitle("Procedural Ambient Chords");
+                  setShowSoundtrackMenu(false);
+                }}
+                className="clickable"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "8px 10px",
+                  borderRadius: "var(--radius-md)",
+                  backgroundColor: !activeAudioUrl ? "rgba(59, 130, 246, 0.2)" : "transparent",
+                  color: "#ffffff",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Disc3 size={14} style={{ color: "var(--accent-primary)" }} />
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Ambient Chords</div>
+                    <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)" }}>Procedural Synthesizer</div>
+                  </div>
+                </div>
+                {!activeAudioUrl && <Check size={14} style={{ color: "var(--accent-primary)" }} />}
+              </div>
+
+              {/* User Custom Tracks */}
+              {availableTracks.map((trk) => {
+                const isSelected = activeAudioUrl === trk.stream_url;
+                return (
+                  <div
+                    key={trk.id}
+                    onClick={() => {
+                      setActiveAudioUrl(trk.stream_url);
+                      setActiveTrackTitle(trk.title || trk.filename);
+                      setShowSoundtrackMenu(false);
+                    }}
+                    className="clickable"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "8px 10px",
+                      borderRadius: "var(--radius-md)",
+                      backgroundColor: isSelected ? "rgba(59, 130, 246, 0.2)" : "transparent",
+                      color: "#ffffff",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden" }}>
+                      <Music size={14} style={{ color: isSelected ? "var(--accent-primary)" : "rgba(255,255,255,0.7)" }} />
+                      <div style={{ overflow: "hidden" }}>
+                        <div style={{ fontWeight: 600, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                          {trk.title}
+                        </div>
+                        <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)", display: "flex", gap: "6px" }}>
+                          <span style={{ textTransform: "capitalize" }}>{trk.mood}</span>
+                          {trk.auto_tagged && <span style={{ color: "var(--accent-primary)" }}>• Auto ✨</span>}
+                        </div>
+                      </div>
+                    </div>
+                    {isSelected && <Check size={14} style={{ color: "var(--accent-primary)" }} />}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Sound Mute Toggle */}
           <button
@@ -365,7 +704,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
             className="clickable"
             title={isMuted ? "Unmute Ambient Music" : "Mute Music"}
             style={{
-              background: "rgba(0, 0, 0, 0.5)",
+              background: "rgba(0, 0, 0, 0.55)",
               backdropFilter: "blur(16px)",
               border: "1px solid rgba(255, 255, 255, 0.15)",
               color: "#ffffff",
@@ -386,7 +725,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
             className="clickable"
             title={isPlaying ? "Pause (Space)" : "Play (Space)"}
             style={{
-              background: "rgba(0, 0, 0, 0.5)",
+              background: "rgba(0, 0, 0, 0.55)",
               backdropFilter: "blur(16px)",
               border: "1px solid rgba(255, 255, 255, 0.15)",
               color: "#ffffff",
@@ -407,7 +746,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
             className="clickable"
             title="Close (Esc)"
             style={{
-              background: "rgba(0, 0, 0, 0.5)",
+              background: "rgba(0, 0, 0, 0.55)",
               backdropFilter: "blur(16px)",
               border: "1px solid rgba(255, 255, 255, 0.15)",
               color: "#ffffff",
@@ -425,7 +764,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         </div>
       </div>
 
-      {/* Main Cinematic Viewport with Ken-Burns Motion */}
+      {/* Main Cinematic Viewport with Dynamic Chromatic Radial Glow */}
       <div 
         style={{
           flex: 1,
@@ -434,12 +773,13 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
           justifyContent: "center",
           position: "relative",
           overflow: "hidden",
-          backgroundColor: "#05060a",
+          background: `radial-gradient(ellipse at center, rgba(${ambientColor[0]}, ${ambientColor[1]}, ${ambientColor[2]}, 0.52) 0%, rgba(5, 6, 10, 0.95) 75%, #000000 100%)`,
+          transition: "background 1.4s cubic-bezier(0.2, 0.8, 0.2, 1)",
         }}
       >
         {isLoading ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", color: "var(--text-secondary)" }}>
-            <RefreshCw size={28} className="spin" style={{ color: "var(--accent-primary)" }} />
+            <RefreshCw size={28} className="spin-animation" style={{ color: "var(--accent-primary)" }} />
             <span style={{ fontSize: "14px" }}>Loading Memory Story...</span>
           </div>
         ) : currentSlide ? (
@@ -469,7 +809,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                 objectFit: "contain",
                 transformOrigin: `${((currentSlide.focal_x ?? 0.5) * 100).toFixed(1)}% ${((currentSlide.focal_y ?? 0.5) * 100).toFixed(1)}%`,
                 transform: isPlaying ? "scale(1.14)" : "scale(1.0)",
-                transition: "transform 4.5s cubic-bezier(0.25, 1, 0.5, 1)",
+                transition: `transform ${pacingMs}ms cubic-bezier(0.25, 1, 0.5, 1)`,
               }}
             />
           </div>
@@ -502,7 +842,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         >
           <div 
             style={{
-              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              backgroundColor: "rgba(0, 0, 0, 0.55)",
               backdropFilter: "blur(12px)",
               borderRadius: "var(--radius-full)",
               padding: "10px",
@@ -540,7 +880,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         >
           <div 
             style={{
-              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              backgroundColor: "rgba(0, 0, 0, 0.55)",
               backdropFilter: "blur(12px)",
               borderRadius: "var(--radius-full)",
               padding: "10px",

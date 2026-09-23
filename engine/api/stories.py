@@ -1,18 +1,60 @@
-"""Stories & Cinematic Montages API Router."""
+"""Stories & Cinematic Montages API Router.
 
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, status
+Delivers multi-dimensional story retrieval, intelligent timeline generation,
+and custom audio soundtrack management with automatic mood tagging.
+"""
+
+import os
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from engine.database import get_db_connection
-from engine.services.stories_service import StoryModel, StorySlide
+from engine.services.music_service import (
+    MusicTrack,
+    get_track_by_id,
+    get_track_for_mood,
+    scan_music_library,
+    save_uploaded_music,
+    update_track_mood,
+)
+from engine.services.stories_service import (
+    StoryModel,
+    StorySlide,
+    _resolve_audio_url_for_mood,
+    generate_on_this_day_stories,
+    generate_recent_highlights_story,
+    generate_seasonal_retrospectives,
+    generate_through_the_years_story,
+    generate_vacation_and_trip_stories,
+    generate_year_in_review_story,
+)
 
 router = APIRouter(prefix="/api/stories", tags=["Stories"])
 
 
+class UpdateMusicMoodRequest(BaseModel):
+    """Payload for updating a track's mood."""
+    mood: str
+
+
+class StoriesInsightsResponse(BaseModel):
+    """Photographic intelligence and nostalgia metrics payload."""
+    total_stories: int
+    most_captured_people: List[dict]
+    photos_by_month: List[dict]
+    time_of_day_distribution: List[dict]
+    camera_breakdown: List[dict]
+    top_years: List[dict]
+
+
+# ── 1. Story Listing & Timeline Synthesizer ──────────────────────────────────
+
 @router.get("", response_model=List[StoryModel], status_code=status.HTTP_200_OK)
 async def list_stories() -> List[StoryModel]:
-    """Returns all curated nostalgic stories for the stories carousel."""
+    """Returns all curated nostalgic stories for the stories carousel and cinema hub."""
     conn = await get_db_connection()
     try:
         async with conn.execute(
@@ -53,13 +95,15 @@ async def list_stories() -> List[StoryModel]:
                 for sr in slide_rows
             ]
 
+            mood = r["vibe_mood"] or "acoustic"
             stories.append(
                 StoryModel(
                     id=story_id,
                     title=r["title"],
                     story_type=r["story_type"],
-                    vibe_mood=r["vibe_mood"],
+                    vibe_mood=mood,
                     music_track_path=r["music_track_path"],
+                    audio_url=_resolve_audio_url_for_mood(mood),
                     cover_photo_id=r["cover_photo_id"],
                     slides=slides,
                 )
@@ -72,23 +116,19 @@ async def list_stories() -> List[StoryModel]:
 
 @router.post("/generate", response_model=List[StoryModel], status_code=status.HTTP_200_OK)
 async def generate_stories() -> List[StoryModel]:
-    """Generates AI-curated nostalgia and milestone stories from library photos.
+    """Curates and synthesizes multi-dimensional stories across the photo library.
 
-    Evaluates close people for 'Through the Years' stories and generates
-    'Year in Review' milestone stories for prominent timeline years.
-
-    Returns:
-        List of all active StoryModel instances.
+    Curates:
+    1. 'Through the Years' stories for top affinity / close persons.
+    2. 'On This Day' Flashback milestone anniversaries (Y-1, Y-2, Y-5, etc.).
+    3. Vacation & trip dense temporal bursts (3-10 days away).
+    4. Seasonal Retrospectives (Summer, Autumn, Winter, Spring highlights).
+    5. 'Year in Review' retrospectives.
+    6. 'Recent Highlights' golden moment fallback reel.
     """
-    from engine.services.stories_service import (
-        generate_through_the_years_story,
-        generate_year_in_review_story,
-        generate_recent_highlights_story,
-    )
-
     conn = await get_db_connection()
     try:
-        # 1. Generate for close persons
+        # 1. Close people 'Through the Years' stories
         async with conn.execute(
             "SELECT id FROM persons ORDER BY is_close_one DESC, affinity_score DESC LIMIT 5;"
         ) as cursor:
@@ -97,16 +137,196 @@ async def generate_stories() -> List[StoryModel]:
         for pr in person_rows:
             await generate_through_the_years_story(pr["id"])
 
-        # 2. Generate Year in Review highlight stories
+        # 2. 'On This Day' Flashback milestones
+        await generate_on_this_day_stories()
+
+        # 3. Vacation & trip bursts
+        await generate_vacation_and_trip_stories()
+
+        # 4. Seasonal retrospectives
+        await generate_seasonal_retrospectives()
+
+        # 5. Year in Review highlight stories
         await generate_year_in_review_story()
 
-        # 3. Generate Recent Highlights / Golden Moments fallback story
+        # 6. Recent Highlights / Golden Moments fallback story
         await generate_recent_highlights_story()
     finally:
         await conn.close()
 
     return await list_stories()
 
+
+@router.get("/insights", response_model=StoriesInsightsResponse, status_code=status.HTTP_200_OK)
+async def get_stories_insights() -> StoriesInsightsResponse:
+    """Returns aggregated memory velocity, camera insights, and social presence metrics."""
+    conn = await get_db_connection()
+    try:
+        # 1. Total stories
+        async with conn.execute("SELECT count(*) as cnt FROM stories;") as c:
+            story_count = (await c.fetchone())["cnt"]
+
+        # 2. Most captured people
+        async with conn.execute(
+            """
+            SELECT p.id, p.name, p.relationship_type, p.is_close_one, count(f.id) as photo_count
+            FROM persons p
+            JOIN faces f ON f.person_id = p.id
+            GROUP BY p.id
+            ORDER BY photo_count DESC
+            LIMIT 5;
+            """
+        ) as c:
+            people_rows = await c.fetchall()
+            top_people = [dict(r) for r in people_rows]
+
+        # 3. Monthly distribution (01..12)
+        async with conn.execute(
+            """
+            SELECT strftime('%m', taken_at) as month, count(*) as count
+            FROM photos
+            WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0
+            GROUP BY month
+            ORDER BY month ASC;
+            """
+        ) as c:
+            monthly_rows = await c.fetchall()
+
+        # 4. Time of day breakdown
+        async with conn.execute(
+            """
+            SELECT 
+                CASE 
+                    WHEN cast(strftime('%H', taken_at) as integer) BETWEEN 5 AND 11 THEN 'Morning'
+                    WHEN cast(strftime('%H', taken_at) as integer) BETWEEN 12 AND 16 THEN 'Afternoon'
+                    WHEN cast(strftime('%H', taken_at) as integer) BETWEEN 17 AND 20 THEN 'Golden Hour'
+                    ELSE 'Night'
+                END as period,
+                count(*) as count
+            FROM photos
+            WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0
+            GROUP BY period;
+            """
+        ) as c:
+            time_rows = await c.fetchall()
+
+        # 5. Camera breakdown
+        async with conn.execute(
+            """
+            SELECT COALESCE(camera_model, 'Smartphone / Other') as camera, count(*) as count
+            FROM photos
+            WHERE trashed_at IS NULL AND is_encrypted = 0
+            GROUP BY camera
+            ORDER BY count DESC
+            LIMIT 5;
+            """
+        ) as c:
+            cam_rows = await c.fetchall()
+
+        # 6. Top years
+        async with conn.execute(
+            """
+            SELECT strftime('%Y', taken_at) as yr, count(*) as count
+            FROM photos
+            WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0
+            GROUP BY yr
+            ORDER BY count DESC
+            LIMIT 5;
+            """
+        ) as c:
+            year_rows = await c.fetchall()
+
+        return StoriesInsightsResponse(
+            total_stories=story_count,
+            most_captured_people=top_people,
+            photos_by_month=[dict(r) for r in monthly_rows],
+            time_of_day_distribution=[dict(r) for r in time_rows],
+            camera_breakdown=[dict(r) for r in cam_rows],
+            top_years=[dict(r) for r in year_rows],
+        )
+    finally:
+        await conn.close()
+
+
+# ── 2. Music & Custom Soundtracks Endpoints ──────────────────────────────────
+
+@router.get("/music", response_model=List[MusicTrack], status_code=status.HTTP_200_OK)
+async def get_music_library() -> List[MusicTrack]:
+    """Returns all available user soundtracks categorized by mood with auto-tag info."""
+    return scan_music_library()
+
+
+@router.post("/music/upload", response_model=MusicTrack, status_code=status.HTTP_200_OK)
+async def upload_music_track(
+    file: UploadFile = File(...),
+    mood: Optional[str] = Form(default=None),
+) -> MusicTrack:
+    """Uploads an audio soundtrack, auto-tagging its mood from genre and filename cues."""
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is empty.",
+        )
+
+    track = save_uploaded_music(
+        file_bytes=file_bytes,
+        filename=file.filename or "soundtrack.mp3",
+        explicit_mood=mood,
+    )
+    return track
+
+
+@router.patch("/music/{track_id}", response_model=MusicTrack, status_code=status.HTTP_200_OK)
+async def update_track(
+    track_id: str,
+    payload: UpdateMusicMoodRequest,
+) -> MusicTrack:
+    """Manually overrides or updates the mood of a music track."""
+    success = update_track_mood(track_id=track_id, new_mood=payload.mood)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid mood or track not found.",
+        )
+    track = get_track_by_id(track_id)
+    if not track:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Track not found.",
+        )
+    return track
+
+
+@router.get("/music/{track_id}/stream", status_code=status.HTTP_200_OK)
+async def stream_music_track(track_id: str):
+    """Streams the audio file for the story player with HTML5 audio compatibility."""
+    track = get_track_by_id(track_id)
+    if not track or not os.path.exists(track.filepath):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio track file not found on disk.",
+        )
+
+    ext = Path(track.filepath).suffix.lower()
+    media_types = {
+        ".mp3": "audio/mpeg",
+        ".m4a": "audio/mp4",
+        ".aac": "audio/aac",
+        ".wav": "audio/wav",
+        ".flac": "audio/flac",
+        ".ogg": "audio/ogg",
+    }
+    media_type = media_types.get(ext, "audio/mpeg")
+
+    return FileResponse(
+        path=track.filepath,
+        media_type=media_type,
+        filename=track.filename,
+    )
+
+
+# ── 3. Single Story Details Endpoint ─────────────────────────────────────────
 
 @router.get("/{story_id}", response_model=StoryModel, status_code=status.HTTP_200_OK)
 async def get_story(story_id: int) -> StoryModel:
@@ -154,123 +374,16 @@ async def get_story(story_id: int) -> StoryModel:
             for sr in slide_rows
         ]
 
+        mood = r["vibe_mood"] or "acoustic"
         return StoryModel(
             id=r["id"],
             title=r["title"],
             story_type=r["story_type"],
-            vibe_mood=r["vibe_mood"],
+            vibe_mood=mood,
             music_track_path=r["music_track_path"],
+            audio_url=_resolve_audio_url_for_mood(mood),
             cover_photo_id=r["cover_photo_id"],
             slides=slides,
         )
     finally:
         await conn.close()
-
-
-
-class StoriesInsightsResponse(BaseModel):
-    """Photographic intelligence and nostalgia metrics payload."""
-    total_stories: int
-    most_captured_people: List[dict]
-    photos_by_month: List[dict]
-    time_of_day_distribution: List[dict]
-    camera_breakdown: List[dict]
-    top_years: List[dict]
-
-
-@router.get("/insights", response_model=StoriesInsightsResponse, status_code=status.HTTP_200_OK)
-async def get_stories_insights() -> StoriesInsightsResponse:
-    """Returns aggregated memory velocity, camera insights, and social presence metrics."""
-    conn = await get_db_connection()
-    try:
-        # 1. Total stories
-        async with conn.execute("SELECT count(*) as cnt FROM stories;") as c:
-            story_count = (await c.fetchone())["cnt"]
-
-        # 2. Most captured people
-        async with conn.execute(
-            """
-            SELECT p.id, p.name, p.relationship_type, p.is_close_one, count(f.id) as photo_count
-            FROM persons p
-            JOIN faces f ON f.person_id = p.id
-            GROUP BY p.id
-            ORDER BY photo_count DESC
-            LIMIT 5;
-            """
-        ) as c:
-            people_rows = await c.fetchall()
-            top_people = [dict(r) for r in people_rows]
-
-        # 3. Monthly distribution (01..12)
-        async with conn.execute(
-            """
-            SELECT strftime('%m', taken_at) as month, count(*) as count
-            FROM photos
-            WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0
-            GROUP BY month
-            ORDER BY month ASC;
-            """
-        ) as c:
-            monthly_rows = await c.fetchall()
-            months = [dict(r) for r in monthly_rows]
-
-        # 4. Time of Day breakdown
-        async with conn.execute(
-            """
-            SELECT 
-                CASE 
-                    WHEN cast(strftime('%H', taken_at) as integer) BETWEEN 5 AND 11 THEN 'Morning'
-                    WHEN cast(strftime('%H', taken_at) as integer) BETWEEN 12 AND 16 THEN 'Afternoon'
-                    WHEN cast(strftime('%H', taken_at) as integer) BETWEEN 17 AND 20 THEN 'Golden Hour'
-                    ELSE 'Night'
-                END as period,
-                count(*) as count
-            FROM photos
-            WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0
-            GROUP BY period
-            ORDER BY count DESC;
-            """
-        ) as c:
-            period_rows = await c.fetchall()
-            periods = [dict(r) for r in period_rows]
-
-        # 5. Camera Breakdown
-        async with conn.execute(
-            """
-            SELECT COALESCE(camera_model, camera_make, 'Direct Upload / Phone') as camera, count(*) as count
-            FROM photos
-            WHERE trashed_at IS NULL AND is_encrypted = 0
-            GROUP BY camera
-            ORDER BY count DESC
-            LIMIT 5;
-            """
-        ) as c:
-            cam_rows = await c.fetchall()
-            cameras = [dict(r) for r in cam_rows]
-
-        # 6. Top Years
-        async with conn.execute(
-            """
-            SELECT strftime('%Y', taken_at) as yr, count(*) as count
-            FROM photos
-            WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0
-            GROUP BY yr
-            ORDER BY yr DESC
-            LIMIT 6;
-            """
-        ) as c:
-            year_rows = await c.fetchall()
-            top_years = [dict(r) for r in year_rows]
-
-        return StoriesInsightsResponse(
-            total_stories=story_count,
-            most_captured_people=top_people,
-            photos_by_month=months,
-            time_of_day_distribution=periods,
-            camera_breakdown=cameras,
-            top_years=top_years,
-        )
-    finally:
-        await conn.close()
-
-
