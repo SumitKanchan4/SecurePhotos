@@ -757,7 +757,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                   Duplicates & Clutter
                 </span>
                 <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
-                  Space reclamation & burst cleanup
+                  Find and remove duplicate photos to free up space
                 </span>
               </div>
             </div>
@@ -1004,7 +1004,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                   Media & Video Optimization
                 </span>
                 <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
-                  On-device visual transcoding engine
+                  Automatic background compression to save disk space
                 </span>
               </div>
             </div>
@@ -1027,7 +1027,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                 }}
               >
                 <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "var(--accent-primary)", boxShadow: "0 0 6px var(--accent-primary)" }} />
-                Transcoding in Background
+                Optimizing in Background
               </span>
             ) : optStatus?.service_status === "paused" ? (
               <span
@@ -1042,7 +1042,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                   whiteSpace: "nowrap",
                 }}
               >
-                ⏸ Engine Paused
+                ⏸ Paused
               </span>
             ) : (
               <span
@@ -1057,7 +1057,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                   whiteSpace: "nowrap",
                 }}
               >
-                ✓ All Media Modernized
+                ✓ All Media Optimized
               </span>
             )}
           </div>
@@ -1113,23 +1113,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
             {/* Metrics Breakdown */}
             <div style={{ display: "flex", flexDirection: "column", gap: "6px", flex: 1, fontSize: "11px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ color: "var(--text-secondary)" }}>Videos Modernized:</span>
+                <span style={{ color: "var(--text-secondary)" }}>Videos Optimized:</span>
                 <strong style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
-                  {optStatus?.videos_optimized ?? (stats?.media_counts.videos || 0)} / {optStatus?.videos_total ?? (stats?.media_counts.videos || 0)} (H.265/AV1)
+                  {optStatus?.videos_optimized ?? (stats?.media_counts.videos || 0)} of {optStatus?.videos_total ?? (stats?.media_counts.videos || 0)}
                 </strong>
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ color: "var(--text-secondary)" }}>Image Proxies:</span>
+                <span style={{ color: "var(--text-secondary)" }}>Photos Processed:</span>
                 <strong style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
-                  {optStatus?.images_optimized ?? (stats?.media_counts.images || 0)} / {optStatus?.images_total ?? (stats?.media_counts.images || 0)} (AVIF/WebP)
+                  {optStatus?.images_optimized ?? (stats?.media_counts.images || 0)} of {optStatus?.images_total ?? (stats?.media_counts.images || 0)}
                 </strong>
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ color: "var(--text-secondary)" }}>Compression Savings:</span>
+                <span style={{ color: "var(--text-secondary)" }}>Space Saved:</span>
                 <strong style={{ fontFamily: "var(--font-mono)", color: "var(--accent-success)" }}>
-                  +{formatBytes(optStatus?.reclaimed_bytes || 0)} Saved
+                  +{formatBytes(optStatus?.reclaimed_bytes || 0)}
                 </strong>
               </div>
 
@@ -1156,7 +1156,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
               <button
                 onClick={handlePauseOptimization}
                 className="clickable"
-                title="Pause background transcode worker"
+                title="Pause background optimization"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -1171,13 +1171,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                   cursor: "pointer",
                 }}
               >
-                <span>Pause Engine</span>
+                <span>Pause</span>
               </button>
             ) : optStatus?.service_status === "paused" ? (
               <button
                 onClick={handleResumeOptimization}
                 className="clickable"
-                title="Resume background transcode worker"
+                title="Resume background optimization"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -1193,14 +1193,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                   boxShadow: "0 2px 8px var(--accent-glow)",
                 }}
               >
-                <span>Resume Engine</span>
+                <span>Resume</span>
               </button>
             ) : (
               <button
                 onClick={handleTriggerOptimization}
                 disabled={isTriggeringOptimization}
                 className="clickable"
-                title="Manually trigger on-device optimization scan"
+                title="Check for uncompressed media in library"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -1217,7 +1217,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                 }}
               >
                 <Zap size={13} style={{ color: "var(--accent-primary)" }} />
-                <span>{isTriggeringOptimization ? "Checking..." : optStatus && optStatus.videos_pending > 0 ? "Optimize Now" : "Re-Check Library"}</span>
+                <span>{isTriggeringOptimization ? "Checking..." : optStatus && optStatus.videos_pending > 0 ? "Optimize Now" : "Check Library"}</span>
               </button>
             )}
           </div>

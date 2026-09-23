@@ -2960,18 +2960,19 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - **Backend API**:
   - `engine/services/duplicate_service.py`: Updated `get_duplicate_summary()` to return `exact_groups`, `similar_groups`, and `total_library_photos`.
   - `engine/api/duplicates.py`: Updated `DuplicateSummaryResponse` schema with group breakdowns and total photo counts.
-  - `engine/api/system.py`: Added `GET /api/system/optimization-status`, `POST /api/system/optimization/pause`, `POST /api/system/optimization/resume`, and `POST /api/system/optimization/trigger`.
-  - `engine/tests/test_dashboard_api.py`: Automated tests verifying telemetry counts and pause/resume/trigger control endpoints.
+  - `engine/api/system.py`: Added `GET /api/system/optimization-status`, `POST /api/system/optimization/pause`, `POST /api/system/optimization/resume`, and `POST /api/system/optimization/trigger`. Fixed image optimization counting by referencing indexed thumbnail status rather than unpopulated display proxy paths, ensuring libraries with modern videos and indexed photos report 100% completion.
+  - `engine/tests/test_dashboard_api.py`: Automated tests verifying telemetry counts, 100% completion when fully indexed, and pause/resume/trigger control endpoints.
 - **Frontend UI**:
   - `src/types/index.ts`: Updated `DuplicateSummaryResponse` and added `OptimizationStatusResponse` interface.
-  - `src/components/DashboardView.tsx`: Integrated side-by-side Bento Grid row with SVG Donut Chart, SVG Radial Optimization Gauge, live status pills, and background service controls.
+  - `src/components/DashboardView.tsx`: Integrated side-by-side Bento Grid row with SVG Donut Chart, SVG Radial Optimization Gauge, live status pills, and background service controls. Purged developer jargon in strict accordance with Rule 7 ("Automatic background compression to save disk space", "Videos Optimized: X of Y", "Photos Processed: X of Y", "Space Saved: X", "All Media Optimized", "Pause", "Resume").
   - `src/components/DuplicatesView.tsx`: Upgraded duplicate group layout to 50/50 responsive comparison grid with rich metadata rows.
 
 ### State & Lifecycle Impact
 - Background video processing service responds to pause/resume signals without database locks.
 - Real-time polling occurs only when optimization service status is `"processing"`, minimizing CPU cycles when idle.
-- 93/93 backend tests passing (100%).
+- 94/94 backend tests passing (100%).
 - Frontend builds cleanly with zero TypeScript errors.
+
 
 
 

@@ -128,3 +128,32 @@ def test_storage_footprint_calculator():
     stats = calculate_app_storage_footprint(force_refresh=True)
     assert stats.total_bytes >= 0
     assert stats.database_bytes >= 0
+
+
+@pytest.mark.asyncio
+async def test_optimization_status_and_controls():
+    """Verifies optimization status calculation and pause/resume/trigger control endpoints."""
+    await run_migrations()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/api/system/optimization-status")
+        assert res.status_code == 200
+        data = res.json()
+        assert "service_status" in data
+        assert data["service_status"] in ("idle", "paused", "processing")
+        assert "videos_total" in data
+        assert "videos_optimized" in data
+        assert "images_total" in data
+        assert "images_optimized" in data
+        assert data["images_optimized"] == data["images_total"]
+        assert 0 <= data["overall_progress_percent"] <= 100
+
+        # Test pause and resume endpoints
+        p_res = await client.post("/api/system/optimization/pause")
+        assert p_res.status_code == 200
+        assert p_res.json()["status"] == "paused"
+
+        r_res = await client.post("/api/system/optimization/resume")
+        assert r_res.status_code == 200
+        assert r_res.json()["status"] == "running"
+

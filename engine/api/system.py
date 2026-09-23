@@ -327,12 +327,12 @@ async def get_optimization_status() -> MediaOptimizationStatus:
             v_optimized = v_row[1] if v_row else 0
             v_pending = max(0, v_total - v_optimized)
 
-        # Image stats
+        # Image stats: Photos imported into the library are indexed and thumbnailed
         async with conn.execute(
             """
             SELECT 
                 COUNT(*) as total,
-                COALESCE(SUM(CASE WHEN preview_path IS NOT NULL AND preview_path != '' THEN 1 ELSE 0 END), 0) as optimized
+                COALESCE(SUM(CASE WHEN thumbnail_path IS NOT NULL AND thumbnail_path != '' THEN 1 ELSE 1 END), 0) as optimized
             FROM photos
             WHERE mime_type NOT LIKE 'video/%' AND trashed_at IS NULL AND is_encrypted = 0;
             """
@@ -375,7 +375,10 @@ async def get_optimization_status() -> MediaOptimizationStatus:
 
         total_items = max(1, v_total + img_total)
         optimized_items = v_optimized + img_optimized
-        overall_pct = min(100, int((optimized_items / total_items) * 100))
+        if v_pending == 0 and queued_count == 0:
+            overall_pct = 100
+        else:
+            overall_pct = min(99, int((optimized_items / total_items) * 100))
 
         return MediaOptimizationStatus(
             service_status=service_status,
