@@ -65,6 +65,8 @@ class StoriesInsightsResponse(BaseModel):
 async def list_stories(
     limit: int = 50,
     offset: int = 0,
+    saved_only: bool = False,
+    ephemeral_only: bool = False,
 ) -> List[StoryModel]:
     """Returns curated cinematic stories with lightweight card metadata, slides_count, and high-scale indexing."""
     conn = await get_db_connection()
@@ -76,25 +78,30 @@ async def list_stories(
         }
 
         # Self-healing: if loading initial page and unbounded un-saved stories accumulated, prune down to cap
-        if offset == 0:
+        if offset == 0 and not saved_only:
             try:
                 await prune_ephemeral_stories(keep_cap=15)
             except Exception:
                 pass
 
-        async with conn.execute(
-            """
+        where_clause = ""
+        if saved_only:
+            where_clause = "WHERE COALESCE(s.is_saved, 0) = 1"
+        elif ephemeral_only:
+            where_clause = "WHERE COALESCE(s.is_saved, 0) = 0"
+
+        query = f"""
             SELECT s.id, s.title, s.story_type, s.vibe_mood, s.music_track_path, s.cover_photo_id,
                    COALESCE(s.is_saved, 0) as is_saved, s.created_at,
                    COUNT(si.id) as slides_count
             FROM stories s
             LEFT JOIN story_items si ON si.story_id = s.id
+            {where_clause}
             GROUP BY s.id
             ORDER BY s.is_saved DESC, s.created_at DESC
             LIMIT ? OFFSET ?;
-            """,
-            (limit, offset),
-        ) as cursor:
+        """
+        async with conn.execute(query, (limit, offset)) as cursor:
             rows = await cursor.fetchall()
 
         stories = []
@@ -364,7 +371,7 @@ async def get_story(story_id: int) -> StoryModel:
         async with conn.execute(
             """
             SELECT si.photo_id, si.transition_type, si.focal_x, si.focal_y, p.filename, p.taken_at,
-                   strftime('%Y', p.taken_at) as yr
+                   p.mime_type, strftime('%Y', p.taken_at) as yr
             FROM story_items si
             JOIN photos p ON si.photo_id = p.id
             WHERE si.story_id = ?
@@ -383,6 +390,7 @@ async def get_story(story_id: int) -> StoryModel:
                 transition_type=sr["transition_type"],
                 focal_x=sr["focal_x"],
                 focal_y=sr["focal_y"],
+                mime_type=sr["mime_type"],
             )
             for sr in slide_rows
         ]

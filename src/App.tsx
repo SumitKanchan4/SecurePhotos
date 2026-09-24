@@ -636,6 +636,7 @@ export const App: React.FC = () => {
                 setLightboxIndex(idx);
               }}
               onToggleFavorite={handleToggleFavorite}
+              onPlayStory={(id) => setActiveStoryId(id)}
             />
           ) : activeTab === "people" ? (
             /* People Management & Representative Medoid Tagging View */

@@ -3107,6 +3107,69 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - Production build verified (`npm run build` completed in 4.89s with 0 errors).
 - Load time dropped from >2 minutes to 29.7ms (5000x acceleration).
 
+---
+
+## 64. Cinema Stories Cross-Ecosystem Integration, Soundtrack Preview Fix, Saved Stories Smart Collection, Direct Album Ingestion & HTML5 Video Stories
+
+### Functionality Overview
+1. **Soundtrack Audio Preview Fix (Port 1420 vs 8000 Mismatch)**:
+   - In Tauri/Vite desktop environments, relative API URLs such as `/api/music/...` passed to `new Audio(url)` or `<video src={url} />` evaluate relative to the frontend app origin (`http://127.0.0.1:1420`), missing the FastAPI backend on port 8000 and causing silent 404 network failures during track preview or playlist switching.
+   - Normalized all soundtrack audio preview endpoints across `StoriesView.tsx` and `StoryPlayerModal.tsx` to absolute `http://127.0.0.1:8000/...` URLs, guaranteeing instant, reliable music playback previews.
+2. **Dedicated "Saved Stories" Smart Album & Shelf Auto-Archiving**:
+   - Created a dedicated "Saved Stories" Smart Collection with virtual identifier `-2` (`activeAlbumId === -2`) in `AlbumsView.tsx`.
+   - When a story is saved on the AI Cinema Studio shelf, it automatically archives off the ephemeral suggestions shelf (`/api/stories?ephemeral_only=true`) to keep the active shelf crisp and uncluttered, triggering a global `"stories-changed"` window event.
+   - In `AlbumsView.tsx`, the Saved Stories smart collection displays a grid of preserved story cards featuring 16:9 cinematic covers, slide count pills, vibe badges, and 1-click playback replay via `onPlayStory(story.id)`. An empty state invites users to explore the active shelf if no stories are saved yet.
+3. **Purge Developer Jargon in Story Subtitles (Rule 7)**:
+   - Eliminated technical jargon ("dynamic chromatic ambient light", "Ken-Burns", "adaptive focal panning") from all user-facing subtitles, badges, and tooltips.
+   - Subtitles now render warm, human-centric copy: `{count} moments • {Vibe} Montage`. Card tooltips and descriptions communicate user value: "Permanent cinematic story montages you've preserved".
+4. **Emotional, Punchy & Dynamic Story Title Engine**:
+   - Implemented `generate_punchy_title()` in `engine/services/stories_service.py` with multi-category emotional templates for:
+     - `vacation_adventure`: "Trip to {subject}", "Unforgettable {subject}", "Getaway to {subject}", "Escape to {subject}", "Adventures in {subject}", "Postcards from {subject}", or "Sun-Drenched Memories • {season} {year}".
+     - `on_this_day`: "{years_ago} Years Ago Today", "Remember This Day? ({year})", "A Day to Remember", "Flashback to {year}".
+     - `seasonal_highlight`: "Golden Days of {season}", "Sun-Drenched Memories of {season}", "Warmth of {season}", "{season} Splendor".
+     - `through_the_years`: "Growing Up: {name}", "Smiles with {name}", "The Journey with {name}", "{name}: Through the Years".
+     - `year_in_review`: "Best of {year}", "Golden Moments of {year}", "{year} in Review", "Unforgettable Memories of {year}".
+   - Replaced static database strings with evocative, personalized titles.
+5. **Pinned System Smart Collections Layout in Albums View**:
+   - Restructured the top-level Albums gallery into two cleanly separated sections:
+     - **System Collections** (pinned top row): `❤️ Favorites`, `🎨 Collages & Wallpapers`, `🎬 Saved Stories`.
+     - **My Albums** (user custom albums, strictly excluding system smart albums, with total count badge and empty state).
+   - Strict adherence to Section 4 of `modern-web-ui` with pure CSS tokens, dual-theme liquid glass, and pill geometry.
+6. **Long Album Name Layout Overflow Bug Fix**:
+   - Fixed header distortion in `AlbumsView.tsx` caused by arbitrarily long custom album names by constraining the center title column to `maxWidth: min(400px, 45vw)`, applying `minWidth: 0`, `overflow: hidden`, `textOverflow: ellipsis`, and adding a native `title` tooltip for hover inspection.
+7. **1-Click "Import Direct to Album" Flow**:
+   - Added an `[ 📥 Import New Photos ]` button in the Photo Picker modal of `AlbumsView.tsx` connecting directly to Tauri's native `select_import_files` dialog with HTML5 file input fallback.
+   - Extended `engine/api/photos.py` `ImportRequest` with `album_id: Optional[int]` and `ImportResponse` with `imported_photo_ids: List[int]`. Atomically associates newly ingested media directly to `photo_album` in SQLite, setting the album cover if missing and immediately refreshing the album view.
+8. **Native HTML5 `<video>` Support in Stories Player**:
+   - In `engine/services/stories_service.py` and `engine/api/stories.py`, mapped photo `mime_type` into `StorySlide`.
+   - In `StoryPlayerModal.tsx`, rendered native `<video>` elements for video slides (`mime_type.startsWith("video/")`), disabling Ken-Burns CSS transforms, muting video audio so background soundtracks remain clear, and pausing slide progression until the video ends (`onEnded`), backed by a 60-second safety timeout.
+
+### Functional Decision Points & Rationale
+- **Absolute vs Relative Media URLs in Desktop WebViews**:
+  - *Decision*: Explicitly prefix all audio/video stream URLs with `http://127.0.0.1:8000`.
+  - *Rationale*: WebView2/Tauri loads frontend bundles on an isolated local origin (`http://127.0.0.1:1420` in dev, `tauri://localhost` in production). Relative browser requests do not route to the Python sidecar without explicit proxying or absolute origin targeting.
+- **Dedicated Smart Album (`activeAlbumId === -2`) vs Tab Fragmentation**:
+  - *Decision*: Model Saved Stories as a Smart Collection within `AlbumsView` rather than creating a separate top-level navigation tab.
+  - *Rationale*: Preserves cognitive simplicity; users naturally expect all saved collections (Favorites, Collages, Saved Stories, Custom Albums) to live together in the Albums tab.
+- **Auto-Archiving from Suggestions Shelf**:
+  - *Decision*: When a user saves a story, immediately remove it from the active suggestions shelf and route it to Saved Stories.
+  - *Rationale*: Prevents shelf stagnation; the active shelf remains dynamic and rotating with fresh highlights while saved memories are permanently honored in Albums.
+
+### Technical Touchpoints
+- `engine/services/stories_service.py`: Added `mime_type` to `StorySlide`, implemented `generate_punchy_title()`, adjusted cluster threshold (`cnt >= 3`), and applied dynamic templates.
+- `engine/api/stories.py`: Added `saved_only` and `ephemeral_only` query parameters to `list_stories()`; selected `mime_type` in `get_story()`.
+- `engine/api/photos.py`: Added `album_id` to `ImportRequest` and `imported_photo_ids` to `ImportResponse`; implemented atomic album association during file ingestion.
+- `src/types/index.ts`: Added `mime_type?: string` to `StorySlide`.
+- `src/components/StoriesView.tsx`: Fixed soundtrack preview origin, filtered `ephemeral_only=true`, auto-archived saved stories off shelf, and purged developer jargon.
+- `src/components/StoryPlayerModal.tsx`: Fixed audio preview origin, added native `<video>` playback with `onEnded` progression, and disabled Ken-Burns on video slides.
+- `src/components/AlbumsView.tsx`: Added Saved Stories smart album, direct import in Photo Picker modal, pinned System Collections row, and fixed title text overflow.
+- `src/App.tsx`: Passed `onPlayStory` handler to `<AlbumsView />`.
+- `engine/tests/test_ai_stories.py`: Validated punchy title curation and cluster thresholds.
+
+### State & Lifecycle Impact
+- 95/95 backend unit and integration tests passing (`95 passed in 65.14s`).
+- Frontend production bundle built with 0 errors (`npm run build` completed in 10.93s).
+
 
 
 

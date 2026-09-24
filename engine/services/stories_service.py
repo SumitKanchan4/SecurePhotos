@@ -58,6 +58,83 @@ class StorySlide(BaseModel):
     transition_type: str = "crossfade"
     focal_x: float = 0.5
     focal_y: float = 0.5
+    mime_type: Optional[str] = None
+
+
+def generate_punchy_title(
+    story_type: str,
+    *,
+    subject: Optional[str] = None,
+    year: Optional[str] = None,
+    years_ago: Optional[int] = None,
+    season: Optional[str] = None,
+    seed: int = 0,
+) -> str:
+    """Generates an emotional, punchy, human-centric story title."""
+    if story_type == "vacation_adventure":
+        if subject:
+            templates = [
+                f"Trip to {subject}",
+                f"Unforgettable {subject}",
+                f"Getaway to {subject}",
+                f"Escape to {subject}",
+                f"Adventures in {subject}",
+                f"Postcards from {subject}",
+            ]
+            return templates[seed % len(templates)]
+        month_str = season or "Summer"
+        templates = [
+            f"Sun-Drenched Memories • {month_str} {year}" if year else f"Sun-Drenched Memories • {month_str}",
+            f"Wanderlust • {month_str} {year}" if year else f"Wanderlust • {month_str}",
+            f"Golden Getaway • {month_str} {year}" if year else f"Golden Getaway • {month_str}",
+        ]
+        return templates[seed % len(templates)]
+
+    if story_type == "on_this_day":
+        if years_ago:
+            plural = "Years" if years_ago != 1 else "Year"
+            templates = [
+                f"{years_ago} {plural} Ago Today",
+                f"Remember This Day? ({year})" if year else f"{years_ago} {plural} Ago Today",
+                f"A Day to Remember ({year})" if year else f"A Day to Remember",
+                f"Flashback to {year}" if year else f"{years_ago} {plural} Ago Today",
+            ]
+            return templates[seed % len(templates)]
+        return f"A Day to Remember ({year})" if year else "A Day to Remember"
+
+    if story_type == "seasonal_highlight":
+        s = season or "Summer"
+        templates = [
+            f"Golden Days of {s}",
+            f"Sun-Drenched Memories of {s}",
+            f"Warmth of {s}",
+            f"{s} Splendor ({year})" if year else f"{s} Splendor",
+            f"Crisp Days of {s}",
+        ]
+        return templates[seed % len(templates)]
+
+    if story_type == "through_the_years":
+        name = subject or "Loved One"
+        templates = [
+            f"Growing Up: {name}",
+            f"Smiles with {name}",
+            f"The Journey with {name}",
+            f"{name}: Through the Years",
+        ]
+        return templates[seed % len(templates)]
+
+    if story_type == "year_in_review":
+        y = year or "Past Year"
+        templates = [
+            f"Best of {y}",
+            f"Golden Moments of {y}",
+            f"{y} in Review",
+            f"Unforgettable Memories of {y}",
+        ]
+        return templates[seed % len(templates)]
+
+    return f"Curated Memories • {year}" if year else "Curated Memories"
+
 
 
 class StoryModel(BaseModel):
@@ -131,7 +208,7 @@ async def generate_through_the_years_story(person_id: int) -> Optional[StoryMode
             for r in rows
         ]
 
-        title = f"{person_name}: Through the Years ({rows[0]['yr']} — {rows[-1]['yr']})"
+        title = generate_punchy_title("through_the_years", subject=person_name, seed=person_id)
         cursor = await conn.execute(
             """
             INSERT INTO stories (title, story_type, vibe_mood, person_id, cover_photo_id, music_track_path)
@@ -213,7 +290,7 @@ async def generate_on_this_day_stories() -> List[StoryModel]:
             if years_ago <= 0:
                 continue
 
-            title = f"Flashback: {years_ago} {'Year' if years_ago == 1 else 'Years'} Ago ({yr})"
+            title = generate_punchy_title("on_this_day", years_ago=years_ago, year=yr, seed=int(yr) if yr.isdigit() else years_ago)
             slides = [
                 StorySlide(
                     photo_id=r["id"],
@@ -279,7 +356,7 @@ async def generate_vacation_and_trip_stories() -> List[StoryModel]:
             FROM photos
             WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0
             GROUP BY folder_name, yr, mo
-            HAVING cnt >= 4
+            HAVING cnt >= 3
             ORDER BY cnt DESC
             LIMIT 4;
             """
@@ -291,17 +368,19 @@ async def generate_vacation_and_trip_stories() -> List[StoryModel]:
             yr = cl["yr"] or "2025"
             mo = cl["mo"] or "07"
 
-            # Clean folder name
-            clean_name = folder.replace("_", " ").replace("-", " ").title()
+            # Clean folder name (preserve mixed-case names like TestTrip)
+            clean_name = folder.replace("_", " ").replace("-", " ")
+            if clean_name.islower() or clean_name.isupper():
+                clean_name = clean_name.title()
             if not clean_name or clean_name.lower() in {"originals", "data", "photos", "downloads", "dcim"}:
                 month_names = {
                     "01": "January", "02": "February", "03": "March", "04": "April",
                     "05": "May", "06": "June", "07": "July", "08": "August",
                     "09": "September", "10": "October", "11": "November", "12": "December",
                 }
-                title = f"Getaway Memories • {month_names.get(mo, 'Summer')} {yr}"
+                title = generate_punchy_title("vacation_adventure", season=month_names.get(mo, "Summer"), year=yr, seed=int(mo) if mo.isdigit() else 0)
             else:
-                title = f"Trip to {clean_name} ({yr})"
+                title = generate_punchy_title("vacation_adventure", subject=clean_name, year=yr, seed=len(folder))
 
             # Fetch cluster photos
             async with conn.execute(
@@ -402,7 +481,7 @@ async def generate_seasonal_retrospectives() -> List[StoryModel]:
                 continue
 
             yr = cl["yr"]
-            title = f"{season_name} Retrospective ({yr})"
+            title = generate_punchy_title("seasonal_highlight", season=season_name, year=yr, seed=int(yr) if yr.isdigit() else 0)
 
             async with conn.execute(
                 f"""
@@ -519,7 +598,7 @@ async def generate_year_in_review_story(year: Optional[str] = None) -> Optional[
             for r in rows
         ]
 
-        title = f"Memories of {year}"
+        title = generate_punchy_title("year_in_review", year=year, seed=int(year) if year.isdigit() else 0)
         cursor = await conn.execute(
             """
             INSERT INTO stories (title, story_type, vibe_mood, cover_photo_id, music_track_path)

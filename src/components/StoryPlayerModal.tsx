@@ -254,7 +254,10 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         setStory(data);
         setCurrentSlideIndex(0);
         if (data.audio_url) {
-          setActiveAudioUrl(data.audio_url);
+          const streamUrl = data.audio_url.startsWith("http")
+            ? data.audio_url
+            : `http://127.0.0.1:8000${data.audio_url.startsWith("/") ? "" : "/"}${data.audio_url}`;
+          setActiveAudioUrl(streamUrl);
           setActiveTrackTitle(`${data.vibe_mood ? data.vibe_mood.charAt(0).toUpperCase() + data.vibe_mood.slice(1) : "Curated"} Soundtrack`);
         } else {
           setActiveAudioUrl(null);
@@ -270,7 +273,10 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
             setStory(found);
             setCurrentSlideIndex(0);
             if (found.audio_url) {
-              setActiveAudioUrl(found.audio_url);
+              const streamUrl = found.audio_url.startsWith("http")
+                ? found.audio_url
+                : `http://127.0.0.1:8000${found.audio_url.startsWith("/") ? "" : "/"}${found.audio_url}`;
+              setActiveAudioUrl(streamUrl);
               setActiveTrackTitle(`${found.vibe_mood ? found.vibe_mood.charAt(0).toUpperCase() + found.vibe_mood.slice(1) : "Curated"} Soundtrack`);
             } else {
               setActiveAudioUrl(null);
@@ -406,7 +412,10 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         if (audioElementRef.current) {
           audioElementRef.current.pause();
         }
-        const audio = new Audio(activeAudioUrl);
+        const streamUrl = activeAudioUrl.startsWith("http")
+          ? activeAudioUrl
+          : `http://127.0.0.1:8000${activeAudioUrl.startsWith("/") ? "" : "/"}${activeAudioUrl}`;
+        const audio = new Audio(streamUrl);
         audio.loop = true;
         audio.volume = 0.5;
         audio.muted = isMuted;
@@ -460,6 +469,17 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
   useEffect(() => {
     if (!isOpen || !isPlaying || !story || story.slides.length === 0) return;
 
+    const cur = story.slides[currentSlideIndex];
+    const isVideo = Boolean(
+      cur && (
+        cur.mime_type?.startsWith("video/") ||
+        cur.filename.match(/\.(mp4|mov|webm|avi|mkv)$/i)
+      )
+    );
+
+    // For video slides, onEnded handles transition; use 60s safety ceiling
+    const duration = isVideo ? 60000 : pacingMs;
+
     const timer = setTimeout(() => {
       if (currentSlideIndex < story.slides.length - 1) {
         setCurrentSlideIndex((prev) => prev + 1);
@@ -467,7 +487,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         // Loop back to start
         setCurrentSlideIndex(0);
       }
-    }, pacingMs);
+    }, duration);
 
     return () => clearTimeout(timer);
   }, [isOpen, isPlaying, currentSlideIndex, story, pacingMs]);
@@ -696,12 +716,15 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
 
               {/* User Custom Tracks */}
               {availableTracks.map((trk) => {
-                const isSelected = activeAudioUrl === trk.stream_url;
+                const streamUrl = trk.stream_url.startsWith("http")
+                  ? trk.stream_url
+                  : `http://127.0.0.1:8000${trk.stream_url.startsWith("/") ? "" : "/"}${trk.stream_url}`;
+                const isSelected = activeAudioUrl === streamUrl || activeAudioUrl === trk.stream_url;
                 return (
                   <div
                     key={trk.id}
                     onClick={() => {
-                      setActiveAudioUrl(trk.stream_url);
+                      setActiveAudioUrl(streamUrl);
                       setActiveTrackTitle(trk.title || trk.filename);
                       setShowSoundtrackMenu(false);
                     }}
@@ -878,24 +901,57 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
               overflow: "hidden",
             }}
           >
-            {/* Real Photo with Subject-Focused Ken-Burns Motion */}
-            <img
-              key={currentSlide.photo_id}
-              src={`${API_BASE}/photos/${currentSlide.photo_id}/preview`}
-              onError={(e) => {
-                // Fallback to original image if 8K preview proxy is not yet generated
-                (e.target as HTMLImageElement).src = `${API_BASE}/photos/${currentSlide.photo_id}/original`;
-              }}
-              alt={currentSlide.filename}
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "contain",
-                transformOrigin: `${((currentSlide.focal_x ?? 0.5) * 100).toFixed(1)}% ${((currentSlide.focal_y ?? 0.5) * 100).toFixed(1)}%`,
-                transform: isPlaying ? "scale(1.14)" : "scale(1.0)",
-                transition: `transform ${pacingMs}ms cubic-bezier(0.25, 1, 0.5, 1)`,
-              }}
-            />
+            {/* Real Photo or Video with Subject-Focused Motion */}
+            {(() => {
+              const isVideo = Boolean(
+                currentSlide.mime_type?.startsWith("video/") ||
+                currentSlide.filename.match(/\.(mp4|mov|webm|avi|mkv)$/i)
+              );
+
+              if (isVideo) {
+                return (
+                  <video
+                    key={currentSlide.photo_id}
+                    src={`${API_BASE}/photos/${currentSlide.photo_id}/original`}
+                    poster={`${API_BASE}/photos/${currentSlide.photo_id}/preview`}
+                    autoPlay
+                    muted={isMuted}
+                    playsInline
+                    onEnded={() => {
+                      if (slides.length > 0) {
+                        setCurrentSlideIndex((prev) => (prev + 1) % slides.length);
+                      }
+                    }}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "contain",
+                      transform: "none",
+                    }}
+                  />
+                );
+              }
+
+              return (
+                <img
+                  key={currentSlide.photo_id}
+                  src={`${API_BASE}/photos/${currentSlide.photo_id}/preview`}
+                  onError={(e) => {
+                    // Fallback to original image if 8K preview proxy is not yet generated
+                    (e.target as HTMLImageElement).src = `${API_BASE}/photos/${currentSlide.photo_id}/original`;
+                  }}
+                  alt={currentSlide.filename}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain",
+                    transformOrigin: `${((currentSlide.focal_x ?? 0.5) * 100).toFixed(1)}% ${((currentSlide.focal_y ?? 0.5) * 100).toFixed(1)}%`,
+                    transform: isPlaying ? "scale(1.14)" : "scale(1.0)",
+                    transition: `transform ${pacingMs}ms cubic-bezier(0.25, 1, 0.5, 1)`,
+                  }}
+                />
+              );
+            })()}
           </div>
         ) : (
           <div style={{ color: "var(--text-secondary)", textAlign: "center" }}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { 
   FolderHeart, 
   Plus, 
@@ -17,9 +17,11 @@ import {
   LayoutGrid,
   Download,
   FolderPlus,
-  Sparkles
+  Sparkles,
+  Film
 } from "lucide-react";
-import { AlbumItem, PhotoItem } from "../types";
+import { invoke } from "@tauri-apps/api/core";
+import { AlbumItem, PhotoItem, StoryModel } from "../types";
 import { AlbumSlideshowModal } from "./AlbumSlideshowModal";
 import { RemoveFromAlbumModal } from "./RemoveFromAlbumModal";
 import { AddToAlbumModal } from "./AddToAlbumModal";
@@ -49,12 +51,14 @@ interface AlbumsViewProps {
   onLockAlbumToVault?: (albumId: number, isVault?: boolean) => void;
   onPhotoClick?: (idx: number, albumPhotos: PhotoItem[]) => void;
   onToggleFavorite?: (photoId: number) => void;
+  onPlayStory?: (storyId: number) => void;
 }
 
 export const AlbumsView: React.FC<AlbumsViewProps> = ({
   onLockAlbumToVault,
   onPhotoClick,
   onToggleFavorite,
+  onPlayStory,
 }) => {
   const [albums, setAlbums] = useState<AlbumItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -65,6 +69,10 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   // Favorites Smart Album State
   const [favoriteCount, setFavoriteCount] = useState<number>(0);
   const [favoriteCoverId, setFavoriteCoverId] = useState<number | null>(null);
+
+  // Saved Stories Smart Album State
+  const [savedStories, setSavedStories] = useState<StoryModel[]>([]);
+  const albumFileInputRef = useRef<HTMLInputElement>(null);
 
   // Album Detail View State
   const [activeAlbumId, setActiveAlbumId] = useState<number | null>(null);
@@ -207,12 +215,25 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     loadAlbums();
   }, []);
 
+  // Listen for real-time stories save / delete / mutate events across the app
+  useEffect(() => {
+    const handleStoriesChanged = () => {
+      fetch("http://127.0.0.1:8000/api/stories?saved_only=true")
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data: StoryModel[]) => setSavedStories(data))
+        .catch(() => {});
+    };
+    window.addEventListener("stories-changed", handleStoriesChanged);
+    return () => window.removeEventListener("stories-changed", handleStoriesChanged);
+  }, []);
+
   const loadAlbums = async () => {
     setIsLoading(true);
     try {
-      const [albumsRes, favsRes] = await Promise.all([
+      const [albumsRes, favsRes, storiesRes] = await Promise.all([
         fetch("http://127.0.0.1:8000/api/albums"),
         fetch("http://127.0.0.1:8000/api/photos?favorite_only=true"),
+        fetch("http://127.0.0.1:8000/api/stories?saved_only=true"),
       ]);
       if (albumsRes.ok) {
         const data: AlbumItem[] = await albumsRes.json();
@@ -223,8 +244,12 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
         setFavoriteCount(favs.length);
         setFavoriteCoverId(favs.length > 0 ? favs[0].id : null);
       }
+      if (storiesRes.ok) {
+        const stData: StoryModel[] = await storiesRes.json();
+        setSavedStories(stData);
+      }
     } catch (err) {
-      console.error("Failed to fetch albums or favorites:", err);
+      console.error("Failed to fetch albums, favorites, or stories:", err);
     } finally {
       setIsLoading(false);
     }
@@ -272,7 +297,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
 
   const handleDeleteAlbum = async (albumId: number) => {
     const targetAlbum = albums.find((a) => a.id === albumId) || (activeAlbumMeta?.id === albumId ? activeAlbumMeta : null);
-    if (targetAlbum?.name.toLowerCase() === "collages") {
+    if (targetAlbum?.name.toLowerCase() === "collages" || albumId === -1 || albumId === -2) {
       showToast("System smart albums cannot be deleted", "warning");
       return;
     }
@@ -296,7 +321,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
 
   const handleToggleFavorite = async (albumId: number) => {
     const targetAlbum = albums.find((a) => a.id === albumId) || (activeAlbumMeta?.id === albumId ? activeAlbumMeta : null);
-    if (targetAlbum?.name.toLowerCase() === "collages") {
+    if (targetAlbum?.name.toLowerCase() === "collages" || albumId === -1 || albumId === -2) {
       showToast("System smart albums cannot be favorited", "warning");
       return;
     }
@@ -343,6 +368,21 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     } finally {
       setIsDetailLoading(false);
     }
+  };
+
+  const openSavedStoriesAlbum = () => {
+    setActiveAlbumId(-2);
+    setActiveAlbumMeta({
+      id: -2,
+      name: "Saved Stories",
+      description: "Permanent cinematic story montages you've preserved",
+      cover_photo_id: savedStories.length > 0 ? (savedStories[0].cover_photo_id ?? undefined) : undefined,
+      is_vault: false,
+      is_favorite: false,
+      photo_count: savedStories.length,
+      created_at: new Date().toISOString(),
+    });
+    setAlbumPhotos([]);
   };
 
   const handleSetAlbumCover = async (photoId: number) => {
@@ -511,6 +551,73 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     }
   };
 
+  const handleDirectImportFiles = async (filePaths: string[]) => {
+    if (!activeAlbumId || filePaths.length === 0 || isAddingPhotos) return;
+    setIsAddingPhotos(true);
+    showToast(`Importing ${filePaths.length} photo(s) directly to album...`, "info");
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/photos/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file_paths: filePaths,
+          album_id: activeAlbumId,
+          mode: "managed",
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const count = data.imported || filePaths.length;
+        showToast(`Imported ${count} photo(s) directly into "${activeAlbumMeta?.name}"!`, "success");
+        setIsPhotoPickerOpen(false);
+        if (activeAlbumMeta) {
+          openAlbumDetail(activeAlbumId, activeAlbumMeta);
+        }
+        loadAlbums();
+      } else {
+        showToast("Failed to import photos to album", "warning");
+      }
+    } catch (err) {
+      console.error("Direct album import failed:", err);
+      showToast("Error importing photos to album", "warning");
+    } finally {
+      setIsAddingPhotos(false);
+    }
+  };
+
+  const handleImportDirectToAlbum = async () => {
+    if (!activeAlbumId || isAddingPhotos) return;
+    try {
+      let selectedPaths: string[] | null = null;
+      try {
+        selectedPaths = await invoke<string[] | null>("select_import_files");
+      } catch {
+        albumFileInputRef.current?.click();
+        return;
+      }
+      if (!selectedPaths || selectedPaths.length === 0) return;
+      await handleDirectImportFiles(selectedPaths);
+    } catch (err) {
+      console.error("Direct album import dialog failed:", err);
+      albumFileInputRef.current?.click();
+    }
+  };
+
+  const handleAlbumFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const paths: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const p = (files[i] as any).path;
+      if (p) paths.push(p);
+    }
+    if (paths.length > 0) {
+      handleDirectImportFiles(paths);
+    }
+    if (albumFileInputRef.current) albumFileInputRef.current.value = "";
+  };
+
   // ──────────────────────────────────────────────────────────────────────────
   // VIEW: Album Detail View (Inside a selected album)
   // ──────────────────────────────────────────────────────────────────────────
@@ -575,8 +682,18 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
           </div>
 
           {/* Center Column: Centered Album Title & Inline Frosted Photo Count Badge */}
-          <div style={{ flex: "0 1 auto", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div
+            style={{
+              flex: "0 1 auto",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              minWidth: 0,
+              maxWidth: "min(400px, 45vw)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, overflow: "hidden" }}>
               <h2
                 style={{
                   fontSize: "22px",
@@ -589,6 +706,9 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   alignItems: "center",
                   gap: "8px",
                   whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  minWidth: 0,
                 }}
               >
                 {activeAlbumId === -1 && (
@@ -596,19 +716,31 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     size={20}
                     fill="#ef4444"
                     stroke="#ef4444"
-                    style={{ filter: "drop-shadow(0 0 8px rgba(239, 68, 68, 0.5))" }}
+                    style={{ filter: "drop-shadow(0 0 8px rgba(239, 68, 68, 0.5))", flexShrink: 0 }}
                   />
                 )}
                 {isCollages && (
                   <Sparkles
                     size={20}
                     color="var(--accent-primary, #38bdf8)"
-                    style={{ filter: "drop-shadow(0 0 8px rgba(56, 189, 248, 0.5))" }}
+                    style={{ filter: "drop-shadow(0 0 8px rgba(56, 189, 248, 0.5))", flexShrink: 0 }}
                   />
                 )}
-                <span>{activeAlbumMeta.name}</span>
+                {activeAlbumId === -2 && (
+                  <Film
+                    size={20}
+                    color="#a855f7"
+                    style={{ filter: "drop-shadow(0 0 8px rgba(168, 85, 247, 0.5))", flexShrink: 0 }}
+                  />
+                )}
+                <span
+                  title={activeAlbumMeta.name}
+                  style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                >
+                  {activeAlbumMeta.name}
+                </span>
               </h2>
-              {activeAlbumId !== -1 && !isCollages && (
+              {activeAlbumId !== -1 && activeAlbumId !== -2 && !isCollages && (
                 <button
                   onClick={() => handleToggleFavorite(activeAlbumMeta.id)}
                   title={activeAlbumMeta.is_favorite ? "Favorited Album" : "Mark as Favorite"}
@@ -624,6 +756,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     padding: "5px",
                     color: activeAlbumMeta.is_favorite ? "var(--accent-danger, #ef4444)" : "var(--text-muted)",
                     transition: "all 0.15s ease",
+                    flexShrink: 0,
                   }}
                 >
                   <Heart size={15} fill={activeAlbumMeta.is_favorite ? "currentColor" : "none"} />
@@ -631,7 +764,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               )}
             </div>
 
-            {/* Inline Frosted Capsule Badge for Photo Count */}
+            {/* Inline Frosted Capsule Badge for Photo / Story Count */}
             <div
               style={{
                 display: "inline-flex",
@@ -646,9 +779,14 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                 color: "var(--text-secondary)",
                 whiteSpace: "nowrap",
                 letterSpacing: "0.01em",
+                flexShrink: 0,
               }}
             >
-              <span>{albumPhotos.length} {albumPhotos.length === 1 ? "photo" : "photos"}</span>
+              <span>
+                {activeAlbumId === -2
+                  ? `${savedStories.length} ${savedStories.length === 1 ? "story" : "stories"}`
+                  : `${albumPhotos.length} ${albumPhotos.length === 1 ? "photo" : "photos"}`}
+              </span>
             </div>
           </div>
 
@@ -680,7 +818,26 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               </button>
             )}
 
-            {isCollages ? (
+            {activeAlbumId === -2 ? (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "6px 14px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "rgba(168, 85, 247, 0.12)",
+                  border: "1px solid rgba(168, 85, 247, 0.25)",
+                  color: "#c084fc",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  letterSpacing: "0.02em",
+                }}
+              >
+                <Film size={13} />
+                <span>Smart Collection</span>
+              </span>
+            ) : isCollages ? (
               <span
                 style={{
                   display: "inline-flex",
@@ -757,6 +914,224 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               <Loader2 size={28} className="spin" style={{ margin: "0 auto 12px" }} />
               Loading album photos...
             </div>
+          ) : activeAlbumId === -2 ? (
+            savedStories.length === 0 ? (
+              <div
+                style={{
+                  marginTop: "60px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "var(--text-muted)",
+                  textAlign: "center",
+                  padding: "32px 24px",
+                  maxWidth: "520px",
+                  margin: "60px auto 0",
+                }}
+              >
+                <div
+                  style={{
+                    width: "64px",
+                    height: "64px",
+                    borderRadius: "50%",
+                    backgroundColor: "rgba(168, 85, 247, 0.12)",
+                    border: "1px solid rgba(168, 85, 247, 0.25)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: "16px",
+                  }}
+                >
+                  <Film size={32} style={{ color: "#c084fc" }} />
+                </div>
+                <h3 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0" }}>
+                  No Saved Stories Yet
+                </h3>
+                <p style={{ fontSize: "13px", lineHeight: "1.6", color: "var(--text-secondary)", margin: 0, maxWidth: "440px" }}>
+                  Stories are dynamic cinematic montages generated from your library. Tap the bookmark icon on any story in your Stories shelf to preserve it permanently here.
+                </p>
+                <button
+                  onClick={() => {
+                    setActiveAlbumId(null);
+                    setActiveAlbumMeta(null);
+                    setActiveTab("stories");
+                  }}
+                  className="clickable"
+                  style={{
+                    marginTop: "20px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "9px 20px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "var(--accent-primary)",
+                    border: "none",
+                    color: "#ffffff",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    boxShadow: "0 2px 10px rgba(168, 85, 247, 0.3)",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <Film size={15} />
+                  <span>Browse Stories Shelf</span>
+                </button>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+                  gap: "16px",
+                  paddingBottom: "88px",
+                }}
+              >
+                {savedStories.map((story) => {
+                  const coverUrl = story.cover_photo_id
+                    ? `http://127.0.0.1:8000/api/photos/${story.cover_photo_id}/thumbnail`
+                    : undefined;
+                  return (
+                    <div
+                      key={story.id}
+                      className="clickable glass-panel"
+                      style={{
+                        position: "relative",
+                        borderRadius: "var(--radius-lg)",
+                        overflow: "hidden",
+                        border: "1px solid var(--glass-border)",
+                        backgroundColor: "var(--glass-surface)",
+                        cursor: "pointer",
+                        transition: "transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                        display: "flex",
+                        flexDirection: "column",
+                      }}
+                      onClick={() => onPlayStory?.(story.id)}
+                    >
+                      <div
+                        style={{
+                          position: "relative",
+                          width: "100%",
+                          aspectRatio: "16 / 9",
+                          backgroundColor: "rgba(0, 0, 0, 0.2)",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {coverUrl ? (
+                          <img
+                            src={coverUrl}
+                            alt={story.title}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                              display: "block",
+                              transition: "transform 0.4s ease",
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              background: "linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(59, 130, 246, 0.2))",
+                            }}
+                          >
+                            <Film size={36} color="var(--text-muted)" />
+                          </div>
+                        )}
+                        <div
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            background: "linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0) 60%)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: "48px",
+                              height: "48px",
+                              borderRadius: "50%",
+                              backgroundColor: "rgba(255, 255, 255, 0.25)",
+                              backdropFilter: "blur(12px)",
+                              WebkitBackdropFilter: "blur(12px)",
+                              border: "1px solid rgba(255, 255, 255, 0.4)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "#ffffff",
+                              boxShadow: "0 4px 16px rgba(0, 0, 0, 0.4)",
+                            }}
+                          >
+                            <Play size={22} style={{ marginLeft: "3px" }} fill="currentColor" />
+                          </div>
+                        </div>
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "10px",
+                            right: "10px",
+                            padding: "3px 8px",
+                            borderRadius: "var(--radius-full)",
+                            backgroundColor: "rgba(0, 0, 0, 0.55)",
+                            backdropFilter: "blur(8px)",
+                            WebkitBackdropFilter: "blur(8px)",
+                            color: "#ffffff",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            border: "1px solid rgba(255, 255, 255, 0.15)",
+                          }}
+                        >
+                          {story.slides_count ?? story.slides?.length ?? 0} moments
+                        </div>
+                      </div>
+
+                      <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <h4
+                          style={{
+                            margin: 0,
+                            fontSize: "15px",
+                            fontWeight: 700,
+                            color: "var(--text-primary)",
+                            lineHeight: 1.3,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={story.title}
+                        >
+                          {story.title}
+                        </h4>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "2px" }}>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.04em",
+                              color: "#c084fc",
+                              backgroundColor: "rgba(168, 85, 247, 0.12)",
+                              padding: "2px 8px",
+                              borderRadius: "var(--radius-full)",
+                              border: "1px solid rgba(168, 85, 247, 0.25)",
+                            }}
+                          >
+                            {story.vibe_mood} Montage
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
           ) : albumPhotos.length === 0 ? (
             <div
               style={{
@@ -1144,6 +1519,14 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               }}
               onClick={(e) => e.stopPropagation()}
             >
+              <input
+                type="file"
+                ref={albumFileInputRef}
+                multiple
+                accept="image/*,video/*"
+                style={{ display: "none" }}
+                onChange={handleAlbumFileInputChange}
+              />
               {/* Modal Header */}
               <div
                 style={{
@@ -1152,6 +1535,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
+                  gap: "12px",
                 }}
               >
                 <div>
@@ -1160,18 +1544,43 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     Select photos from your library ({pickerSelectedIds.size} selected)
                   </p>
                 </div>
-                <button
-                  onClick={() => setIsPhotoPickerOpen(false)}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "var(--text-muted)",
-                    cursor: "pointer",
-                    padding: "4px",
-                  }}
-                >
-                  <X size={18} />
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <button
+                    onClick={handleImportDirectToAlbum}
+                    disabled={isAddingPhotos}
+                    className="clickable"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "6px 14px",
+                      borderRadius: "var(--radius-full)",
+                      backgroundColor: "var(--glass-action-bg, rgba(255, 255, 255, 0.08))",
+                      border: "1px solid var(--glass-action-border, rgba(255, 255, 255, 0.15))",
+                      color: "var(--text-primary)",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: isAddingPhotos ? "not-allowed" : "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                    title="Select photos from your device to import directly into this album"
+                  >
+                    <Download size={13} style={{ transform: "rotate(180deg)" }} />
+                    <span>Import New Photos</span>
+                  </button>
+                  <button
+                    onClick={() => setIsPhotoPickerOpen(false)}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "var(--text-muted)",
+                      cursor: "pointer",
+                      padding: "4px",
+                    }}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
 
               {/* Photos Grid */}
@@ -1818,423 +2227,638 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
           Loading albums...
         </div>
       ) : (
-        /* Album Grid Cards */
-        <div 
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-            gap: "18px",
-          }}
-        >
-          {/* Pinned Default "Favorites" / "Likes" Smart Album Card */}
-          <div
-            onClick={openFavoritesAlbum}
-            className="clickable glass-panel"
-            style={{
-              borderRadius: "var(--radius-md)",
-              backgroundColor: "var(--bg-surface)",
-              border: "1px solid rgba(239, 68, 68, 0.4)",
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-              cursor: "pointer",
-              transition: "transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "translateY(-2px)";
-              e.currentTarget.style.borderColor = "#ef4444";
-              e.currentTarget.style.boxShadow = "0 8px 24px rgba(239, 68, 68, 0.25)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "translateY(0)";
-              e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.4)";
-              e.currentTarget.style.boxShadow = "none";
-            }}
-          >
-            {/* Cover Art */}
-            <div
-              style={{
-                height: "160px",
-                background: favoriteCoverId && !failedCoverIds.has(favoriteCoverId)
-                  ? "var(--bg-surface-elevated)"
-                  : "linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(168, 85, 247, 0.2) 100%)",
-                position: "relative",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                overflow: "hidden",
-              }}
-            >
-              {favoriteCoverId && !failedCoverIds.has(favoriteCoverId) ? (
-                <img
-                  src={`http://127.0.0.1:8000/api/photos/${favoriteCoverId}/thumbnail?v=3`}
-                  alt="Favorites"
-                  onError={() => setFailedCoverIds((prev) => new Set(prev).add(favoriteCoverId))}
-                  style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
-                  loading="lazy"
-                />
-              ) : (
-                <Heart size={44} fill="rgba(239, 68, 68, 0.4)" stroke="rgba(239, 68, 68, 0.7)" />
-              )}
+        /* Album Grid Sections: Pinned System Collections & My Albums */
+        (() => {
+          const collagesAlbum = albums.find((a) => a.name.toLowerCase() === "collages");
+          const userAlbums = albums.filter((a) => a.name.toLowerCase() !== "collages");
 
-              {/* Likes Badge */}
-              <div style={{ position: "absolute", top: "10px", right: "10px" }}>
-                <span
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: "28px", paddingBottom: "40px" }}>
+              {/* System Collections Section (Pinned Top) */}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "14px" }}>
+                  <h3
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 800,
+                      letterSpacing: "0.06em",
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      margin: 0,
+                    }}
+                  >
+                    System Collections
+                  </h3>
+                  <div style={{ flex: 1, height: "1px", backgroundColor: "var(--border-subtle)", opacity: 0.6 }} />
+                </div>
+
+                <div
                   style={{
-                    backgroundColor: "rgba(239, 68, 68, 0.95)",
-                    color: "#ffffff",
-                    padding: "3px 8px",
-                    borderRadius: "var(--radius-xs)",
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px",
-                    boxShadow: "0 2px 8px rgba(239, 68, 68, 0.4)",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+                    gap: "18px",
                   }}
                 >
-                  <Heart size={10} fill="#ffffff" /> LIKES
-                </span>
-              </div>
-            </div>
-
-            {/* Meta Content */}
-            <div style={{ padding: "14px", display: "flex", flexDirection: "column", gap: "6px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <h3 style={{ fontSize: "14px", fontWeight: 700, margin: 0, color: "#ffffff", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <Heart size={14} fill="#ef4444" stroke="#ef4444" /> Favorites
-                </h3>
-              </div>
-
-              <div
-                style={{
-                  marginTop: "6px",
-                  paddingTop: "8px",
-                  borderTop: "1px solid var(--border-subtle)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
-                  {favoriteCount} {favoriteCount === 1 ? "photo" : "photos"}
-                </span>
-                <span style={{ fontSize: "10px", color: "var(--accent-danger)", fontWeight: 600 }}>
-                  Smart Album
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* User Custom Albums & Smart Albums */}
-          {albums.map((album) => {
-            const isCollages = album.name.toLowerCase() === "collages";
-            return (
-            <div
-              key={album.id}
-              onClick={() => openAlbumDetail(album.id, album)}
-              className="clickable glass-panel"
-              style={{
-                borderRadius: "var(--radius-md)",
-                backgroundColor: "var(--bg-surface)",
-                border: isCollages ? "1px solid rgba(56, 189, 248, 0.4)" : "1px solid var(--border-subtle)",
-                overflow: "hidden",
-                display: "flex",
-                flexDirection: "column",
-                cursor: "pointer",
-                transition: "transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = "translateY(-2px)";
-                e.currentTarget.style.borderColor = isCollages ? "var(--accent-primary, #38bdf8)" : "var(--accent-primary)";
-                if (isCollages) {
-                  e.currentTarget.style.boxShadow = "0 8px 24px rgba(56, 189, 248, 0.25)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "translateY(0)";
-                e.currentTarget.style.borderColor = isCollages ? "rgba(56, 189, 248, 0.4)" : "var(--border-subtle)";
-                if (isCollages) {
-                  e.currentTarget.style.boxShadow = "none";
-                }
-              }}
-            >
-              {/* Album Cover Art */}
-              <div
-                style={{
-                  height: "160px",
-                  backgroundColor: "var(--bg-surface-elevated)",
-                  position: "relative",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--text-muted)",
-                  overflow: "hidden",
-                }}
-              >
-                {(() => {
-                  const isCollages = album.name.toLowerCase() === "collages";
-                  const count = album.photo_count || 0;
-                  const hasValidCover = count > 0 && album.cover_photo_id && !failedCoverIds.has(album.cover_photo_id);
-
-                  if (hasValidCover) {
-                    return (
-                      <img
-                        src={`http://127.0.0.1:8000/api/photos/${album.cover_photo_id}/thumbnail?v=3`}
-                        alt={album.name}
-                        onError={() => setFailedCoverIds((prev) => new Set(prev).add(album.cover_photo_id!))}
-                        style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
-                        loading="lazy"
-                      />
-                    );
-                  }
-
-                  if (isCollages) {
-                    return (
-                      <div style={{ width: "100%", height: "100%", position: "relative", overflow: "hidden" }}>
-                        <img
-                          src={collagesDefaultCover}
-                          alt="Collages Default Cover"
-                          style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scale(1.02)" }}
-                        />
-                        <div
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            background: "linear-gradient(180deg, rgba(0, 0, 0, 0.05) 0%, rgba(0, 0, 0, 0.55) 100%)",
-                            display: "flex",
-                            alignItems: "flex-end",
-                            padding: "10px",
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: "10px",
-                              fontWeight: 700,
-                              letterSpacing: "0.04em",
-                              textTransform: "uppercase",
-                              padding: "3px 8px",
-                              borderRadius: "var(--radius-full)",
-                              backgroundColor: "rgba(0, 0, 0, 0.6)",
-                              backdropFilter: "blur(8px)",
-                              WebkitBackdropFilter: "blur(8px)",
-                              color: "#38bdf8",
-                              border: "1px solid rgba(56, 189, 248, 0.35)",
-                              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.4)",
-                            }}
-                          >
-                            ✦ Creative Studio
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  const palette = getAlbumPalette(album.name);
-                  const initial = album.name.trim().charAt(0).toUpperCase() || "A";
-
-                  return (
+                  {/* 1. Favorites Card */}
+                  <div
+                    onClick={openFavoritesAlbum}
+                    className="clickable glass-panel"
+                    style={{
+                      borderRadius: "var(--radius-md)",
+                      backgroundColor: "var(--bg-surface)",
+                      border: "1px solid rgba(239, 68, 68, 0.35)",
+                      overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
+                      cursor: "pointer",
+                      transition: "transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = "translateY(-2px)";
+                      e.currentTarget.style.borderColor = "#ef4444";
+                      e.currentTarget.style.boxShadow = "0 8px 24px rgba(239, 68, 68, 0.25)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.35)";
+                      e.currentTarget.style.boxShadow = "none";
+                    }}
+                  >
+                    {/* Cover Art */}
                     <div
                       style={{
-                        width: "100%",
-                        height: "100%",
-                        background: palette.bg,
+                        height: "160px",
+                        background:
+                          favoriteCoverId && !failedCoverIds.has(favoriteCoverId)
+                            ? "var(--bg-surface-elevated)"
+                            : "linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(168, 85, 247, 0.2) 100%)",
                         position: "relative",
                         display: "flex",
-                        flexDirection: "column",
                         alignItems: "center",
                         justifyContent: "center",
                         overflow: "hidden",
                       }}
                     >
-                      {/* Ambient blur glow */}
-                      <div
-                        style={{
-                          position: "absolute",
-                          width: "90px",
-                          height: "90px",
-                          borderRadius: "50%",
-                          backgroundColor: palette.glow,
-                          filter: "blur(32px)",
-                          opacity: 0.35,
-                        }}
-                      />
-                      {/* Frosted monogram badge */}
-                      <div
-                        style={{
-                          width: "50px",
-                          height: "50px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "rgba(255, 255, 255, 0.1)",
-                          backdropFilter: "blur(12px)",
-                          WebkitBackdropFilter: "blur(12px)",
-                          border: "1px solid rgba(255, 255, 255, 0.2)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          boxShadow: `0 8px 24px rgba(0, 0, 0, 0.4), 0 0 14px ${palette.iconBg}`,
-                          zIndex: 1,
-                        }}
-                      >
+                      {favoriteCoverId && !failedCoverIds.has(favoriteCoverId) ? (
+                        <img
+                          src={`http://127.0.0.1:8000/api/photos/${favoriteCoverId}/thumbnail?v=3`}
+                          alt="Favorites"
+                          onError={() => setFailedCoverIds((prev) => new Set(prev).add(favoriteCoverId))}
+                          style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <Heart size={44} fill="rgba(239, 68, 68, 0.4)" stroke="rgba(239, 68, 68, 0.7)" />
+                      )}
+
+                      <div style={{ position: "absolute", top: "10px", right: "10px" }}>
                         <span
                           style={{
-                            fontSize: "20px",
-                            fontWeight: 800,
-                            fontFamily: "var(--font-display, Plus Jakarta Sans, sans-serif)",
+                            backgroundColor: "rgba(239, 68, 68, 0.95)",
                             color: "#ffffff",
-                            textShadow: "0 2px 8px rgba(0, 0, 0, 0.5)",
+                            padding: "3px 8px",
+                            borderRadius: "var(--radius-xs)",
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            boxShadow: "0 2px 8px rgba(239, 68, 68, 0.4)",
                           }}
                         >
-                          {initial}
+                          <Heart size={10} fill="#ffffff" /> FAVORITES
                         </span>
                       </div>
-                      <span
+                    </div>
+
+                    <div style={{ padding: "14px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <h3 style={{ fontSize: "14px", fontWeight: 700, margin: 0, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                          <Heart size={14} fill="#ef4444" stroke="#ef4444" /> Favorites
+                        </h3>
+                      </div>
+                      <div
                         style={{
-                          marginTop: "8px",
-                          fontSize: "10px",
-                          fontWeight: 600,
-                          color: "rgba(255, 255, 255, 0.65)",
-                          letterSpacing: "0.05em",
-                          textTransform: "uppercase",
-                          zIndex: 1,
+                          marginTop: "6px",
+                          paddingTop: "8px",
+                          borderTop: "1px solid var(--border-subtle)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
                         }}
                       >
-                        Empty Album
-                      </span>
+                        <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
+                          {favoriteCount} {favoriteCount === 1 ? "photo" : "photos"}
+                        </span>
+                        <span style={{ fontSize: "10px", color: "var(--accent-danger, #ef4444)", fontWeight: 600 }}>
+                          Smart Collection
+                        </span>
+                      </div>
                     </div>
-                  );
-                })()}
+                  </div>
 
-                {/* Vault / Favorite / Smart Badges */}
-                <div style={{ position: "absolute", top: "10px", right: "10px", display: "flex", gap: "6px" }}>
-                  {isCollages && (
-                    <span 
+                  {/* 2. Collages & Wallpapers Card */}
+                  <div
+                    onClick={() => {
+                      if (collagesAlbum) {
+                        openAlbumDetail(collagesAlbum.id, collagesAlbum);
+                      } else {
+                        showToast("Create a collage from the Photos tab to start this collection!", "info");
+                      }
+                    }}
+                    className="clickable glass-panel"
+                    style={{
+                      borderRadius: "var(--radius-md)",
+                      backgroundColor: "var(--bg-surface)",
+                      border: "1px solid rgba(56, 189, 248, 0.35)",
+                      overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
+                      cursor: "pointer",
+                      transition: "transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = "translateY(-2px)";
+                      e.currentTarget.style.borderColor = "var(--accent-primary, #38bdf8)";
+                      e.currentTarget.style.boxShadow = "0 8px 24px rgba(56, 189, 248, 0.25)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.borderColor = "rgba(56, 189, 248, 0.35)";
+                      e.currentTarget.style.boxShadow = "none";
+                    }}
+                  >
+                    <div
                       style={{
-                        backgroundColor: "rgba(56, 189, 248, 0.95)",
-                        color: "#0f172a",
-                        padding: "3px 8px",
-                        borderRadius: "var(--radius-xs)",
-                        fontSize: "10px",
-                        fontWeight: 700,
+                        height: "160px",
+                        backgroundColor: "var(--bg-surface-elevated)",
+                        position: "relative",
+                        overflow: "hidden",
                         display: "flex",
                         alignItems: "center",
-                        gap: "4px",
-                        boxShadow: "0 2px 8px rgba(56, 189, 248, 0.35)",
+                        justifyContent: "center",
                       }}
                     >
-                      <Sparkles size={10} /> COLLAGES
-                    </span>
-                  )}
-                  {album.is_vault && (
-                    <span 
-                      title="Encrypted Vault Album"
+                      {collagesAlbum && collagesAlbum.cover_photo_id && !failedCoverIds.has(collagesAlbum.cover_photo_id) ? (
+                        <img
+                          src={`http://127.0.0.1:8000/api/photos/${collagesAlbum.cover_photo_id}/thumbnail?v=3`}
+                          alt="Collages"
+                          onError={() => setFailedCoverIds((prev) => new Set(prev).add(collagesAlbum.cover_photo_id!))}
+                          style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div style={{ width: "100%", height: "100%", position: "relative", overflow: "hidden" }}>
+                          <img
+                            src={collagesDefaultCover}
+                            alt="Collages Default Cover"
+                            style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scale(1.02)" }}
+                          />
+                          <div
+                            style={{
+                              position: "absolute",
+                              inset: 0,
+                              background: "linear-gradient(180deg, rgba(0, 0, 0, 0.05) 0%, rgba(0, 0, 0, 0.55) 100%)",
+                            }}
+                          />
+                        </div>
+                      )}
+                      <div style={{ position: "absolute", top: "10px", right: "10px" }}>
+                        <span
+                          style={{
+                            backgroundColor: "rgba(56, 189, 248, 0.95)",
+                            color: "#0f172a",
+                            padding: "3px 8px",
+                            borderRadius: "var(--radius-xs)",
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            boxShadow: "0 2px 8px rgba(56, 189, 248, 0.35)",
+                          }}
+                        >
+                          <Sparkles size={10} /> COLLAGES
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ padding: "14px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <h3 style={{ fontSize: "14px", fontWeight: 700, margin: 0, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                          <Sparkles size={14} color="#38bdf8" /> Collages & Wallpapers
+                        </h3>
+                      </div>
+                      <div
+                        style={{
+                          marginTop: "6px",
+                          paddingTop: "8px",
+                          borderTop: "1px solid var(--border-subtle)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
+                          {collagesAlbum?.photo_count || 0} {(collagesAlbum?.photo_count || 0) === 1 ? "collage" : "collages"}
+                        </span>
+                        <span style={{ fontSize: "10px", color: "var(--accent-primary, #38bdf8)", fontWeight: 600 }}>
+                          Smart Collection
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Saved Stories Card */}
+                  <div
+                    onClick={openSavedStoriesAlbum}
+                    className="clickable glass-panel"
+                    style={{
+                      borderRadius: "var(--radius-md)",
+                      backgroundColor: "var(--bg-surface)",
+                      border: "1px solid rgba(168, 85, 247, 0.35)",
+                      overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
+                      cursor: "pointer",
+                      transition: "transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = "translateY(-2px)";
+                      e.currentTarget.style.borderColor = "#c084fc";
+                      e.currentTarget.style.boxShadow = "0 8px 24px rgba(168, 85, 247, 0.25)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.borderColor = "rgba(168, 85, 247, 0.35)";
+                      e.currentTarget.style.boxShadow = "none";
+                    }}
+                  >
+                    <div
                       style={{
-                        backgroundColor: "rgba(59, 130, 246, 0.9)",
-                        color: "#ffffff",
-                        padding: "3px 6px",
-                        borderRadius: "var(--radius-xs)",
-                        fontSize: "10px",
-                        fontWeight: 700,
+                        height: "160px",
+                        backgroundColor: "var(--bg-surface-elevated)",
+                        position: "relative",
+                        overflow: "hidden",
                         display: "flex",
                         alignItems: "center",
-                        gap: "3px",
+                        justifyContent: "center",
+                        background:
+                          savedStories.length > 0 &&
+                          savedStories[0]?.cover_photo_id &&
+                          !failedCoverIds.has(savedStories[0].cover_photo_id)
+                            ? "var(--bg-surface-elevated)"
+                            : "linear-gradient(135deg, rgba(168, 85, 247, 0.25) 0%, rgba(59, 130, 246, 0.2) 100%)",
                       }}
                     >
-                      <Lock size={10} /> VAULT
-                    </span>
-                  )}
-                  {!isCollages && album.is_favorite && (
-                    <span 
-                      style={{
-                        backgroundColor: "rgba(239, 68, 68, 0.9)",
-                        color: "#ffffff",
-                        padding: "4px 6px",
-                        borderRadius: "var(--radius-xs)",
-                        display: "flex",
-                        alignItems: "center",
-                      }}
-                    >
-                      <Heart size={11} fill="#ffffff" />
-                    </span>
-                  )}
+                      {savedStories.length > 0 &&
+                      savedStories[0]?.cover_photo_id &&
+                      !failedCoverIds.has(savedStories[0].cover_photo_id) ? (
+                        <img
+                          src={`http://127.0.0.1:8000/api/photos/${savedStories[0].cover_photo_id}/thumbnail?v=3`}
+                          alt="Saved Stories"
+                          onError={() => setFailedCoverIds((prev) => new Set(prev).add(savedStories[0].cover_photo_id!))}
+                          style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <Film size={44} style={{ color: "rgba(168, 85, 247, 0.7)" }} />
+                      )}
+                      <div style={{ position: "absolute", top: "10px", right: "10px" }}>
+                        <span
+                          style={{
+                            backgroundColor: "rgba(168, 85, 247, 0.95)",
+                            color: "#ffffff",
+                            padding: "3px 8px",
+                            borderRadius: "var(--radius-xs)",
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            boxShadow: "0 2px 8px rgba(168, 85, 247, 0.35)",
+                          }}
+                        >
+                          <Film size={10} /> STORIES
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ padding: "14px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <h3 style={{ fontSize: "14px", fontWeight: 700, margin: 0, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                          <Film size={14} color="#c084fc" /> Saved Stories
+                        </h3>
+                      </div>
+                      <div
+                        style={{
+                          marginTop: "6px",
+                          paddingTop: "8px",
+                          borderTop: "1px solid var(--border-subtle)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
+                          {savedStories.length} {savedStories.length === 1 ? "story" : "stories"}
+                        </span>
+                        <span style={{ fontSize: "10px", color: "#c084fc", fontWeight: 600 }}>
+                          Smart Collection
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Card Meta Content */}
-              <div style={{ padding: "14px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <h3 style={{ fontSize: "14px", fontWeight: 700, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {album.name}
+              {/* My Albums Section */}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+                  <h3
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 800,
+                      letterSpacing: "0.06em",
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      margin: 0,
+                    }}
+                  >
+                    My Albums
                   </h3>
-                  {!isCollages && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleToggleFavorite(album.id);
-                      }}
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        color: album.is_favorite ? "var(--accent-danger, #ef4444)" : "var(--text-muted)",
-                        cursor: "pointer",
-                        padding: "2px",
-                      }}
-                    >
-                      <Heart size={14} fill={album.is_favorite ? "currentColor" : "none"} />
-                    </button>
-                  )}
-                </div>
-
-                <div 
-                  style={{ 
-                    marginTop: "6px", 
-                    paddingTop: "8px", 
-                    borderTop: "1px solid var(--border-subtle)", 
-                    display: "flex", 
-                    alignItems: "center", 
-                    justifyContent: "space-between" 
-                  }}
-                >
-                  <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
-                    {album.photo_count} {album.photo_count === 1 ? "photo" : "photos"}
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "var(--text-secondary)",
+                      backgroundColor: "var(--glass-action-bg, rgba(255, 255, 255, 0.06))",
+                      padding: "1px 8px",
+                      borderRadius: "var(--radius-full)",
+                      border: "1px solid var(--border-subtle)",
+                    }}
+                  >
+                    {userAlbums.length}
                   </span>
-
-                  {isCollages ? (
-                    <span style={{ fontSize: "10px", color: "var(--accent-primary, #38bdf8)", fontWeight: 600 }}>
-                      Smart Album
-                    </span>
-                  ) : (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onLockAlbumToVault?.(album.id, album.is_vault);
-                        if (!album.is_vault) {
-                          setAlbums((prev) => prev.filter((a) => a.id !== album.id));
-                        }
-                      }}
-                      className="clickable"
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        color: album.is_vault ? "var(--accent-success)" : "var(--accent-primary)",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "4px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {album.is_vault ? <Unlock size={12} /> : <Lock size={12} />}
-                      {album.is_vault ? "Decrypt" : "Lock"}
-                    </button>
-                  )}
+                  <div style={{ flex: 1, height: "1px", backgroundColor: "var(--border-subtle)", opacity: 0.6 }} />
                 </div>
+
+                {userAlbums.length === 0 ? (
+                  <div
+                    style={{
+                      padding: "48px 24px",
+                      textAlign: "center",
+                      color: "var(--text-muted)",
+                      borderRadius: "var(--radius-md)",
+                      backgroundColor: "var(--bg-surface)",
+                      border: "1px dashed var(--border-subtle)",
+                    }}
+                  >
+                    <FolderPlus size={32} style={{ margin: "0 auto 12px", opacity: 0.6 }} />
+                    <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-primary)", marginBottom: "4px" }}>
+                      No Custom Albums Yet
+                    </div>
+                    <div style={{ fontSize: "12px", color: "var(--text-secondary)", maxWidth: "360px", margin: "0 auto" }}>
+                      Click &ldquo;New Album&rdquo; above to organize your photos and videos into custom collections.
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+                      gap: "18px",
+                    }}
+                  >
+                    {userAlbums.map((album) => {
+                      const count = album.photo_count || 0;
+                      const hasValidCover = count > 0 && album.cover_photo_id && !failedCoverIds.has(album.cover_photo_id);
+                      const palette = getAlbumPalette(album.name);
+                      const initial = album.name.trim().charAt(0).toUpperCase() || "A";
+
+                      return (
+                        <div
+                          key={album.id}
+                          onClick={() => openAlbumDetail(album.id, album)}
+                          className="clickable glass-panel"
+                          style={{
+                            borderRadius: "var(--radius-md)",
+                            backgroundColor: "var(--bg-surface)",
+                            border: "1px solid var(--border-subtle)",
+                            overflow: "hidden",
+                            display: "flex",
+                            flexDirection: "column",
+                            cursor: "pointer",
+                            transition: "transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = "translateY(-2px)";
+                            e.currentTarget.style.borderColor = "var(--accent-primary)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = "translateY(0)";
+                            e.currentTarget.style.borderColor = "var(--border-subtle)";
+                          }}
+                        >
+                          {/* Album Cover Art */}
+                          <div
+                            style={{
+                              height: "160px",
+                              backgroundColor: "var(--bg-surface-elevated)",
+                              position: "relative",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "var(--text-muted)",
+                              overflow: "hidden",
+                            }}
+                          >
+                            {hasValidCover ? (
+                              <img
+                                src={`http://127.0.0.1:8000/api/photos/${album.cover_photo_id}/thumbnail?v=3`}
+                                alt={album.name}
+                                onError={() => setFailedCoverIds((prev) => new Set(prev).add(album.cover_photo_id!))}
+                                style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  background: palette.bg,
+                                  position: "relative",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  overflow: "hidden",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    width: "90px",
+                                    height: "90px",
+                                    borderRadius: "50%",
+                                    backgroundColor: palette.glow,
+                                    filter: "blur(32px)",
+                                    opacity: 0.35,
+                                  }}
+                                />
+                                <div
+                                  style={{
+                                    width: "50px",
+                                    height: "50px",
+                                    borderRadius: "var(--radius-full)",
+                                    backgroundColor: "rgba(255, 255, 255, 0.1)",
+                                    backdropFilter: "blur(12px)",
+                                    WebkitBackdropFilter: "blur(12px)",
+                                    border: "1px solid rgba(255, 255, 255, 0.2)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    boxShadow: `0 8px 24px rgba(0, 0, 0, 0.4), 0 0 14px ${palette.iconBg}`,
+                                    zIndex: 1,
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontSize: "20px",
+                                      fontWeight: 800,
+                                      fontFamily: "var(--font-display, Plus Jakarta Sans, sans-serif)",
+                                      color: "#ffffff",
+                                      textShadow: "0 2px 8px rgba(0, 0, 0, 0.5)",
+                                    }}
+                                  >
+                                    {initial}
+                                  </span>
+                                </div>
+                                <span
+                                  style={{
+                                    marginTop: "8px",
+                                    fontSize: "10px",
+                                    fontWeight: 600,
+                                    color: "rgba(255, 255, 255, 0.65)",
+                                    letterSpacing: "0.05em",
+                                    textTransform: "uppercase",
+                                    zIndex: 1,
+                                  }}
+                                >
+                                  Empty Album
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Vault / Favorite Badges */}
+                            <div style={{ position: "absolute", top: "10px", right: "10px", display: "flex", gap: "6px" }}>
+                              {album.is_vault && (
+                                <span
+                                  title="Encrypted Vault Album"
+                                  style={{
+                                    backgroundColor: "rgba(59, 130, 246, 0.9)",
+                                    color: "#ffffff",
+                                    padding: "3px 6px",
+                                    borderRadius: "var(--radius-xs)",
+                                    fontSize: "10px",
+                                    fontWeight: 700,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "3px",
+                                  }}
+                                >
+                                  <Lock size={10} /> VAULT
+                                </span>
+                              )}
+                              {album.is_favorite && (
+                                <span
+                                  style={{
+                                    backgroundColor: "rgba(239, 68, 68, 0.9)",
+                                    color: "#ffffff",
+                                    padding: "4px 6px",
+                                    borderRadius: "var(--radius-xs)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                  }}
+                                >
+                                  <Heart size={11} fill="#ffffff" />
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Card Meta Content */}
+                          <div style={{ padding: "14px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              <h3 style={{ fontSize: "14px", fontWeight: 700, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {album.name}
+                              </h3>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleFavorite(album.id);
+                                }}
+                                style={{
+                                  background: "transparent",
+                                  border: "none",
+                                  color: album.is_favorite ? "var(--accent-danger, #ef4444)" : "var(--text-muted)",
+                                  cursor: "pointer",
+                                  padding: "2px",
+                                }}
+                              >
+                                <Heart size={14} fill={album.is_favorite ? "currentColor" : "none"} />
+                              </button>
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: "6px",
+                                paddingTop: "8px",
+                                borderTop: "1px solid var(--border-subtle)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                              }}
+                            >
+                              <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
+                                {album.photo_count} {album.photo_count === 1 ? "photo" : "photos"}
+                              </span>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onLockAlbumToVault?.(album.id, album.is_vault);
+                                  if (!album.is_vault) {
+                                    setAlbums((prev) => prev.filter((a) => a.id !== album.id));
+                                  }
+                                }}
+                                className="clickable"
+                                style={{
+                                  background: "transparent",
+                                  border: "none",
+                                  color: album.is_vault ? "var(--accent-success)" : "var(--accent-primary)",
+                                  fontSize: "11px",
+                                  fontWeight: 600,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {album.is_vault ? <Unlock size={12} /> : <Lock size={12} />}
+                                {album.is_vault ? "Decrypt" : "Lock"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
-            );
-          })}
-        </div>
+          );
+        })()
       )}
     </div>
   );

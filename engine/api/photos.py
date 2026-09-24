@@ -49,6 +49,7 @@ class ImportRequest(BaseModel):
     file_paths: Optional[List[str]] = None
     mode: str = "managed"          # "managed" (copy/move) or "scan" (in-place)
     delete_source: bool = False
+    album_id: Optional[int] = None
 
 
 class ImportResponse(BaseModel):
@@ -56,6 +57,7 @@ class ImportResponse(BaseModel):
     total_found: int
     imported: int
     skipped: int
+    imported_photo_ids: List[int] = []
 
 
 class OptimizationProgressResponse(BaseModel):
@@ -892,6 +894,7 @@ async def import_folder(payload: ImportRequest, background_tasks: BackgroundTask
     total_found = len(files_to_process)
     imported = 0
     skipped = 0
+    imported_photo_ids: List[int] = []
 
     for file_path in files_to_process:
         try:
@@ -903,15 +906,41 @@ async def import_folder(payload: ImportRequest, background_tasks: BackgroundTask
             )
             if photo_id:
                 imported += 1
+                imported_photo_ids.append(photo_id)
             else:
                 skipped += 1
         except Exception as err:
             logger.error("Failed to ingest %s: %s", file_path, err, exc_info=True)
             skipped += 1
 
+    # If an album_id was specified and items were ingested, attach them to the album atomically
+    if payload.album_id and imported_photo_ids:
+        try:
+            async with conn.execute("SELECT id, cover_photo_id FROM albums WHERE id = ?;", (payload.album_id,)) as a_cur:
+                album_row = await a_cur.fetchone()
+            if album_row:
+                for pid in imported_photo_ids:
+                    await conn.execute(
+                        "INSERT OR IGNORE INTO photo_album (photo_id, album_id) VALUES (?, ?);",
+                        (pid, payload.album_id),
+                    )
+                if not album_row["cover_photo_id"]:
+                    await conn.execute(
+                        "UPDATE albums SET cover_photo_id = ? WHERE id = ?;",
+                        (imported_photo_ids[0], payload.album_id),
+                    )
+                await conn.commit()
+        except Exception as album_err:
+            logger.warning("Failed to link imported photos to album %s: %s", payload.album_id, album_err)
+
     await conn.close()
 
     if imported > 0:
         background_tasks.add_task(run_background_optimization)
 
-    return ImportResponse(total_found=total_found, imported=imported, skipped=skipped)
+    return ImportResponse(
+        total_found=total_found,
+        imported=imported,
+        skipped=skipped,
+        imported_photo_ids=imported_photo_ids,
+    )

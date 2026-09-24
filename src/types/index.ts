@@ -194,6 +194,7 @@ export interface StorySlide {
   transition_type: string;
   focal_x: number;
   focal_y: number;
+  mime_type?: string;
 }
 
 export interface StoryModel {

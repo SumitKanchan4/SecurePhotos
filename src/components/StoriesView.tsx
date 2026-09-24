@@ -134,7 +134,18 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
         body: JSON.stringify({ is_saved: nextSaved }),
       });
       if (res.ok) {
-        setStories((prev) => prev.map((s) => (s.id === storyId ? { ...s, is_saved: nextSaved } : s)));
+        if (nextSaved) {
+          // Auto-archive off ephemeral suggestions shelf into Saved Stories smart album
+          setStories((prev) => prev.filter((s) => s.id !== storyId));
+          if (activeStoryIdx >= stories.length - 1) {
+            setActiveStoryIdx(Math.max(0, stories.length - 2));
+          }
+        } else {
+          setStories((prev) => prev.map((s) => (s.id === storyId ? { ...s, is_saved: false } : s)));
+        }
+        window.dispatchEvent(
+          new CustomEvent("stories-changed", { detail: { storyId, action: "saved", isSaved: nextSaved } })
+        );
       }
     } catch (err) {
       console.error("Failed to toggle save story:", err);
@@ -143,7 +154,8 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
 
   const fetchStories = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/stories`);
+      // Shelf displays ephemeral suggestions; saved stories are preserved in Saved Stories smart album
+      const res = await fetch(`${API_BASE}/stories?ephemeral_only=true`);
       if (res.ok) {
         const storiesData: StoryModel[] = await res.json();
         setStories(storiesData);
@@ -323,7 +335,10 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
       if (previewAudioRef.current) {
         previewAudioRef.current.pause();
       }
-      const audio = new Audio(track.stream_url);
+      const streamUrl = track.stream_url.startsWith("http")
+        ? track.stream_url
+        : `http://127.0.0.1:8000${track.stream_url.startsWith("/") ? "" : "/"}${track.stream_url}`;
+      const audio = new Audio(streamUrl);
       audio.volume = 0.6;
       audio.play().catch((e) => console.warn("Audio play error:", e));
       audio.onended = () => setPreviewTrackId(null);
@@ -632,7 +647,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
               {activeStory.title}
             </h2>
             <p style={{ fontSize: "13px", color: "rgba(255, 255, 255, 0.82)", margin: 0 }}>
-              {activeStory.slides_count || activeStory.slides?.length || 0} moments • Dynamic chromatic ambient light • Beat-synchronized Ken-Burns motion
+              {activeStory.slides_count || activeStory.slides?.length || 0} moments • {activeStory.vibe_mood ? activeStory.vibe_mood.charAt(0).toUpperCase() + activeStory.vibe_mood.slice(1) : "Curated"} Montage
             </p>
           </div>
 
