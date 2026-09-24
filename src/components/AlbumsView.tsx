@@ -643,8 +643,14 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
 
       if (res.ok) {
         const data = await res.json();
-        const count = data.imported ?? filePaths.length;
-        showToast(`Imported ${count} photo(s) directly into "${activeAlbumMeta?.name}"!`, "success");
+        const totalAdded = (data.imported || 0) + (data.album_linked_count || 0);
+        if (totalAdded > 0) {
+          showToast(`Added ${totalAdded} item(s) directly into "${activeAlbumMeta?.name}"!`, "success");
+        } else if (data.failed > 0) {
+          showToast(`Could not import ${data.failed} item(s) due to file access or permission errors.`, "warning");
+        } else {
+          showToast(`All selected items are already in "${activeAlbumMeta?.name}".`, "info");
+        }
         window.dispatchEvent(new CustomEvent("photos-changed", { detail: { action: "imported", albumId: activeAlbumId } }));
         setIsPhotoPickerOpen(false);
         if (activeAlbumMeta) {

@@ -13,8 +13,9 @@ import logging
 import os
 import re
 import shutil
+import stat
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 import aiosqlite
 from PIL import Image, ExifTags, ImageOps
 
@@ -369,13 +370,46 @@ def get_hierarchical_destination_path(
     return sharded_folder / filename
 
 
+def cleanup_orphaned_tmp_files(base_dir: Optional[Path] = None) -> int:
+    """Removes leftover *.tmp files in the originals directory and unlocks any read-only files.
+
+    Args:
+        base_dir: Optional root directory to scan. Defaults to settings.originals_dir.
+
+    Returns:
+        The count of cleaned temporary files.
+    """
+    target_dir = base_dir or settings.originals_dir
+    cleaned_count = 0
+    if not target_dir.exists():
+        return 0
+    for root, _, files in os.walk(target_dir):
+        for f in files:
+            p = Path(root) / f
+            if f.endswith(".tmp") or ".tmp" in f:
+                try:
+                    os.chmod(p, stat.S_IWRITE)
+                    p.unlink()
+                    cleaned_count += 1
+                except OSError:
+                    pass
+            else:
+                # Ensure existing managed files are writable
+                try:
+                    os.chmod(p, stat.S_IWRITE | stat.S_IREAD)
+                except OSError:
+                    pass
+    return cleaned_count
+
+
 async def ingest_single_photo(
     conn: aiosqlite.Connection,
     source_path: Path,
     mode: str = "managed",          # "managed" (copy/move) or "scan" (in-place)
     delete_source: bool = False,
     task_id: Optional[int] = None,
-) -> Optional[int]:
+    return_is_new: bool = False,
+) -> Union[Optional[int], Tuple[Optional[int], bool]]:
     """Ingests a single media file into the SecurePhotos library in milliseconds.
 
     Args:
@@ -384,22 +418,26 @@ async def ingest_single_photo(
         mode: 'managed' (moves/copies into date-sharded structure) or 'scan' (in-place).
         delete_source: Whether to delete the source file after SHA-256 verified move.
         task_id: Optional parent import_task ID for journaling.
+        return_is_new: If True, returns a tuple (photo_id, is_new). If False, returns photo_id.
 
     Returns:
-        The inserted photo ID, or None if skipped/failed.
+        The inserted photo ID (or tuple (photo_id, is_new)), or None / (None, False) if skipped/failed.
     """
     if not source_path.exists() or source_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-        return None
+        return (None, False) if return_is_new else None
 
     file_size = source_path.stat().st_size
     file_hash = calculate_file_hash(source_path)
 
-    # Check for exact bitwise duplicate
-    async with conn.execute("SELECT id FROM photos WHERE file_hash = ?;", (file_hash,)) as cursor:
+    # Check for exact bitwise duplicate (matches current file_hash or immutable original_file_hash)
+    async with conn.execute(
+        "SELECT id FROM photos WHERE file_hash = ? OR original_file_hash = ?;",
+        (file_hash, file_hash),
+    ) as cursor:
         existing = await cursor.fetchone()
         if existing:
             logger.info(f"Skipping bitwise duplicate: {source_path.name} (Hash: {file_hash[:8]})")
-            return existing[0]
+            return (existing[0], False) if return_is_new else existing[0]
 
     # Extract EXIF metadata
     metadata = extract_exif_metadata(source_path)
@@ -428,22 +466,68 @@ async def ingest_single_photo(
 
         # Atomic Two-Phase Commit (.tmp -> fsync -> os.replace)
         temp_dest = dest_path.parent / f".{dest_path.name}.tmp"
-        shutil.copy2(source_path, temp_dest)
-        
-        # Verify copied file checksum before completing commit
-        copied_hash = calculate_file_hash(temp_dest)
-        if copied_hash != file_hash:
-            if temp_dest.exists():
+
+        # Pre-clean any existing .tmp file (and ensure write permissions if read-only flag was set)
+        if temp_dest.exists():
+            try:
+                os.chmod(temp_dest, stat.S_IWRITE)
                 temp_dest.unlink()
-            raise IOError(f"Checksum mismatch during ingestion of {source_path.name}")
+            except OSError:
+                pass
 
-        # Atomic rename swap
-        os.replace(temp_dest, dest_path)
+        try:
+            shutil.copy2(source_path, temp_dest)
 
-        # If move & clean requested, verify target exists before unlinking source
-        if delete_source and source_path.resolve() != dest_path.resolve():
-            source_path.unlink()
-            logger.info(f"Cleaned source file after verified move: {source_path}")
+            # On Windows, copy2 copies FILE_ATTRIBUTE_READONLY. Ensure temp_dest has write permissions
+            try:
+                os.chmod(temp_dest, stat.S_IWRITE | stat.S_IREAD)
+            except OSError:
+                pass
+
+            # Verify copied file checksum before completing commit
+            copied_hash = calculate_file_hash(temp_dest)
+            if copied_hash != file_hash:
+                if temp_dest.exists():
+                    try:
+                        os.chmod(temp_dest, stat.S_IWRITE)
+                        temp_dest.unlink()
+                    except OSError:
+                        pass
+                raise IOError(f"Checksum mismatch during ingestion of {source_path.name}")
+
+            # Ensure dest_path is writable if it exists before atomic replacement
+            if dest_path.exists():
+                try:
+                    os.chmod(dest_path, stat.S_IWRITE)
+                except OSError:
+                    pass
+
+            # Atomic rename swap
+            os.replace(temp_dest, dest_path)
+
+            # Ensure final destination in originals is writable
+            try:
+                os.chmod(dest_path, stat.S_IWRITE | stat.S_IREAD)
+            except OSError:
+                pass
+
+            # If move & clean requested, verify target exists before unlinking source
+            if delete_source and source_path.resolve() != dest_path.resolve():
+                try:
+                    os.chmod(source_path, stat.S_IWRITE)
+                except OSError:
+                    pass
+                source_path.unlink()
+                logger.info(f"Cleaned source file after verified move: {source_path}")
+
+        except Exception:
+            if temp_dest.exists():
+                try:
+                    os.chmod(temp_dest, stat.S_IWRITE)
+                    temp_dest.unlink()
+                except OSError:
+                    pass
+            raise
 
         final_filepath = str(dest_path.resolve())
     else:
@@ -498,13 +582,13 @@ async def ingest_single_photo(
             width, height, original_width, original_height, taken_at,
             camera_make, camera_model, latitude, longitude, iso,
             aperture, shutter_speed, focal_length, is_favorite, is_encrypted,
-            thumbnail_path, preview_path, file_hash, is_managed, original_path
+            thumbnail_path, preview_path, file_hash, original_file_hash, is_managed, original_path
         ) VALUES (
             ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?,
             ?, ?, ?, 0, 0,
-            ?, ?, ?, ?, ?
+            ?, ?, ?, ?, ?, ?
         );
         """,
         (
@@ -529,6 +613,7 @@ async def ingest_single_photo(
             metadata["focal_length"],
             str(thumb_path),
             str(preview_path),
+            file_hash,
             file_hash,
             1 if mode == "managed" else 0,
             str(source_path.resolve()),
@@ -555,4 +640,4 @@ async def ingest_single_photo(
         except Exception as queue_err:
             logger.warning(f"Could not enqueue video #{photo_id} for background processing: {queue_err}")
 
-    return photo_id
+    return (photo_id, True) if return_is_new else photo_id

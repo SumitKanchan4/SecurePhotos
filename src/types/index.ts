@@ -284,6 +284,16 @@ export interface ImportProgressState {
   album_name: string | null;
   imported: number;
   skipped: number;
+  failed?: number;
+}
+
+export interface ImportResponse {
+  total_found: number;
+  imported: number;
+  skipped: number;
+  failed: number;
+  imported_photo_ids: number[];
+  album_linked_count?: number;
 }
 
 

@@ -57,7 +57,9 @@ class ImportResponse(BaseModel):
     total_found: int
     imported: int
     skipped: int
+    failed: int = 0
     imported_photo_ids: List[int] = []
+    album_linked_count: int = 0
 
 
 class OptimizationProgressResponse(BaseModel):
@@ -196,7 +198,7 @@ async def run_background_optimization():
                             await conn.execute(
                                 """
                                 UPDATE photos 
-                                SET file_hash = ?, original_file_size = COALESCE(original_file_size, file_size), file_size = ?, width = ?, height = ?, 
+                                SET file_hash = ?, original_file_size = COALESCE(original_file_size, file_size), original_file_hash = COALESCE(original_file_hash, file_hash), file_size = ?, width = ?, height = ?, 
                                     is_optimized = 1, is_enhanced = 1, preview_path = NULL 
                                 WHERE id = ?;
                                 """,
@@ -870,6 +872,7 @@ import_progress_state: Dict[str, Any] = {
     "album_name": None,
     "imported": 0,
     "skipped": 0,
+    "failed": 0,
 }
 
 
@@ -913,7 +916,9 @@ async def import_folder(payload: ImportRequest, background_tasks: BackgroundTask
     total_found = len(files_to_process)
     imported = 0
     skipped = 0
+    failed = 0
     imported_photo_ids: List[int] = []
+    existing_photo_ids_to_link: List[int] = []
 
     album_name = None
     if payload.album_id:
@@ -935,49 +940,62 @@ async def import_folder(payload: ImportRequest, background_tasks: BackgroundTask
         "album_name": album_name,
         "imported": 0,
         "skipped": 0,
+        "failed": 0,
     })
 
+    album_linked_count = 0
     try:
         for idx, file_path in enumerate(files_to_process):
             import_progress_state["current_filename"] = file_path.name
             try:
-                photo_id = await ingest_single_photo(
+                res = await ingest_single_photo(
                     conn,
                     file_path,
                     mode=payload.mode,
                     delete_source=payload.delete_source,
+                    return_is_new=True,
                 )
+                photo_id, is_new = res
                 if photo_id:
-                    imported += 1
-                    imported_photo_ids.append(photo_id)
-                    import_progress_state["imported"] = imported
+                    if is_new:
+                        imported += 1
+                        imported_photo_ids.append(photo_id)
+                        import_progress_state["imported"] = imported
+                    else:
+                        skipped += 1
+                        import_progress_state["skipped"] = skipped
+                        if payload.album_id:
+                            existing_photo_ids_to_link.append(photo_id)
                 else:
                     skipped += 1
                     import_progress_state["skipped"] = skipped
             except Exception as err:
                 logger.error("Failed to ingest %s: %s", file_path, err, exc_info=True)
-                skipped += 1
-                import_progress_state["skipped"] = skipped
+                failed += 1
+                import_progress_state["failed"] = failed
             finally:
                 import_progress_state["completed_count"] = idx + 1
                 # Cooperative yield to allow concurrent /import-progress polling requests
                 await asyncio.sleep(0)
 
-        # If an album_id was specified and items were ingested, attach them to the album atomically
-        if payload.album_id and imported_photo_ids:
+        # If an album_id was specified, link both newly imported photos and existing library duplicates to the album
+        all_album_photo_ids = list(dict.fromkeys(imported_photo_ids + existing_photo_ids_to_link))
+        if payload.album_id and all_album_photo_ids:
             try:
                 async with conn.execute("SELECT id, cover_photo_id FROM albums WHERE id = ?;", (payload.album_id,)) as a_cur:
                     album_row = await a_cur.fetchone()
                 if album_row:
-                    for pid in imported_photo_ids:
-                        await conn.execute(
+                    for pid in all_album_photo_ids:
+                        cur = await conn.execute(
                             "INSERT OR IGNORE INTO photo_album (photo_id, album_id) VALUES (?, ?);",
                             (pid, payload.album_id),
                         )
-                    if not album_row["cover_photo_id"]:
+                        if cur.rowcount > 0:
+                            album_linked_count += 1
+                    if not album_row["cover_photo_id"] and all_album_photo_ids:
                         await conn.execute(
                             "UPDATE albums SET cover_photo_id = ? WHERE id = ?;",
-                            (imported_photo_ids[0], payload.album_id),
+                            (all_album_photo_ids[0], payload.album_id),
                         )
                     await conn.commit()
             except Exception as album_err:
@@ -994,5 +1012,7 @@ async def import_folder(payload: ImportRequest, background_tasks: BackgroundTask
         total_found=total_found,
         imported=imported,
         skipped=skipped,
+        failed=failed,
         imported_photo_ids=imported_photo_ids,
+        album_linked_count=album_linked_count,
     )

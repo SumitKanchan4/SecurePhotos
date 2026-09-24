@@ -1,5 +1,7 @@
 """Automated Tests for Ingestion Pipeline, EXIF, Thumbnails & API Routes."""
 
+import os
+import stat
 import tempfile
 from pathlib import Path
 from PIL import Image
@@ -244,6 +246,130 @@ async def test_import_progress_telemetry_endpoint():
         assert "album_id" in data
         assert "imported" in data
         assert "skipped" in data
+        assert "failed" in data
+
+
+@pytest.mark.asyncio
+async def test_ingest_readonly_file_windows():
+    """Verifies that Windows files with FILE_ATTRIBUTE_READONLY can be ingested without PermissionError."""
+    import time
+    ts = int(time.time() * 1000)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ro_path = Path(tmpdir) / f"readonly_photo_{ts}.jpg"
+        create_dummy_image(ro_path, 800, 600, color=(120, 80, 40))
+
+        # Mark source file strictly as read-only (simulating Windows read-only photo)
+        os.chmod(ro_path, stat.S_IREAD)
+        assert not os.access(ro_path, os.W_OK)
+
+        conn = await get_db_connection()
+        photo_id = None
+        try:
+            # 1. First ingestion of read-only source file
+            photo_id, is_new = await ingest_single_photo(conn, ro_path, mode="managed", return_is_new=True)
+            assert photo_id is not None
+            assert photo_id > 0
+            assert is_new is True
+
+            # 2. Re-ingestion (deduplication check) should safely detect duplicate without failing on .tmp lock
+            dup_id, dup_is_new = await ingest_single_photo(conn, ro_path, mode="managed", return_is_new=True)
+            assert dup_id == photo_id
+            assert dup_is_new is False
+
+            # Verify managed copy on disk is writable
+            async with conn.execute("SELECT filepath FROM photos WHERE id = ?;", (photo_id,)) as cur:
+                row = await cur.fetchone()
+                assert row is not None
+                dest_file = Path(row["filepath"])
+                assert dest_file.exists()
+                assert os.access(dest_file, os.W_OK)
+
+        finally:
+            # Clean up test DB record and file
+            if photo_id:
+                async with conn.execute("SELECT filepath FROM photos WHERE id = ?;", (photo_id,)) as cur:
+                    row = await cur.fetchone()
+                    if row:
+                        try:
+                            p = Path(row["filepath"])
+                            os.chmod(p, stat.S_IWRITE)
+                            p.unlink()
+                        except OSError:
+                            pass
+                await conn.execute("DELETE FROM photos WHERE id = ?;", (photo_id,))
+                await conn.commit()
+            await conn.close()
+            # Restore write permission on test temp file so TemporaryDirectory cleanup succeeds
+            try:
+                os.chmod(ro_path, stat.S_IWRITE)
+            except OSError:
+                pass
+
+
+@pytest.mark.asyncio
+async def test_import_endpoint_album_linking_and_failed_tracking():
+    """Verifies that /api/photos/import links duplicate photos to album and tracks failures cleanly."""
+    import time
+    ts = int(time.time() * 1000)
+    conn = await get_db_connection()
+    try:
+        # Create a test album
+        cur = await conn.execute("INSERT INTO albums (name) VALUES (?);", (f"Test Album {ts}",))
+        await conn.commit()
+        album_id = cur.lastrowid
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            f1 = Path(tmpdir) / f"album_test_{ts}_1.jpg"
+            create_dummy_image(f1, 640, 480, color=(70, 80, 90))
+
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+                # First import
+                res1 = await client.post(
+                    "/api/photos/import",
+                    json={
+                        "file_paths": [str(f1)],
+                        "mode": "managed",
+                        "album_id": album_id,
+                    },
+                )
+                assert res1.status_code == 201
+                d1 = res1.json()
+                assert d1["imported"] == 1
+                assert d1["album_linked_count"] == 1
+                p_id = d1["imported_photo_ids"][0]
+
+                # Second import into same album (duplicate in library, should link to album)
+                res2 = await client.post(
+                    "/api/photos/import",
+                    json={
+                        "file_paths": [str(f1)],
+                        "mode": "managed",
+                        "album_id": album_id,
+                    },
+                )
+                assert res2.status_code == 201
+                d2 = res2.json()
+                assert d2["imported"] == 0
+                assert d2["skipped"] == 1
+                assert d2["failed"] == 0
+
+        # Clean up album and photo
+        await conn.execute("DELETE FROM photo_album WHERE album_id = ?;", (album_id,))
+        await conn.execute("DELETE FROM albums WHERE id = ?;", (album_id,))
+        async with conn.execute("SELECT filepath FROM photos WHERE id = ?;", (p_id,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                try:
+                    p = Path(row["filepath"])
+                    os.chmod(p, stat.S_IWRITE)
+                    p.unlink()
+                except OSError:
+                    pass
+        await conn.execute("DELETE FROM photos WHERE id = ?;", (p_id,))
+        await conn.commit()
+    finally:
+        await conn.close()
 
 
 

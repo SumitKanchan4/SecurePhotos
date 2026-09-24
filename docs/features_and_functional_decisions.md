@@ -3560,5 +3560,74 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - Frontend production bundle built cleanly (`npm run build` in 6.46s, 0 errors).
 - Zero React hook mismatches; video player mounts immediately upon click with zero console warnings.
 
+---
+
+## 72. Windows Read-Only Ingestion Permissions, Immutable Baseline Checksum Deduplication & Accurate Import Feedback
+
+### Functionality Overview
+1. **Windows Read-Only Attribute Safety**:
+   - Ingesting photos or folders containing files marked with the Windows `FILE_ATTRIBUTE_READONLY` flag no longer causes `PermissionError: [Errno 13] Permission denied`.
+   - The atomic two-phase commit file copier (`shutil.copy2`) automatically strips the inherited read-only attribute on destination `.tmp` staging files and managed media copies (`os.chmod(p, stat.S_IWRITE | stat.S_IREAD)`).
+   - Any stale `.tmp` files from interrupted or previous import operations are automatically pre-cleaned before writing.
+   - Source files in the user's personal folders (e.g. `C:\Sumit\Photos\...`) are left completely untouched in their original state.
+2. **Self-Healing Cleanup of Orphaned Temporary Staging Files**:
+   - Built-in `cleanup_orphaned_tmp_files()` utility scans managed originals storage, purges orphaned `.tmp` files left by interrupted transactions or system crashes, and ensures all managed assets have read-write filesystem permissions.
+3. **Immutable Baseline Checksum Deduplication (`original_file_hash`)**:
+   - Ingested photos now record both `file_hash` (reflecting the current file on disk) and `original_file_hash` (the immutable bitwise SHA-256 fingerprint of the original media file at ingestion).
+   - Deduplication checks (`SELECT id FROM photos WHERE file_hash = ? OR original_file_hash = ?`) match both the current file and the original un-optimized source file, guaranteeing that subsequent imports of the original source file (e.g. from camera SD card or mobile backup) are reliably recognized as duplicates even after AI 8K Super-Resolution optimization or transcoding has updated `file_hash`.
+4. **Honest, Categorized Import Feedback**:
+   - Backend `ImportResponse` and `import_progress_state` distinguish between:
+     - `imported`: Count of newly ingested media files.
+     - `skipped`: Count of duplicate items already in the library.
+     - `failed`: Count of items that failed due to I/O, corrupt headers, or filesystem permission errors.
+     - `album_linked_count`: Count of existing or newly imported photos linked to the target album.
+   - Frontend toasts in both `ImportModal.tsx` and `AlbumsView.tsx` provide unambiguous user-centric feedback without ever misrepresenting disk/permission errors as "already in library".
+5. **Album Ingestion Junction Linking**:
+   - When importing media directly into an album (`payload.album_id`), if a selected photo is already present in the library, the system automatically links the existing library photo to the target album (`INSERT OR IGNORE INTO photo_album`) and sets the album cover if unassigned.
+
+### Functional Decision Points & Rationale
+- **Stripping Read-Only Attribute on Destination Copies Only**:
+  - *Problem*: In Python on Windows, `shutil.copy2` preserves file attributes, copying `FILE_ATTRIBUTE_READONLY` from camera/WhatsApp photos into `data/originals/`. If a re-import or two-phase swap attempts to overwrite a `.tmp` file or destination path, Windows raises `PermissionError [Errno 13]`.
+  - *Decision*: In `ingest_single_photo`, explicitly strip the read-only flag on `temp_dest` and `dest_path` while leaving `source_path` completely untouched.
+  - *Rationale*: Protects the user's original camera files from being modified while ensuring the application's internal managed directory remains fully writable for atomic file operations.
+- **Dedicated `original_file_hash` Column vs. Relying Solely on Filepath**:
+  - *Problem*: When background AI 8K optimization or transcoding updates `file_hash` to the upscaled image's checksum, re-importing the original source file from an external folder or device previously failed duplicate matching because the raw checksum was overwritten in `photos`.
+  - *Decision*: Added `original_file_hash` to `photos` schema, backfilled across all existing records via `run_migrations()`, and checked alongside `file_hash` during ingestion duplicate lookups.
+  - *Rationale*: Provides 100% accurate deduplication across the entire media lifecycle regardless of whether an asset has been upscaled, restored, or transcoded.
+- **Separation of `failed` vs. `skipped` in API & UI**:
+  - *Problem*: Previously, `engine/api/photos.py` caught unexpected ingestion exceptions and lumped them into `skipped += 1`. The UI assumed `skipped` meant the photos were already in the library, misleading users with *"All X item(s) are already in your library."* when a permission error had actually prevented ingestion.
+  - *Decision*: Separate `failed` count and `skipped` duplicates into distinct fields in both backend progress telemetry and frontend response handling.
+  - *Rationale*: Respects user trust and eliminates confusing discrepancies between reported library status and actual album contents.
+
+### Technical Touchpoints
+- `engine/services/ingestion_service.py`:
+  - Added `cleanup_orphaned_tmp_files()` helper.
+  - Added `return_is_new` parameter to `ingest_single_photo()`.
+  - Added Windows read-only attribute stripping and `.tmp` pre-cleaning in two-phase atomic commit.
+  - Added `original_file_hash` column to duplicate query and photo insertion.
+- `engine/database.py`:
+  - Added `original_file_hash TEXT` to `SCHEMA_DDL`.
+  - Added migration in `run_migrations()` to add `original_file_hash` column, backfill from `file_hash`, and create index `idx_photos_original_file_hash`.
+- `engine/api/photos.py`:
+  - Updated `ImportResponse` and `import_progress_state` with `failed` and `album_linked_count`.
+  - Updated `import_folder` to track failures independently, link existing duplicates to `payload.album_id`, and report comprehensive statistics.
+  - Updated `run_background_optimization` to preserve `original_file_hash = COALESCE(original_file_hash, file_hash)`.
+- `src/types/index.ts`:
+  - Added `failed?: number;` to `ImportProgressState`.
+  - Added `ImportResponse` interface with `total_found`, `imported`, `skipped`, `failed`, `imported_photo_ids`, `album_linked_count`.
+- `src/components/ImportModal.tsx`:
+  - Updated completion toast copy to differentiate newly imported photos, duplicates already in library, and permission failures.
+- `src/components/AlbumsView.tsx`:
+  - Updated `handleDirectImportFiles` to account for `album_linked_count` and display accurate status for direct album additions.
+- `engine/tests/test_ingestion.py`:
+  - Added `test_ingest_readonly_file_windows` testing read-only file ingestion and re-ingestion deduplication.
+  - Added `test_import_endpoint_album_linking_and_failed_tracking` testing album duplicate linking and telemetry.
+
+### State & Lifecycle Impact
+- Zero regressions; all 11 ingestion automated unit tests pass cleanly in pytest (`11 passed in 13.92s`).
+- 35 stale read-only `.tmp` staging files safely cleaned from managed storage.
+- All 38 files from `C:\Sumit\Photos\Shaadi 2025` successfully imported and linked to album `shaadi` (ID 269).
+- Frontend builds with zero TypeScript compiler errors (`npm run build` in 6.00s).
+
 
 
