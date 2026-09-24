@@ -2833,6 +2833,12 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                 <div style={{ position: "relative", display: "inline-block", maxWidth: "100%", maxHeight: "100%" }}>
                   <img
                     src={`${API_BASE}/photos/${inspectingFaceData.photo_id}/preview`}
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      if (!target.src.includes("/thumbnail")) {
+                        target.src = `${API_BASE}/photos/${inspectingFaceData.photo_id}/thumbnail`;
+                      }
+                    }}
                     alt={inspectingFaceData.filename}
                     style={{
                       display: "block",

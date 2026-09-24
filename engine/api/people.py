@@ -199,6 +199,20 @@ async def list_unlabeled_clusters() -> List[UnlabeledClusterResponse]:
         await conn.close()
 
 
+def _parse_box_float(val: Any) -> float:
+    """Safely parses face bounding box coordinates whether stored as floats or 4-byte packed binary blobs."""
+    if isinstance(val, (bytes, bytearray)):
+        import struct
+        try:
+            return round(float(struct.unpack("<f", val)[0]), 6)
+        except Exception:
+            return 0.0
+    try:
+        return round(float(val), 6)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 @router.get("/faces/{face_id}", status_code=status.HTTP_200_OK)
 async def get_face_details(face_id: int):
     """Retrieves coordinate geometry, quality score, and photo reference for face inspection preview."""
@@ -219,7 +233,20 @@ async def get_face_details(face_id: int):
         if not row:
             raise HTTPException(status_code=404, detail="Face record not found")
 
-        return dict(row)
+        return {
+            "id": row["id"],
+            "photo_id": row["photo_id"],
+            "box_x": _parse_box_float(row["box_x"]),
+            "box_y": _parse_box_float(row["box_y"]),
+            "box_w": _parse_box_float(row["box_w"]),
+            "box_h": _parse_box_float(row["box_h"]),
+            "quality_score": round(float(row["quality_score"] or 1.0), 4),
+            "filename": row["filename"] or "",
+            "width": row["width"] or 0,
+            "height": row["height"] or 0,
+            "preview_path": str(row["preview_path"]) if row["preview_path"] else "",
+            "thumbnail_path": str(row["thumbnail_path"]) if row["thumbnail_path"] else "",
+        }
     finally:
         await conn.close()
 
@@ -258,10 +285,10 @@ async def get_face_crop(face_id: int):
         with Image.open(photo_path) as raw_img:
             img = raw_img.convert("RGB")
             w, h = img.size
-            bx = row["box_x"] * w
-            by = row["box_y"] * h
-            bw = row["box_w"] * w
-            bh = row["box_h"] * h
+            bx = _parse_box_float(row["box_x"]) * w
+            by = _parse_box_float(row["box_y"]) * h
+            bw = _parse_box_float(row["box_w"]) * w
+            bh = _parse_box_float(row["box_h"]) * h
 
             margin = 0.25
             x1 = max(0, int(bx - bw * margin))
