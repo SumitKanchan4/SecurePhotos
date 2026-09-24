@@ -80,6 +80,7 @@ interface ClusterNameAutocompleteProps {
   onChange: (name: string) => void;
   onSelectPerson: (person: PersonItem) => void;
   onSubmit: () => void;
+  onOpenChange?: (open: boolean) => void;
 }
 
 const ClusterNameAutocomplete: React.FC<ClusterNameAutocompleteProps> = ({
@@ -88,11 +89,31 @@ const ClusterNameAutocomplete: React.FC<ClusterNameAutocompleteProps> = ({
   onChange,
   onSelectPerson,
   onSubmit,
+  onOpenChange,
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpenState] = useState(false);
+  const [placement, setPlacement] = useState<"bottom" | "top">("bottom");
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const setIsOpen = useCallback((open: boolean) => {
+    setIsOpenState(open);
+    onOpenChange?.(open);
+  }, [onOpenChange]);
+
+  // Viewport collision detection: flip popover upwards if near bottom of screen
+  useEffect(() => {
+    if (isOpen && wrapperRef.current) {
+      const rect = wrapperRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      if (spaceBelow < 250 && rect.top > 250) {
+        setPlacement("top");
+      } else {
+        setPlacement("bottom");
+      }
+    }
+  }, [isOpen]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -104,7 +125,7 @@ const ClusterNameAutocomplete: React.FC<ClusterNameAutocompleteProps> = ({
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen]);
+  }, [isOpen, setIsOpen]);
 
   // Compute matched suggestions
   const filtered = useMemo(() => {
@@ -158,7 +179,7 @@ const ClusterNameAutocomplete: React.FC<ClusterNameAutocompleteProps> = ({
   };
 
   return (
-    <div ref={wrapperRef} style={{ position: "relative", flex: 1 }}>
+    <div ref={wrapperRef} style={{ position: "relative", flex: 1, zIndex: isOpen ? 60 : 1 }}>
       <input
         ref={inputRef}
         type="text"
@@ -235,7 +256,8 @@ const ClusterNameAutocomplete: React.FC<ClusterNameAutocompleteProps> = ({
           className="glass-panel"
           style={{
             position: "absolute",
-            top: "calc(100% + 6px)",
+            top: placement === "bottom" ? "calc(100% + 6px)" : "auto",
+            bottom: placement === "top" ? "calc(100% + 6px)" : "auto",
             left: 0,
             right: 0,
             zIndex: 9999,
@@ -244,7 +266,10 @@ const ClusterNameAutocomplete: React.FC<ClusterNameAutocompleteProps> = ({
             WebkitBackdropFilter: "blur(24px)",
             border: "1px solid var(--glass-border)",
             borderRadius: "var(--radius-md)",
-            boxShadow: "0 14px 34px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.08)",
+            boxShadow:
+              placement === "top"
+                ? "0 -14px 34px rgba(0, 0, 0, 0.28), 0 -2px 8px rgba(0, 0, 0, 0.08)"
+                : "0 14px 34px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.08)",
             maxHeight: "240px",
             overflowY: "auto",
             padding: "5px",
@@ -412,6 +437,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
   const [tagNames, setTagNames] = useState<{ [clusterId: string]: string }>({});
   const [tagRelationships, setTagRelationships] = useState<{ [clusterId: string]: string }>({});
   const [tagCloseOnes, setTagCloseOnes] = useState<{ [clusterId: string]: boolean }>({});
+  const [activeClusterId, setActiveClusterId] = useState<string | null>(null);
   const [submittingCluster, setSubmittingCluster] = useState<string | null>(null);
   const [dismissingCluster, setDismissingCluster] = useState<string | null>(null);
   const [editingNames, setEditingNames] = useState<{ [personId: number]: string }>({});
@@ -582,6 +608,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
       });
       if (res.ok) {
         setUnlabeledClusters((prev) => prev.filter((c) => c.cluster_id !== clusterId));
+        setActiveClusterId(null);
       }
     } catch (err) {
       console.error("Failed to dismiss cluster:", err);
@@ -665,6 +692,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
       if (res.ok) {
         // Optimistic update
         setUnlabeledClusters((prev) => prev.filter((c) => c.cluster_id !== cluster.cluster_id));
+        setActiveClusterId(null);
         await fetchPeople();
       }
     } catch (err) {
@@ -2417,12 +2445,15 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                   const currentName = tagNames[cluster.cluster_id] || "";
                   const currentRel = tagRelationships[cluster.cluster_id] || "Friends";
                   const isClose = !!tagCloseOnes[cluster.cluster_id];
+                  const isCardActive = activeClusterId === cluster.cluster_id;
 
                   return (
                     <div
                       key={cluster.cluster_id}
                       className="glass-panel"
                       style={{
+                        position: "relative",
+                        zIndex: isCardActive ? 50 : 1,
                         borderRadius: "var(--radius-md)",
                         padding: "18px",
                         backgroundColor: "var(--bg-surface)",
@@ -2552,14 +2583,19 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                             value={currentName}
                             people={people}
                             onChange={(name) => handleNameChange(cluster.cluster_id, name)}
+                            onOpenChange={(open) => setActiveClusterId(open ? cluster.cluster_id : null)}
                             onSelectPerson={(person) => {
                               handleNameChange(cluster.cluster_id, person.name);
                               if (person.relationship_type) {
                                 setTagRelationships((prev) => ({ ...prev, [cluster.cluster_id]: person.relationship_type || "Friends" }));
                               }
                               setTagCloseOnes((prev) => ({ ...prev, [cluster.cluster_id]: person.is_close_one }));
+                              setActiveClusterId(null);
                             }}
-                            onSubmit={() => handleTagCluster(cluster)}
+                            onSubmit={() => {
+                              setActiveClusterId(null);
+                              handleTagCluster(cluster);
+                            }}
                           />
 
                           {/* Relationship Selector */}

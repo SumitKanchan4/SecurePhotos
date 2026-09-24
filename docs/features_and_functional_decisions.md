@@ -3676,6 +3676,42 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - Zero TypeScript compiler errors (`npm run build` in 9.77s).
 - Flawless visual consistency across dark and light desktop themes.
 
+---
 
+## 74. People Tagging Autocomplete Stacking Context Elevation & Viewport Collision Handling
 
+### Functionality Overview
+In the People View ("Who is this person?" cluster discovery feed), each unlabeled face cluster card features a rich autocomplete input for tagging recognized individuals. When the autocomplete dropdown opened on a card in earlier rows of the CSS Grid, the popover would appear *behind* the card beneath it in the grid due to DOM stacking order in CSS Grid layouts.
 
+This enhancement introduces:
+1. **Dynamic Grid Stacking Context Elevation**:
+   - The active cluster card dynamically elevates its stacking context (`zIndex: 50`, `position: "relative"`) when its autocomplete dropdown is open, ensuring it paints cleanly above all sibling cards in the grid.
+   - Sibling inactive cards remain at `zIndex: 1`.
+   - The autocomplete wrapper internally maintains `zIndex: 60` and the dropdown popover maintains `zIndex: 9999`.
+2. **Viewport Collision Detection & Intelligent Top/Bottom Flipping**:
+   - On opening the dropdown, `ClusterNameAutocomplete` measures its bounding client rectangle against the viewport height (`window.innerHeight - rect.bottom`).
+   - If available space below is less than 250px and space above exceeds 250px, the popover automatically flips upwards (`bottom: calc(100% + 6px)`), complete with an inverted liquid glass elevation shadow (`box-shadow: 0 -14px 34px rgba(...)`).
+   - Otherwise, it smoothly defaults to standard downward placement (`top: calc(100% + 6px)`).
+3. **Bi-Directional State Synchronization**:
+   - `ClusterNameAutocomplete` exposes an `onOpenChange(open: boolean)` callback.
+   - `PeopleView` tracks `activeClusterId: string | null` and elevates only the active card.
+   - Closing via outside click, `Escape`, item selection, or cluster submission automatically resets `activeClusterId` to `null`.
+
+### Functional Decision Points & Rationale
+- **Dynamic Card zIndex Elevation vs. Pure Popover zIndex**:
+  - *Problem*: In CSS Grid layouts, sibling items without an explicit positioned stacking context are painted in DOM order. Sibling Card 2 comes after Card 1 in the DOM, so Card 2's background and contents paint over any overflowing element from Card 1, regardless of how high the popover's `z-index` (e.g., 9999) is within Card 1's local stacking context.
+  - *Decision*: Dynamically elevate the entire card container's stacking context (`zIndex: 50`) whenever its autocomplete popover is open.
+  - *Rationale*: Eliminates grid clipping without requiring a global portal, maintaining localized focus and event propagation while ensuring the popover floats crisply above all surrounding cards.
+- **Dynamic Viewport Placement vs. Fixed Scroll/Drop**:
+  - *Problem*: In multi-row grid feeds or when scrolling near the bottom of the viewport, downward-fixed dropdowns can overflow beyond the fold or get clipped by window edges.
+  - *Decision*: Measure available viewport clearance on open and conditionally flip `top` / `bottom` positioning with adapted box-shadows.
+  - *Rationale*: Provides native-feeling OS dropdown behavior that accommodates any monitor resolution or scroll offset.
+
+### Technical Touchpoints
+- `src/components/PeopleView.tsx`:
+  - Added `onOpenChange?: (open: boolean) => void` to `ClusterNameAutocompleteProps`.
+  - Added `placement` state (`"bottom" | "top"`) and bounding client rect detection in `ClusterNameAutocomplete`.
+  - Added `activeClusterId` state to `PeopleView`.
+  - Set `position: "relative"` and `zIndex: isCardActive ? 50 : 1` on cluster cards in `unlabeledClusters.map`.
+  - Connected `onOpenChange` and reset callbacks across selection and submission handlers.
+- `engine/tests/test_people.py`: All 10 backend people unit tests verified passing.
