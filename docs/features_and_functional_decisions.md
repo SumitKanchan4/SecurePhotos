@@ -3629,5 +3629,53 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - All 38 files from `C:\Sumit\Photos\Shaadi 2025` successfully imported and linked to album `shaadi` (ID 269).
 - Frontend builds with zero TypeScript compiler errors (`npm run build` in 6.00s).
 
+---
+
+## 73. Theme-Adaptive Frosted Liquid-Glass Autocomplete for Face Tagging
+
+### Functionality Overview
+1. **Replacement of Native OS `<datalist>`**:
+   - Replaced Chromium's unstyleable HTML5 `<datalist>` popup with a bespoke, dual-theme frosted liquid-glass autocomplete component (`ClusterNameAutocomplete`).
+   - Completely eliminates the jarring, opaque `#2b2b2b` solid block that appeared in both dark and light modes.
+2. **Dual-Theme Liquid-Glass Container**:
+   - Adheres strictly to Section 4 of `modern-web-ui`:
+     - Built with `var(--glass-surface)`, `backdropFilter: blur(24px)`, `border: 1px solid var(--glass-border)`, `boxShadow: 0 14px 34px rgba(0, 0, 0, 0.28)`.
+     - In **Light Mode**: Renders as a luminous frosted pearl container with high-contrast typography.
+     - In **Dark Mode**: Renders as a sleek obsidian frosted container.
+3. **Rich Visual Presentation per Suggestion Row**:
+   - **Circular Face Avatar**: 28px face crop (`/people/faces/{cover_face_id}/crop`) with initial letter fallback.
+   - **Display Name**: Bold title with ellipsis truncation for overflow protection.
+   - **VIP Star Indicator**: Golden star icon for Close Ones (`is_close_one`).
+   - **Relationship Pill Badge**: Capsule badge (`Family`, `Friends`, etc.) styled with `var(--accent-glow)` and `var(--accent-primary)`.
+   - **Photo Count Badge**: Subtle count badge indicating confirmed photos.
+4. **Keyboard & Selection Navigation**:
+   - `ArrowDown` and `ArrowUp` cycle through suggestions with smooth `var(--glass-pill-bg)` highlight.
+   - `Enter` selects the highlighted suggestion and auto-populates the person's name, relationship dropdown, and VIP star.
+   - `Escape` or clicking outside seamlessly dismisses the popover.
+   - Integrated animated `ChevronDown` button inside the input to easily toggle the suggestion list on demand.
+
+### Functional Decision Points & Rationale
+- **Custom React Popover vs. Native `<datalist>`**:
+  - *Problem*: Native HTML5 `<datalist>` popups are rendered in the browser's shadow DOM and cannot be targeted or styled by CSS. On Windows WebView2, it renders as a fixed dark grey box with an awkward triangle pointer, completely ignoring theme switches and application design tokens.
+  - *Decision*: Fully eliminated `<datalist>` in favor of a customized React autocomplete component.
+  - *Rationale*: Guarantees perfect theme cohesion across both Dark and Light modes, enables rich multimedia presentation (face avatars, relationship pills, VIP stars), and provides smooth keyboard interaction.
+- **Outside Click Handling via Ref vs. Timeout-Based onBlur**:
+  - *Problem*: Relying on `setTimeout` in `onBlur` often introduces race conditions with mouse selection clicks or unexpected focus traps.
+  - *Decision*: Implemented `wrapperRef` with a document `mousedown` event listener and `e.preventDefault()` on suggestion `onMouseDown`.
+  - *Rationale*: Completely prevents race conditions between clicking a suggestion and the input losing focus.
+
+### Technical Touchpoints
+- `src/components/PeopleView.tsx`:
+  - Created `ClusterNameAutocomplete` component with keyboard navigation, click-outside listener, and dynamic search scoring.
+  - Removed native `<datalist id="existing-people-datalist">`.
+  - Replaced native `<input list="existing-people-datalist" ... />` with `<ClusterNameAutocomplete ... />` across cluster tagging cards.
+- `engine/tests/test_people.py`: All 10 backend people unit tests verified passing.
+
+### State & Lifecycle Impact
+- Zero database changes or backend API changes required.
+- Zero TypeScript compiler errors (`npm run build` in 9.77s).
+- Flawless visual consistency across dark and light desktop themes.
+
+
 
 
