@@ -74,6 +74,323 @@ export interface PeopleViewProps {
   onToggleFavorite?: (photoId: number) => void;
 }
 
+interface ClusterNameAutocompleteProps {
+  value: string;
+  people: PersonItem[];
+  onChange: (name: string) => void;
+  onSelectPerson: (person: PersonItem) => void;
+  onSubmit: () => void;
+}
+
+const ClusterNameAutocomplete: React.FC<ClusterNameAutocompleteProps> = ({
+  value,
+  people,
+  onChange,
+  onSelectPerson,
+  onSubmit,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isOpen]);
+
+  // Compute matched suggestions
+  const filtered = useMemo(() => {
+    const q = value.trim().toLowerCase();
+    if (!q) {
+      return [...people]
+        .sort((a, b) => (b.is_close_one ? 1 : 0) - (a.is_close_one ? 1 : 0) || b.confirmed_count - a.confirmed_count)
+        .slice(0, 8);
+    }
+    return people
+      .filter((p) => p.name.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const aPrefix = a.name.toLowerCase().startsWith(q) ? 1 : 0;
+        const bPrefix = b.name.toLowerCase().startsWith(q) ? 1 : 0;
+        if (aPrefix !== bPrefix) return bPrefix - aPrefix;
+        return (b.is_close_one ? 1 : 0) - (a.is_close_one ? 1 : 0) || b.confirmed_count - a.confirmed_count;
+      })
+      .slice(0, 8);
+  }, [people, value]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!isOpen) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setIsOpen(true);
+      } else if (e.key === "Enter") {
+        onSubmit();
+      }
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (prev < filtered.length - 1 ? prev + 1 : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : filtered.length - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightedIndex >= 0 && highlightedIndex < filtered.length) {
+        onSelectPerson(filtered[highlightedIndex]);
+        setIsOpen(false);
+      } else {
+        setIsOpen(false);
+        onSubmit();
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setIsOpen(false);
+    }
+  };
+
+  return (
+    <div ref={wrapperRef} style={{ position: "relative", flex: 1 }}>
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder="Enter person name (e.g. Maya, David)..."
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setIsOpen(true);
+          setHighlightedIndex(-1);
+        }}
+        onFocus={() => {
+          if (people.length > 0) setIsOpen(true);
+        }}
+        onKeyDown={handleKeyDown}
+        style={{
+          width: "100%",
+          padding: "9px 32px 9px 12px",
+          borderRadius: "var(--radius-sm)",
+          backgroundColor: "var(--bg-sidebar)",
+          border: "1px solid var(--border-subtle)",
+          color: "var(--text-primary)",
+          fontSize: "12px",
+          outline: "none",
+          transition: "border-color 0.15s ease",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = "var(--border-highlight)";
+        }}
+        onMouseLeave={(e) => {
+          if (document.activeElement !== e.currentTarget) {
+            e.currentTarget.style.borderColor = "var(--border-subtle)";
+          }
+        }}
+      />
+
+      {people.length > 0 && (
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => {
+            setIsOpen(!isOpen);
+            if (!isOpen) inputRef.current?.focus();
+          }}
+          title={isOpen ? "Close suggestions" : "Show existing people"}
+          style={{
+            position: "absolute",
+            right: "8px",
+            top: "50%",
+            transform: "translateY(-50%)",
+            background: "none",
+            border: "none",
+            padding: "4px",
+            color: "var(--text-muted)",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <ChevronDown
+            size={14}
+            style={{
+              transform: isOpen ? "rotate(180deg)" : "none",
+              transition: "transform 0.15s ease",
+              color: isOpen ? "var(--accent-primary)" : "var(--text-muted)",
+            }}
+          />
+        </button>
+      )}
+
+      {/* Dual-Theme Frosted Liquid Glass Dropdown Popover */}
+      {isOpen && filtered.length > 0 && (
+        <div
+          className="glass-panel"
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: 0,
+            right: 0,
+            zIndex: 9999,
+            backgroundColor: "var(--glass-surface)",
+            backdropFilter: "blur(24px)",
+            WebkitBackdropFilter: "blur(24px)",
+            border: "1px solid var(--glass-border)",
+            borderRadius: "var(--radius-md)",
+            boxShadow: "0 14px 34px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.08)",
+            maxHeight: "240px",
+            overflowY: "auto",
+            padding: "5px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "2px",
+          }}
+        >
+          <div
+            style={{
+              padding: "4px 8px 6px",
+              fontSize: "10px",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              color: "var(--text-muted)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              borderBottom: "1px solid var(--border-subtle)",
+              marginBottom: "3px",
+            }}
+          >
+            <span>Existing People</span>
+            <span>{filtered.length} found</span>
+          </div>
+
+          {filtered.map((person, idx) => {
+            const isHighlighted = idx === highlightedIndex;
+            return (
+              <div
+                key={person.id}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onSelectPerson(person);
+                  setIsOpen(false);
+                }}
+                onMouseEnter={() => setHighlightedIndex(idx)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "6px 8px",
+                  borderRadius: "var(--radius-sm)",
+                  cursor: "pointer",
+                  backgroundColor: isHighlighted ? "var(--glass-pill-bg)" : "transparent",
+                  transition: "background-color 0.12s ease",
+                  gap: "10px",
+                }}
+              >
+                {/* Avatar + Name */}
+                <div style={{ display: "flex", alignItems: "center", gap: "9px", minWidth: 0, flex: 1 }}>
+                  <div
+                    style={{
+                      width: "28px",
+                      height: "28px",
+                      borderRadius: "50%",
+                      overflow: "hidden",
+                      backgroundColor: "var(--bg-surface-elevated)",
+                      border: "1px solid var(--border-subtle)",
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "var(--accent-primary)",
+                    }}
+                  >
+                    {person.cover_face_id ? (
+                      <img
+                        src={`${API_BASE}/people/faces/${person.cover_face_id}/crop`}
+                        alt={person.name}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        onError={(e) => {
+                          (e.currentTarget as HTMLElement).style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      person.name.charAt(0).toUpperCase()
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        color: "var(--text-primary)",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {person.name}
+                    </span>
+                    {person.is_close_one && (
+                      <Star
+                        size={12}
+                        fill="var(--accent-warning)"
+                        color="var(--accent-warning)"
+                        style={{ flexShrink: 0 }}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Badges: Relationship Pill + Photo Count */}
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                  {person.relationship_type && (
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: 600,
+                        color: "var(--accent-primary)",
+                        backgroundColor: "var(--accent-glow)",
+                        padding: "2px 8px",
+                        borderRadius: "var(--radius-full)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {person.relationship_type}
+                    </span>
+                  )}
+                  {person.confirmed_count > 0 && (
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        color: "var(--text-muted)",
+                        whiteSpace: "nowrap",
+                        fontFamily: "var(--font-mono)",
+                      }}
+                    >
+                      {person.confirmed_count} {person.confirmed_count === 1 ? "photo" : "photos"}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const PeopleView: React.FC<PeopleViewProps> = ({
   onPhotoClick,
   onToggleFavorite,
@@ -1803,14 +2120,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
             </div>
           )}
 
-          {/* Autocomplete Datalist for Recognized People */}
-          <datalist id="existing-people-datalist">
-            {people.map((p) => (
-              <option key={p.id} value={p.name}>
-                {p.relationship_type ? `${p.relationship_type}` : ""}
-              </option>
-            ))}
-          </datalist>
+
 
           {/* Section 1: Recognized People (Compact Single Horizontal Shelf) */}
           <div>
@@ -2238,25 +2548,18 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                       {/* Inputs: Name with Autocomplete, Relationship Selector, Close One Toggle */}
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                         <div style={{ display: "flex", gap: "8px" }}>
-                          <input
-                            type="text"
-                            list="existing-people-datalist"
-                            placeholder="Enter person name (e.g. Maya, David)..."
+                          <ClusterNameAutocomplete
                             value={currentName}
-                            onChange={(e) => handleNameChange(cluster.cluster_id, e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleTagCluster(cluster);
+                            people={people}
+                            onChange={(name) => handleNameChange(cluster.cluster_id, name)}
+                            onSelectPerson={(person) => {
+                              handleNameChange(cluster.cluster_id, person.name);
+                              if (person.relationship_type) {
+                                setTagRelationships((prev) => ({ ...prev, [cluster.cluster_id]: person.relationship_type || "Friends" }));
+                              }
+                              setTagCloseOnes((prev) => ({ ...prev, [cluster.cluster_id]: person.is_close_one }));
                             }}
-                            style={{
-                              flex: 1,
-                              padding: "9px 12px",
-                              borderRadius: "var(--radius-sm)",
-                              backgroundColor: "var(--bg-sidebar)",
-                              border: "1px solid var(--border-subtle)",
-                              color: "var(--text-primary)",
-                              fontSize: "12px",
-                              outline: "none",
-                            }}
+                            onSubmit={() => handleTagCluster(cluster)}
                           />
 
                           {/* Relationship Selector */}
