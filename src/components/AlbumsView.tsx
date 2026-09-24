@@ -100,6 +100,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   const [libraryPhotos, setLibraryPhotos] = useState<PhotoItem[]>([]);
   const [pickerSelectedIds, setPickerSelectedIds] = useState<Set<number>>(new Set());
   const [isAddingPhotos, setIsAddingPhotos] = useState(false);
+  const [directImportCount, setDirectImportCount] = useState<number | null>(null);
 
   // Memoized selectors for selection dock
   const selectedPhotosList = useMemo(() => {
@@ -554,7 +555,8 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   const handleDirectImportFiles = async (filePaths: string[]) => {
     if (!activeAlbumId || filePaths.length === 0 || isAddingPhotos) return;
     setIsAddingPhotos(true);
-    showToast(`Importing ${filePaths.length} photo(s) directly to album...`, "info");
+    setDirectImportCount(filePaths.length);
+    showToast(`Importing ${filePaths.length} photo(s) directly into "${activeAlbumMeta?.name}"...`, "info");
     try {
       const res = await fetch("http://127.0.0.1:8000/api/photos/import", {
         method: "POST",
@@ -568,8 +570,9 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
 
       if (res.ok) {
         const data = await res.json();
-        const count = data.imported || filePaths.length;
+        const count = data.imported ?? filePaths.length;
         showToast(`Imported ${count} photo(s) directly into "${activeAlbumMeta?.name}"!`, "success");
+        window.dispatchEvent(new CustomEvent("photos-changed", { detail: { action: "imported", albumId: activeAlbumId } }));
         setIsPhotoPickerOpen(false);
         if (activeAlbumMeta) {
           openAlbumDetail(activeAlbumId, activeAlbumMeta);
@@ -583,6 +586,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
       showToast("Error importing photos to album", "warning");
     } finally {
       setIsAddingPhotos(false);
+      setDirectImportCount(null);
     }
   };
 
@@ -1539,54 +1543,143 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                 }}
               >
                 <div>
-                  <h3 style={{ fontSize: "16px", fontWeight: 700, margin: 0 }}>Add Photos to {activeAlbumMeta.name}</h3>
+                  <h3 style={{ fontSize: "16px", fontWeight: 700, margin: 0 }}>
+                    {isAddingPhotos && directImportCount !== null
+                      ? `Importing to ${activeAlbumMeta.name}...`
+                      : `Add Photos to ${activeAlbumMeta.name}`}
+                  </h3>
                   <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: "2px 0 0" }}>
-                    Select photos from your library ({pickerSelectedIds.size} selected)
+                    {isAddingPhotos && directImportCount !== null
+                      ? `Processing ${directImportCount} item(s) into album`
+                      : `Select photos from your library (${pickerSelectedIds.size} selected)`}
                   </p>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <button
-                    onClick={handleImportDirectToAlbum}
-                    disabled={isAddingPhotos}
-                    className="clickable"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      padding: "6px 14px",
-                      borderRadius: "var(--radius-full)",
-                      backgroundColor: "var(--glass-action-bg, rgba(255, 255, 255, 0.08))",
-                      border: "1px solid var(--glass-action-border, rgba(255, 255, 255, 0.15))",
-                      color: "var(--text-primary)",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      cursor: isAddingPhotos ? "not-allowed" : "pointer",
-                      transition: "all 0.15s ease",
-                    }}
-                    title="Select photos from your device to import directly into this album"
-                  >
-                    <Download size={13} style={{ transform: "rotate(180deg)" }} />
-                    <span>Import New Photos</span>
-                  </button>
-                  <button
-                    onClick={() => setIsPhotoPickerOpen(false)}
-                    style={{
-                      background: "transparent",
-                      border: "none",
-                      color: "var(--text-muted)",
-                      cursor: "pointer",
-                      padding: "4px",
-                    }}
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
+                {!isAddingPhotos && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <button
+                      onClick={handleImportDirectToAlbum}
+                      disabled={isAddingPhotos}
+                      className="clickable"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "6px 14px",
+                        borderRadius: "var(--radius-full)",
+                        backgroundColor: "var(--glass-action-bg, rgba(255, 255, 255, 0.08))",
+                        border: "1px solid var(--glass-action-border, rgba(255, 255, 255, 0.15))",
+                        color: "var(--text-primary)",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: isAddingPhotos ? "not-allowed" : "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                      title="Select photos from your device to import directly into this album"
+                    >
+                      <Download size={13} style={{ transform: "rotate(180deg)" }} />
+                      <span>Import New Photos</span>
+                    </button>
+                    <button
+                      onClick={() => setIsPhotoPickerOpen(false)}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--text-muted)",
+                        cursor: "pointer",
+                        padding: "4px",
+                      }}
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {/* Photos Grid */}
-              <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
-                {libraryPhotos.length === 0 ? (
-                  <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
+              {/* Photos Grid or Active Import Progress */}
+              <div style={{ flex: 1, overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column" }}>
+                {isAddingPhotos && directImportCount !== null ? (
+                  <div
+                    style={{
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "48px 24px",
+                      textAlign: "center",
+                      gap: "20px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: "relative",
+                        width: "60px",
+                        height: "60px",
+                        borderRadius: "50%",
+                        backgroundColor: "var(--glass-action-bg, rgba(255, 255, 255, 0.06))",
+                        border: "1px solid var(--glass-action-border, rgba(255, 255, 255, 0.15))",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        boxShadow: "0 0 24px rgba(59, 130, 246, 0.25)",
+                      }}
+                    >
+                      <Loader2
+                        size={28}
+                        className="animate-spin"
+                        style={{ color: "var(--accent-primary, #3b82f6)" }}
+                      />
+                    </div>
+
+                    <div style={{ maxWidth: "420px" }}>
+                      <h4
+                        style={{
+                          fontSize: "16px",
+                          fontWeight: 700,
+                          color: "var(--text-primary)",
+                          margin: "0 0 8px",
+                          letterSpacing: "-0.01em",
+                        }}
+                      >
+                        Importing {directImportCount} item{directImportCount === 1 ? "" : "s"} into "{activeAlbumMeta.name}"...
+                      </h4>
+                      <p
+                        style={{
+                          fontSize: "12px",
+                          color: "var(--text-secondary)",
+                          lineHeight: "1.6",
+                          margin: 0,
+                        }}
+                      >
+                        Copying files to your private library, extracting camera details, and generating high-resolution thumbnails. Please keep this open.
+                      </p>
+                    </div>
+
+                    {/* Animated indeterminate liquid glass progress bar */}
+                    <div
+                      style={{
+                        width: "280px",
+                        height: "6px",
+                        borderRadius: "var(--radius-full)",
+                        backgroundColor: "var(--bg-surface-elevated, rgba(255, 255, 255, 0.08))",
+                        overflow: "hidden",
+                        position: "relative",
+                      }}
+                    >
+                      <div
+                        className="progress-bar-animated"
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          width: "50%",
+                          background: "linear-gradient(90deg, transparent, var(--accent-primary, #3b82f6), transparent)",
+                          borderRadius: "var(--radius-full)",
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : libraryPhotos.length === 0 ? (
+                  <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)", margin: "auto" }}>
                     All photos in your library are already in this album.
                   </div>
                 ) : (
@@ -1649,30 +1742,37 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   borderTop: "1px solid var(--border-subtle)",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "flex-end",
+                  justifyContent: isAddingPhotos && directImportCount !== null ? "center" : "flex-end",
                   gap: "10px",
                   backgroundColor: "var(--bg-sidebar)",
                 }}
               >
-                <button
-                  onClick={() => setIsPhotoPickerOpen(false)}
-                  style={{
-                    padding: "8px 16px",
-                    borderRadius: "var(--radius-sm)",
-                    backgroundColor: "transparent",
-                    border: "1px solid var(--border-subtle)",
-                    color: "var(--text-secondary)",
-                    fontSize: "12px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAddSelectedToAlbum}
-                  disabled={pickerSelectedIds.size === 0 || isAddingPhotos}
-                  className="clickable"
-                  style={{
+                {isAddingPhotos && directImportCount !== null ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "var(--text-muted)" }}>
+                    <Loader2 size={13} className="animate-spin" />
+                    <span>Processing media import batch...</span>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setIsPhotoPickerOpen(false)}
+                      style={{
+                        padding: "8px 16px",
+                        borderRadius: "var(--radius-sm)",
+                        backgroundColor: "transparent",
+                        border: "1px solid var(--border-subtle)",
+                        color: "var(--text-secondary)",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleAddSelectedToAlbum}
+                      disabled={pickerSelectedIds.size === 0 || isAddingPhotos}
+                      className="clickable"
+                      style={{
                     display: "flex",
                     alignItems: "center",
                     gap: "6px",
@@ -1690,10 +1790,12 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   {isAddingPhotos ? <Loader2 size={13} className="spin" /> : <Plus size={14} />}
                   Add {pickerSelectedIds.size} {pickerSelectedIds.size === 1 ? "Photo" : "Photos"}
                 </button>
-              </div>
-            </div>
+              </>
+            )}
           </div>
-        )}
+        </div>
+      </div>
+    )}
 
         {/* Floating Jira-Style Bottom Batch Action Dock for Album */}
         <div

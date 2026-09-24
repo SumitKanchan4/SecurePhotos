@@ -418,7 +418,7 @@ async def test_album_lock_and_unlock_workflow():
             assert test_file.read_bytes() == b"TEST_ALBUM_IMAGE_DATA_1234567890"
 
             # Verify restored photo and album immediately reappear in public views
-            public_photos_restored = await client.get("/api/photos")
+            public_photos_restored = await client.get("/api/photos?limit=1000")
             assert any(p["id"] == photo_id for p in public_photos_restored.json())
 
             public_albums_restored = await client.get("/api/albums")

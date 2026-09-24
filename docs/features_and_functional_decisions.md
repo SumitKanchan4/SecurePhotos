@@ -3286,4 +3286,46 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - When all media is removed or encrypted, `PeopleView` cleanly displays the empty state.
 - Restoring photos from Trash restores the person profile with zero manual intervention.
 
+---
+
+## 67. In-Album Direct Ingestion Visual Progress Feedback & Pytest Vault Configuration Isolation
+
+### Functionality Overview
+1. **In-Album Direct Ingestion Visual Progress Modal**:
+   - In `AlbumsView.tsx`, when users add photos or videos to an existing album via the Photo Picker modal ("Import New Photos" button), importing large batches (e.g., 300+ items) previously left the modal body displaying static text ("All photos in your library are already in this album"), creating the false impression of an application hang or freeze.
+   - Now, upon file selection, the modal body immediately transitions into an active, frosted liquid-glass progress card:
+     - Prominent glowing circular badge with animated spinning `<Loader2 />`.
+     - Human-centric, reassuring progress title: `Importing {N} items into "{album_name}"...`
+     - Helpful copy clarifying that files are being securely copied into private storage, metadata extracted, and high-resolution Retina thumbnails generated.
+     - Smooth animated indeterminate liquid-glass gradient progress bar (`.progress-bar-animated`).
+   - Modal action buttons (Close X, Cancel, and Add Photos) are disabled and hidden during ingestion to prevent accidental user cancellation or duplicate submissions.
+   - On completion, `window.dispatchEvent(new CustomEvent("photos-changed", ...))` is fired so that the album grid, timeline, and library counters update immediately without requiring manual reload.
+2. **Pytest Vault Configuration Isolation Fixture**:
+   - Resolved the recurring defect where running automated backend tests wiped the user's active private vault configuration, requiring them to repeatedly set up their vault password and recovery phrases after development iterations.
+   - Added an autouse pytest fixture `isolate_vault_configs_during_tests` in `engine/tests/conftest.py` that automatically snapshots all records from `vault_configs` before tests execute.
+   - In a guaranteed `finally:` block, it deletes temporary test configurations and restores the original user's `vault_configs` rows verbatim.
+   - If no prior vault configuration existed, the fixture cleanly resets any test-injected configurations to keep the database in a pristine state.
+3. **Pagination-Resilient Vault Tests**:
+   - Updated `test_album_lock_and_unlock_workflow` in `engine/tests/test_vault.py` to query `/api/photos?limit=1000` so that library scale (>100 photos) does not clip historical test media from the first page of results.
+
+### Functional Decision Points & Rationale
+- **In-Modal Progress Replacement vs. Global Blocking Overlay**:
+  - *Decision*: Swap the internal content of the existing Photo Picker modal into an active progress view rather than spawning an external full-screen dialog or floating toast.
+  - *Rationale*: Keeps the interaction contextually bound to the album being populated, avoids jarring modal stacking, and clearly indicates to the user that their current action is actively processing.
+- **Teardown Restoration via Pytest Autouse Fixture vs. Mocking**:
+  - *Decision*: Use an autouse SQLite database snapshot-and-restore fixture in `conftest.py` rather than mocking the database connection.
+  - *Rationale*: Integration tests in `test_vault.py` perform real SQLite cryptographic transactions (Argon2id KDF, AES-256-GCM encryption/decryption, trigger validation). Real database execution ensures end-to-end cryptographic integrity while the fixture guarantees the user's real master vault key is never lost.
+
+### Technical Touchpoints
+- `src/components/AlbumsView.tsx`: Added `directImportCount` state, in-modal progress card with liquid-glass loader, input controls locking during import, and `photos-changed` event dispatch.
+- `engine/tests/conftest.py`: Added autouse fixture `isolate_vault_configs_during_tests` with pre-test snapshot and post-test teardown restoration.
+- `engine/tests/test_vault.py`: Updated `test_album_lock_and_unlock_workflow` with `?limit=1000` to ensure pagination resilience in large media libraries.
+- `docs/features_and_functional_decisions.md`: Documented Section 67.
+
+### State & Lifecycle Impact
+- Direct in-album media ingestion provides instant visual feedback for batches of any size.
+- User vault setup and Master Vault Key (MVK) credentials survive all automated test runs without data loss.
+- 10/10 vault tests passing; frontend TypeScript compiles with zero errors (`tsc && vite build` passed).
+
+
 
