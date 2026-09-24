@@ -544,6 +544,17 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
         # Smart album parity: System smart albums like Collages cannot be favorited
         await conn.execute("UPDATE albums SET is_favorite = 0 WHERE LOWER(name) = 'collages';")
 
+        # Self-healing: Normalize legacy relationship types to streamlined 5 categories
+        await conn.execute("""
+            UPDATE persons 
+            SET relationship_type = 'Family' 
+            WHERE relationship_type IN ('Spouse', 'Child', 'Parent', 'Sibling', 'Extended Family', 'Wife', 'Husband', 'Partner', 'Son', 'Daughter', 'Mother', 'Father', 'Brother', 'Sister');
+        """)
+        await conn.execute("UPDATE persons SET relationship_type = 'Friends' WHERE relationship_type = 'Friend';")
+        await conn.execute("UPDATE persons SET relationship_type = 'Relatives' WHERE relationship_type = 'Relative';")
+        await conn.execute("UPDATE persons SET relationship_type = 'Colleagues' WHERE relationship_type = 'Colleague';")
+        await conn.execute("UPDATE persons SET relationship_type = 'Acquaintances' WHERE relationship_type = 'Acquaintance';")
+
         # Self-healing: Purge orphaned persons with no associated face records in the database
         await conn.execute("DELETE FROM persons WHERE id NOT IN (SELECT DISTINCT person_id FROM faces WHERE person_id IS NOT NULL);")
 

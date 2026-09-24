@@ -46,7 +46,7 @@ class TagClusterRequest(BaseModel):
     """Request payload to tag an unsupervised cluster with an authentic identity."""
     cluster_id: str
     name: str
-    relationship_type: Optional[str] = "Friend"
+    relationship_type: Optional[str] = "Friends"
     is_close_one: Optional[bool] = False
 
 
@@ -334,10 +334,10 @@ async def tag_medoid_cluster(payload: TagClusterRequest) -> dict:
             existing = await cursor.fetchone()
 
         close_relationships = {
-            "Spouse", "Child", "Parent", "Sibling", "Family", "Extended Family",
+            "Family", "Spouse", "Child", "Parent", "Sibling", "Extended Family",
             "Wife", "Husband", "Partner", "Son", "Daughter", "Mother", "Father", "Brother", "Sister",
         }
-        new_rel = (payload.relationship_type or "Friend").strip()
+        new_rel = (payload.relationship_type or "Friends").strip()
         new_close = bool(payload.is_close_one)
         if new_rel in close_relationships:
             new_close = True

@@ -31,38 +31,39 @@ import { AlbumSlideshowModal } from "./AlbumSlideshowModal";
 const API_BASE = "http://127.0.0.1:8000/api";
 
 export const RELATIONSHIP_OPTIONS = [
-  "Spouse",
-  "Child",
-  "Parent",
-  "Sibling",
   "Family",
-  "Friend",
-  "Relative",
-  "Colleague",
-  "Acquaintance",
+  "Friends",
+  "Relatives",
+  "Colleagues",
+  "Acquaintances",
 ];
 
-// Priority hierarchy for organizing and surfacing recognized people (Friends=5, Relatives=4)
+// Priority hierarchy for organizing and surfacing recognized people (Family=10, Friends=8, Relatives=6, Colleagues=4, Acquaintances=2)
 export const RELATION_PRIORITY: Record<string, number> = {
+  "Family": 10,
+  "Friends": 8,
+  "Relatives": 6,
+  "Colleagues": 4,
+  "Acquaintances": 2,
+  // Backwards compatibility fallbacks
   "Spouse": 10,
-  "Child": 9,
-  "Parent": 8,
-  "Sibling": 7,
-  "Family": 6,
+  "Child": 10,
+  "Parent": 10,
+  "Sibling": 10,
   "Extended Family": 6,
-  "Friend": 5,
-  "Relative": 4,
-  "Colleague": 3,
+  "Friend": 8,
+  "Relative": 6,
+  "Colleague": 4,
   "Acquaintance": 2,
 };
 
 // Relationships that represent immediate family or spouse (VIP / Close One by default)
 const CLOSE_RELATIONSHIPS = new Set([
+  "Family",
   "Spouse",
   "Child",
   "Parent",
   "Sibling",
-  "Family",
   "Extended Family",
   // Backwards-compatible aliases
   "Wife", "Husband", "Partner", "Son", "Daughter", "Mother", "Father", "Brother", "Sister",
@@ -240,7 +241,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
     const matched = people.find((p) => p.name.trim().toLowerCase() === name.trim().toLowerCase());
     if (matched) {
       if (matched.relationship_type) {
-        setTagRelationships((prev) => ({ ...prev, [clusterId]: matched.relationship_type || "Friend" }));
+        setTagRelationships((prev) => ({ ...prev, [clusterId]: matched.relationship_type || "Friends" }));
       }
       setTagCloseOnes((prev) => ({ ...prev, [clusterId]: matched.is_close_one }));
     }
@@ -329,7 +330,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
     const name = (tagNames[cluster.cluster_id] || "").trim();
     if (!name) return;
 
-    const finalRel = tagRelationships[cluster.cluster_id] || "Friend";
+    const finalRel = tagRelationships[cluster.cluster_id] || "Friends";
 
     setSubmittingCluster(cluster.cluster_id);
     try {
@@ -444,7 +445,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
     }
   };
 
-  // Sort recognized people by relationship priority (Friends=5, Relatives=4), then photo count, then name
+  // Sort recognized people by relationship priority (Family=10, Friends=8, Relatives=6), then photo count, then name
   const sortedPeople = [...people].sort((a, b) => {
     const prioA = RELATION_PRIORITY[a.relationship_type || ""] || (a.is_close_one ? 5.5 : 1);
     const prioB = RELATION_PRIORITY[b.relationship_type || ""] || (b.is_close_one ? 5.5 : 1);
@@ -786,7 +787,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                   }}
                 >
                   <Tag size={13} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
-                  <span>{selectedPerson.relationship_type || "Friend"}</span>
+                  <span>{selectedPerson.relationship_type || "Friends"}</span>
                   <ChevronDown size={12} style={{ opacity: 0.7, flexShrink: 0 }} />
                 </button>
 
@@ -810,7 +811,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                     }}
                   >
                     {RELATIONSHIP_OPTIONS.map((rel) => {
-                      const isSelected = (selectedPerson.relationship_type || "Friend") === rel;
+                      const isSelected = (selectedPerson.relationship_type || "Friends") === rel;
                       return (
                         <button
                           key={rel}
@@ -1920,7 +1921,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                       cursor: "pointer",
                       position: "relative",
                     }}
-                    title={`${person.name} (${person.relationship_type || "Friend"}) • ${person.confirmed_count} photos`}
+                    title={`${person.name} (${person.relationship_type || "Friends"}) • ${person.confirmed_count} photos`}
                   >
                     {/* Rounded Circular Avatar */}
                     <div
@@ -2009,7 +2010,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                         marginTop: "1px",
                       }}
                     >
-                      {person.relationship_type || "Friend"}
+                      {person.relationship_type || "Friends"}
                     </div>
                   </div>
                 ))}
@@ -2104,7 +2105,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                 {unlabeledClusters.map((cluster) => {
                   const isSubmitting = submittingCluster === cluster.cluster_id;
                   const currentName = tagNames[cluster.cluster_id] || "";
-                  const currentRel = tagRelationships[cluster.cluster_id] || "Friend";
+                  const currentRel = tagRelationships[cluster.cluster_id] || "Friends";
                   const isClose = !!tagCloseOnes[cluster.cluster_id];
 
                   return (
@@ -2316,7 +2317,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                                 }}
                               >
                                 <Sparkles size={12} />
-                                <span>Existing person: <strong>{matched.name}</strong> ({matched.relationship_type || "Friend"}). Tagging will merge photos into their profile.</span>
+                                <span>Existing person: <strong>{matched.name}</strong> ({matched.relationship_type || "Friends"}). Tagging will merge photos into their profile.</span>
                               </div>
                             );
                           }
@@ -2653,7 +2654,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                       {/* In-Card Editable Relationship Dropdown */}
                       <div style={{ marginTop: "6px", width: "100%" }}>
                         <select
-                          value={person.relationship_type || "Friend"}
+                          value={person.relationship_type || "Friends"}
                           onChange={(e) => {
                             handleUpdatePerson(person.id, { relationship_type: e.target.value });
                           }}

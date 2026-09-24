@@ -23,8 +23,8 @@ async def create_dummy_photo(tmp_path: Path, filename: str) -> int:
         """
         INSERT INTO photos (
             filename, filepath, file_hash, file_size, mime_type, width, height,
-            is_encrypted, is_optimized, is_enhanced
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, 1)
+            taken_at, is_encrypted, is_optimized, is_enhanced
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, '2099-01-01 00:00:00', 0, 1, 1)
         RETURNING id;
         """,
         (filename, str(img_path), file_hash, img_path.stat().st_size, "image/jpeg", 400, 300),

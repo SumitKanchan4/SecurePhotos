@@ -3444,6 +3444,57 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - All 12 combined people and album tests passing (`12 passed in 5.73s`).
 - Frontend production bundle built cleanly in 4.97s with 0 errors.
 
+---
+
+## 70. Streamlined 5-Category Relationship Taxonomy & Automatic Profile Migration
+
+### Functionality Overview
+- **Streamlined Human-Centric Relationship Taxonomy**:
+  - Replaced the fragmented 9-option relationship list (`Spouse`, `Child`, `Parent`, `Sibling`, `Family`, `Friend`, `Relative`, `Colleague`, `Acquaintance`) with strictly **5 intuitive categories**:
+    1. **`Family`**: Immediate household circle (spouse, children, parents, siblings, self-tagging).
+    2. **`Friends`**: Social and close personal connections.
+    3. **`Relatives`**: Extended family members (aunts, uncles, cousins, grandparents, in-laws).
+    4. **`Colleagues`**: Professional peers and workplace connections.
+    5. **`Acquaintances`**: Casual or occasional acquaintances.
+  - Tagging oneself: Users tag their own photos as `Family` with the Close One (VIP Star) enabled, seamlessly integrating themselves into household memories without requiring a dedicated "Me" category.
+- **Automated Self-Healing Database Migration**:
+  - Automatically migrates existing database profiles on startup in `engine/database.py` (`run_migrations()`):
+    - `Spouse`, `Child`, `Parent`, `Sibling`, `Extended Family`, and legacy gendered/familial aliases are consolidated to `Family`.
+    - `Friend` $\rightarrow$ `Friends`.
+    - `Relative` $\rightarrow$ `Relatives`.
+    - `Colleague` $\rightarrow$ `Colleagues`.
+    - `Acquaintance` $\rightarrow$ `Acquaintances`.
+  - Existing user profiles (e.g. Akriti, Kiaan, Siya, Inaaksh) are 100% updated to `Family` while retaining their confirmed photo links, face vectors, and VIP star status (`is_close_one = 1`).
+- **Synchronized UI Controls & Priority Hierarchy**:
+  - `src/components/PeopleView.tsx` updated with the new 5-option dropdown for cluster tagging, person metadata editing, and filter shelves.
+  - Default relationship fallback updated from `"Friend"` to `"Friends"`.
+  - Hierarchy priority calibrated: `Family (10)` > `Friends (8)` > `Relatives (6)` > `Colleagues (4)` > `Acquaintances (2)`.
+  - Automatic Close One (VIP Star) promotion preserved for any profile categorized as `Family`.
+
+### Functional Decision Points & Rationale
+- **Consolidation of Immediate Family vs. Granular Kinship Roles**:
+  - *Decision*: Consolidate `Spouse`, `Child`, `Parent`, and `Sibling` into a unified `Family` category.
+  - *Rationale*: Granular familial roles added unnecessary friction during tagging ("Is this person a sibling or extended relative?") without providing distinct filtering or surfacing value. A unified `Family` category clearly captures the nuclear household while the VIP Star (`is_close_one`) distinguishes the closest individuals.
+- **Plural Category Naming (`Friends`, `Relatives`, `Colleagues`, `Acquaintances`)**:
+  - *Decision*: Standardize on plural terminology for peer/social groups.
+  - *Rationale*: Reflects natural user mental models when browsing circles ("My Friends", "My Relatives", "My Colleagues").
+- **Exclusion of Dedicated "Me" Relationship Option**:
+  - *Decision*: Rely on `Family` + Close One (VIP Star) for user self-tagging rather than creating an artificial `"Me"` relationship type.
+  - *Rationale*: A person's relationship type represents their social affinity bucket. Tagging oneself as `Family` with VIP Star ensures the user's photos naturally cluster with family memories and highlights without introducing schema branching or special case logic.
+
+### Technical Touchpoints
+- `engine/database.py`: Embedded self-healing SQL migration queries in `run_migrations()` to normalize legacy relationship types into the 5 categories on startup.
+- `engine/api/people.py`: Updated `TagClusterRequest` default to `"Friends"`, ensuring API calls default to the standardized plural term.
+- `src/components/PeopleView.tsx`: Updated `RELATIONSHIP_OPTIONS`, `RELATION_PRIORITY`, and `CLOSE_RELATIONSHIPS` sets, along with UI fallbacks across dropdowns, tags, and cluster cards.
+- `engine/tests/test_people.py`: Added automated test `test_streamlined_relationship_taxonomy_and_migration` verifying the 5 categories, API patch updating, auto-VIP promotion for `Family`, and migration normalization.
+- `docs/features_and_functional_decisions.md`: Documented Section 70.
+
+### State & Lifecycle Impact
+- Zero database breakage or data loss; all existing person records safely normalized.
+- 10/10 backend people unit tests passing (`10 passed in 5.14s`).
+- Frontend production build passed cleanly (`npm run build` in 5.76s).
+
+
 
 
 

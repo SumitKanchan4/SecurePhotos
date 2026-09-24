@@ -554,3 +554,85 @@ async def test_face_inspection_and_management_lifecycle():
             await conn.close()
 
 
+@pytest.mark.asyncio
+async def test_streamlined_relationship_taxonomy_and_migration():
+    """Verify that relationship taxonomy supports the 5 categories and migrates legacy labels."""
+    from engine.database import run_migrations, get_db_connection
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        conn = await get_db_connection()
+        created_person_ids = []
+        created_face_ids = []
+        test_photo_id = None
+        try:
+            # 1. Insert a photo and dummy faces for testing
+            cur = await conn.execute(
+                """
+                INSERT INTO photos (filename, filepath, file_size, mime_type, width, height, is_encrypted)
+                VALUES ('dummy_taxonomy.jpg', 'dummy_taxonomy.jpg', 2048, 'image/jpeg', 100, 100, 0);
+                """
+            )
+            test_photo_id = cur.lastrowid
+
+            # Insert legacy persons: Spouse, Child, Friend, Relative, Colleague, Acquaintance
+            legacy_data = [
+                ("Legacy Spouse", "Spouse", 1),
+                ("Legacy Child", "Child", 1),
+                ("Legacy Friend", "Friend", 0),
+                ("Legacy Relative", "Relative", 0),
+                ("Legacy Colleague", "Colleague", 0),
+                ("Legacy Acquaintance", "Acquaintance", 0),
+            ]
+            for name, rel, close in legacy_data:
+                p_cur = await conn.execute(
+                    "INSERT INTO persons (name, relationship_type, is_close_one) VALUES (?, ?, ?);",
+                    (name, rel, close),
+                )
+                pid = p_cur.lastrowid
+                created_person_ids.append(pid)
+                # Associate face so self-healing doesn't purge them
+                f_cur = await conn.execute(
+                    "INSERT INTO faces (photo_id, person_id, cluster_id, box_x, box_y, box_w, box_h, quality_score, embedding) VALUES (?, ?, 'c_tax', 0.1, 0.1, 0.2, 0.2, 0.9, '[]');",
+                    (test_photo_id, pid),
+                )
+                fid = f_cur.lastrowid
+                created_face_ids.append(fid)
+
+            await conn.commit()
+
+            # Run migrations to execute self-healing normalization
+            await run_migrations()
+
+            # Verify migrated values in database
+            async with conn.execute("SELECT name, relationship_type FROM persons WHERE id IN ({})".format(",".join("?" * len(created_person_ids))), created_person_ids) as chk_cur:
+                rows = {r[0]: r[1] for r in await chk_cur.fetchall()}
+
+            assert rows["Legacy Spouse"] == "Family"
+            assert rows["Legacy Child"] == "Family"
+            assert rows["Legacy Friend"] == "Friends"
+            assert rows["Legacy Relative"] == "Relatives"
+            assert rows["Legacy Colleague"] == "Colleagues"
+            assert rows["Legacy Acquaintance"] == "Acquaintances"
+
+            # 2. Test updating a person to each of the 5 categories via API
+            test_pid = created_person_ids[0]
+            valid_categories = ["Family", "Friends", "Relatives", "Colleagues", "Acquaintances"]
+            for cat in valid_categories:
+                res = await client.patch(f"/api/people/{test_pid}", json={"relationship_type": cat})
+                assert res.status_code == 200
+                assert res.json()["relationship_type"] == cat
+                if cat == "Family":
+                    assert res.json()["is_close_one"] is True
+
+        finally:
+            for fid in created_face_ids:
+                await conn.execute("DELETE FROM faces WHERE id = ?;", (fid,))
+            for pid in created_person_ids:
+                await conn.execute("DELETE FROM persons WHERE id = ?;", (pid,))
+            if test_photo_id:
+                await conn.execute("DELETE FROM photos WHERE id = ?;", (test_photo_id,))
+            await conn.commit()
+            await conn.close()
+
+
+
