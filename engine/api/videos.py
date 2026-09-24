@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import os
 from pathlib import Path
+import subprocess
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
@@ -369,13 +371,60 @@ async def resume_video_queue_endpoint() -> Dict[str, Any]:
     return {"success": True, "status": "running"}
 
 
+def prune_video_preview_cache(max_bytes: int = 2 * 1024 * 1024 * 1024, target_dir: Optional[Path] = None) -> int:
+    """Prunes the video previews directory if total usage exceeds the LRU cache budget.
+    
+    Guarantees that cached web proxies never exceed the specified storage limit (default 2 GB),
+    evicting the least recently accessed (_web.mp4) files first down to 80% to avoid thrashing.
+    
+    Args:
+        max_bytes: Maximum total cache size in bytes (default 2 GB).
+        target_dir: Optional explicit previews directory (defaults to settings.previews_dir / 'videos').
+        
+    Returns:
+        Number of reclaimed bytes.
+    """
+    previews_dir = target_dir if target_dir is not None else (settings.previews_dir / "videos")
+    if not previews_dir.exists():
+        return 0
+
+    try:
+        files = [f for f in previews_dir.glob("*_web.mp4") if f.is_file()]
+        total_size = sum(f.stat().st_size for f in files)
+        if total_size <= max_bytes:
+            return 0
+
+        # Sort by access time (oldest first)
+        files.sort(key=lambda f: f.stat().st_atime)
+        target_size = int(max_bytes * 0.8)
+        reclaimed = 0
+
+        for f in files:
+            if total_size <= target_size:
+                break
+            try:
+                sz = f.stat().st_size
+                f.unlink(missing_ok=True)
+                total_size -= sz
+                reclaimed += sz
+                logger.info("Evicted video preview %s from LRU cache (%d bytes reclaimed)", f.name, sz)
+            except OSError as err:
+                logger.warning("Failed to evict preview file %s: %s", f.name, err)
+
+        return reclaimed
+    except Exception as err:
+        logger.warning("Error pruning video preview cache: %s", err)
+        return 0
+
+
 @router.get("/{photo_id}/stream")
 async def stream_video_endpoint(photo_id: int):
     """Streams video with universal web-browser playback compatibility.
     
     If the video is already H.264/AAC, streams directly with full byte-range support.
     If the video is HEVC/H.265 (common in Google Pixel & modern phones) or another
-    non-browser codec, automatically prepares and caches a faststart H.264 streaming proxy.
+    non-browser codec, automatically prepares and caches a faststart H.264 streaming proxy,
+    subject to a strict 2 GB LRU cache budget.
     """
     conn = await get_db_connection()
     try:
@@ -420,6 +469,11 @@ async def stream_video_endpoint(photo_id: int):
     preview_file = previews_dir / f"{photo_id}_web.mp4"
 
     if preview_file.exists() and preview_file.stat().st_size > 0:
+        try:
+            # Update access timestamp for LRU tracking
+            os.utime(str(preview_file), None)
+        except OSError:
+            pass
         return FileResponse(
             str(preview_file),
             media_type="video/mp4",
@@ -436,12 +490,15 @@ async def stream_video_endpoint(photo_id: int):
         )
 
     # On-the-fly ultrafast H.264 transcode with faststart for instant streaming
+    # Uses asyncio.to_thread with subprocess.run to guarantee Windows / Uvicorn compatibility
     temp_preview = preview_file.with_suffix(".tmp.mp4")
     cmd = [
         ffmpeg, "-y",
         "-i", str(src_file),
+        "-vf", "scale=trunc(iw*min(1\\,720/ih)/2)*2:trunc(ih*min(1\\,720/ih)/2)*2",
         "-c:v", "libx264",
         "-preset", "ultrafast",
+        "-tune", "fastdecode",
         "-crf", "24",
         "-pix_fmt", "yuv420p",
         "-c:a", "aac",
@@ -451,24 +508,23 @@ async def stream_video_endpoint(photo_id: int):
     ]
 
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        await proc.communicate()
-
-        if temp_preview.exists() and temp_preview.stat().st_size > 0:
+        res = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, timeout=120)
+        if res.returncode == 0 and temp_preview.exists() and temp_preview.stat().st_size > 0:
             if preview_file.exists():
                 preview_file.unlink()
             temp_preview.rename(preview_file)
+            prune_video_preview_cache()
             return FileResponse(
                 str(preview_file),
                 media_type="video/mp4",
                 headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"},
             )
+        else:
+            err_msg = res.stderr.decode("utf-8", errors="replace")[-400:] if res.stderr else "Unknown error"
+            logger.warning("FFmpeg transcode non-zero return %d for video %s: %s", res.returncode, photo_id, err_msg)
     except Exception as transcode_err:
         logger.error("Failed to generate web video preview for %s: %s", photo_id, transcode_err)
+    finally:
         if temp_preview.exists():
             temp_preview.unlink(missing_ok=True)
 

@@ -423,3 +423,36 @@ async def test_video_streaming_endpoint(tmp_path):
             await conn2.close()
 
 
+def test_video_preview_lru_pruning(tmp_path):
+    """Verifies that LRU preview cache pruning enforces storage limits and evicts oldest items first."""
+    from engine.api.videos import prune_video_preview_cache
+    import os
+
+    mock_video_previews = tmp_path / "videos"
+    mock_video_previews.mkdir(parents=True, exist_ok=True)
+
+    # Create 4 preview files of 1 MB each (total 4 MB)
+    p1 = mock_video_previews / "101_web.mp4"
+    p2 = mock_video_previews / "102_web.mp4"
+    p3 = mock_video_previews / "103_web.mp4"
+    p4 = mock_video_previews / "104_web.mp4"
+
+    one_mb = b"0" * (1024 * 1024)
+    for i, p in enumerate([p1, p2, p3, p4]):
+        p.write_bytes(one_mb)
+        # Set artificial access times: p1 is oldest, p4 is newest
+        os.utime(str(p), (1000 + i * 100, 1000 + i * 100))
+
+    # Total size = 4 MB. Prune with budget of 2.5 MB (target 80% = 2.0 MB)
+    reclaimed = prune_video_preview_cache(max_bytes=int(2.5 * 1024 * 1024), target_dir=mock_video_previews)
+    assert reclaimed >= 2 * 1024 * 1024
+
+    # Oldest (p1 and p2) should be evicted
+    assert not p1.exists()
+    assert not p2.exists()
+    # Newer (p3 and p4) should remain
+    assert p3.exists()
+    assert p4.exists()
+
+
+

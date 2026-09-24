@@ -913,7 +913,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   onLoadedMetadata={() => setIsPreviewLoaded(true)}
                   onLoadedData={() => setIsPreviewLoaded(true)}
                   onCanPlay={() => setIsPreviewLoaded(true)}
-                  onError={() => {
+                  onError={(e) => {
+                    const videoEl = e.currentTarget;
+                    console.warn("Video stream error for photo", currentPhoto.id, videoEl.error);
                     setPreviewHasError(true);
                     setIsPreviewLoaded(true);
                   }}
@@ -993,7 +995,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
               </div>
             )}
 
-            {/* Video Load Error Overlay */}
+            {/* Video Load Error Overlay with Retry */}
             {isVideo && previewHasError && (
               <div 
                 style={{
@@ -1002,23 +1004,48 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   flexDirection: "column",
                   alignItems: "center",
                   gap: "8px",
-                  padding: "16px 24px",
+                  padding: "20px 28px",
                   borderRadius: "var(--radius-lg)",
-                  backgroundColor: "rgba(14, 16, 23, 0.9)",
+                  backgroundColor: "rgba(14, 16, 23, 0.92)",
                   border: "1px solid var(--glass-border)",
                   color: "var(--text-primary)",
                   fontSize: "12px",
-                  backdropFilter: "blur(20px)",
-                  WebkitBackdropFilter: "blur(20px)",
+                  backdropFilter: "blur(24px)",
+                  WebkitBackdropFilter: "blur(24px)",
                   boxShadow: "var(--glass-shadow)",
+                  maxWidth: "380px",
+                  textAlign: "center",
                 }}
               >
-                <span style={{ fontWeight: 700, color: "var(--accent-warning, #f59e0b)" }}>
-                  Video Unavailable
+                <span style={{ fontWeight: 700, fontSize: "14px", color: "var(--accent-warning, #f59e0b)" }}>
+                  Preparing Web Video
                 </span>
-                <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
-                  This video may still be processing in the background or the original file was moved.
+                <span style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                  This video is being prepared for web streaming. Click below to refresh playback.
                 </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewHasError(false);
+                    setIsPreviewLoaded(false);
+                    setVideoVersion((v) => v + 1);
+                  }}
+                  className="clickable"
+                  style={{
+                    marginTop: "10px",
+                    padding: "7px 18px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "var(--accent-primary)",
+                    border: "none",
+                    color: "#ffffff",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    boxShadow: "0 2px 10px rgba(99, 102, 241, 0.3)",
+                  }}
+                >
+                  Retry Playback
+                </button>
               </div>
             )}
           </div>
