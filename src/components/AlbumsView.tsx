@@ -18,7 +18,8 @@ import {
   Download,
   FolderPlus,
   Sparkles,
-  Film
+  Film,
+  Pencil
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { AlbumItem, PhotoItem, StoryModel } from "../types";
@@ -101,6 +102,28 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   const [pickerSelectedIds, setPickerSelectedIds] = useState<Set<number>>(new Set());
   const [isAddingPhotos, setIsAddingPhotos] = useState(false);
   const [directImportCount, setDirectImportCount] = useState<number | null>(null);
+
+  // Inline Album Rename State & Layout Container Ref
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [isRenameSaving, setIsRenameSaving] = useState(false);
+  const albumDetailContainerRef = useRef<HTMLDivElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (activeAlbumId !== null) {
+      albumDetailContainerRef.current?.scrollTo(0, 0);
+      setIsRenaming(false);
+      setRenameValue("");
+    }
+  }, [activeAlbumId]);
+
+  useEffect(() => {
+    if (isRenaming) {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    }
+  }, [isRenaming]);
 
   // Memoized selectors for selection dock
   const selectedPhotosList = useMemo(() => {
@@ -293,6 +316,42 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
       console.error("Failed to load album details:", err);
     } finally {
       setIsDetailLoading(false);
+    }
+  };
+
+  const handleRenameAlbum = async () => {
+    if (!activeAlbumId || activeAlbumId === -1 || activeAlbumId === -2) return;
+    const trimmed = renameValue.trim();
+    if (!trimmed) {
+      showToast("Album title cannot be empty", "warning");
+      return;
+    }
+    if (trimmed === activeAlbumMeta?.name) {
+      setIsRenaming(false);
+      return;
+    }
+    try {
+      setIsRenameSaving(true);
+      const res = await fetch(`http://127.0.0.1:8000/api/albums/${activeAlbumId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to rename album");
+      }
+      const updated = await res.json();
+      setActiveAlbumMeta((prev) => (prev ? { ...prev, name: updated.name } : null));
+      setAlbums((prev) => prev.map((a) => (a.id === activeAlbumId ? { ...a, name: updated.name } : a)));
+      setIsRenaming(false);
+      showToast(`Album renamed to "${updated.name}"`, "success");
+      window.dispatchEvent(new CustomEvent("photos-changed", { detail: { action: "album-renamed", albumId: activeAlbumId } }));
+    } catch (err: any) {
+      console.error("Failed to rename album:", err);
+      showToast(err.message || "Failed to rename album", "warning");
+    } finally {
+      setIsRenameSaving(false);
     }
   };
 
@@ -628,31 +687,32 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   if (activeAlbumId !== null && activeAlbumMeta) {
     const isCollages = activeAlbumMeta.name.toLowerCase() === "collages";
     return (
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", padding: "16px 24px 0", gap: "16px", position: "relative" }}>
+      <div 
+        ref={albumDetailContainerRef}
+        style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", padding: "16px 24px 0", gap: "16px", position: "relative" }}
+      >
         {/* Unified Compact Glassmorphic Header Bar */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: "12px",
-            padding: "10px 20px",
-            minHeight: "56px",
+            gap: "16px",
+            padding: "8px 18px",
+            minHeight: "54px",
             backgroundColor: "var(--glass-surface)",
             backdropFilter: "blur(24px)",
             WebkitBackdropFilter: "blur(24px)",
             borderRadius: "var(--radius-lg)",
             border: "1px solid var(--glass-border)",
             boxShadow: "var(--glass-shadow)",
-            position: "sticky",
-            top: 0,
-            zIndex: 20,
+            position: "relative",
             flexShrink: 0,
+            zIndex: 20,
           }}
         >
           {/* Left Column: All Albums Navigation */}
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-start", minWidth: "120px" }}>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-start", minWidth: 0 }}>
             <button
               onClick={() => {
                 setActiveAlbumId(null);
@@ -681,7 +741,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               }}
             >
               <ArrowLeft size={14} />
-              <span>All Albums</span>
+              <span>Albums</span>
             </button>
           </div>
 
@@ -694,79 +754,187 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               justifyContent: "center",
               gap: "10px",
               minWidth: 0,
-              maxWidth: "min(400px, 45vw)",
+              maxWidth: "min(500px, 50vw)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, overflow: "hidden" }}>
-              <h2
-                style={{
-                  fontSize: "22px",
-                  fontWeight: 800,
-                  fontFamily: "var(--font-display, var(--font-sans))",
-                  letterSpacing: "-0.03em",
-                  color: "var(--text-primary)",
-                  margin: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  minWidth: 0,
-                }}
-              >
-                {activeAlbumId === -1 && (
-                  <Heart
-                    size={20}
-                    fill="#ef4444"
-                    stroke="#ef4444"
-                    style={{ filter: "drop-shadow(0 0 8px rgba(239, 68, 68, 0.5))", flexShrink: 0 }}
-                  />
-                )}
-                {isCollages && (
-                  <Sparkles
-                    size={20}
-                    color="var(--accent-primary, #38bdf8)"
-                    style={{ filter: "drop-shadow(0 0 8px rgba(56, 189, 248, 0.5))", flexShrink: 0 }}
-                  />
-                )}
-                {activeAlbumId === -2 && (
-                  <Film
-                    size={20}
-                    color="#a855f7"
-                    style={{ filter: "drop-shadow(0 0 8px rgba(168, 85, 247, 0.5))", flexShrink: 0 }}
-                  />
-                )}
-                <span
-                  title={activeAlbumMeta.name}
-                  style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                >
-                  {activeAlbumMeta.name}
-                </span>
-              </h2>
-              {activeAlbumId !== -1 && activeAlbumId !== -2 && !isCollages && (
-                <button
-                  onClick={() => handleToggleFavorite(activeAlbumMeta.id)}
-                  title={activeAlbumMeta.is_favorite ? "Favorited Album" : "Mark as Favorite"}
-                  className="clickable"
+            {isRenaming ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <input
+                  ref={renameInputRef}
+                  type="text"
+                  value={renameValue}
+                  disabled={isRenameSaving}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleRenameAlbum();
+                    if (e.key === "Escape") setIsRenaming(false);
+                  }}
                   style={{
-                    background: activeAlbumMeta.is_favorite ? "rgba(239, 68, 68, 0.18)" : "var(--glass-pill-bg)",
-                    border: activeAlbumMeta.is_favorite ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid var(--glass-pill-border)",
+                    fontSize: "18px",
+                    fontWeight: 700,
+                    fontFamily: "var(--font-display, var(--font-sans))",
+                    color: "var(--text-primary)",
+                    backgroundColor: "var(--bg-surface)",
+                    border: "1px solid var(--accent-primary)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "4px 10px",
+                    outline: "none",
+                    minWidth: "160px",
+                    maxWidth: "320px",
+                  }}
+                  placeholder="Album title..."
+                />
+                <button
+                  onClick={handleRenameAlbum}
+                  disabled={isRenameSaving || !renameValue.trim()}
+                  className="clickable"
+                  title="Save title"
+                  style={{
+                    width: "28px",
+                    height: "28px",
                     borderRadius: "var(--radius-full)",
-                    cursor: "pointer",
+                    backgroundColor: "var(--accent-primary)",
+                    border: "none",
+                    color: "#ffffff",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    padding: "5px",
-                    color: activeAlbumMeta.is_favorite ? "var(--accent-danger, #ef4444)" : "var(--text-muted)",
-                    transition: "all 0.15s ease",
+                    cursor: "pointer",
                     flexShrink: 0,
                   }}
                 >
-                  <Heart size={15} fill={activeAlbumMeta.is_favorite ? "currentColor" : "none"} />
+                  {isRenameSaving ? <Loader2 size={13} className="spin" /> : <Check size={13} strokeWidth={2.5} />}
                 </button>
-              )}
-            </div>
+                <button
+                  onClick={() => setIsRenaming(false)}
+                  disabled={isRenameSaving}
+                  className="clickable"
+                  title="Cancel"
+                  style={{
+                    width: "28px",
+                    height: "28px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "var(--glass-pill-bg)",
+                    border: "1px solid var(--glass-pill-border)",
+                    color: "var(--text-muted)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    flexShrink: 0,
+                  }}
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, overflow: "hidden" }}>
+                <h2
+                  onClick={() => {
+                    if (activeAlbumId !== -1 && activeAlbumId !== -2 && !isCollages) {
+                      setRenameValue(activeAlbumMeta.name);
+                      setIsRenaming(true);
+                    }
+                  }}
+                  style={{
+                    fontSize: "22px",
+                    fontWeight: 800,
+                    fontFamily: "var(--font-display, var(--font-sans))",
+                    letterSpacing: "-0.03em",
+                    color: "var(--text-primary)",
+                    margin: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    minWidth: 0,
+                    cursor: activeAlbumId !== -1 && activeAlbumId !== -2 && !isCollages ? "pointer" : "default",
+                  }}
+                  title={activeAlbumId !== -1 && activeAlbumId !== -2 && !isCollages ? `Click to rename "${activeAlbumMeta.name}"` : activeAlbumMeta.name}
+                >
+                  {activeAlbumId === -1 && (
+                    <Heart
+                      size={20}
+                      fill="#ef4444"
+                      stroke="#ef4444"
+                      style={{ filter: "drop-shadow(0 0 8px rgba(239, 68, 68, 0.5))", flexShrink: 0 }}
+                    />
+                  )}
+                  {isCollages && (
+                    <Sparkles
+                      size={20}
+                      color="var(--accent-primary, #38bdf8)"
+                      style={{ filter: "drop-shadow(0 0 8px rgba(56, 189, 248, 0.5))", flexShrink: 0 }}
+                    />
+                  )}
+                  {activeAlbumId === -2 && (
+                    <Film
+                      size={20}
+                      color="#a855f7"
+                      style={{ filter: "drop-shadow(0 0 8px rgba(168, 85, 247, 0.5))", flexShrink: 0 }}
+                    />
+                  )}
+                  <span
+                    style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  >
+                    {activeAlbumMeta.name}
+                  </span>
+                </h2>
+
+                {activeAlbumId !== -1 && activeAlbumId !== -2 && !isCollages && (
+                  <>
+                    <button
+                      onClick={() => {
+                        setRenameValue(activeAlbumMeta.name);
+                        setIsRenaming(true);
+                      }}
+                      title="Rename album"
+                      className="clickable"
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--text-muted)",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "4px",
+                        borderRadius: "var(--radius-full)",
+                        transition: "color 0.15s ease",
+                        flexShrink: 0,
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                    >
+                      <Pencil size={13} />
+                    </button>
+
+                    <button
+                      onClick={() => handleToggleFavorite(activeAlbumMeta.id)}
+                      title={activeAlbumMeta.is_favorite ? "Favorited Album" : "Mark as Favorite"}
+                      className="clickable"
+                      style={{
+                        background: activeAlbumMeta.is_favorite ? "rgba(239, 68, 68, 0.18)" : "var(--glass-pill-bg)",
+                        border: activeAlbumMeta.is_favorite ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid var(--glass-pill-border)",
+                        borderRadius: "var(--radius-full)",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "5px",
+                        color: activeAlbumMeta.is_favorite ? "var(--accent-danger, #ef4444)" : "var(--text-muted)",
+                        transition: "all 0.15s ease",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Heart size={15} fill={activeAlbumMeta.is_favorite ? "currentColor" : "none"} />
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Inline Frosted Capsule Badge for Photo / Story Count */}
             <div
@@ -794,8 +962,8 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
             </div>
           </div>
 
-          {/* Right Column: Actions (Slideshow, Add Photos, Delete Album) */}
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", minWidth: "120px" }}>
+          {/* Right Column: Sleek Icon Actions (Slideshow, Add Photos, Delete Album) */}
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px", minWidth: 0 }}>
             {albumPhotos.length > 0 && (
               <button
                 onClick={() => setIsSlideshowOpen(true)}
@@ -803,22 +971,22 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "6px",
-                  padding: "7px 16px",
+                  justifyContent: "center",
+                  width: "36px",
+                  height: "36px",
                   borderRadius: "var(--radius-full)",
                   backgroundColor: "var(--glass-action-bg)",
                   border: "1px solid var(--glass-action-border)",
                   color: "var(--text-primary)",
-                  fontSize: "12px",
-                  fontWeight: 600,
                   cursor: "pointer",
                   boxShadow: "var(--glass-shadow)",
-                  transition: "all 0.2s ease",
+                  transition: "all 0.15s ease",
+                  flexShrink: 0,
                 }}
-                title="Play full-screen cinematic slideshow with ambient music"
+                title="Play Slideshow"
+                aria-label="Play Slideshow"
               >
-                <Play size={13} fill="currentColor" />
-                <span>Slideshow</span>
+                <Play size={14} fill="currentColor" />
               </button>
             )}
 
@@ -828,17 +996,17 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "6px",
-                  padding: "6px 14px",
+                  padding: "5px 12px",
                   borderRadius: "var(--radius-full)",
                   backgroundColor: "rgba(168, 85, 247, 0.12)",
                   border: "1px solid rgba(168, 85, 247, 0.25)",
                   color: "#c084fc",
-                  fontSize: "12px",
+                  fontSize: "11px",
                   fontWeight: 600,
                   letterSpacing: "0.02em",
                 }}
               >
-                <Film size={13} />
+                <Film size={12} />
                 <span>Smart Collection</span>
               </span>
             ) : isCollages ? (
@@ -847,17 +1015,17 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "6px",
-                  padding: "6px 14px",
+                  padding: "5px 12px",
                   borderRadius: "var(--radius-full)",
                   backgroundColor: "rgba(56, 189, 248, 0.12)",
                   border: "1px solid rgba(56, 189, 248, 0.25)",
                   color: "var(--accent-primary, #38bdf8)",
-                  fontSize: "12px",
+                  fontSize: "11px",
                   fontWeight: 600,
                   letterSpacing: "0.02em",
                 }}
               >
-                <Sparkles size={13} />
+                <Sparkles size={12} />
                 <span>Smart Album</span>
               </span>
             ) : activeAlbumId !== -1 ? (
@@ -868,21 +1036,22 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: "6px",
-                    padding: "7px 16px",
+                    justifyContent: "center",
+                    width: "36px",
+                    height: "36px",
                     borderRadius: "var(--radius-full)",
                     backgroundColor: "var(--accent-primary)",
                     border: "none",
                     color: "#ffffff",
-                    fontSize: "12px",
-                    fontWeight: 600,
                     cursor: "pointer",
                     boxShadow: "0 2px 8px rgba(99, 102, 241, 0.25)",
                     transition: "all 0.15s ease",
+                    flexShrink: 0,
                   }}
+                  title="Add or Import Photos"
+                  aria-label="Add or Import Photos"
                 >
-                  <Plus size={14} />
-                  <span>Add Photos</span>
+                  <Plus size={16} strokeWidth={2.5} />
                 </button>
                 <button
                   onClick={() => handleDeleteAlbum(activeAlbumMeta.id)}
@@ -890,21 +1059,21 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: "6px",
-                    padding: "7px 14px",
+                    justifyContent: "center",
+                    width: "36px",
+                    height: "36px",
                     borderRadius: "var(--radius-full)",
                     backgroundColor: "rgba(239, 68, 68, 0.12)",
                     border: "1px solid rgba(239, 68, 68, 0.25)",
                     color: "var(--accent-danger, #ef4444)",
-                    fontSize: "12px",
-                    fontWeight: 500,
                     cursor: "pointer",
                     transition: "all 0.15s ease",
+                    flexShrink: 0,
                   }}
-                  title="Delete this album (Photos will remain safe in your library)"
+                  title="Delete Album (Photos will remain safe in library)"
+                  aria-label="Delete Album"
                 >
-                  <Trash2 size={14} />
-                  <span>Delete Album</span>
+                  <Trash2 size={15} />
                 </button>
               </>
             ) : null}
@@ -912,7 +1081,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
         </div>
 
         {/* Photos Grid or Empty State */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "0 0 20px 0" }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 0 88px 0" }}>
           {isDetailLoading ? (
             <div style={{ padding: "60px", textAlign: "center", color: "var(--text-muted)" }}>
               <Loader2 size={28} className="spin" style={{ margin: "0 auto 12px" }} />
@@ -1466,24 +1635,105 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                       )}
                     </div>
 
-                    {/* Bottom Filename */}
-                    <div
-                      style={{
-                        position: "absolute",
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        padding: "6px 8px",
-                        background: "linear-gradient(to top, rgba(0,0,0,0.8), transparent)",
-                        fontSize: "10px",
-                        color: "#ffffff",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {photo.filename}
-                    </div>
+                    {/* Bottom Left: Video Duration or 8K UHD / High-Res Frosted Badge */}
+                    {photo.mime_type?.startsWith("video/") ? (() => {
+                      const isEnhanced = Boolean(photo.is_enhanced);
+                      const is4K = Boolean((photo.height && photo.height >= 2160) || (photo.width && photo.width >= 3840));
+                      const isHD = Boolean((photo.height && photo.height >= 720) || (photo.width && photo.width >= 1280));
+                      const durationStr = photo.duration
+                        ? `${Math.floor(photo.duration / 60)}:${String(Math.floor(photo.duration % 60)).padStart(2, "0")}`
+                        : "VIDEO";
+
+                      return (
+                        <div
+                          title={`Video clip${photo.duration ? ` • ${Math.round(photo.duration)}s` : ""}${is4K ? " • 4K UHD" : isHD ? " • HD" : ""}${isEnhanced ? " (Enhanced)" : ""}`}
+                          style={{
+                            position: "absolute",
+                            bottom: "7px",
+                            left: "7px",
+                            zIndex: 3,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            padding: "2px 7px",
+                            borderRadius: "var(--radius-full)",
+                            background: "rgba(10, 12, 18, 0.75)",
+                            backdropFilter: "blur(10px)",
+                            WebkitBackdropFilter: "blur(10px)",
+                            border: isEnhanced 
+                              ? "1px solid rgba(251, 191, 36, 0.4)" 
+                              : "1px solid rgba(255, 255, 255, 0.2)",
+                            color: "#ffffff",
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            letterSpacing: "0.2px",
+                            boxShadow: isEnhanced 
+                              ? "0 2px 8px rgba(0, 0, 0, 0.6), 0 0 8px rgba(251, 191, 36, 0.2)" 
+                              : "0 2px 6px rgba(0, 0, 0, 0.6)",
+                            pointerEvents: "none",
+                          }}
+                        >
+                          <Play size={9} fill="#ffffff" color="#ffffff" />
+                          <span>{durationStr}</span>
+                          {(isEnhanced || is4K || isHD) && (
+                            <span 
+                              style={{ 
+                                display: "inline-flex", 
+                                alignItems: "center", 
+                                gap: "2px", 
+                                color: isEnhanced ? "#fbbf24" : "rgba(255, 255, 255, 0.8)", 
+                                fontWeight: 800, 
+                                fontSize: "9px" 
+                              }}
+                            >
+                              <span>•</span>
+                              {isEnhanced && <Sparkles size={8} style={{ color: "#fbbf24" }} />}
+                              <span>{is4K ? "4K UHD" : "HD"}</span>
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })() : (() => {
+                      const is8k = photo.is_enhanced || photo.is_optimized;
+                      const maxDim = Math.max(photo.width || 0, photo.height || 0);
+                      const isHighRes = maxDim >= 3840;
+
+                      if (!is8k && !isHighRes) return null;
+
+                      return (
+                        <div
+                          title={is8k ? "8K UHD Resolution" : "High-Resolution Source"}
+                          style={{
+                            position: "absolute",
+                            bottom: "7px",
+                            left: "7px",
+                            zIndex: 3,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            padding: "2px 7px",
+                            borderRadius: "var(--radius-full)",
+                            background: "rgba(10, 12, 18, 0.75)",
+                            backdropFilter: "blur(10px)",
+                            WebkitBackdropFilter: "blur(10px)",
+                            border: is8k 
+                              ? "1px solid rgba(59, 130, 246, 0.4)" 
+                              : "1px solid rgba(255, 255, 255, 0.2)",
+                            color: is8k ? "#60a5fa" : "#ffffff",
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            letterSpacing: "0.2px",
+                            boxShadow: is8k 
+                              ? "0 2px 8px rgba(0, 0, 0, 0.6), 0 0 8px rgba(59, 130, 246, 0.2)" 
+                              : "0 2px 6px rgba(0, 0, 0, 0.6)",
+                            pointerEvents: "none",
+                          }}
+                        >
+                          {is8k && <Sparkles size={9} style={{ color: "#60a5fa" }} />}
+                          <span>{is8k ? "8K UHD" : "HIGH-RES"}</span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}

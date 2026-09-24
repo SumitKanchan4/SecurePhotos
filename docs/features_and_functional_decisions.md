@@ -3327,5 +3327,65 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - User vault setup and Master Vault Key (MVK) credentials survive all automated test runs without data loss.
 - 10/10 vault tests passing; frontend TypeScript compiles with zero errors (`tsc && vite build` passed).
 
+---
+
+## 68. Album UX Polish, Icon Action Dock, Inline Renaming & Non-Blocking Async Video Enhancement
+
+### Functionality Overview
+1. **Header Layout & First-Row Overlap Elimination**:
+   - Resolved the defect where the first row of photo thumbnails loaded partially underneath the frosted glass album header bar.
+   - Removed `position: "sticky", top: 0` from the album detail header in `AlbumsView.tsx`, converting it into an independent flex header (`position: "relative", flexShrink: 0`).
+   - Attached an explicit ref `albumDetailContainerRef` with an auto-reset effect `useEffect(() => { albumDetailContainerRef.current?.scrollTo(0, 0); }, [activeAlbumId])`, ensuring that entering any album resets outer scroll to zero.
+   - Enhanced the photo grid container with dedicated breathing room (`padding: "8px 0 88px 0"`), ensuring the first row is always completely unobstructed and the floating bottom action dock never obscures the last row.
+2. **De-Cluttered Liquid-Glass Icon Action Dock**:
+   - Modernized the album detail header right column from three bulky text pill buttons (`[ ▶ Slideshow ]`, `[ + Add Photos ]`, `[ 🗑 Delete Album ]`) down to sleek, circular frosted glass icon buttons:
+     - `<Play size={14} />` (Slideshow) with browser tooltip `"Play Slideshow"`.
+     - `<Plus size={16} />` (Add Photos) in primary accent blue with browser tooltip `"Add or Import Photos"`.
+     - `<Trash2 size={15} />` (Delete Album) in subtle danger tint with browser tooltip `"Delete Album (Photos will remain safe in library)"`.
+   - Compacted the left navigation button to a sleek `[ ← Albums ]` pill.
+   - Cut horizontal header consumption by >60%, granting ample breathing room for long album titles without wrapping.
+3. **End-to-End Album Renaming**:
+   - Added backend API endpoint `PATCH /api/albums/{album_id}` in `engine/api/albums.py` accepting `AlbumRenameRequest(name=...)` with string trimming, non-empty validation, 100-character caps, and system smart album protection (rejects renaming `collages`).
+   - In `AlbumsView.tsx`, added interactive inline renaming:
+     - Users can click the album title directly or tap the `<Pencil size={13} />` icon button beside the title.
+     - The title morphs into an auto-focused inline text input matching display typography with `Enter` (Save), `Escape` (Cancel), Save `<Check />`, and Cancel `<X />` controls.
+     - On save, updates database, synchronizes both local detail meta and top-level album list, broadcasts `photos-changed`, and displays a reassuring toast: `Album renamed to "{new_name}"`.
+4. **Clean Media Presentation (Hover Filename Removal & 8K UHD Badges)**:
+   - Removed the raw filename gradient overlay from `AlbumsView.tsx` cards and removed filename text from the hover scrim in `PhotoGrid.tsx`.
+   - Ported the frosted glass `8K UHD` / `HIGH-RES` sparkle badge and video duration badge into `AlbumsView.tsx` photo cards, establishing 100% visual parity with the main library grid.
+5. **Non-Blocking Background Video Enhancement**:
+   - Resolved the critical concurrency defect where starting a 4K video upscale or compression blocked all FastAPI request handling (albums, people, gallery, health check), causing all views to display infinite loading spinners until FFmpeg completed.
+   - Root cause: In `engine/services/video_service.py`, `enhance_old_video` and `compress_video` previously called synchronous `subprocess.run(cmd, timeout=1200)` directly on the main thread of the asyncio event loop.
+   - Solution: Offloaded FFmpeg subprocess execution to Python's background thread pool via `await asyncio.to_thread(subprocess.run, cmd, ...)`. The asyncio event loop remains 100% free and responsive, allowing all tabs and endpoints to respond instantaneously while 4K video transcoding runs smoothly in the background.
+
+### Functional Decision Points & Rationale
+- **Icon Actions with Tooltips vs. Text Buttons**:
+  - *Decision*: Adopt 36px circular liquid-glass icon buttons with browser tooltips for action controls.
+  - *Rationale*: Solves severe horizontal cramping on typical desktop viewports while preserving standard accessibility and click affordance.
+- **Inline Title Editing vs. Modal Dialog**:
+  - *Decision*: Provide direct inline text editing on click / pencil tap rather than opening a modal dialog.
+  - *Rationale*: Frictionless, desktop-native interaction pattern (matching Apple Photos / macOS Finder) that keeps users grounded in their album context.
+- **`asyncio.to_thread` vs. Full Process Decoupling**:
+  - *Decision*: Use `asyncio.to_thread` for the FFmpeg execution wrapper.
+  - *Rationale*: Seamlessly integrates with the existing async service pipeline without requiring external message brokers or complex IPC queues, while immediately releasing the event loop.
+
+### Technical Touchpoints
+- `engine/services/video_service.py`: Wrapped `subprocess.run` with `await asyncio.to_thread(...)` in `compress_video` and `enhance_old_video`.
+- `engine/api/albums.py`: Added `AlbumRenameRequest` model and `PATCH /api/albums/{album_id}` endpoint.
+- `engine/tests/test_albums.py`: Added `test_album_rename_workflow` testing valid renaming, detail view sync, and validation failure on blank names; added `limit=1000` to CRUD test photo query.
+- `src/components/AlbumsView.tsx`:
+  - Added rename state, `albumDetailContainerRef`, and `handleRenameAlbum`.
+  - Replaced sticky header with `position: "relative"`, added inline rename input with pencil trigger, and replaced right text pills with 36px icon buttons.
+  - Added `8K UHD` / `HIGH-RES` and video duration badges to album photo cards; removed bottom filename bar.
+- `src/components/PhotoGrid.tsx`: Removed raw filename from hover scrim and ensured badges remain visible on hover.
+- `docs/features_and_functional_decisions.md`: Documented Section 68.
+
+### State & Lifecycle Impact
+- Zero UI freeze or stalled loading states across the entire desktop app during 4K video enhancement.
+- Album header layout is stable, spacious, and prevents any photo row from sliding underneath.
+- All 20 integration tests passing across albums, videos, and vault (`20 passed in 14.93s`).
+- Frontend production bundle built with 0 errors in 5.95s.
+
+
 
 

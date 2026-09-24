@@ -248,29 +248,18 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
         </div>
       ) : null}
 
-      {/* 5. Hover Scrim with Filename & Resolution */}
+      {/* 5. Subtle Hover Vignette */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 45%, transparent 100%)",
+          background: "linear-gradient(to top, rgba(0,0,0,0.35) 0%, transparent 40%)",
           opacity: isHovered ? 1 : 0,
           transition: "opacity 0.2s ease",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "flex-end",
-          padding: "8px",
           zIndex: 2,
           pointerEvents: "none",
         }}
-      >
-        <span style={{ fontSize: "11px", fontWeight: 600, color: "#ffffff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {photo.filename}
-        </span>
-        <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.7)", fontFamily: "var(--font-mono)", marginTop: "2px" }}>
-          {photo.width && photo.height ? `${photo.width} × ${photo.height}` : "8K ULTRA"}
-        </span>
-      </div>
+      />
 
       {/* 6a. Bottom-Left Video Duration / Resolution / AI Optimization Frosted Glass Tag */}
       {photo.mime_type?.startsWith("video/") ? (() => {
@@ -282,8 +271,8 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
                 position: "absolute",
                 bottom: "7px",
                 left: "7px",
-                zIndex: isHovered ? 1 : 3,
-                display: isHovered ? "none" : "flex",
+                zIndex: 3,
+                display: "flex",
                 alignItems: "center",
                 gap: "5px",
                 padding: "3px 8px",
@@ -319,8 +308,8 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
               position: "absolute",
               bottom: "7px",
               left: "7px",
-              zIndex: isHovered ? 1 : 3,
-              display: isHovered ? "none" : "flex",
+              zIndex: 3,
+              display: "flex",
               alignItems: "center",
               gap: "4px",
               padding: "2px 7px",
@@ -375,8 +364,8 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
               position: "absolute",
               bottom: "7px",
               left: "7px",
-              zIndex: isHovered ? 1 : 3,
-              display: isHovered ? "none" : "flex",
+              zIndex: 3,
+              display: "flex",
               alignItems: "center",
               gap: "3px",
               padding: "2px 6px",

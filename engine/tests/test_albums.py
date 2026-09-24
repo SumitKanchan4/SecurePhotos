@@ -90,7 +90,7 @@ async def test_albums_crud_lifecycle():
                 assert detail_res_2.json()["photos"][0]["id"] == p2
 
                 # Verify original photo p1 was not deleted from library
-                photo_res = await client.get("/api/photos")
+                photo_res = await client.get("/api/photos?limit=1000")
                 active_ids = [p["id"] for p in photo_res.json()]
                 assert p1 in active_ids
 
@@ -173,5 +173,44 @@ async def test_photo_favorite_toggle():
                 await conn.commit()
             finally:
                 await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_album_rename_workflow():
+    """Validates renaming an album via PATCH /api/albums/{id}."""
+    await run_migrations()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Create album
+        create_res = await client.post(
+            "/api/albums",
+            json={"name": "Old Album Title", "description": "Testing rename"},
+        )
+        assert create_res.status_code == 201
+        album_id = create_res.json()["id"]
+
+        try:
+            # 2. Rename album
+            rename_res = await client.patch(
+                f"/api/albums/{album_id}",
+                json={"name": "Brand New Title"},
+            )
+            assert rename_res.status_code == 200
+            assert rename_res.json()["name"] == "Brand New Title"
+
+            # 3. Verify in detail view
+            detail_res = await client.get(f"/api/albums/{album_id}")
+            assert detail_res.status_code == 200
+            assert detail_res.json()["name"] == "Brand New Title"
+
+            # 4. Verify validation (empty name rejected)
+            bad_res = await client.patch(
+                f"/api/albums/{album_id}",
+                json={"name": "   "},
+            )
+            assert bad_res.status_code == 400
+        finally:
+            await client.delete(f"/api/albums/{album_id}")
+
 
 

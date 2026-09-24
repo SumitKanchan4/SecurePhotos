@@ -62,6 +62,11 @@ class BatchRemovePhotosRequest(BaseModel):
     photo_ids: List[int]
 
 
+class AlbumRenameRequest(BaseModel):
+    """Payload to rename an existing user album."""
+    name: str
+
+
 @router.get("", response_model=List[AlbumResponse], status_code=status.HTTP_200_OK)
 async def list_albums() -> List[AlbumResponse]:
     """Lists all user albums with photo counts and cover thumbnails."""
@@ -424,4 +429,56 @@ async def set_album_cover(album_id: int, payload: SetAlbumCoverRequest) -> dict:
         return {"status": "ok", "album_id": album_id, "cover_photo_id": payload.photo_id}
     finally:
         await conn.close()
+
+
+@router.patch("/{album_id}", response_model=AlbumResponse, status_code=status.HTTP_200_OK)
+async def rename_album(album_id: int, payload: AlbumRenameRequest) -> AlbumResponse:
+    """Renames an existing user album."""
+    new_name = payload.name.strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="Album name cannot be empty")
+    if len(new_name) > 100:
+        raise HTTPException(status_code=400, detail="Album name cannot exceed 100 characters")
+
+    conn = await get_db_connection()
+    try:
+        # Check album existence and guard system smart collections
+        async with conn.execute("SELECT id, name, is_vault FROM albums WHERE id = ?;", (album_id,)) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Album not found")
+        if row["name"].lower() == "collages":
+            raise HTTPException(status_code=400, detail="System smart albums cannot be renamed")
+
+        await conn.execute("UPDATE albums SET name = ? WHERE id = ?;", (new_name, album_id))
+        await conn.commit()
+
+        # Return updated album details with dynamic counts and cover
+        query = """
+            SELECT a.id, a.name, a.description, a.is_vault, a.vault_type, a.is_favorite,
+                   a.cover_photo_id, a.created_at,
+                   (SELECT COUNT(*) FROM photo_album pa JOIN photos p ON pa.photo_id = p.id WHERE pa.album_id = a.id AND p.trashed_at IS NULL AND p.is_encrypted = 0) AS photo_count,
+                   p.thumbnail_path AS cover_thumbnail_path
+            FROM albums a
+            LEFT JOIN photos p ON a.cover_photo_id = p.id AND p.trashed_at IS NULL AND p.is_encrypted = 0
+            WHERE a.id = ?;
+        """
+        async with conn.execute(query, (album_id,)) as cur:
+            updated = await cur.fetchone()
+
+        return AlbumResponse(
+            id=updated["id"],
+            name=updated["name"],
+            description=updated["description"],
+            is_vault=bool(updated["is_vault"]),
+            vault_type=updated["vault_type"],
+            is_favorite=bool(updated["is_favorite"]),
+            cover_photo_id=updated["cover_photo_id"],
+            cover_thumbnail_path=updated["cover_thumbnail_path"],
+            photo_count=updated["photo_count"],
+            created_at=updated["created_at"],
+        )
+    finally:
+        await conn.close()
+
 
