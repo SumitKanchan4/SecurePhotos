@@ -209,7 +209,7 @@ async def list_documents(
             SELECT p.id, p.filename, p.filepath, p.file_size, p.mime_type,
                    p.taken_at, p.created_at, p.is_favorite, p.is_encrypted,
                    p.vault_type, p.thumbnail_path, p.preview_path,
-                   p.ocr_text, p.caption, p.content_tags
+                   p.ocr_text, p.caption, p.content_tags, p.is_pinned
             FROM photos p
             WHERE (p.is_document = 1 OR p.mime_type = 'application/pdf' OR p.filename LIKE '%.pdf')
               AND p.trashed_at IS NULL
@@ -225,7 +225,7 @@ async def list_documents(
             query += " AND (p.filename LIKE ? OR p.ocr_text LIKE ? OR p.caption LIKE ?)"
             params.extend([sq, sq, sq])
 
-        query += " ORDER BY COALESCE(p.taken_at, p.created_at) DESC, p.id DESC;"
+        query += " ORDER BY COALESCE(p.is_pinned, 0) DESC, COALESCE(p.taken_at, p.created_at) DESC, p.id DESC;"
 
         async with conn.execute(query, params) as cursor:
             rows = await cursor.fetchall()
@@ -249,6 +249,7 @@ async def list_documents(
                 "mime_type": r["mime_type"] or "image/jpeg",
                 "extracted_text": r["ocr_text"] or "",
                 "is_encrypted": bool(r["is_encrypted"]),
+                "is_pinned": bool(r["is_pinned"]),
                 "vault_type": r["vault_type"],
                 "thumbnail_path": r["thumbnail_path"],
                 "preview_path": r["preview_path"],
@@ -322,3 +323,87 @@ async def toggle_document_status(photo_id: int, is_doc: bool) -> bool:
         return cursor.rowcount > 0
     finally:
         await conn.close()
+
+
+async def toggle_document_pin(photo_id: int) -> bool:
+    """Toggles the pinned status of a document item.
+
+    Pinned documents are anchored to remain at the very top of the list.
+
+    Args:
+        photo_id: Unique integer identifier of the target document/photo.
+
+    Returns:
+        New boolean pinned state (True if now pinned, False if unpinned).
+    """
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(
+            "SELECT is_pinned FROM photos WHERE id = ? AND trashed_at IS NULL;",
+            (photo_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+
+        if not row:
+            return False
+
+        new_status = 0 if row["is_pinned"] else 1
+        await conn.execute(
+            "UPDATE photos SET is_pinned = ? WHERE id = ?;",
+            (new_status, photo_id),
+        )
+        await conn.commit()
+        return bool(new_status)
+    finally:
+        await conn.close()
+
+
+async def import_documents_direct(file_paths: List[str]) -> List[Dict[str, Any]]:
+    """Ingests external media/PDF files directly as documents into the library.
+
+    Performs deduplicated file ingestion, flags new items as documents, runs
+    heuristic categorization, and returns the formatted document records.
+
+    Args:
+        file_paths: List of absolute filesystem paths to ingest.
+
+    Returns:
+        List of newly created or updated DocumentResponse records.
+    """
+    from engine.services.ingestion_service import ingest_single_photo
+
+    conn = await get_db_connection()
+    imported_ids: List[int] = []
+    try:
+        for fp_str in file_paths:
+            fp = Path(fp_str)
+            if not fp.exists() or not fp.is_file():
+                logger.warning("Document file path not found: %s", fp_str)
+                continue
+
+            photo_id = await ingest_single_photo(conn, fp, mode="managed")
+            if photo_id:
+                # Mark as document and determine initial category
+                category = classify_document(fp.name, mime_type="application/pdf" if fp.suffix.lower() == ".pdf" else None)
+                await conn.execute(
+                    """
+                    UPDATE photos 
+                    SET is_document = 1,
+                        content_tags = COALESCE(content_tags, ?)
+                    WHERE id = ?;
+                    """,
+                    (category, photo_id),
+                )
+                imported_ids.append(photo_id)
+
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    if not imported_ids:
+        return []
+
+    # Retrieve all newly imported documents formatted
+    all_docs = await list_documents()
+    return [d for d in all_docs if d["id"] in imported_ids]
+

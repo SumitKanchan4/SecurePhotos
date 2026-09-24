@@ -11,8 +11,10 @@ from pydantic import BaseModel
 
 from engine.services.document_service import (
     classify_document,
+    import_documents_direct,
     list_documents,
     scan_library_for_documents,
+    toggle_document_pin,
     toggle_document_status,
     update_document_metadata,
 )
@@ -35,6 +37,7 @@ class DocumentResponse(BaseModel):
     mime_type: str
     extracted_text: str
     is_encrypted: bool
+    is_pinned: bool = False
     vault_type: Optional[str] = None
     thumbnail_path: Optional[str] = None
     preview_path: Optional[str] = None
@@ -57,6 +60,11 @@ class DocumentUpdateRequest(BaseModel):
 class DocumentToggleRequest(BaseModel):
     """Payload for setting or clearing document classification."""
     is_document: bool
+
+
+class DocumentImportRequest(BaseModel):
+    """Payload for importing document files directly."""
+    file_paths: List[str]
 
 
 @router.get("", response_model=List[DocumentResponse], status_code=status.HTTP_200_OK)
@@ -140,3 +148,39 @@ async def toggle_document(
             detail=f"Photo with ID {photo_id} was not found or is in trash.",
         )
     return {"status": "success", "photo_id": photo_id, "is_document": payload.is_document}
+
+
+@router.post("/{photo_id}/pin", status_code=status.HTTP_200_OK)
+async def toggle_pin(photo_id: int) -> Dict[str, Any]:
+    """Toggles pinned status of a document item.
+
+    Pinned documents remain permanently anchored at the top of the collection.
+
+    Args:
+        photo_id: Target document ID.
+
+    Returns:
+        Confirmation dictionary with updated is_pinned boolean.
+    """
+    new_pinned = await toggle_document_pin(photo_id)
+    return {"status": "success", "photo_id": photo_id, "is_pinned": new_pinned}
+
+
+@router.post("/import", response_model=List[DocumentResponse], status_code=status.HTTP_201_CREATED)
+async def import_documents(payload: DocumentImportRequest) -> List[DocumentResponse]:
+    """Directly ingests files as documents into the library.
+
+    Args:
+        payload: DocumentImportRequest containing file_paths.
+
+    Returns:
+        List of newly created DocumentResponse objects.
+    """
+    if not payload.file_paths:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No file paths provided for direct document import.",
+        )
+    docs = await import_documents_direct(payload.file_paths)
+    return [DocumentResponse(**d) for d in docs]
+

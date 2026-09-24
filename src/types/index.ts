@@ -52,6 +52,7 @@ export interface PhotoItem {
   is_document?: boolean;
   ocr_text?: string;
   album_names?: string;
+  is_pinned?: boolean;
 }
 
 export interface AlbumItem {
@@ -405,6 +406,7 @@ export interface DocumentItem {
   vault_type?: string | null;
   thumbnail_path?: string | null;
   preview_path?: string | null;
+  is_pinned?: boolean;
 }
 
 export interface DocumentScanResult {

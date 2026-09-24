@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS photos (
     content_tags TEXT,              -- Comma-separated or JSON tags
     quality_score REAL,
     is_document BOOLEAN DEFAULT 0,
+    is_pinned BOOLEAN DEFAULT 0,
     sensitivity_reviewed BOOLEAN DEFAULT 0,
     faces_scanned BOOLEAN DEFAULT 0,
     is_managed BOOLEAN DEFAULT 0,
@@ -564,6 +565,12 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
             await conn.execute("ALTER TABLE photos ADD COLUMN original_file_size INTEGER;")
             await conn.execute("UPDATE photos SET original_file_size = file_size WHERE original_file_size IS NULL;")
             logger.info("Migrated photos schema: added original_file_size column and backfilled baseline sizes.")
+
+        if "is_pinned" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN is_pinned BOOLEAN DEFAULT 0;")
+            logger.info("Migrated photos schema: added is_pinned column.")
+
+        await conn.execute("CREATE INDEX IF NOT EXISTS ix_photos_pinned_doc ON photos (is_pinned DESC, is_document, trashed_at);")
 
         # Stories lifecycle migration: dynamically add is_saved and covering indexes
         async with conn.execute("PRAGMA table_info(stories);") as cursor:

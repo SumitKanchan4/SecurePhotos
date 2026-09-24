@@ -175,3 +175,117 @@ async def test_documents_scan_endpoint():
                     await conn.commit()
                 finally:
                     await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_document_pin_toggle_and_top_ordering():
+    """Verifies that pinning a document anchors it to the top of the collection."""
+    await run_migrations()
+    transport = ASGITransport(app=app)
+    uid = uuid.uuid4().hex[:8]
+
+    conn = await get_db_connection()
+    try:
+        # Document A: Newer date, unpinned
+        cur_a = await conn.execute(
+            """
+            INSERT INTO photos (filename, filepath, file_size, mime_type, taken_at, is_document, content_tags, is_pinned)
+            VALUES (?, ?, 1024, 'application/pdf', '2026-09-01', 1, 'legal', 0);
+            """,
+            (f"newer_contract_{uid}.pdf", f"data/originals/newer_{uid}.pdf"),
+        )
+        doc_a_id = cur_a.lastrowid
+
+        # Document B: Older date, initially unpinned
+        cur_b = await conn.execute(
+            """
+            INSERT INTO photos (filename, filepath, file_size, mime_type, taken_at, is_document, content_tags, is_pinned)
+            VALUES (?, ?, 2048, 'application/pdf', '2025-01-01', 1, 'identity', 0);
+            """,
+            (f"older_passport_{uid}.pdf", f"data/originals/older_{uid}.pdf"),
+        )
+        doc_b_id = cur_b.lastrowid
+
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # 1. Initially, Doc A (newer) should appear before Doc B (older)
+            res1 = await client.get("/api/documents")
+            assert res1.status_code == 200
+            docs1 = res1.json()
+            ids1 = [d["id"] for d in docs1 if d["id"] in (doc_a_id, doc_b_id)]
+            assert ids1 == [doc_a_id, doc_b_id]
+
+            # 2. Pin Document B
+            res_pin = await client.post(f"/api/documents/{doc_b_id}/pin")
+            assert res_pin.status_code == 200
+            assert res_pin.json()["is_pinned"] is True
+
+            # 3. Verify Document B now appears FIRST, despite its older date
+            res2 = await client.get("/api/documents")
+            assert res2.status_code == 200
+            docs2 = res2.json()
+            ids2 = [d["id"] for d in docs2 if d["id"] in (doc_a_id, doc_b_id)]
+            assert ids2 == [doc_b_id, doc_a_id]
+            doc_b_data = next(d for d in docs2 if d["id"] == doc_b_id)
+            assert doc_b_data["is_pinned"] is True
+
+            # 4. Unpin Document B
+            res_unpin = await client.post(f"/api/documents/{doc_b_id}/pin")
+            assert res_unpin.status_code == 200
+            assert res_unpin.json()["is_pinned"] is False
+
+            # 5. Verify ordering reverts back
+            res3 = await client.get("/api/documents")
+            assert res3.status_code == 200
+            docs3 = res3.json()
+            ids3 = [d["id"] for d in docs3 if d["id"] in (doc_a_id, doc_b_id)]
+            assert ids3 == [doc_a_id, doc_b_id]
+    finally:
+        conn = await get_db_connection()
+        try:
+            await conn.execute("DELETE FROM photos WHERE id IN (?, ?);", (doc_a_id, doc_b_id))
+            await conn.commit()
+        finally:
+            await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_direct_document_import(tmp_path):
+    """Verifies direct ingestion of document files via POST /api/documents/import."""
+    await run_migrations()
+    transport = ASGITransport(app=app)
+
+    # Create dummy test document file
+    doc_file = tmp_path / "irs_tax_statement_2026.pdf"
+    doc_file.write_bytes(b"%PDF-1.4 simulated tax return content for unit test")
+
+    imported_id = None
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        try:
+            res_imp = await client.post(
+                "/api/documents/import",
+                json={"file_paths": [str(doc_file)]},
+            )
+            assert res_imp.status_code == 201
+            data = res_imp.json()
+            assert len(data) >= 1
+            imported_id = data[0]["id"]
+            assert data[0]["category"] == "tax"
+
+            # Check that it shows up in GET /api/documents
+            res_get = await client.get("/api/documents?category=tax")
+            assert res_get.status_code == 200
+            assert any(d["id"] == imported_id for d in res_get.json())
+        finally:
+            if imported_id:
+                conn = await get_db_connection()
+                try:
+                    await conn.execute("DELETE FROM photos WHERE id = ?;", (imported_id,))
+                    await conn.commit()
+                finally:
+                    await conn.close()
+

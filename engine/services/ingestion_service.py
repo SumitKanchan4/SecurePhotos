@@ -43,7 +43,7 @@ logger = logging.getLogger("securephotos.ingestion_service")
 # Supported photo and video media extensions
 SUPPORTED_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".webp", ".avif", ".heic", ".bmp", ".tiff",
-    ".mp4", ".mov", ".mkv", ".avi", ".webm",
+    ".mp4", ".mov", ".mkv", ".avi", ".webm", ".pdf",
 }
 
 # Compiled regex patterns for filename timestamp extraction (WhatsApp, Telegram, Cameras, Screenshots)
@@ -472,6 +472,18 @@ async def ingest_single_photo(
             mime_type = "video/x-matroska"
         else:
             mime_type = f"video/{ext_clean}"
+    elif source_path.suffix.lower() == ".pdf":
+        mime_type = "application/pdf"
+        thumb_path = None
+        preview_path = None
+        try:
+            thumb_dest = get_sharded_thumbnail_path(file_hash)
+            with Image.open(final_filepath) as img:
+                img.thumbnail((1024, 1024))
+                img.save(thumb_dest, "WEBP")
+                thumb_path = str(thumb_dest.relative_to(settings.data_dir)).replace("\\", "/")
+        except Exception:
+            thumb_path = None
     else:
         # Generate 1024px Retina micro-thumbnail for fast grid rendering
         thumb_path, tw, th = generate_micro_thumbnail(final_filepath, file_hash=file_hash, size=1024)

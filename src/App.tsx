@@ -367,13 +367,42 @@ export const App: React.FC = () => {
   const handleDeletePhoto = (photoId: number) => {
     setPhotos((prev) => prev.filter((p) => p.id !== photoId));
     setSearchResults((prev) => (prev ? prev.filter((p) => p.id !== photoId) : null));
+    if (lightboxPhotos) {
+      setLightboxPhotos((prev) => (prev ? prev.filter((p) => p.id !== photoId) : null));
+    }
     loadTimelineYears();
     if (lightboxIndex !== null) {
-      if (photos.length <= 1) {
+      const activeList = lightboxPhotos || photos;
+      if (activeList.length <= 1) {
         setLightboxIndex(null);
-      } else if (lightboxIndex >= photos.length - 1) {
-        setLightboxIndex(Math.max(0, photos.length - 2));
+      } else if (lightboxIndex >= activeList.length - 1) {
+        setLightboxIndex(Math.max(0, activeList.length - 2));
       }
+    }
+    // Global deletion broadcast for synchronized views (Documents, Albums, People, etc.)
+    window.dispatchEvent(new CustomEvent("photos-changed", { detail: { action: "deleted", photoId } }));
+  };
+
+  const handleTogglePin = async (photoId: number) => {
+    if (lightboxPhotos) {
+      setLightboxPhotos((prev) =>
+        prev ? prev.map((p) => (p.id === photoId ? { ...p, is_pinned: !p.is_pinned } : p)) : null
+      );
+    }
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/documents/${photoId}/pin`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        window.dispatchEvent(
+          new CustomEvent("photos-changed", {
+            detail: { action: "pinned", photoId, is_pinned: data.is_pinned },
+          })
+        );
+      }
+    } catch (err) {
+      console.error("Failed to toggle document pin:", err);
     }
   };
 
@@ -659,6 +688,7 @@ export const App: React.FC = () => {
                   mime_type: d.mime_type,
                   taken_at: d.date,
                   is_favorite: false,
+                  is_pinned: Boolean(d.is_pinned),
                   is_encrypted: d.is_encrypted,
                   is_optimized: false,
                   is_enhanced: false,
@@ -669,6 +699,7 @@ export const App: React.FC = () => {
                 setLightboxPhotos(photoItems);
                 setLightboxIndex(idx);
               }}
+              onTogglePin={handleTogglePin}
             />
           ) : activeTab === "trash" ? (
             /* 30-Day Trash & Soft-Delete Safe */
@@ -1487,6 +1518,8 @@ export const App: React.FC = () => {
           }
         }}
         onToggleFavorite={handleToggleFavorite}
+        isDocumentView={activeTab === "documents"}
+        onTogglePin={handleTogglePin}
         onUnlockRequest={(action) => {
           if (action) {
             setPendingVaultAction({ type: "custom", callback: action });

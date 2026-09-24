@@ -22,6 +22,7 @@ import {
   Film,
   Lock,
   Unlock,
+  Pin,
 } from "lucide-react";
 import { PhotoItem, OptimizationProgress } from "../types";
 import { useAppStore } from "../store/useAppStore";
@@ -35,8 +36,10 @@ interface LightboxProps {
   onNavigate: (index: number) => void;
   onDelete?: (photoId: number) => void;
   onToggleFavorite?: (photoId: number) => void;
+  onTogglePin?: (photoId: number) => void;
   onUnlockRequest?: (pendingAction?: () => void) => void;
   onVaultStatusChange?: (photoId: number, isEncrypted: boolean) => void;
+  isDocumentView?: boolean;
 }
 
 export const Lightbox: React.FC<LightboxProps> = ({
@@ -48,8 +51,10 @@ export const Lightbox: React.FC<LightboxProps> = ({
   onNavigate,
   onDelete,
   onToggleFavorite,
+  onTogglePin,
   onUnlockRequest,
   onVaultStatusChange,
+  isDocumentView = false,
 }) => {
   const showToast = useAppStore((state) => state.showToast);
   const isVaultUnlocked = useAppStore((state) => state.isVaultUnlocked);
@@ -57,6 +62,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const [zoom, setZoom] = useState(1);
   const [showInfo, setShowInfo] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [isPinned, setIsPinned] = useState(false);
   const [isPreviewLoaded, setIsPreviewLoaded] = useState(false);
   const [previewHasError, setPreviewHasError] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
@@ -89,12 +95,13 @@ export const Lightbox: React.FC<LightboxProps> = ({
   useEffect(() => {
     if (currentPhoto) {
       setIsFavorite(currentPhoto.is_favorite);
+      setIsPinned(Boolean(currentPhoto.is_pinned));
       setZoom(1);
       setIsPreviewLoaded(false);
       setPreviewHasError(false);
       setIsCopied(false);
     }
-  }, [currentIndex, currentPhoto?.id]);
+  }, [currentIndex, currentPhoto?.id, currentPhoto?.is_pinned]);
 
   // Keyboard navigation shortcuts
   useEffect(() => {
@@ -107,10 +114,15 @@ export const Lightbox: React.FC<LightboxProps> = ({
         if (currentIndex < photos.length - 1) onNavigate(currentIndex + 1);
       } else if (e.key === "ArrowLeft" || e.key === "k" || e.key === "K") {
         if (currentIndex > 0) onNavigate(currentIndex - 1);
-      } else if (e.key === "f" || e.key === "F") {
+      } else if (e.key === "f" || e.key === "F" || ((e.key === "p" || e.key === "P") && isDocumentView)) {
         if (currentPhoto) {
-          setIsFavorite((prev) => !prev);
-          onToggleFavorite?.(currentPhoto.id);
+          if (isDocumentView) {
+            setIsPinned((prev) => !prev);
+            onTogglePin?.(currentPhoto.id);
+          } else {
+            setIsFavorite((prev) => !prev);
+            onToggleFavorite?.(currentPhoto.id);
+          }
         }
       } else if (e.key === "Delete" || e.key === "Backspace") {
         handleDelete();
@@ -124,7 +136,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, currentIndex, photos.length, onClose, onNavigate, currentPhoto]);
+  }, [isOpen, currentIndex, photos.length, onClose, onNavigate, currentPhoto, isDocumentView, onTogglePin, onToggleFavorite]);
 
   if (!isOpen || !currentPhoto) return null;
 
@@ -360,31 +372,58 @@ export const Lightbox: React.FC<LightboxProps> = ({
             <ZoomIn size={16} />
           </button>
 
-          {/* Favorite Toggle */}
-          <button
-            onClick={() => {
-              if (currentPhoto) {
-                setIsFavorite(!isFavorite);
-                onToggleFavorite?.(currentPhoto.id);
-              }
-            }}
-            className="clickable"
-            title={isFavorite ? "Remove from Favorites (F)" : "Add to Favorites (F)"}
-            style={{
-              background: isFavorite ? "rgba(239, 68, 68, 0.15)" : "var(--glass-pill-bg)",
-              borderRadius: "var(--radius-full)",
-              border: isFavorite ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid var(--glass-pill-border)",
-              color: isFavorite ? "var(--accent-danger)" : "var(--text-primary)",
-              padding: "4px 10px",
-              display: "flex",
-              alignItems: "center",
-              gap: "5px",
-              cursor: "pointer",
-            }}
-          >
-            <Heart size={15} fill={isFavorite ? "var(--accent-danger)" : "none"} />
-            <span style={{ fontSize: "11px", fontWeight: 600 }}>{isFavorite ? "Liked" : "Like"}</span>
-          </button>
+          {/* Favorite or Pin Toggle */}
+          {isDocumentView ? (
+            <button
+              onClick={() => {
+                if (currentPhoto) {
+                  setIsPinned(!isPinned);
+                  onTogglePin?.(currentPhoto.id);
+                }
+              }}
+              className="clickable"
+              title={isPinned ? "Unpin document (P)" : "Pin document to top (P)"}
+              style={{
+                background: isPinned ? "rgba(245, 158, 11, 0.2)" : "var(--glass-pill-bg)",
+                borderRadius: "var(--radius-full)",
+                border: isPinned ? "1px solid rgba(245, 158, 11, 0.5)" : "1px solid var(--glass-pill-border)",
+                color: isPinned ? "#f59e0b" : "var(--text-primary)",
+                padding: "4px 10px",
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                cursor: "pointer",
+              }}
+            >
+              <Pin size={14} fill={isPinned ? "#f59e0b" : "none"} />
+              <span style={{ fontSize: "11px", fontWeight: 600 }}>{isPinned ? "Pinned" : "Pin"}</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                if (currentPhoto) {
+                  setIsFavorite(!isFavorite);
+                  onToggleFavorite?.(currentPhoto.id);
+                }
+              }}
+              className="clickable"
+              title={isFavorite ? "Remove from Favorites (F)" : "Add to Favorites (F)"}
+              style={{
+                background: isFavorite ? "rgba(239, 68, 68, 0.15)" : "var(--glass-pill-bg)",
+                borderRadius: "var(--radius-full)",
+                border: isFavorite ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid var(--glass-pill-border)",
+                color: isFavorite ? "var(--accent-danger)" : "var(--text-primary)",
+                padding: "4px 10px",
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                cursor: "pointer",
+              }}
+            >
+              <Heart size={15} fill={isFavorite ? "var(--accent-danger)" : "none"} />
+              <span style={{ fontSize: "11px", fontWeight: 600 }}>{isFavorite ? "Liked" : "Like"}</span>
+            </button>
+          )}
 
           {/* Vault Lock / Restore Button */}
           <button

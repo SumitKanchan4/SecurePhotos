@@ -3170,10 +3170,61 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - 95/95 backend unit and integration tests passing (`95 passed in 65.14s`).
 - Frontend production bundle built with 0 errors (`npm run build` completed in 10.93s).
 
+---
 
+## 65. Documents & Receipts Direct Ingestion, Card Deletion, Lightbox Synchronization, and Pin Priority Architecture
 
+### Functionality Overview
+1. **Deletion Synchronization via Cross-Component Events**:
+   - Resolved the defect where deleting documents in the Lightbox viewer left stale cards displayed upon returning to the Documents & Receipts grid.
+   - Wired `photos-changed` custom event dispatching in `App.tsx` (`handleDeletePhoto`) with `{ action: "deleted", photoId }`.
+   - `DocumentsView.tsx` listens to `photos-changed` and immediately purges deleted IDs from its local state, guaranteeing instant synchronization between Lightbox, Documents grid, and Trash.
+2. **Balanced 3-Column Header & Overlap Prevention (Section 4 Compliance & Rule 3)**:
+   - Fixed the layout collision where the `Search OCR text...` pill shifted and overlapped the `23 documents` badge on mid-sized viewports.
+   - Built a balanced 3-column sticky liquid glass container (`gap: 16px`):
+     - **Left Column** (`flex: 1`): Direct `[ 📥 Add Document ]` ingestion button (`var(--accent-primary)`, pill geometry) and a subtle `<CheckCircle2 /> On-Device OCR` badge.
+     - **Center Column** (`flex: 0 1 auto`): Centered `Documents & Receipts` title (`22px` Plus Jakarta Sans, `fontWeight: 800`, `letterSpacing: -0.03em`) with inline frosted capsule badge `[ N documents ]` on the exact horizontal baseline (`flexShrink: 0`, zero overlap).
+     - **Right Column** (`flex: 1`): Constrained search input (`maxWidth: 160px`, `flexShrink: 1`) and compact scan button `[ 🔄 Scan ]`.
+3. **Direct Document Deletion from Card Grid**:
+   - Added a direct `<Trash2 size={13} />` action button on each document card footer next to the "Inspect" button.
+   - Clicking immediately optimistically removes the card from the UI, executes `DELETE /api/photos/{docId}` (soft-delete to the 30-day trash safe), broadcasts the `photos-changed` event, and displays a reassuring toast: `"Document moved to Trash (safe for 30 days)"` per Rule 7.
+4. **Direct Document Ingestion Flow**:
+   - Added native file ingestion directly within Documents & Receipts view (via `[ 📥 Add Document ]` header button and empty state CTA).
+   - Utilizes Tauri native dialog `invoke<string[] | null>("select_import_files")` with hidden `<input type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.tiff" />` browser fallback.
+   - Added backend endpoint `POST /api/documents/import` that accepts `file_paths: List[str]`, auto-flags imported files as `is_document = 1`, assigns deterministic category tags, and returns newly created `DocumentResponse` objects.
+   - Optimistically updates `documents` array and displays toast: `"Added N document(s) to Documents & Receipts"`.
+5. **Pin Priority Architecture (Replacing "Like" with "Pin")**:
+   - Replaced photo "Like" (Heart) semantics in documents with "Pin" (Anchor to top).
+   - Added `is_pinned BOOLEAN DEFAULT 0` column to `photos` table with dynamic migration and covering index `ix_photos_pinned_doc ON photos (is_pinned DESC, is_document, trashed_at)`.
+   - `list_documents()` orders documents by `COALESCE(p.is_pinned, 0) DESC, COALESCE(p.taken_at, p.created_at) DESC, p.id DESC;`.
+   - Document cards feature a `<Pin />` toggle button in their header, highlighting pinned documents with a `📌 PINNED` badge, amber border, and subtle glow.
+   - Lightbox viewer receives `isDocumentView={activeTab === "documents"}` and renders a dedicated Pin/Pinned action button instead of Like, also supporting keyboard shortcuts `P` and `F` to toggle pin state.
 
+### Functional Decision Points & Rationale
+- **Pin vs. Like Semantics for Document Workflows**:
+  - *Decision*: Strip heart/like controls from document contexts in favor of pin/unpin to top.
+  - *Rationale*: Documents are utilitarian assets (passports, tax filings, warranties, lease contracts). Users rarely "like" a tax return, but frequently need critical identification or active records anchored permanently to the top of their list.
+- **Cross-Component Event Broadcast vs. Prop Drilling**:
+  - *Decision*: Use browser `window.dispatchEvent(new CustomEvent("photos-changed", ...))` combined with direct optimistic state mutation.
+  - *Rationale*: Decouples isolated sub-views (Documents, Albums, People, Timeline) from deep prop chains while ensuring that any deletion or pin toggle in Lightbox or other components immediately updates all visible screens without expensive network re-fetches.
+- **Support for PDF Files in Direct Ingestion**:
+  - *Decision*: Extended `SUPPORTED_EXTENSIONS` in `ingestion_service.py` to include `.pdf`, setting `mime_type = "application/pdf"` and gracefully handling thumbnail extraction.
+  - *Rationale*: Documents and receipts are predominantly PDF files. Ingestion without PDF support caused document imports to silently fail.
 
+### Technical Touchpoints
+- `engine/database.py`: Ensured `is_pinned` schema migration and index creation order.
+- `engine/services/ingestion_service.py`: Added `.pdf` to `SUPPORTED_EXTENSIONS`, handled `application/pdf` in `ingest_single_photo`.
+- `engine/services/document_service.py`: Added `is_pinned` to `list_documents` query and return dictionary; implemented `toggle_document_pin` and `import_documents_direct`.
+- `engine/api/documents.py`: Added `is_pinned` to `DocumentResponse`; implemented `POST /api/documents/{photo_id}/pin` and `POST /api/documents/import`.
+- `engine/tests/test_documents.py`: Comprehensive test coverage for pin toggle, pinned top ordering, and direct document import.
+- `src/types/index.ts`: Added `is_pinned?: boolean` to `DocumentItem` and `PhotoItem`.
+- `src/components/DocumentsView.tsx`: Redesigned header to 3-column layout (`gap: 16px`), added `[ 📥 Add Document ]` button, added direct `<Trash2 />` card deletion, added Pin button and pinned card styling, added `photos-changed` event listener.
+- `src/components/Lightbox.tsx`: Added `isDocumentView` and `onTogglePin` props, rendered Pin button instead of Like button, enabled `P`/`F` keyboard shortcuts.
+- `src/App.tsx`: Dispatched `photos-changed` on deletion and pin toggle, passed `isDocumentView={activeTab === "documents"}` and `onTogglePin` to `Lightbox`.
 
-
+### State & Lifecycle Impact
+- Backend tests verified: 4/4 passed in `engine/tests/test_documents.py`.
+- Frontend build verified: `tsc && vite build` built cleanly with 0 errors.
+- Document deletions in Lightbox synchronize instantly to the Documents grid.
+- Pinned documents remain reliably anchored at the top of the collection across categories.
 
