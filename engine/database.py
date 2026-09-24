@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS photos (
     is_managed BOOLEAN DEFAULT 0,
     original_path TEXT,
     file_hash TEXT,                 -- SHA-256 checksum for deduplication & verification
+    original_file_hash TEXT,        -- Immutable baseline SHA-256 checksum for deduplication
     folder_name TEXT,
     trashed_at DATETIME,
     trash_expires_at DATETIME
@@ -582,6 +583,12 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
             await conn.execute("ALTER TABLE photos ADD COLUMN original_file_size INTEGER;")
             await conn.execute("UPDATE photos SET original_file_size = file_size WHERE original_file_size IS NULL;")
             logger.info("Migrated photos schema: added original_file_size column and backfilled baseline sizes.")
+
+        if "original_file_hash" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN original_file_hash TEXT;")
+            await conn.execute("UPDATE photos SET original_file_hash = file_hash WHERE original_file_hash IS NULL;")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_photos_original_file_hash ON photos(original_file_hash);")
+            logger.info("Migrated photos schema: added original_file_hash column and backfilled hashes.")
 
         if "is_pinned" not in existing_photo_cols:
             await conn.execute("ALTER TABLE photos ADD COLUMN is_pinned BOOLEAN DEFAULT 0;")

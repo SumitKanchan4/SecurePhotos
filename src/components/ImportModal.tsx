@@ -264,9 +264,22 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
         setTimeout(() => {
           setIsImporting(false);
           if (data.imported > 0) {
-            showToast(`Successfully imported ${data.imported} media item(s)`, "success");
+            let msg = `Successfully imported ${data.imported} media item(s)`;
+            if (data.skipped > 0) {
+              msg += ` (${data.skipped} duplicate(s) already in library)`;
+            }
+            if (data.failed > 0) {
+              msg += ` (${data.failed} item(s) could not be read)`;
+            }
+            showToast(msg, "success");
+          } else if (data.failed > 0 && data.skipped === 0) {
+            showToast(`Could not import ${data.failed} item(s) due to file access or permission errors.`, "warning");
           } else if (data.skipped > 0) {
-            showToast(`All ${data.skipped} item(s) are already in your library.`, "info");
+            let msg = `All ${data.skipped} item(s) are already in your library.`;
+            if (data.failed > 0) {
+              msg += ` (${data.failed} failed due to file errors)`;
+            }
+            showToast(msg, "info");
           } else {
             showToast("No new media items to import.", "info");
           }
