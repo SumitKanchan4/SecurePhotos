@@ -165,11 +165,21 @@ async def search_media(
         async with conn.execute(
             """
             SELECT p.id, p.name, p.relationship_type,
-                   (SELECT COUNT(*) FROM faces f WHERE f.person_id = p.id) AS confirmed_count,
-                   (SELECT f.id FROM faces f WHERE f.person_id = p.id LIMIT 1) AS cover_face_id
+                   COUNT(DISTINCT ph.id) AS active_photo_count,
+                   (
+                       SELECT f2.id FROM faces f2
+                       JOIN photos ph2 ON f2.photo_id = ph2.id
+                       WHERE f2.person_id = p.id AND ph2.trashed_at IS NULL AND ph2.is_encrypted = 0
+                       ORDER BY f2.is_anchor_medoid DESC, f2.quality_score DESC
+                       LIMIT 1
+                   ) AS cover_face_id
             FROM persons p
+            JOIN faces f ON f.person_id = p.id
+            JOIN photos ph ON f.photo_id = ph.id AND ph.trashed_at IS NULL AND ph.is_encrypted = 0
             WHERE p.name LIKE ?
-            ORDER BY confirmed_count DESC, p.name ASC
+            GROUP BY p.id
+            HAVING active_photo_count > 0
+            ORDER BY active_photo_count DESC, p.name ASC
             LIMIT 5;
             """,
             (like_pattern,),
@@ -181,7 +191,7 @@ async def search_media(
                         id=r["id"],
                         name=r["name"],
                         relationship_type=r["relationship_type"],
-                        confirmed_count=r["confirmed_count"] or 0,
+                        confirmed_count=r["active_photo_count"] or 0,
                         cover_face_id=r["cover_face_id"],
                     )
                 )

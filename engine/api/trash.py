@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from engine.database import get_db_connection
+from engine.services.face_recognition_service import get_face_thumbnails_dir
 
 logger = logging.getLogger("securephotos.api.trash")
 
@@ -146,11 +147,27 @@ async def permanently_delete_selected(payload: PermanentDeleteRequest) -> dict:
         for r in rows:
             _unlink_photo_files(r["filepath"], r["thumbnail_path"], r["preview_path"])
 
+        # Unlink associated face thumbnails from disk
+        face_thumb_dir = get_face_thumbnails_dir()
+        async with conn.execute(f"SELECT id FROM faces WHERE photo_id IN ({placeholders});", payload.photo_ids) as f_cur:
+            face_rows = await f_cur.fetchall()
+            for fr in face_rows:
+                f_path = face_thumb_dir / f"{fr['id']}.webp"
+                if f_path.exists():
+                    try:
+                        f_path.unlink()
+                    except OSError:
+                        pass
+
         # Delete database records (photo_album, video_processing_queue and other FKs cascade or clean up)
         await conn.execute(f"DELETE FROM video_processing_queue WHERE photo_id IN ({placeholders});", payload.photo_ids)
         await conn.execute(f"DELETE FROM photo_album WHERE photo_id IN ({placeholders});", payload.photo_ids)
         cursor = await conn.execute(f"DELETE FROM photos WHERE id IN ({placeholders});", payload.photo_ids)
         deleted_count = cursor.rowcount
+
+        # Purge orphaned persons and stories
+        await conn.execute("DELETE FROM persons WHERE id NOT IN (SELECT DISTINCT person_id FROM faces WHERE person_id IS NOT NULL);")
+        await conn.execute("DELETE FROM stories WHERE person_id IS NOT NULL AND person_id NOT IN (SELECT id FROM persons);")
         await conn.commit()
         return {"status": "ok", "deleted_count": deleted_count}
     finally:
@@ -172,10 +189,27 @@ async def empty_trash_permanently() -> dict:
 
         if photo_ids:
             placeholders = ",".join("?" for _ in photo_ids)
+
+            # Unlink associated face thumbnails from disk
+            face_thumb_dir = get_face_thumbnails_dir()
+            async with conn.execute(f"SELECT id FROM faces WHERE photo_id IN ({placeholders});", photo_ids) as f_cur:
+                face_rows = await f_cur.fetchall()
+                for fr in face_rows:
+                    f_path = face_thumb_dir / f"{fr['id']}.webp"
+                    if f_path.exists():
+                        try:
+                            f_path.unlink()
+                        except OSError:
+                            pass
+
             await conn.execute(f"DELETE FROM video_processing_queue WHERE photo_id IN ({placeholders});", photo_ids)
             await conn.execute(f"DELETE FROM photo_album WHERE photo_id IN ({placeholders});", photo_ids)
             cursor = await conn.execute("DELETE FROM photos WHERE trashed_at IS NOT NULL;")
             deleted_count = cursor.rowcount
+
+            # Purge orphaned persons and stories
+            await conn.execute("DELETE FROM persons WHERE id NOT IN (SELECT DISTINCT person_id FROM faces WHERE person_id IS NOT NULL);")
+            await conn.execute("DELETE FROM stories WHERE person_id IS NOT NULL AND person_id NOT IN (SELECT id FROM persons);")
             await conn.commit()
         else:
             deleted_count = 0

@@ -141,6 +141,8 @@ async def test_search_matching_albums_and_people():
     conn = await get_db_connection()
     album_id = None
     person_id = None
+    test_photo_id = None
+    test_face_id = None
     try:
         cursor1 = await conn.execute(
             "INSERT INTO albums (name, description, is_vault) VALUES ('Iceland Glaciers Adventure', 'Volcanoes and ice caves', 0);"
@@ -151,6 +153,26 @@ async def test_search_matching_albums_and_people():
             "INSERT INTO persons (name, relationship_type, is_close_one) VALUES ('Elena Rostova', 'Colleague', 1);"
         )
         person_id = cursor2.lastrowid
+
+        # Insert active photo and link face to Elena
+        p_cur = await conn.execute(
+            """
+            INSERT INTO photos (filename, filepath, file_size, mime_type, is_encrypted, trashed_at)
+            VALUES ('elena_test.jpg', 'C:\\mock\\elena_test.jpg', 1024, 'image/jpeg', 0, NULL)
+            RETURNING id;
+            """
+        )
+        test_photo_id = (await p_cur.fetchone())[0]
+
+        f_cur = await conn.execute(
+            """
+            INSERT INTO faces (photo_id, person_id, cluster_id, box_x, box_y, box_w, box_h, quality_score, embedding)
+            VALUES (?, ?, 'cluster_elena', 0.1, 0.1, 0.2, 0.2, 0.9, '[]')
+            RETURNING id;
+            """,
+            (test_photo_id, person_id),
+        )
+        test_face_id = (await f_cur.fetchone())[0]
         await conn.commit()
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -167,6 +189,10 @@ async def test_search_matching_albums_and_people():
             assert "Elena Rostova" in people_matches
 
     finally:
+        if test_face_id:
+            await conn.execute("DELETE FROM faces WHERE id = ?;", (test_face_id,))
+        if test_photo_id:
+            await conn.execute("DELETE FROM photos WHERE id = ?;", (test_photo_id,))
         if album_id:
             await conn.execute("DELETE FROM albums WHERE id = ?;", (album_id,))
         if person_id:

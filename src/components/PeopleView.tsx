@@ -181,6 +181,25 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
     return () => clearInterval(interval);
   }, [scanStatus.is_scanning, checkScanStatus, fetchPeople, fetchClusters]);
 
+  // Listen for global photo lifecycle changes (deletion, trash, restore, import)
+  useEffect(() => {
+    const handlePhotosChanged = (e?: Event) => {
+      fetchPeople();
+      fetchClusters();
+      if (selectedPerson) {
+        const detail = (e as CustomEvent)?.detail;
+        if (detail?.photoId) {
+          setPersonPhotos((prev) => prev.filter((p) => p.id !== detail.photoId));
+        }
+      }
+    };
+
+    window.addEventListener("photos-changed", handlePhotosChanged);
+    return () => {
+      window.removeEventListener("photos-changed", handlePhotosChanged);
+    };
+  }, [fetchPeople, fetchClusters, selectedPerson]);
+
   // Trigger manual face scan
   const handleTriggerScan = async () => {
     try {

@@ -118,16 +118,27 @@ async def test_people_api_workflow():
         people = people_res.json()
         assert isinstance(people, list)
 
-        # 4. Use dedicated isolated mock face for workflow testing so it never touches live clusters
+        # 4. Use dedicated isolated mock photo and face for workflow testing so it satisfies foreign keys
         conn = await get_db_connection()
+        test_photo_id = None
         mock_face_id = None
         try:
+            p_cur = await conn.execute(
+                """
+                INSERT INTO photos (filename, filepath, file_size, mime_type, is_encrypted, trashed_at)
+                VALUES ('test_workflow.jpg', 'C:\\mock\\test_workflow.jpg', 1024, 'image/jpeg', 0, NULL)
+                RETURNING id;
+                """
+            )
+            test_photo_id = (await p_cur.fetchone())[0]
+
             cur = await conn.execute(
                 """
                 INSERT INTO faces (photo_id, cluster_id, box_x, box_y, box_w, box_h, quality_score, embedding)
-                VALUES (1, 'cluster_workflow_mock', 0.1, 0.1, 0.2, 0.2, 0.9, '[]')
+                VALUES (?, 'cluster_workflow_mock', 0.1, 0.1, 0.2, 0.2, 0.9, '[]')
                 RETURNING id;
-                """
+                """,
+                (test_photo_id,),
             )
             mock_face_id = (await cur.fetchone())[0]
             await conn.commit()
@@ -194,13 +205,15 @@ async def test_people_api_workflow():
             assert alex_retag["relationship_type"] == "Family"
             assert alex_retag["is_close_one"] is True
         finally:
-            # Mandatory test teardown: cleanly remove test person and mock face
+            # Mandatory test teardown: cleanly remove test person, mock face, and mock photo
             conn = await get_db_connection()
             try:
                 if tagged_person_id:
                     await conn.execute("DELETE FROM persons WHERE id = ?;", (tagged_person_id,))
                 if mock_face_id:
                     await conn.execute("DELETE FROM faces WHERE id = ?;", (mock_face_id,))
+                if test_photo_id:
+                    await conn.execute("DELETE FROM photos WHERE id = ?;", (test_photo_id,))
                 await conn.commit()
             finally:
                 await conn.close()
@@ -210,14 +223,26 @@ async def test_people_api_workflow():
 async def test_dismiss_cluster_endpoint():
     """Verifies POST /api/people/clusters/{cluster_id}/dismiss cleanly removes false-positive candidate faces."""
     conn = await get_db_connection()
+    mock_photo_id = None
+    mock_face_id = None
     try:
+        p_cur = await conn.execute(
+            """
+            INSERT INTO photos (filename, filepath, file_size, mime_type, is_encrypted, trashed_at)
+            VALUES ('test_dismiss.jpg', 'C:\\mock\\test_dismiss.jpg', 1024, 'image/jpeg', 0, NULL)
+            RETURNING id;
+            """
+        )
+        mock_photo_id = (await p_cur.fetchone())[0]
+
         # Create a mock false-positive face record
         cursor = await conn.execute(
             """
             INSERT INTO faces (photo_id, cluster_id, box_x, box_y, box_w, box_h, quality_score, embedding)
-            VALUES (1, 'cluster_mock_dismiss', 0.1, 0.1, 0.2, 0.2, 0.8, '[]')
+            VALUES (?, 'cluster_mock_dismiss', 0.1, 0.1, 0.2, 0.2, 0.8, '[]')
             RETURNING id;
-            """
+            """,
+            (mock_photo_id,),
         )
         row = await cursor.fetchone()
         mock_face_id = row[0]
@@ -236,6 +261,9 @@ async def test_dismiss_cluster_endpoint():
         # Verify face record is removed from database
         conn = await get_db_connection()
         try:
+            if mock_photo_id:
+                await conn.execute("DELETE FROM photos WHERE id = ?;", (mock_photo_id,))
+                await conn.commit()
             async with conn.execute("SELECT id FROM faces WHERE id = ?;", (mock_face_id,)) as cur:
                 assert await cur.fetchone() is None
         finally:
@@ -270,7 +298,16 @@ async def test_reset_people_and_faces_endpoint():
                 except OSError:
                     pass
 
-        # Create a mock face and person record
+        # Create a mock photo, face and person record
+        p_cur = await conn.execute(
+            """
+            INSERT INTO photos (filename, filepath, file_size, mime_type, is_encrypted, trashed_at)
+            VALUES ('test_reset_photo.jpg', 'C:\\mock\\test_reset_photo.jpg', 1024, 'image/jpeg', 0, NULL)
+            RETURNING id;
+            """
+        )
+        reset_test_photo_id = (await p_cur.fetchone())[0]
+
         cur = await conn.execute(
             "INSERT INTO persons (name, relationship_type, is_close_one) VALUES ('Reset Test Person', 'Friend', 0);"
         )
@@ -278,9 +315,9 @@ async def test_reset_people_and_faces_endpoint():
         await conn.execute(
             """
             INSERT INTO faces (photo_id, person_id, cluster_id, box_x, box_y, box_w, box_h, quality_score, embedding)
-            VALUES (1, ?, 'cluster_reset_test', 0.1, 0.1, 0.2, 0.2, 0.9, '[]');
+            VALUES (?, ?, 'cluster_reset_test', 0.1, 0.1, 0.2, 0.2, 0.9, '[]');
             """,
-            (pid,),
+            (reset_test_photo_id, pid),
         )
         await conn.commit()
     finally:
@@ -309,6 +346,9 @@ async def test_reset_people_and_faces_endpoint():
         # Mandatory rollback/restoration of user's active database and thumbnail files
         conn = await get_db_connection()
         try:
+            # Clean up temporary test photo if present
+            if reset_test_photo_id:
+                await conn.execute("DELETE FROM photos WHERE id = ?;", (reset_test_photo_id,))
             # Restore persons
             for p in backup_persons:
                 await conn.execute(
@@ -343,5 +383,97 @@ async def test_reset_people_and_faces_endpoint():
             except OSError:
                 pass
         shutil.rmtree(temp_thumb_dir, ignore_errors=True)
+
+
+@pytest.mark.asyncio
+async def test_list_people_omits_zero_photo_persons_and_respects_trash():
+    """Verifies that /api/people dynamically calculates active photo counts and omits persons with 0 active photos."""
+    conn = await get_db_connection()
+    test_photo_id = None
+    test_person_id = None
+    mock_face_id = None
+    try:
+        p_cur = await conn.execute(
+            """
+            INSERT INTO photos (filename, filepath, file_size, mime_type, is_encrypted, trashed_at)
+            VALUES ('test_zero_photo.jpg', 'C:\\mock\\test_zero_photo.jpg', 1024, 'image/jpeg', 0, NULL)
+            RETURNING id;
+            """
+        )
+        test_photo_id = (await p_cur.fetchone())[0]
+
+        # Create person and link face to active photo
+        cur_p = await conn.execute(
+            "INSERT INTO persons (name, relationship_type, is_close_one, confirmed_count) VALUES ('Zero Photo Test', 'Friend', 0, 1);"
+        )
+        test_person_id = cur_p.lastrowid
+
+        cur_f = await conn.execute(
+            """
+            INSERT INTO faces (photo_id, person_id, cluster_id, box_x, box_y, box_w, box_h, quality_score, embedding)
+            VALUES (?, ?, 'cluster_zero_test', 0.1, 0.1, 0.2, 0.2, 0.9, '[]')
+            RETURNING id;
+            """,
+            (test_photo_id, test_person_id),
+        )
+        mock_face_id = (await cur_f.fetchone())[0]
+        await conn.execute("UPDATE persons SET cover_face_id = ? WHERE id = ?;", (mock_face_id, test_person_id))
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        try:
+            # 1. Person must be visible when their photo is active
+            res1 = await client.get("/api/people")
+            assert res1.status_code == 200
+            people1 = res1.json()
+            matched = [p for p in people1 if p["id"] == test_person_id]
+            assert len(matched) == 1
+            assert matched[0]["confirmed_count"] == 1
+
+            # 2. Soft-delete photo to Trash
+            conn = await get_db_connection()
+            try:
+                await conn.execute("UPDATE photos SET trashed_at = CURRENT_TIMESTAMP WHERE id = ?;", (test_photo_id,))
+                await conn.commit()
+            finally:
+                await conn.close()
+
+            # Person must now be omitted from /api/people
+            res2 = await client.get("/api/people")
+            assert res2.status_code == 200
+            people2 = res2.json()
+            matched_trashed = [p for p in people2 if p["id"] == test_person_id]
+            assert len(matched_trashed) == 0
+
+            # 3. Restore photo from Trash
+            conn = await get_db_connection()
+            try:
+                await conn.execute("UPDATE photos SET trashed_at = NULL WHERE id = ?;", (test_photo_id,))
+                await conn.commit()
+            finally:
+                await conn.close()
+
+            # Person must reappear
+            res3 = await client.get("/api/people")
+            assert res3.status_code == 200
+            people3 = res3.json()
+            matched_restored = [p for p in people3 if p["id"] == test_person_id]
+            assert len(matched_restored) == 1
+            assert matched_restored[0]["confirmed_count"] == 1
+        finally:
+            conn = await get_db_connection()
+            try:
+                if test_person_id:
+                    await conn.execute("DELETE FROM persons WHERE id = ?;", (test_person_id,))
+                if mock_face_id:
+                    await conn.execute("DELETE FROM faces WHERE id = ?;", (mock_face_id,))
+                if test_photo_id:
+                    await conn.execute("DELETE FROM photos WHERE id = ?;", (test_photo_id,))
+                await conn.commit()
+            finally:
+                await conn.close()
 
 

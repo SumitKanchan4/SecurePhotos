@@ -3235,3 +3235,55 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - Document deletions in Lightbox synchronize instantly to the Documents grid.
 - Pinned documents remain reliably anchored at the top of the collection across categories.
 
+---
+
+## 66. Dynamic People Aggregation, Zero-Photo Ghost Filtering, and Real-Time Deletion Synchronization
+
+### Functionality Overview
+1. **Dynamic Active Photo Counting & Zero-Photo Ghost Elimination**:
+   - Resolved the defect where deleting or removing photos from the library left stale person profile cards displayed in `PeopleView.tsx` with 0 photos or broken avatars.
+   - Refactored `list_people()` in `engine/api/people.py` to dynamically aggregate photo counts from active, unencrypted, non-trashed photos (`JOIN faces f ON f.person_id = p.id JOIN photos ph ON f.photo_id = ph.id AND ph.trashed_at IS NULL AND ph.is_encrypted = 0`).
+   - Enforced `HAVING active_photo_count > 0`, ensuring that any individual with zero remaining active photos in the main library is automatically omitted from the People gallery.
+   - When all media in a library is removed, trashed, or moved to the vault, `list_people()` returns an empty array `[]`, allowing `PeopleView.tsx` to cleanly render the *"No People Identified Yet"* empty state.
+2. **Dynamic Cover Face Self-Healing**:
+   - `list_people()` now validates `cover_face_id` to guarantee it belongs to an active, unencrypted, non-trashed photo (`ph.trashed_at IS NULL AND ph.is_encrypted = 0`).
+   - If the previous cover photo was soft-deleted to trash or purged, the query dynamically selects the next highest quality medoid face from remaining active photos of that person, preventing broken avatar thumbnails.
+3. **Global Search Harmonization**:
+   - Updated the `Search People` query in `engine/api/search.py` to calculate `active_photo_count` dynamically and filter with `HAVING active_photo_count > 0`.
+   - Prevents ghost individuals with 0 photos from appearing in the global search autocomplete dropdown.
+4. **Relational Self-Healing & Permanent Trash Purging**:
+   - In `engine/database.py` during `init_db()` and in `engine/api/trash.py` during permanent trash deletion (`DELETE /api/trash/empty` and `/api/trash/delete`):
+     - Unlinks associated face thumbnail WebP crops (`thumbnails/faces/{face_id}.webp`) from disk before deleting photo records.
+     - Automatically executes self-healing pruning: `DELETE FROM persons WHERE id NOT IN (SELECT DISTINCT person_id FROM faces WHERE person_id IS NOT NULL);` and cleans up orphaned story records.
+5. **Real-Time Frontend Event Synchronization**:
+   - Added a `window.addEventListener("photos-changed")` subscriber inside `PeopleView.tsx`.
+   - When photos are deleted, moved to trash, restored, or ingested anywhere in the app, `PeopleView` automatically refetches recognized people and clusters, updating counts and cards immediately without requiring a page refresh.
+
+### Functional Decision Points & Rationale
+- **Dynamic Aggregate vs. Static Stored Column**:
+  - *Decision*: Calculate `confirmed_count` dynamically via SQLite aggregation (`COUNT(DISTINCT ph.id)`) and filter with `HAVING active_photo_count > 0`, rather than relying on the static `persons.confirmed_count` column.
+  - *Rationale*: A stored integer column inevitably drifts when photos are trashed, restored, or permanently deleted. Dynamic aggregation guarantees 100% real-time accuracy across all photo lifecycle operations.
+- **Soft-Delete (Trash) Retention vs. Premature Purging**:
+  - *Decision*: When photos are soft-deleted to the 30-day Trash, hide the person from `PeopleView` via `trashed_at IS NULL` filtering, but retain the `persons` and `faces` rows in SQLite.
+  - *Rationale*: Users who restore a photo from Trash expect the person's name, relationship, and face clustering to restore instantly without requiring a full re-scan.
+- **Orphan Purging on Permanent Deletion**:
+  - *Decision*: When photos are permanently purged from Trash, execute cascading orphan cleanup on `persons` records that have 0 remaining faces in the entire database.
+  - *Rationale*: Once all face embeddings for an identity are destroyed, retaining the empty person record creates ghost metadata that can never be matched or viewed.
+
+### Technical Touchpoints
+- `engine/api/people.py`: Updated `list_people()` to calculate `active_photo_count` dynamically, filter `HAVING active_photo_count > 0`, and validate active cover faces.
+- `engine/api/search.py`: Updated person search with `HAVING active_photo_count > 0` and active photo joins.
+- `engine/database.py`: Added self-healing migration in `init_db()` to purge orphaned `persons` and `stories`.
+- `engine/api/trash.py`: Added face thumbnail unlinking on disk and orphaned `persons` / `stories` purging on permanent deletion and empty trash.
+- `src/components/PeopleView.tsx`: Subscribed to `"photos-changed"` event to trigger real-time refetching of people and clusters.
+- `engine/tests/test_people.py`: Fixed mock foreign key constraints and added `test_list_people_omits_zero_photo_persons_and_respects_trash()`.
+- `engine/tests/test_search.py`: Updated `test_search_matching_albums_and_people` to link active mock photos and faces to search candidates.
+
+### State & Lifecycle Impact
+- 98/98 backend unit and integration tests passing (`98 passed in 33.21s`).
+- Frontend production bundle built with 0 errors (`npm run build` completed in 9.67s).
+- Persons with 0 active unencrypted photos are never returned by `/api/people` or global search.
+- When all media is removed or encrypted, `PeopleView` cleanly displays the empty state.
+- Restoring photos from Trash restores the person profile with zero manual intervention.
+
+

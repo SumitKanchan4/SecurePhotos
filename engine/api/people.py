@@ -62,25 +62,37 @@ class ScanStatusResponse(BaseModel):
 
 @router.get("", response_model=List[PersonResponse], status_code=status.HTTP_200_OK)
 async def list_people() -> List[PersonResponse]:
-    """Retrieves all recognized people ranked by Social Affinity Score and confirmed photo count."""
+    """Retrieves all recognized people with active unencrypted photos, ranked by Social Affinity Score and photo count."""
     conn = await get_db_connection()
     try:
+        # Dynamically aggregate active, non-trashed, non-encrypted photos per person
         async with conn.execute(
             """
             SELECT p.id, p.name, p.affinity_score, p.relationship_type, p.is_close_one,
-                   p.confirmed_count, p.cover_face_id
+                   COUNT(DISTINCT ph.id) AS active_photo_count, p.cover_face_id
             FROM persons p
-            ORDER BY p.is_close_one DESC, p.confirmed_count DESC, p.affinity_score DESC;
+            JOIN faces f ON f.person_id = p.id
+            JOIN photos ph ON f.photo_id = ph.id AND ph.trashed_at IS NULL AND ph.is_encrypted = 0
+            GROUP BY p.id
+            HAVING active_photo_count > 0
+            ORDER BY p.is_close_one DESC, active_photo_count DESC, p.affinity_score DESC;
             """
         ) as cursor:
             rows = await cursor.fetchall()
 
         people = []
         for r in rows:
-            # If cover_face_id is not set or points to a non-existent face, self-heal to active medoid
+            # If cover_face_id is not set or belongs to a trashed/encrypted/deleted photo, self-heal to best active medoid
             cover_face = r["cover_face_id"]
             if cover_face:
-                async with conn.execute("SELECT id FROM faces WHERE id = ?;", (cover_face,)) as chk_cur:
+                async with conn.execute(
+                    """
+                    SELECT f.id FROM faces f
+                    JOIN photos ph ON f.photo_id = ph.id
+                    WHERE f.id = ? AND ph.trashed_at IS NULL AND ph.is_encrypted = 0;
+                    """,
+                    (cover_face,),
+                ) as chk_cur:
                     if not await chk_cur.fetchone():
                         cover_face = None
 
@@ -88,8 +100,8 @@ async def list_people() -> List[PersonResponse]:
                 async with conn.execute(
                     """
                     SELECT f.id FROM faces f
-                    JOIN photos p ON f.photo_id = p.id
-                    WHERE f.person_id = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
+                    JOIN photos ph ON f.photo_id = ph.id
+                    WHERE f.person_id = ? AND ph.trashed_at IS NULL AND ph.is_encrypted = 0
                     ORDER BY f.is_anchor_medoid DESC, f.quality_score DESC
                     LIMIT 1;
                     """,
@@ -101,6 +113,7 @@ async def list_people() -> List[PersonResponse]:
                         await conn.execute("UPDATE persons SET cover_face_id = ? WHERE id = ?;", (cover_face, r["id"]))
                         await conn.commit()
 
+            active_cnt = int(r["active_photo_count"] or 0)
             people.append(
                 PersonResponse(
                     id=r["id"],
@@ -108,7 +121,7 @@ async def list_people() -> List[PersonResponse]:
                     affinity_score=float(r["affinity_score"] or 0.0),
                     relationship_type=r["relationship_type"],
                     is_close_one=bool(r["is_close_one"]),
-                    confirmed_count=int(r["confirmed_count"] or 0),
+                    confirmed_count=active_cnt,
                     cover_face_id=cover_face,
                 )
             )

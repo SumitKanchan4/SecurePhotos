@@ -544,6 +544,12 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
         # Smart album parity: System smart albums like Collages cannot be favorited
         await conn.execute("UPDATE albums SET is_favorite = 0 WHERE LOWER(name) = 'collages';")
 
+        # Self-healing: Purge orphaned persons with no associated face records in the database
+        await conn.execute("DELETE FROM persons WHERE id NOT IN (SELECT DISTINCT person_id FROM faces WHERE person_id IS NOT NULL);")
+
+        # Self-healing: Purge orphaned stories referencing non-existent persons
+        await conn.execute("DELETE FROM stories WHERE person_id IS NOT NULL AND person_id NOT IN (SELECT id FROM persons);")
+
         # Multi-slot vault migrations: dynamically add PIN columns if not present
         async with conn.execute("PRAGMA table_info(vault_configs);") as cursor:
             existing_cols = {row["name"] for row in await cursor.fetchall()}
