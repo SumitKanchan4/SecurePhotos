@@ -3386,6 +3386,65 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - All 20 integration tests passing across albums, videos, and vault (`20 passed in 14.93s`).
 - Frontend production bundle built with 0 errors in 5.95s.
 
+---
+
+## 69. 8K Golden Yellow Badge, Face Clarity Filtering, Interactive Face Inspection, and Human-First Identity Management
+
+### Functionality Overview
+1. **Unified Golden Yellow 8K UHD Badge**:
+   - Replaced temporary blue styling in `src/components/AlbumsView.tsx` with the project-standard warm golden yellow palette (`#fbbf24`, `rgba(251, 191, 36, 0.35)` border, warm ambient glow `0 0 8px rgba(251, 191, 36, 0.25)`, and `#fbbf24` sparkle icon), creating 100% visual consistency with `PhotoGrid.tsx` and `Lightbox.tsx`.
+2. **Quality-Aware Face Detection & Blurry Bokeh Elimination**:
+   - Added an automated quality gate in `detect_and_embed_faces` in `engine/services/face_recognition_service.py`: proposals with `quality < 0.25` (based on Laplacian high-frequency sharpness variance and facial area) are automatically discarded before embedding.
+   - Prevents heavily blurred, out-of-focus background faces in portrait-mode photos (e.g., bokeh artifacts in `PXL_20260204_034818313.PORTRAIT.jpg`) from polluting identity clusters or generating spurious single-face cards.
+   - Added `POST /api/people/prune-blurry` to automatically purge unassigned low-quality face proposals and recluster remaining high-quality identities.
+   - Added `WHERE f.quality_score >= 0.25` guard in `list_unlabeled_clusters()` in `engine/api/people.py`.
+3. **Interactive Face Inspection Modal (Kissing / Overlapping Resolution)**:
+   - Solved ambiguity where two individuals kissing or embracing closely appear together in a 200x200 cropped thumbnail.
+   - Made face thumbnail slots in `PeopleView.tsx` interactive (`cursor: pointer`, scale/border hover effects). Clicking any face crop invokes `GET /api/people/faces/{face_id}` and launches a high-fidelity **Face Context Preview Modal**.
+   - The modal renders the source photo with an animated glowing emerald bounding box (`#10b981`) and a `"Target Person"` badge directly enclosing the detected facial landmarks. Users immediately know which person in a couple photo is being tagged.
+4. **Human-First Identity Management & Rejection**:
+   - Replaced confusing, developer-centric copy:
+     - Button changed from `<UserX /> Not a Face` to `<XCircle /> Dismiss Suggestion` with tooltip `"Dismiss this suggestion without deleting photos"`.
+     - Raw algorithmic badge `"Medoid"` replaced with `"Primary"` / `"Best Match"`.
+     - Subtitle updated from `"Representative Medoid Clustering • ..."` to `"Automatic Grouping • Name once to tag all photos"`.
+   - Added granular disassociation and deletion capabilities:
+     - Photo-level unlinking: `POST /api/people/{person_id}/unlink-photo/{photo_id}` with an in-card hover action `[ Remove from Person ]` in the person detail view.
+     - Person-level deletion: `DELETE /api/people/{person_id}` with a toolbar action `[ Delete Person ]` in the header, safely removing the identity and unlinking all faces without touching source media.
+
+### Functional Decision Points & Rationale
+- **Interactive Full-Photo Inspection vs. Tighter Cropping**:
+  - *Decision*: Provide an interactive full-photo preview modal highlighting the target face rather than attempting to crop tighter.
+  - *Rationale*: A tighter crop still fails to resolve facial ambiguity when two faces overlap or touch (e.g. during a kiss). Showing the full photo with the glowing bounding box provides 100% visual context and eliminates all user confusion.
+- **Quality Cutoff Threshold (0.25)**:
+  - *Decision*: Set the rejection threshold to `quality_score < 0.25`.
+  - *Rationale*: Database distribution analysis showed 754/797 faces had quality $\ge 0.40$. Only 15 background/blurred portrait faces scored $< 0.25$. This cutoff strictly eliminates blurry bokeh noise without risking false negatives on real family/friend photos.
+- **Soft Face Disassociation**:
+  - *Decision*: `unlink_photo_from_person` and `delete_person` set `faces.person_id = NULL` rather than deleting face records or photos.
+  - *Rationale*: Preserves detection coordinates and allows the user to re-tag faces in the future if desired, adhering to zero data loss principles.
+
+### Technical Touchpoints
+- `engine/services/face_recognition_service.py`: Added `if quality < 0.25: continue` in `detect_and_embed_faces`.
+- `engine/api/people.py`:
+  - Added `GET /api/people/faces/{face_id}` for face coordinate inspection.
+  - Added `POST /api/people/prune-blurry` for automated background blur purging and reclustering.
+  - Added `POST /api/people/{person_id}/unlink-photo/{photo_id}` and `DELETE /api/people/{person_id}`.
+  - Added `f.quality_score >= 0.25` filter in `list_unlabeled_clusters`.
+- `engine/tests/test_people.py`: Added `test_face_inspection_and_management_lifecycle`.
+- `src/components/AlbumsView.tsx`: Updated 8K UHD badge to `#fbbf24` golden yellow with sparkles and ambient glow.
+- `src/components/PeopleView.tsx`:
+  - Replaced "Not a Face" with "Dismiss Suggestion".
+  - Replaced "Medoid" badge with "Primary".
+  - Made face crops clickable with full-photo Face Inspection Modal.
+  - Added photo unlinking action on photo cards and delete person button in header.
+- `docs/features_and_functional_decisions.md`: Documented Section 69.
+
+### State & Lifecycle Impact
+- All 15 blurry bokeh background face proposals purged from active database; cluster count cleanly reduced from 57 to 45.
+- All 9 backend people tests passing (`9 passed in 5.11s`).
+- All 12 combined people and album tests passing (`12 passed in 5.73s`).
+- Frontend production bundle built cleanly in 4.97s with 0 errors.
+
+
 
 
 

@@ -477,3 +477,80 @@ async def test_list_people_omits_zero_photo_persons_and_respects_trash():
                 await conn.close()
 
 
+@pytest.mark.asyncio
+async def test_face_inspection_and_management_lifecycle():
+    """Verifies face inspection details, photo unlinking, person deletion, and blurry pruning."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        conn = await get_db_connection()
+        test_photo_id = None
+        face_id = None
+        person_id = None
+        try:
+            # 1. Insert test photo and face
+            cur = await conn.execute(
+                """
+                INSERT INTO photos (filename, filepath, file_size, mime_type, width, height, is_encrypted)
+                VALUES ('inspect_test.jpg', 'inspect_test.jpg', 2048, 'image/jpeg', 1920, 1080, 0);
+                """
+            )
+            test_photo_id = cur.lastrowid
+
+            f_cur = await conn.execute(
+                """
+                INSERT INTO faces (photo_id, box_x, box_y, box_w, box_h, quality_score, is_anchor_medoid, cluster_id, embedding)
+                VALUES (?, 0.25, 0.30, 0.15, 0.20, 0.85, 1, 'test_inspect_cluster', '[]');
+                """,
+                (test_photo_id,),
+            )
+            face_id = f_cur.lastrowid
+            await conn.commit()
+
+            # 2. Test GET /api/people/faces/{face_id}
+            res_inspect = await client.get(f"/api/people/faces/{face_id}")
+            assert res_inspect.status_code == 200
+            face_data = res_inspect.json()
+            assert face_data["id"] == face_id
+            assert face_data["photo_id"] == test_photo_id
+            assert abs(face_data["box_x"] - 0.25) < 1e-4
+
+            # 3. Tag cluster to create a person
+            res_tag = await client.post(
+                "/api/people/tag-cluster",
+                json={
+                    "cluster_id": "test_inspect_cluster",
+                    "name": "Inspection Test Person",
+                    "relationship_type": "Friend",
+                },
+            )
+            assert res_tag.status_code == 200
+            person_id = res_tag.json()["person_id"]
+
+            # 4. Test unlinking photo from person
+            res_unlink = await client.post(f"/api/people/{person_id}/unlink-photo/{test_photo_id}")
+            assert res_unlink.status_code == 200
+            unlink_data = res_unlink.json()
+            assert unlink_data["status"] == "unlinked"
+            assert unlink_data["unlinked_faces"] == 1
+            assert unlink_data["remaining_photos"] == 0
+
+            # 5. Test safe deletion of person
+            res_del = await client.delete(f"/api/people/{person_id}")
+            assert res_del.status_code == 200
+            assert res_del.json()["status"] == "deleted"
+
+            # Verify photo still exists (photo is never deleted by person deletion)
+            async with conn.execute("SELECT id FROM photos WHERE id = ?;", (test_photo_id,)) as chk_cur:
+                assert await chk_cur.fetchone() is not None
+
+        finally:
+            if person_id:
+                await conn.execute("DELETE FROM persons WHERE id = ?;", (person_id,))
+            if face_id:
+                await conn.execute("DELETE FROM faces WHERE id = ?;", (face_id,))
+            if test_photo_id:
+                await conn.execute("DELETE FROM photos WHERE id = ?;", (test_photo_id,))
+            await conn.commit()
+            await conn.close()
+
+

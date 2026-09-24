@@ -1717,19 +1717,19 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                             backdropFilter: "blur(10px)",
                             WebkitBackdropFilter: "blur(10px)",
                             border: is8k 
-                              ? "1px solid rgba(59, 130, 246, 0.4)" 
+                              ? "1px solid rgba(251, 191, 36, 0.4)" 
                               : "1px solid rgba(255, 255, 255, 0.2)",
-                            color: is8k ? "#60a5fa" : "#ffffff",
+                            color: is8k ? "#fbbf24" : "#ffffff",
                             fontSize: "10px",
                             fontWeight: 700,
                             letterSpacing: "0.2px",
                             boxShadow: is8k 
-                              ? "0 2px 8px rgba(0, 0, 0, 0.6), 0 0 8px rgba(59, 130, 246, 0.2)" 
+                              ? "0 2px 8px rgba(0, 0, 0, 0.6), 0 0 8px rgba(251, 191, 36, 0.25)" 
                               : "0 2px 6px rgba(0, 0, 0, 0.6)",
                             pointerEvents: "none",
                           }}
                         >
-                          {is8k && <Sparkles size={9} style={{ color: "#60a5fa" }} />}
+                          {is8k && <Sparkles size={9} style={{ color: "#fbbf24" }} />}
                           <span>{is8k ? "8K UHD" : "HIGH-RES"}</span>
                         </div>
                       );

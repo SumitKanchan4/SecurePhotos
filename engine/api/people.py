@@ -135,7 +135,7 @@ async def list_unlabeled_clusters() -> List[UnlabeledClusterResponse]:
     """Retrieves unsupervised clusters awaiting naming, providing 4 diverse anchor faces for verification."""
     conn = await get_db_connection()
     try:
-        # Fetch distinct clusters that do not yet have a person_id assigned
+        # Fetch distinct clusters that do not yet have a person_id assigned, excluding blurry proposals (<0.25)
         async with conn.execute(
             """
             SELECT f.cluster_id,
@@ -143,7 +143,8 @@ async def list_unlabeled_clusters() -> List[UnlabeledClusterResponse]:
                    COUNT(f.id) AS face_count
             FROM faces f
             JOIN photos p ON f.photo_id = p.id
-            WHERE f.person_id IS NULL AND f.cluster_id IS NOT NULL AND p.trashed_at IS NULL
+            WHERE f.person_id IS NULL AND f.cluster_id IS NOT NULL 
+              AND p.trashed_at IS NULL AND f.quality_score >= 0.25
             GROUP BY f.cluster_id
             ORDER BY photo_count DESC, face_count DESC;
             """
@@ -156,11 +157,11 @@ async def list_unlabeled_clusters() -> List[UnlabeledClusterResponse]:
             photo_count = c["photo_count"]
             face_count = c["face_count"]
 
-            # Get anchor medoid face
+            # Get anchor medoid face (high quality)
             async with conn.execute(
                 """
                 SELECT id FROM faces
-                WHERE cluster_id = ? AND person_id IS NULL
+                WHERE cluster_id = ? AND person_id IS NULL AND quality_score >= 0.25
                 ORDER BY is_anchor_medoid DESC, quality_score DESC
                 LIMIT 1;
                 """,
@@ -173,7 +174,7 @@ async def list_unlabeled_clusters() -> List[UnlabeledClusterResponse]:
             async with conn.execute(
                 """
                 SELECT id FROM faces
-                WHERE cluster_id = ? AND person_id IS NULL
+                WHERE cluster_id = ? AND person_id IS NULL AND quality_score >= 0.25
                 GROUP BY photo_id
                 ORDER BY is_anchor_medoid DESC, quality_score DESC
                 LIMIT 4;
@@ -194,6 +195,31 @@ async def list_unlabeled_clusters() -> List[UnlabeledClusterResponse]:
             )
 
         return results
+    finally:
+        await conn.close()
+
+
+@router.get("/faces/{face_id}", status_code=status.HTTP_200_OK)
+async def get_face_details(face_id: int):
+    """Retrieves coordinate geometry, quality score, and photo reference for face inspection preview."""
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(
+            """
+            SELECT f.id, f.photo_id, f.box_x, f.box_y, f.box_w, f.box_h, f.quality_score,
+                   p.filename, p.width, p.height, p.preview_path, p.thumbnail_path
+            FROM faces f
+            JOIN photos p ON f.photo_id = p.id
+            WHERE f.id = ?;
+            """,
+            (face_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Face record not found")
+
+        return dict(row)
     finally:
         await conn.close()
 
@@ -476,6 +502,129 @@ async def update_person(person_id: int, payload: UpdatePersonRequest) -> PersonR
         )
     finally:
         await conn.close()
+
+
+@router.delete("/{person_id}", status_code=status.HTTP_200_OK)
+async def delete_person(person_id: int) -> dict:
+    """Safely removes a recognized person identity, unlinking all associated faces without deleting source photos."""
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT name FROM persons WHERE id = ?;", (person_id,)) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Person not found")
+        name = row["name"]
+
+        # Unlink all faces so they return to unlabeled state
+        await conn.execute("UPDATE faces SET person_id = NULL WHERE person_id = ?;", (person_id,))
+        # Delete person record
+        await conn.execute("DELETE FROM persons WHERE id = ?;", (person_id,))
+        await conn.commit()
+        return {"status": "deleted", "person_id": person_id, "name": name}
+    finally:
+        await conn.close()
+
+
+@router.post("/{person_id}/unlink-photo/{photo_id}", status_code=status.HTTP_200_OK)
+async def unlink_photo_from_person(person_id: int, photo_id: int) -> dict:
+    """Disassociates a photo from a person (e.g. incorrectly tagged or false positive)."""
+    conn = await get_db_connection()
+    try:
+        cur = await conn.execute(
+            "UPDATE faces SET person_id = NULL WHERE photo_id = ? AND person_id = ?;",
+            (photo_id, person_id),
+        )
+        unlinked_faces = cur.rowcount
+
+        # Recount remaining confirmed photos
+        async with conn.execute(
+            """
+            SELECT COUNT(DISTINCT f.photo_id) AS cnt
+            FROM faces f
+            JOIN photos p ON f.photo_id = p.id
+            WHERE f.person_id = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0;
+            """,
+            (person_id,),
+        ) as c_cur:
+            cnt_row = await c_cur.fetchone()
+            remaining_photos = cnt_row["cnt"] if cnt_row else 0
+
+        # Self-heal cover face if it belonged to the unlinked photo
+        async with conn.execute("SELECT cover_face_id FROM persons WHERE id = ?;", (person_id,)) as p_cur:
+            p_row = await p_cur.fetchone()
+            current_cover = p_row["cover_face_id"] if p_row else None
+
+        new_cover = current_cover
+        if current_cover:
+            async with conn.execute(
+                "SELECT id FROM faces WHERE id = ? AND person_id = ?;", (current_cover, person_id)
+            ) as chk:
+                if not await chk.fetchone():
+                    async with conn.execute(
+                        """
+                        SELECT f.id FROM faces f
+                        JOIN photos p ON f.photo_id = p.id
+                        WHERE f.person_id = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
+                        ORDER BY f.is_anchor_medoid DESC, f.quality_score DESC
+                        LIMIT 1;
+                        """,
+                        (person_id,),
+                    ) as n_cur:
+                        n_row = await n_cur.fetchone()
+                        new_cover = n_row["id"] if n_row else None
+
+        await conn.execute(
+            "UPDATE persons SET confirmed_count = ?, cover_face_id = ? WHERE id = ?;",
+            (remaining_photos, new_cover, person_id),
+        )
+        await conn.commit()
+
+        return {
+            "status": "unlinked",
+            "person_id": person_id,
+            "photo_id": photo_id,
+            "unlinked_faces": unlinked_faces,
+            "remaining_photos": remaining_photos,
+        }
+    finally:
+        await conn.close()
+
+
+@router.post("/prune-blurry", status_code=status.HTTP_200_OK)
+async def prune_blurry_faces() -> dict:
+    """Purges low-quality / heavily blurred unassigned face detections (< 0.25) and reclusters."""
+    conn = await get_db_connection()
+    try:
+        thumbnails_dir = get_face_thumbnails_dir()
+        async with conn.execute(
+            "SELECT id FROM faces WHERE quality_score < 0.25 AND person_id IS NULL;"
+        ) as cur:
+            rows = await cur.fetchall()
+
+        deleted_count = 0
+        for r in rows:
+            fid = r["id"]
+            thumb_file = thumbnails_dir / f"{fid}.webp"
+            if thumb_file.exists():
+                try:
+                    thumb_file.unlink()
+                except OSError:
+                    pass
+            deleted_count += 1
+
+        await conn.execute("DELETE FROM faces WHERE quality_score < 0.25 AND person_id IS NULL;")
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    from engine.services.face_clustering_service import recluster_all_faces
+    recluster_res = await recluster_all_faces()
+
+    return {
+        "status": "pruned",
+        "blurry_faces_removed": deleted_count,
+        "recluster": recluster_res,
+    }
 
 
 @router.post("/reset", status_code=status.HTTP_200_OK)

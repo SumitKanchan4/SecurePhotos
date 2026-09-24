@@ -382,6 +382,10 @@ def detect_and_embed_faces(
 
         quality = calculate_face_quality(thumb_crop, orig_w, orig_h, int(box_w_px), int(box_h_px))
 
+        # Reject heavily blurred, low-resolution, or out-of-focus background faces (e.g. portrait bokeh)
+        if quality < 0.25:
+            continue
+
         detected_faces.append(
             {
                 "box_x": round(orig_bx1 / orig_w, 6),

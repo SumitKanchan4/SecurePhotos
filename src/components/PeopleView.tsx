@@ -11,7 +11,6 @@ import {
   Heart,
   Loader2,
   Tag,
-  UserX,
   RotateCcw,
   Search,
   X,
@@ -20,6 +19,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar,
+  XCircle,
+  Trash2,
+  UserMinus,
+  Eye,
 } from "lucide-react";
 import { PersonItem, UnlabeledClusterItem, FaceScanStatus, PhotoItem } from "../types";
 import { useAppStore } from "../store/useAppStore";
@@ -114,6 +117,20 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
   const ribbonRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState<boolean>(false);
   const [canScrollRight, setCanScrollRight] = useState<boolean>(false);
+
+  // Face inspection preview modal (resolves overlapping/kissing faces)
+  const [inspectingFaceId, setInspectingFaceId] = useState<number | null>(null);
+  const [inspectingFaceData, setInspectingFaceData] = useState<{
+    id: number;
+    photo_id: number;
+    box_x: number;
+    box_y: number;
+    box_w: number;
+    box_h: number;
+    quality_score: number;
+    filename: string;
+  } | null>(null);
+  const [loadingInspectFace, setLoadingInspectFace] = useState<boolean>(false);
 
   // Load recognized people
   const fetchPeople = useCallback(async () => {
@@ -238,7 +255,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
     }
   };
 
-  // Dismiss a cluster as Not a Face / False Positive
+  // Dismiss a cluster suggestion (preserves photos safely)
   const handleDismissCluster = async (clusterId: string) => {
     setDismissingCluster(clusterId);
     try {
@@ -252,6 +269,58 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
       console.error("Failed to dismiss cluster:", err);
     } finally {
       setDismissingCluster(null);
+    }
+  };
+
+  // Inspect face in context of full photo with glowing bounding box
+  const handleInspectFace = async (faceId: number) => {
+    setInspectingFaceId(faceId);
+    setLoadingInspectFace(true);
+    try {
+      const res = await fetch(`${API_BASE}/people/faces/${faceId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setInspectingFaceData(data);
+      }
+    } catch (err) {
+      console.error("Failed to load face details:", err);
+    } finally {
+      setLoadingInspectFace(false);
+    }
+  };
+
+  // Unlink a single mis-tagged photo from a recognized person
+  const handleUnlinkPhoto = async (personId: number, photoId: number) => {
+    try {
+      const res = await fetch(`${API_BASE}/people/${personId}/unlink-photo/${photoId}`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        setPersonPhotos((prev) => prev.filter((p) => p.id !== photoId));
+        await fetchPeople();
+      }
+    } catch (err) {
+      console.error("Failed to unlink photo:", err);
+    }
+  };
+
+  // Safely delete a person identity without deleting source photos
+  const handleDeletePerson = async (personId: number) => {
+    if (!confirm(`Are you sure you want to delete "${selectedPerson?.name}"? All photos will remain safely in your library.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/people/${personId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setSelectedPerson(null);
+        setPersonPhotos([]);
+        await fetchPeople();
+        await fetchClusters();
+      }
+    } catch (err) {
+      console.error("Failed to delete person:", err);
     }
   };
 
@@ -802,6 +871,37 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                   <span>Slideshow</span>
                 </button>
               )}
+
+              {/* Delete Person Identity Button */}
+              <button
+                onClick={() => handleDeletePerson(selectedPerson.id)}
+                className="clickable"
+                title="Delete person identity (photos remain safely in your library)"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "34px",
+                  height: "34px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "var(--glass-action-bg)",
+                  border: "1px solid var(--glass-action-border)",
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                  flexShrink: 0,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "var(--accent-danger, #ef4444)";
+                  e.currentTarget.style.borderColor = "var(--accent-danger, #ef4444)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "var(--text-muted)";
+                  e.currentTarget.style.borderColor = "var(--glass-action-border)";
+                }}
+              >
+                <Trash2 size={14} />
+              </button>
             </div>
           </div>
 
@@ -1435,6 +1535,47 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                           >
                             <Heart size={14} fill={photo.is_favorite ? "#ef4444" : "none"} color={photo.is_favorite ? "#ef4444" : "#ffffff"} />
                           </button>
+
+                          {/* Unlink / Remove photo from person */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUnlinkPhoto(selectedPerson.id, photo.id);
+                            }}
+                            className="clickable"
+                            title="Not this person (Remove photo from profile)"
+                            style={{
+                              position: "absolute",
+                              top: "8px",
+                              left: "8px",
+                              backgroundColor: "rgba(10, 12, 18, 0.75)",
+                              backdropFilter: "blur(6px)",
+                              WebkitBackdropFilter: "blur(6px)",
+                              borderRadius: "var(--radius-full)",
+                              padding: "4px 8px",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              border: "1px solid rgba(255, 255, 255, 0.15)",
+                              color: "var(--text-secondary)",
+                              cursor: "pointer",
+                              fontSize: "10px",
+                              fontWeight: 600,
+                              boxShadow: "0 2px 6px rgba(0, 0, 0, 0.4)",
+                              transition: "all 0.15s ease",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.color = "var(--accent-danger, #ef4444)";
+                              e.currentTarget.style.borderColor = "var(--accent-danger, #ef4444)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.color = "var(--text-secondary)";
+                              e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.15)";
+                            }}
+                          >
+                            <UserMinus size={11} />
+                            <span>Remove</span>
+                          </button>
                         </div>
                       );
                     })}
@@ -1949,7 +2090,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                   Unlabeled Face Clusters Found ({unlabeledClusters.length})
                 </h2>
                 <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                  (Representative Medoid Clustering • Name once to tag all photos)
+                  (Automatic Grouping • Name once to tag all photos)
                 </span>
               </div>
 
@@ -1997,7 +2138,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                         </span>
                       </div>
 
-                      {/* Fixed 4-Slot Anchor Faces Grid (Consistent size for all cards with transparent placeholders) */}
+                      {/* Fixed 4-Slot Anchor Faces Grid with Interactive Full-Photo Inspection */}
                       {(() => {
                         const rawFaces = cluster.anchor_face_ids && cluster.anchor_face_ids.length > 0
                           ? cluster.anchor_face_ids
@@ -2022,6 +2163,9 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                               faceId ? (
                                 <div
                                   key={faceId}
+                                  onClick={() => handleInspectFace(faceId)}
+                                  className="clickable"
+                                  title="Click to view full photo and highlight face"
                                   style={{
                                     position: "relative",
                                     width: "100%",
@@ -2029,6 +2173,17 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                                     borderRadius: "var(--radius-sm)",
                                     overflow: "hidden",
                                     backgroundColor: "var(--bg-sidebar)",
+                                    cursor: "pointer",
+                                    border: "1px solid var(--border-subtle)",
+                                    transition: "all 0.15s ease",
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.borderColor = "var(--accent-primary)";
+                                    e.currentTarget.style.transform = "scale(1.03)";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.borderColor = "var(--border-subtle)";
+                                    e.currentTarget.style.transform = "scale(1)";
                                   }}
                                 >
                                   <img
@@ -2043,20 +2198,24 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                                   />
                                   {faceId === cluster.medoid_face_id && (
                                     <div
-                                      title="Representative Medoid Face"
+                                      title="Primary Face Match"
                                       style={{
                                         position: "absolute",
                                         bottom: "4px",
                                         left: "4px",
-                                        backgroundColor: "rgba(0, 0, 0, 0.7)",
-                                        padding: "2px 5px",
+                                        backgroundColor: "rgba(0, 0, 0, 0.75)",
+                                        backdropFilter: "blur(4px)",
+                                        padding: "2px 6px",
                                         borderRadius: "3px",
                                         fontSize: "9px",
                                         fontWeight: 600,
                                         color: "var(--accent-primary)",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "3px",
                                       }}
                                     >
-                                      Medoid
+                                      <Sparkles size={8} /> Primary
                                     </div>
                                   )}
                                 </div>
@@ -2198,14 +2357,14 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                           <button
                             onClick={() => handleDismissCluster(cluster.cluster_id)}
                             disabled={dismissingCluster === cluster.cluster_id}
-                            title="Dismiss false positive detection (not a real face)"
+                            title="Dismiss this suggestion without deleting photos"
                             className="clickable"
                             style={{
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
                               gap: "6px",
-                              padding: "9px 12px",
+                              padding: "9px 14px",
                               borderRadius: "var(--radius-sm)",
                               backgroundColor: "var(--bg-sidebar)",
                               border: "1px solid var(--border-subtle)",
@@ -2228,9 +2387,9 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                             {dismissingCluster === cluster.cluster_id ? (
                               <Loader2 size={13} className="spinning" />
                             ) : (
-                              <UserX size={13} />
+                              <XCircle size={13} />
                             )}
-                            Not a Face
+                            Dismiss Suggestion
                           </button>
                         </div>
                       </div>
@@ -2570,6 +2729,190 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                 }}
               >
                 Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interactive Face Inspection Modal (Resolves overlapping, kissing, or ambiguous faces) */}
+      {inspectingFaceId !== null && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1100,
+            backgroundColor: "rgba(0, 0, 0, 0.78)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px",
+          }}
+          onClick={() => {
+            setInspectingFaceId(null);
+            setInspectingFaceData(null);
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: "850px",
+              width: "100%",
+              maxHeight: "90vh",
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--border-highlight)",
+              borderRadius: "var(--radius-lg)",
+              boxShadow: "0 24px 64px rgba(0, 0, 0, 0.6)",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "16px 20px",
+                borderBottom: "1px solid var(--border-subtle)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Eye size={16} style={{ color: "var(--accent-primary)" }} />
+                <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)" }}>
+                  Face Context Preview
+                </span>
+                <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                  — Glowing frame highlights the exact person in this photo
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  setInspectingFaceId(null);
+                  setInspectingFaceData(null);
+                }}
+                className="clickable"
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                  padding: "4px",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body: Image with Bounding Box Overlay */}
+            <div
+              style={{
+                flex: 1,
+                minHeight: "350px",
+                maxHeight: "70vh",
+                overflow: "auto",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "#05070a",
+                position: "relative",
+                padding: "16px",
+              }}
+            >
+              {loadingInspectFace ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", color: "var(--text-muted)" }}>
+                  <Loader2 size={24} className="spinning" />
+                  <span style={{ fontSize: "12px" }}>Loading photo context...</span>
+                </div>
+              ) : inspectingFaceData ? (
+                <div style={{ position: "relative", display: "inline-block", maxWidth: "100%", maxHeight: "100%" }}>
+                  <img
+                    src={`${API_BASE}/photos/${inspectingFaceData.photo_id}/preview`}
+                    alt={inspectingFaceData.filename}
+                    style={{
+                      display: "block",
+                      maxWidth: "100%",
+                      maxHeight: "65vh",
+                      objectFit: "contain",
+                      borderRadius: "var(--radius-sm)",
+                    }}
+                  />
+                  {/* Glowing Box on Face */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: `${inspectingFaceData.box_y * 100}%`,
+                      left: `${inspectingFaceData.box_x * 100}%`,
+                      width: `${inspectingFaceData.box_w * 100}%`,
+                      height: `${inspectingFaceData.box_h * 100}%`,
+                      border: "2px solid #10b981",
+                      borderRadius: "6px",
+                      boxShadow: "0 0 16px rgba(16, 185, 129, 0.7), inset 0 0 10px rgba(16, 185, 129, 0.3)",
+                      pointerEvents: "none",
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: "calc(100% + 4px)",
+                        left: 0,
+                        backgroundColor: "#10b981",
+                        color: "#ffffff",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        whiteSpace: "nowrap",
+                        boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+                      }}
+                    >
+                      Target Person
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Could not load photo preview</span>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div
+              style={{
+                padding: "12px 20px",
+                borderTop: "1px solid var(--border-subtle)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                backgroundColor: "var(--bg-surface-elevated)",
+              }}
+            >
+              <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                {inspectingFaceData?.filename ? inspectingFaceData.filename : ""}
+              </span>
+              <button
+                onClick={() => {
+                  setInspectingFaceId(null);
+                  setInspectingFaceData(null);
+                }}
+                className="clickable"
+                style={{
+                  padding: "6px 16px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "var(--accent-primary)",
+                  border: "none",
+                  color: "#ffffff",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Close Preview
               </button>
             </div>
           </div>
