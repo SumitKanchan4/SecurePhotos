@@ -138,4 +138,36 @@ Empower users to create dynamic, rule-based "Live Albums" (similar to Google Pho
 4. **Dynamic Editorial Cover Auto-Selection**:
    - If the user hasn't explicitly locked a custom cover photo, the Live Album dynamically sets its cover to the latest high-affinity, high-resolution portrait from the matched media.
 
+---
+
+## 7. Volume-Aware Source Media Cleanup & Drive Portability ("Free Up Source Space")
+
+### Overview
+Provide an intelligent, post-import storage optimization tool that enables users to delete original source files (from external hard drives, SD cards, or camera storage) to reclaim disk space after their photos and videos have been safely organized inside SecurePhotos.
+
+### Problem Statement & Portability Challenges
+* During ingestion, users frequently select standard "Copy" mode (leaving originals in place on their external drive or SD card) rather than destructive "Move" mode.
+* Weeks or months later, or when preparing an external drive for a new photoshoot, the user wishes to free up space on that source device without manually cross-referencing which files were already imported.
+* **Windows Drive Letter Volatility**: Windows assigns logical drive letters (`D:\`, `E:\`, `F:\`) dynamically based on plug order. An external drive that was `E:\` on Desktop-1 might mount as `F:\` on Desktop-2, or become `G:\` after a system reboot with a USB flash drive inserted.
+* Blindly executing file deletions against static paths stored in `photos.original_path` risks targeting an entirely wrong drive or failing with `FileNotFoundError`.
+
+### Architectural Blueprint & Zero-Trust Safety Pipeline
+1. **Hardware Volume UUID Resolution (`engine/volume_tracker.py`)**:
+   - Every imported photo, video, and document already has its physical volume serial number captured in `photos.volume_uuid` (extracted via Win32 `kernel32.GetVolumeInformationW`).
+   - When source cleanup is triggered for an album, timeframe, or device, the engine calls `resolve_drive_by_serial(photo.volume_uuid)` to locate the active drive letter currently assigned to that physical device on the running machine.
+   - If the drive is disconnected, the UI prompts: *"Please connect external volume [Volume Name / Serial] to proceed."*
+2. **Dynamic Drive-Relative Path Reconstitution**:
+   - The source path is safely split from its legacy drive root:
+     `relative_path = os.path.splitdrive(photo.original_path)[1]` (e.g. `\DCIM\100CANON\IMG_0042.JPG`).
+   - Recombined with the validated live drive mount:
+     `live_source_path = active_drive_letter + relative_path` (e.g. `F:\DCIM\100CANON\IMG_0042.JPG`).
+3. **Cryptographic Zero-Trust Pre-Deletion Validation**:
+   - Deletion is strictly guarded by a 3-point check before any unlink:
+     1. **Internal Storage Check**: Verify the managed file exists in `data/originals/` and matches `photo.file_hash`.
+     2. **Source Integrity Check**: Verify the external candidate exists and matches the exact `photo.file_size` and SHA-256 hash.
+     3. **Safe Unlink**: Unlink the external file only after cryptographic parity is verified.
+4. **Telemetry & Audit Logging**:
+   - Displays a live progress dialog showing reclaimed megabytes/gigabytes.
+   - Retains `photos.original_path` and `photos.volume_uuid` in SQLite as historical provenance for search and auditing.
+
 
