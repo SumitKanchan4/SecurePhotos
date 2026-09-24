@@ -33,6 +33,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
   const [isImporting, setIsImporting] = useState(false);
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
+  const [currentImportFile, setCurrentImportFile] = useState<string>("");
   const [isDragging, setIsDragging] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -56,6 +57,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
       setSelectedFolder(null);
       setCleanupMode("copy");
       setImportProgress(0);
+      setCurrentImportFile("");
       setIsImporting(false);
       setIsBrowsing(false);
     }
@@ -215,6 +217,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
     setIsImporting(true);
     setImportProgress(15);
 
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
     try {
       const payload: {
         source_directory?: string;
@@ -232,16 +235,32 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
         payload.file_paths = selectedFiles;
       }
 
+      pollInterval = setInterval(async () => {
+        try {
+          const pRes = await fetch("http://127.0.0.1:8000/api/photos/import-progress");
+          if (pRes.ok) {
+            const pData = await pRes.json();
+            if (pData.total_count > 0) {
+              const pct = Math.min(95, Math.round((pData.completed_count / pData.total_count) * 100));
+              setImportProgress(pct);
+              if (pData.current_filename) {
+                setCurrentImportFile(pData.current_filename);
+              }
+            }
+          }
+        } catch {}
+      }, 300);
+
       const res = await fetch("http://127.0.0.1:8000/api/photos/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      setImportProgress(85);
+      if (pollInterval) clearInterval(pollInterval);
+      setImportProgress(100);
       if (res.ok) {
         const data = await res.json();
-        setImportProgress(100);
         setTimeout(() => {
           setIsImporting(false);
           if (data.imported > 0) {
@@ -253,7 +272,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
           }
           onImportComplete?.();
           onClose();
-        }, 500);
+        }, 400);
       } else {
         setIsImporting(false);
         let errorMsg = "Import failed or no supported media found.";
@@ -264,12 +283,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
         showToast(errorMsg, "warning");
       }
     } catch {
-      // Fallback in simulated environment
+      if (pollInterval) clearInterval(pollInterval);
       setImportProgress(100);
       setTimeout(() => {
         setIsImporting(false);
         onClose();
-      }, 600);
+      }, 500);
     }
   };
 
@@ -656,7 +675,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
           {isImporting && (
             <div style={{ marginTop: "4px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "var(--text-secondary)", marginBottom: "6px" }}>
-                <span>Importing and organizing your media...</span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "80%" }}>
+                  {currentImportFile ? `Importing: ${currentImportFile}` : "Importing and organizing your media..."}
+                </span>
                 <span style={{ fontWeight: 700, fontFamily: "var(--font-mono)" }}>{importProgress}%</span>
               </div>
               <div style={{ height: "6px", backgroundColor: "rgba(255, 255, 255, 0.08)", borderRadius: "var(--radius-full)", overflow: "hidden" }}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   X, 
   ChevronLeft, 
@@ -60,6 +60,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const isVaultUnlocked = useAppStore((state) => state.isVaultUnlocked);
   const isVaultConfigured = useAppStore((state) => state.isVaultConfigured);
   const [zoom, setZoom] = useState(1);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ mouseX: 0, mouseY: 0, startPanX: 0, startPanY: 0 });
   const [showInfo, setShowInfo] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
@@ -85,6 +88,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const originalUrl = isVaultItem 
     ? vaultStreamUrl 
     : `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/original${videoVersion > 0 ? `?v=${videoVersion}` : ""}`;
+  const videoStreamUrl = isVaultItem
+    ? vaultStreamUrl
+    : `http://127.0.0.1:8000/api/videos/${currentPhoto?.id}/stream${videoVersion > 0 ? `?v=${videoVersion}` : ""}`;
   const thumbnailUrl = isVaultItem 
     ? `http://127.0.0.1:8000/api/vault/thumbnail/${currentPhoto?.id}` 
     : `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/thumbnail`;
@@ -97,6 +103,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
       setIsFavorite(currentPhoto.is_favorite);
       setIsPinned(Boolean(currentPhoto.is_pinned));
       setZoom(1);
+      setPanOffset({ x: 0, y: 0 });
+      setIsDragging(false);
       setIsPreviewLoaded(false);
       setPreviewHasError(false);
       setIsCopied(false);
@@ -141,7 +149,74 @@ export const Lightbox: React.FC<LightboxProps> = ({
   if (!isOpen || !currentPhoto) return null;
 
   const handleZoomIn = () => setZoom((z) => Math.min(z + 0.5, 4));
-  const handleZoomOut = () => setZoom((z) => Math.max(z - 0.5, 1));
+  const handleZoomOut = () => {
+    setZoom((z) => {
+      const next = Math.max(z - 0.5, 1);
+      if (next === 1) setPanOffset({ x: 0, y: 0 });
+      return next;
+    });
+  };
+
+  const handleImageDoubleClick = () => {
+    if (zoom > 1) {
+      setZoom(1);
+      setPanOffset({ x: 0, y: 0 });
+    } else {
+      setZoom(2.5);
+    }
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (zoom <= 1) return;
+    e.preventDefault();
+    setIsDragging(true);
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      startPanX: panOffset.x,
+      startPanY: panOffset.y,
+    };
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - dragStartRef.current.mouseX;
+      const deltaY = e.clientY - dragStartRef.current.mouseY;
+      const maxPan = (zoom - 1) * 450;
+      setPanOffset({
+        x: Math.max(-maxPan, Math.min(maxPan, dragStartRef.current.startPanX + deltaX)),
+        y: Math.max(-maxPan, Math.min(maxPan, dragStartRef.current.startPanY + deltaY)),
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging, zoom]);
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.ctrlKey || zoom > 1) {
+      e.preventDefault();
+      if (e.deltaY < 0) {
+        setZoom((z) => Math.min(z + 0.25, 4));
+      } else {
+        setZoom((z) => {
+          const next = Math.max(z - 0.25, 1);
+          if (next === 1) setPanOffset({ x: 0, y: 0 });
+          return next;
+        });
+      }
+    }
+  };
 
   const executeRestore = async (photoId: number) => {
     try {
@@ -828,13 +903,15 @@ export const Lightbox: React.FC<LightboxProps> = ({
               >
                 <video
                   key={`${currentPhoto.id}_${videoVersion}`}
-                  src={originalUrl}
+                  src={videoStreamUrl}
                   poster={thumbnailUrl}
                   controls
                   playsInline
-                  preload="metadata"
+                  preload="auto"
                   autoPlay={false}
+                  onLoadedMetadata={() => setIsPreviewLoaded(true)}
                   onLoadedData={() => setIsPreviewLoaded(true)}
+                  onCanPlay={() => setIsPreviewLoaded(true)}
                   onError={() => {
                     setPreviewHasError(true);
                     setIsPreviewLoaded(true);
@@ -850,26 +927,42 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 />
               </div>
             ) : (
-              <img
-                src={previewHasError ? thumbnailUrl : primaryImageUrl}
-                alt={currentPhoto.filename}
-                onLoad={() => setIsPreviewLoaded(true)}
-                onError={() => {
-                  setPreviewHasError(true);
-                  setIsPreviewLoaded(true);
-                }}
+              <div
+                onWheel={handleWheel}
                 style={{
                   maxWidth: "94%",
                   maxHeight: "90%",
-                  objectFit: "contain",
-                  transform: `scale(${zoom})`,
-                  transition: zoom === 1 ? "transform 0.15s ease, opacity 0.25s ease" : "none",
-                  opacity: isPreviewLoaded ? 1 : 0.4,
-                  borderRadius: "var(--radius-sm)",
-                  boxShadow: "var(--shadow-lightbox)",
-                  cursor: zoom > 1 ? "grab" : "default",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
                 }}
-              />
+              >
+                <img
+                  src={previewHasError ? thumbnailUrl : primaryImageUrl}
+                  alt={currentPhoto.filename}
+                  onLoad={() => setIsPreviewLoaded(true)}
+                  onError={() => {
+                    setPreviewHasError(true);
+                    setIsPreviewLoaded(true);
+                  }}
+                  onMouseDown={handleMouseDown}
+                  onDoubleClick={handleImageDoubleClick}
+                  draggable={false}
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: "88vh",
+                    objectFit: "contain",
+                    transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
+                    transition: isDragging ? "none" : zoom === 1 ? "transform 0.15s ease, opacity 0.25s ease" : "transform 0.08s ease-out",
+                    opacity: isPreviewLoaded ? 1 : 0.4,
+                    borderRadius: "var(--radius-sm)",
+                    boxShadow: "var(--shadow-lightbox)",
+                    cursor: zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default",
+                    userSelect: "none",
+                  }}
+                />
+              </div>
             )}
 
             {/* Loading Spinner */}
@@ -889,6 +982,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   backdropFilter: "blur(16px)",
                   WebkitBackdropFilter: "blur(16px)",
                   boxShadow: "var(--glass-shadow)",
+                  pointerEvents: "none",
                 }}
               >
                 <Loader2 size={16} className="spin" style={{ color: "var(--accent-primary)" }} />

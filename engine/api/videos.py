@@ -1,12 +1,18 @@
-"""FastAPI Router for Video Discovery, Compression, and Enhancement Operations."""
-
+import asyncio
 import logging
+from pathlib import Path
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import aiosqlite
 
+from engine.config import settings
 from engine.database import get_db_connection
+from engine.services.video_runtime import (
+    is_video_runtime_available,
+    get_ffmpeg_path,
+)
 from engine.services.video_service import (
     analyze_video_candidate,
     compress_video,
@@ -361,3 +367,115 @@ async def resume_video_queue_endpoint() -> Dict[str, Any]:
     resume_video_queue()
     start_video_queue_worker()
     return {"success": True, "status": "running"}
+
+
+@router.get("/{photo_id}/stream")
+async def stream_video_endpoint(photo_id: int):
+    """Streams video with universal web-browser playback compatibility.
+    
+    If the video is already H.264/AAC, streams directly with full byte-range support.
+    If the video is HEVC/H.265 (common in Google Pixel & modern phones) or another
+    non-browser codec, automatically prepares and caches a faststart H.264 streaming proxy.
+    """
+    conn = await get_db_connection()
+    try:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT filepath, mime_type, is_encrypted FROM photos WHERE id = ?;",
+            (photo_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    finally:
+        await conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    if row["is_encrypted"]:
+        raise HTTPException(status_code=403, detail="Encrypted video requires vault authentication")
+
+    src_file = Path(row["filepath"])
+    if not src_file.exists():
+        raise HTTPException(status_code=404, detail="Video file missing on disk")
+
+    # Probe codec to determine if it is natively decodable in Chromium / WebView2
+    try:
+        meta = extract_video_metadata(str(src_file))
+        codec = (meta.get("codec") or "").lower()
+    except Exception as err:
+        logger.warning("Failed to extract metadata for video %s: %s", photo_id, err)
+        codec = "unknown"
+
+    # H.264 / AVC1 is universally supported across 100% of browsers & WebView2
+    if codec in ("h264", "avc1"):
+        return FileResponse(
+            str(src_file),
+            media_type="video/mp4",
+            headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"},
+        )
+
+    # For HEVC/H.265 or other non-web codecs, serve or generate a web-compatible H.264 preview
+    previews_dir = settings.previews_dir / "videos"
+    previews_dir.mkdir(parents=True, exist_ok=True)
+    preview_file = previews_dir / f"{photo_id}_web.mp4"
+
+    if preview_file.exists() and preview_file.stat().st_size > 0:
+        return FileResponse(
+            str(preview_file),
+            media_type="video/mp4",
+            headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"},
+        )
+
+    ffmpeg = get_ffmpeg_path()
+    if not ffmpeg:
+        # Fallback to source file if ffmpeg runtime is not found
+        return FileResponse(
+            str(src_file),
+            media_type="video/mp4",
+            headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"},
+        )
+
+    # On-the-fly ultrafast H.264 transcode with faststart for instant streaming
+    temp_preview = preview_file.with_suffix(".tmp.mp4")
+    cmd = [
+        ffmpeg, "-y",
+        "-i", str(src_file),
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-crf", "24",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-movflags", "+faststart",
+        str(temp_preview),
+    ]
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+
+        if temp_preview.exists() and temp_preview.stat().st_size > 0:
+            if preview_file.exists():
+                preview_file.unlink()
+            temp_preview.rename(preview_file)
+            return FileResponse(
+                str(preview_file),
+                media_type="video/mp4",
+                headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"},
+            )
+    except Exception as transcode_err:
+        logger.error("Failed to generate web video preview for %s: %s", photo_id, transcode_err)
+        if temp_preview.exists():
+            temp_preview.unlink(missing_ok=True)
+
+    # Direct fallback if transcoding encounters an error
+    return FileResponse(
+        str(src_file),
+        media_type="video/mp4",
+        headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"},
+    )
+

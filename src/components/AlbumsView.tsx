@@ -22,7 +22,7 @@ import {
   Pencil
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { AlbumItem, PhotoItem, StoryModel } from "../types";
+import { AlbumItem, PhotoItem, StoryModel, ImportProgressState } from "../types";
 import { AlbumSlideshowModal } from "./AlbumSlideshowModal";
 import { RemoveFromAlbumModal } from "./RemoveFromAlbumModal";
 import { AddToAlbumModal } from "./AddToAlbumModal";
@@ -53,6 +53,7 @@ interface AlbumsViewProps {
   onPhotoClick?: (idx: number, albumPhotos: PhotoItem[]) => void;
   onToggleFavorite?: (photoId: number) => void;
   onPlayStory?: (storyId: number) => void;
+  importProgress?: ImportProgressState | null;
 }
 
 export const AlbumsView: React.FC<AlbumsViewProps> = ({
@@ -60,6 +61,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   onPhotoClick,
   onToggleFavorite,
   onPlayStory,
+  importProgress,
 }) => {
   const [albums, setAlbums] = useState<AlbumItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -124,6 +126,18 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
       renameInputRef.current?.select();
     }
   }, [isRenaming]);
+
+  // Auto-refresh album detail when an active import into this album concludes
+  const prevImportActiveRef = useRef(false);
+  useEffect(() => {
+    if (prevImportActiveRef.current && !importProgress?.is_active) {
+      if (activeAlbumId && activeAlbumMeta) {
+        openAlbumDetail(activeAlbumId, activeAlbumMeta);
+      }
+      loadAlbums();
+    }
+    prevImportActiveRef.current = !!importProgress?.is_active;
+  }, [importProgress?.is_active, activeAlbumId, activeAlbumMeta]);
 
   // Memoized selectors for selection dock
   const selectedPhotosList = useMemo(() => {
@@ -1079,6 +1093,53 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
             ) : null}
           </div>
         </div>
+
+        {/* Contextual In-Place Import Progress Banner */}
+        {importProgress?.is_active && importProgress.album_id === activeAlbumId && (
+          <div
+            style={{
+              marginBottom: "16px",
+              padding: "12px 18px",
+              backgroundColor: "var(--glass-surface)",
+              backdropFilter: "blur(24px)",
+              WebkitBackdropFilter: "blur(24px)",
+              border: "1px solid var(--glass-border)",
+              borderRadius: "var(--radius-lg)",
+              boxShadow: "var(--glass-shadow)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <Loader2 size={16} className="spin" style={{ color: "var(--accent-primary)" }} />
+                <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)" }}>
+                  Adding photos to "{activeAlbumMeta?.name}" ({importProgress.completed_count} of {importProgress.total_count})
+                </span>
+                {importProgress.current_filename && (
+                  <span style={{ fontSize: "12px", color: "var(--text-muted)", maxWidth: "320px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    • {importProgress.current_filename}
+                  </span>
+                )}
+              </div>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--accent-primary)" }}>
+                {importProgress.total_count > 0 ? Math.round((importProgress.completed_count / importProgress.total_count) * 100) : 0}%
+              </span>
+            </div>
+            <div style={{ width: "100%", height: "4px", backgroundColor: "var(--border-subtle)", borderRadius: "var(--radius-full)", overflow: "hidden" }}>
+              <div
+                style={{
+                  width: `${importProgress.total_count > 0 ? Math.round((importProgress.completed_count / importProgress.total_count) * 100) : 0}%`,
+                  height: "100%",
+                  backgroundColor: "var(--accent-primary)",
+                  borderRadius: "var(--radius-full)",
+                  transition: "width 0.2s ease",
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Photos Grid or Empty State */}
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 0 88px 0" }}>

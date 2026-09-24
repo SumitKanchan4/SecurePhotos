@@ -275,6 +275,18 @@ export interface DuplicateSummaryResponse {
   total_library_photos?: number;
 }
 
+export interface ImportProgressState {
+  is_active: boolean;
+  total_count: number;
+  completed_count: number;
+  current_filename: string;
+  album_id: number | null;
+  album_name: string | null;
+  imported: number;
+  skipped: number;
+}
+
+
 export interface OptimizationStatusResponse {
   service_status: "processing" | "paused" | "idle";
   videos_total: number;

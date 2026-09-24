@@ -3494,8 +3494,62 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - 10/10 backend people unit tests passing (`10 passed in 5.14s`).
 - Frontend production build passed cleanly (`npm run build` in 5.76s).
 
+---
 
+## 71. In-Place Contextual Import Progress Telemetry, Universal Web-Compatible Video Streaming & Lightbox Zoom Drag/Pan Navigation
 
+### Functionality Overview
+- **Contextual In-Place Import Progress Telemetry**:
+  - **In-Place Location Awareness**: Per user specification, real-time import progress renders directly in the context where the user initiated the import:
+    - **Photos Root View**: When importing to the general library (`album_id` is null), a floating liquid glass progress banner appears above the photo grid with animated spinner, active filename, count (`X of Y`), and real-time percentage progress bar.
+    - **Album Detail View**: When importing directly into a specific album (`importProgress.album_id === activeAlbumId`), the liquid glass progress banner appears directly beneath the album's floating header toolbar. Photos within the album view automatically re-fetch upon completion via `prevImportActiveRef`.
+    - **Top Navigation Capsule Fallback**: A compact, non-intrusive progress capsule (`[ 📥 Ingesting media / Adding to Album: filename (X of Y) ]`) remains visible in the global header bar across any view.
+    - **Import Studio Modal Telemetry**: The Import Studio dialog (`ImportModal.tsx`) also dynamically displays the live progress percentage and current filename.
+  - **Asynchronous Telemetry Polling**:
+    - Backend tracks state via `import_progress_state` in `engine/api/photos.py` (`is_active`, `total_count`, `completed_count`, `current_filename`, `album_id`, `album_name`, `imported`, `skipped`).
+    - Exposed via `GET /api/photos/import-progress`.
+    - `import_folder` yields cooperatively (`await asyncio.sleep(0)`) between files so telemetry is immediately responsive.
+- **Universal Web-Compatible Video Streaming & Faststart Proxy Generation**:
+  - **Root Cause & Diagnosis**: 10 of 19 library videos are Google Pixel recordings encoded in HEVC (`hvc1`). Windows WebView2 / Chromium cannot decode HEVC without the paid Microsoft Store HEVC extension, causing "Video Unavailable" or infinite loading spinners. Furthermore, `<video>` tags with `preload="metadata"` and `autoPlay={false}` only listened to `onLoadedData`, which Chromium never fires until playback begins.
+  - **Universal Streaming Endpoint (`GET /api/videos/{photo_id}/stream`)**:
+    - Leverages `extract_video_metadata` to probe container codecs.
+    - **H.264 Direct Streaming**: Serves H.264 (`avc1`) files directly with full HTTP 206 Byte-Range streaming (`Accept-Ranges: bytes`).
+    - **Automated Web-Compatible Faststart Proxy**: For HEVC (`hvc1`), Apple ProRes, or non-web codecs, transcode on-demand via FFmpeg to a lightweight 720p/1080p H.264 proxy with `-c:v libx264 -preset ultrafast -crf 24 -movflags +faststart` stored in `data/previews/videos/{photo_id}_web.mp4`.
+    - Faststart moves the `moov` atom to the beginning of the file, allowing instant zero-latency playback before the full file is downloaded.
+  - **Lightbox Video Player Event Resilience**:
+    - Added `onLoadedMetadata`, `onCanPlay`, and `onPlaying` event listeners to dismiss the loading spinner immediately upon codec readiness.
+    - Added `pointerEvents: "none"` to the loading spinner overlay so users can always interact with native play/pause controls.
+- **Fluid Mouse Drag/Pan Navigation in Lightbox Zoom**:
+  - **Click-and-Drag Panning**: When zoomed into an image (`zoom > 1`), users can click and drag anywhere on the canvas to freely pan across high-resolution details.
+  - **Dynamic Cursor Cues**: Cursor transitions to `grab` when zoomed and `grabbing` while dragging.
+  - **Boundary Clamping**: Restricts pan offset based on viewport dimensions and current zoom scale to prevent dragging images out of view.
+  - **Double-Click Zoom Toggle**: Double-clicking an image smoothly toggles between 1x and 2.5x zoom, resetting pan offset to center on reset.
+  - **Mouse Wheel Zoom**: Pinch/wheel zooming preserves fluid continuous scaling.
 
+### Functional Decision Points & Rationale
+- **Contextual In-Place Progress vs. Monolithic Global Modal**:
+  - *Decision*: Place the progress indicator directly where the action originated (Photos screen or Album detail screen) rather than locking the user inside a blocking modal or relying solely on a small header badge.
+  - *Rationale*: Confirms to the user that their specific library or album is receiving media, prevents disorientation, and allows users to continue browsing other photos while the background ingestion runs.
+- **On-Demand Faststart H.264 Proxy for HEVC vs. Blocking Ingestion Transcoding**:
+  - *Decision*: Generate web-compatible streaming proxies on-demand upon first playback request (or direct H.264 streaming when compatible) instead of forcing full transcode during initial import.
+  - *Rationale*: Transcoding HEVC videos during ingestion slows down photo imports significantly. On-demand proxy generation takes only ~1–2 seconds with `-preset ultrafast` and preserves the pristine 4K HEVC master file on disk untouched.
+- **Standardized Window Mousemove Listeners for Zoom Panning**:
+  - *Decision*: Attach drag listeners to `window` rather than restricting to the `<img>` element.
+  - *Rationale*: Fast mouse movement often outpaces the image boundary during rapid dragging; window listeners guarantee butter-smooth panning without mouse-release drops or cursor jitter.
 
+### Technical Touchpoints
+- `engine/api/photos.py`: Added `import_progress_state` telemetry dictionary and `GET /api/photos/import-progress` endpoint; updated `import_folder` to populate live progress with cooperative `await asyncio.sleep(0)` yields.
+- `engine/api/videos.py`: Added `GET /api/videos/{photo_id}/stream` with codec detection, byte-range streaming for H.264, and automated ultrafast faststart proxy generation for HEVC.
+- `src/types/index.ts`: Added `ImportProgressState` interface.
+- `src/App.tsx`: Added `importProgress` polling, Section 4 liquid-glass progress banner for Photos root, header capsule indicator, and passed `importProgress` prop to `AlbumsView`.
+- `src/components/AlbumsView.tsx`: Rendered in-place progress banner in Album Detail view; added `prevImportActiveRef` to auto-refresh album photos on import completion.
+- `src/components/ImportModal.tsx`: Added live progress bar and filename feedback during active import.
+- `src/components/Lightbox.tsx`: Pointed video `src` to `/stream`, updated event listeners (`onLoadedMetadata`, `onCanPlay`), set `pointerEvents: "none"` on loader, and implemented complete mouse drag/pan navigation (`panOffset`, `isDragging`, boundary clamping, double-click toggle).
+- `engine/tests/test_ingestion.py`: Added `test_import_progress_telemetry_endpoint`.
+- `engine/tests/test_videos.py`: Added `test_video_streaming_endpoint`.
+
+### State & Lifecycle Impact
+- Zero database schema migrations required; uses existing previews directory structure.
+- All 27 targeted tests in `test_videos.py`, `test_ingestion.py`, and `test_people.py` passed cleanly (`27 passed in 20.98s`).
+- Frontend production bundle built cleanly (`npm run build` in 5.22s, 0 errors).
 

@@ -38,7 +38,7 @@ import { AddToAlbumModal } from "./components/AddToAlbumModal";
 import { UpdateModal } from "./components/UpdateModal";
 import { ToastNotification } from "./components/ToastNotification";
 import { useAppStore } from "./store/useAppStore";
-import { PhotoItem, SystemPrerequisites, OptimizationProgress, VideoOptimizationProgress, TimelineYearsData, SearchResponse } from "./types";
+import { PhotoItem, SystemPrerequisites, OptimizationProgress, VideoOptimizationProgress, TimelineYearsData, SearchResponse, ImportProgressState } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { check, Update } from "@tauri-apps/plugin-updater";
 
@@ -85,6 +85,7 @@ export const App: React.FC = () => {
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [optimizationProgress, setOptimizationProgress] = useState<OptimizationProgress | null>(null);
   const [videoProgress, setVideoProgress] = useState<VideoOptimizationProgress | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null);
   const [timelineData, setTimelineData] = useState<TimelineYearsData>({ total_count: 0, years: [] });
   const hasRegeneratedThumbnailsRef = useRef(false);
   const timelineRibbonRef = useRef<HTMLDivElement>(null);
@@ -218,13 +219,15 @@ export const App: React.FC = () => {
   useEffect(() => {
     let wasPhotoActive = false;
     let wasVideoActive = false;
+    let wasImportActive = false;
     let lastPhotoCompletedCount = 0;
 
     const interval = setInterval(async () => {
       try {
-        const [photoRes, videoRes] = await Promise.all([
+        const [photoRes, videoRes, importRes] = await Promise.all([
           fetch("http://127.0.0.1:8000/api/photos/optimization-progress").catch(() => null),
           fetch("http://127.0.0.1:8000/api/videos/optimization-progress").catch(() => null),
+          fetch("http://127.0.0.1:8000/api/photos/import-progress").catch(() => null),
         ]);
 
         if (photoRes && photoRes.ok) {
@@ -262,6 +265,18 @@ export const App: React.FC = () => {
             loadPhotos(activeYear);
           }
           wasVideoActive = videoData.is_active;
+        }
+
+        if (importRes && importRes.ok) {
+          const importData: ImportProgressState = await importRes.json();
+          setImportProgress(importData);
+
+          // When media import batch completes, refresh library photos & timeline
+          if (wasImportActive && !importData.is_active) {
+            loadPhotos(activeYear);
+            loadTimelineYears();
+          }
+          wasImportActive = importData.is_active;
         }
       } catch {}
     }, 1000);
@@ -659,6 +674,7 @@ export const App: React.FC = () => {
           ) : activeTab === "albums" ? (
             /* Albums Grid & Management */
             <AlbumsView 
+              importProgress={importProgress}
               onLockAlbumToVault={(albumId, isVaultAlbum) => handleLockAlbumToVault(albumId, isVaultAlbum)}
               onPhotoClick={(idx, albumPhotos) => {
                 setLightboxPhotos(albumPhotos);
@@ -761,6 +777,29 @@ export const App: React.FC = () => {
                       <Search size={12} style={{ color: "var(--accent-primary)" }} />
                       Search Active
                     </span>
+                  ) : importProgress?.is_active ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span 
+                        title={importProgress.current_filename ? `Ingesting: ${importProgress.current_filename}` : undefined}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "4px 10px",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "rgba(59, 130, 246, 0.12)",
+                          border: "1px solid rgba(59, 130, 246, 0.25)",
+                          fontSize: "11px",
+                          color: "var(--accent-primary)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <Loader2 size={12} className="spin" />
+                        {importProgress.album_name
+                          ? `Adding to "${importProgress.album_name}" (${importProgress.completed_count} of ${importProgress.total_count})`
+                          : `Importing (${importProgress.completed_count} of ${importProgress.total_count})`}
+                      </span>
+                    </div>
                   ) : videoProgress?.is_active ? (
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <span 
@@ -1118,6 +1157,53 @@ export const App: React.FC = () => {
                       )}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Contextual In-Place Import Progress Banner (Photos Library) */}
+              {importProgress?.is_active && !importProgress.album_id && (
+                <div
+                  style={{
+                    margin: "0 24px 16px 24px",
+                    padding: "12px 18px",
+                    backgroundColor: "var(--glass-surface)",
+                    backdropFilter: "blur(24px)",
+                    WebkitBackdropFilter: "blur(24px)",
+                    border: "1px solid var(--glass-border)",
+                    borderRadius: "var(--radius-lg)",
+                    boxShadow: "var(--glass-shadow)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <Loader2 size={16} className="spin" style={{ color: "var(--accent-primary)" }} />
+                      <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)" }}>
+                        Ingesting media into Library ({importProgress.completed_count} of {importProgress.total_count})
+                      </span>
+                      {importProgress.current_filename && (
+                        <span style={{ fontSize: "12px", color: "var(--text-muted)", maxWidth: "320px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          • {importProgress.current_filename}
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--accent-primary)" }}>
+                      {importProgress.total_count > 0 ? Math.round((importProgress.completed_count / importProgress.total_count) * 100) : 0}%
+                    </span>
+                  </div>
+                  <div style={{ width: "100%", height: "4px", backgroundColor: "var(--border-subtle)", borderRadius: "var(--radius-full)", overflow: "hidden" }}>
+                    <div
+                      style={{
+                        width: `${importProgress.total_count > 0 ? Math.round((importProgress.completed_count / importProgress.total_count) * 100) : 0}%`,
+                        height: "100%",
+                        backgroundColor: "var(--accent-primary)",
+                        borderRadius: "var(--radius-full)",
+                        transition: "width 0.2s ease",
+                      }}
+                    />
+                  </div>
                 </div>
               )}
 

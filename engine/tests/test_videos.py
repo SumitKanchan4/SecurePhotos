@@ -10,7 +10,7 @@ import pytest_asyncio
 import aiosqlite
 from httpx import AsyncClient, ASGITransport
 
-from engine.main import create_app
+from engine.main import create_app, app
 from engine.database import run_migrations, get_db_connection
 from engine.config import settings
 from engine.services.video_runtime import (
@@ -362,4 +362,64 @@ async def test_video_enhance_resolution_aware_upscale(tmp_path):
             await conn.commit()
         finally:
             await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_video_streaming_endpoint(tmp_path):
+    """Verifies that GET /api/videos/{photo_id}/stream streams video with byte-range support."""
+    ffmpeg = get_ffmpeg_path()
+    if not ffmpeg:
+        pytest.skip("FFmpeg not available")
+
+    clip_file = tmp_path / "stream_test.mp4"
+    subprocess.run([
+        ffmpeg, "-y",
+        "-f", "lavfi", "-i", "testsrc=duration=0.5:size=160x120:rate=10",
+        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        str(clip_file)
+    ], capture_output=True, check=True)
+
+    conn = await get_db_connection()
+    try:
+        cur = await conn.execute(
+            """
+            INSERT INTO photos (filename, filepath, file_size, mime_type, width, height, is_encrypted, is_optimized)
+            VALUES (?, ?, ?, 'video/mp4', 160, 120, 0, 1)
+            RETURNING id;
+            """,
+            (clip_file.name, str(clip_file), clip_file.stat().st_size),
+        )
+        row = await cur.fetchone()
+        photo_id = row[0]
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            # 1. Full stream request
+            res = await client.get(f"/api/videos/{photo_id}/stream")
+            assert res.status_code == 200
+            assert res.headers.get("content-type") == "video/mp4"
+            assert "bytes" in res.headers.get("accept-ranges", "")
+
+            # 2. Byte-range partial content request (Range: bytes=0-50)
+            res_range = await client.get(
+                f"/api/videos/{photo_id}/stream",
+                headers={"Range": "bytes=0-50"},
+            )
+            assert res_range.status_code == 206
+            assert "video/mp4" in res_range.headers.get("content-type", "")
+            assert res_range.headers.get("content-length") == "51"
+            assert "bytes 0-50/" in res_range.headers.get("content-range", "")
+    finally:
+        conn2 = await get_db_connection()
+        try:
+            await conn2.execute("DELETE FROM photos WHERE id = ?", (photo_id,))
+            await conn2.commit()
+        finally:
+            await conn2.close()
+
 

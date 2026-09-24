@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -860,6 +860,25 @@ async def get_thumbnail_regeneration_progress() -> dict:
 
 
 
+# Real-time background media ingestion progress state
+import_progress_state: Dict[str, Any] = {
+    "is_active": False,
+    "total_count": 0,
+    "completed_count": 0,
+    "current_filename": "",
+    "album_id": None,
+    "album_name": None,
+    "imported": 0,
+    "skipped": 0,
+}
+
+
+@router.get("/import-progress")
+async def get_import_progress() -> Dict[str, Any]:
+    """Returns real-time background media ingestion progress and active telemetry."""
+    return import_progress_state
+
+
 @router.post("/import", response_model=ImportResponse, status_code=status.HTTP_201_CREATED)
 async def import_folder(payload: ImportRequest, background_tasks: BackgroundTasks) -> ImportResponse:
     """Recursively ingests media files from a directory or specific file paths into the library."""
@@ -896,44 +915,77 @@ async def import_folder(payload: ImportRequest, background_tasks: BackgroundTask
     skipped = 0
     imported_photo_ids: List[int] = []
 
-    for file_path in files_to_process:
+    album_name = None
+    if payload.album_id:
         try:
-            photo_id = await ingest_single_photo(
-                conn,
-                file_path,
-                mode=payload.mode,
-                delete_source=payload.delete_source,
-            )
-            if photo_id:
-                imported += 1
-                imported_photo_ids.append(photo_id)
-            else:
+            async with conn.execute("SELECT name FROM albums WHERE id = ?;", (payload.album_id,)) as a_cur:
+                a_row = await a_cur.fetchone()
+                if a_row:
+                    album_name = a_row["name"]
+        except Exception:
+            pass
+
+    global import_progress_state
+    import_progress_state.update({
+        "is_active": True,
+        "total_count": total_found,
+        "completed_count": 0,
+        "current_filename": files_to_process[0].name if files_to_process else "",
+        "album_id": payload.album_id,
+        "album_name": album_name,
+        "imported": 0,
+        "skipped": 0,
+    })
+
+    try:
+        for idx, file_path in enumerate(files_to_process):
+            import_progress_state["current_filename"] = file_path.name
+            try:
+                photo_id = await ingest_single_photo(
+                    conn,
+                    file_path,
+                    mode=payload.mode,
+                    delete_source=payload.delete_source,
+                )
+                if photo_id:
+                    imported += 1
+                    imported_photo_ids.append(photo_id)
+                    import_progress_state["imported"] = imported
+                else:
+                    skipped += 1
+                    import_progress_state["skipped"] = skipped
+            except Exception as err:
+                logger.error("Failed to ingest %s: %s", file_path, err, exc_info=True)
                 skipped += 1
-        except Exception as err:
-            logger.error("Failed to ingest %s: %s", file_path, err, exc_info=True)
-            skipped += 1
+                import_progress_state["skipped"] = skipped
+            finally:
+                import_progress_state["completed_count"] = idx + 1
+                # Cooperative yield to allow concurrent /import-progress polling requests
+                await asyncio.sleep(0)
 
-    # If an album_id was specified and items were ingested, attach them to the album atomically
-    if payload.album_id and imported_photo_ids:
-        try:
-            async with conn.execute("SELECT id, cover_photo_id FROM albums WHERE id = ?;", (payload.album_id,)) as a_cur:
-                album_row = await a_cur.fetchone()
-            if album_row:
-                for pid in imported_photo_ids:
-                    await conn.execute(
-                        "INSERT OR IGNORE INTO photo_album (photo_id, album_id) VALUES (?, ?);",
-                        (pid, payload.album_id),
-                    )
-                if not album_row["cover_photo_id"]:
-                    await conn.execute(
-                        "UPDATE albums SET cover_photo_id = ? WHERE id = ?;",
-                        (imported_photo_ids[0], payload.album_id),
-                    )
-                await conn.commit()
-        except Exception as album_err:
-            logger.warning("Failed to link imported photos to album %s: %s", payload.album_id, album_err)
+        # If an album_id was specified and items were ingested, attach them to the album atomically
+        if payload.album_id and imported_photo_ids:
+            try:
+                async with conn.execute("SELECT id, cover_photo_id FROM albums WHERE id = ?;", (payload.album_id,)) as a_cur:
+                    album_row = await a_cur.fetchone()
+                if album_row:
+                    for pid in imported_photo_ids:
+                        await conn.execute(
+                            "INSERT OR IGNORE INTO photo_album (photo_id, album_id) VALUES (?, ?);",
+                            (pid, payload.album_id),
+                        )
+                    if not album_row["cover_photo_id"]:
+                        await conn.execute(
+                            "UPDATE albums SET cover_photo_id = ? WHERE id = ?;",
+                            (imported_photo_ids[0], payload.album_id),
+                        )
+                    await conn.commit()
+            except Exception as album_err:
+                logger.warning("Failed to link imported photos to album %s: %s", payload.album_id, album_err)
 
-    await conn.close()
+    finally:
+        import_progress_state["is_active"] = False
+        await conn.close()
 
     if imported > 0:
         background_tasks.add_task(run_background_optimization)

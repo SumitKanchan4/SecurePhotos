@@ -229,5 +229,23 @@ async def test_import_endpoint_file_paths():
             assert data["imported"] >= 1
 
 
+@pytest.mark.asyncio
+async def test_import_progress_telemetry_endpoint():
+    """Verifies that GET /api/photos/import-progress exposes active telemetry."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        res = await client.get("/api/photos/import-progress")
+        assert res.status_code == 200
+        data = res.json()
+        assert "is_active" in data
+        assert "total_count" in data
+        assert "completed_count" in data
+        assert "current_filename" in data
+        assert "album_id" in data
+        assert "imported" in data
+        assert "skipped" in data
+
+
+
 
 
