@@ -3537,6 +3537,10 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
   - *Decision*: Attach drag listeners to `window` rather than restricting to the `<img>` element.
   - *Rationale*: Fast mouse movement often outpaces the image boundary during rapid dragging; window listeners guarantee butter-smooth panning without mouse-release drops or cursor jitter.
 
+- **Strict React Hook Order & Render Invariance in Lightbox**:
+  - Eliminated the fatal `Rendered more hooks than during the previous render` crash caused by placing the mouse drag `useEffect` below the early return guard (`if (!isOpen || !currentPhoto) return null;`).
+  - All hooks (`useState`, `useRef`, `useAppStore`, `useEffect`) execute in the exact same unconditional order on every render cycle, ensuring stable mounting and instant video playback upon clicking media in the gallery.
+
 ### Technical Touchpoints
 - `engine/api/photos.py`: Added `import_progress_state` telemetry dictionary and `GET /api/photos/import-progress` endpoint; updated `import_folder` to populate live progress with cooperative `await asyncio.sleep(0)` yields.
 - `engine/api/videos.py`: Added `GET /api/videos/{photo_id}/stream` with codec detection, byte-range streaming for H.264, and automated ultrafast faststart proxy generation for HEVC.
@@ -3544,12 +3548,14 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
 - `src/App.tsx`: Added `importProgress` polling, Section 4 liquid-glass progress banner for Photos root, header capsule indicator, and passed `importProgress` prop to `AlbumsView`.
 - `src/components/AlbumsView.tsx`: Rendered in-place progress banner in Album Detail view; added `prevImportActiveRef` to auto-refresh album photos on import completion.
 - `src/components/ImportModal.tsx`: Added live progress bar and filename feedback during active import.
-- `src/components/Lightbox.tsx`: Pointed video `src` to `/stream`, updated event listeners (`onLoadedMetadata`, `onCanPlay`), set `pointerEvents: "none"` on loader, and implemented complete mouse drag/pan navigation (`panOffset`, `isDragging`, boundary clamping, double-click toggle).
+- `src/components/Lightbox.tsx`: Hoisted mouse drag `useEffect` above early return guard to satisfy React Rules of Hooks; pointed video `src` to `/stream`, updated event listeners (`onLoadedMetadata`, `onCanPlay`), set `pointerEvents: "none"` on loader, and implemented complete mouse drag/pan navigation (`panOffset`, `isDragging`, boundary clamping, double-click toggle).
 - `engine/tests/test_ingestion.py`: Added `test_import_progress_telemetry_endpoint`.
 - `engine/tests/test_videos.py`: Added `test_video_streaming_endpoint`.
 
 ### State & Lifecycle Impact
 - Zero database schema migrations required; uses existing previews directory structure.
 - All 27 targeted tests in `test_videos.py`, `test_ingestion.py`, and `test_people.py` passed cleanly (`27 passed in 20.98s`).
-- Frontend production bundle built cleanly (`npm run build` in 5.22s, 0 errors).
+- Frontend production bundle built cleanly (`npm run build` in 6.38s, 0 errors).
+- Zero React hook mismatches; video player mounts immediately upon click with zero console warnings.
+
 

@@ -146,6 +146,32 @@ export const Lightbox: React.FC<LightboxProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, currentIndex, photos.length, onClose, onNavigate, currentPhoto, isDocumentView, onTogglePin, onToggleFavorite]);
 
+  // Window drag/pan listener when zoomed into photos
+  useEffect(() => {
+    if (!isOpen || !isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - dragStartRef.current.mouseX;
+      const deltaY = e.clientY - dragStartRef.current.mouseY;
+      const maxPan = (zoom - 1) * 450;
+      setPanOffset({
+        x: Math.max(-maxPan, Math.min(maxPan, dragStartRef.current.startPanX + deltaX)),
+        y: Math.max(-maxPan, Math.min(maxPan, dragStartRef.current.startPanY + deltaY)),
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isOpen, isDragging, zoom]);
+
   if (!isOpen || !currentPhoto) return null;
 
   const handleZoomIn = () => setZoom((z) => Math.min(z + 0.5, 4));
@@ -177,31 +203,6 @@ export const Lightbox: React.FC<LightboxProps> = ({
       startPanY: panOffset.y,
     };
   };
-
-  useEffect(() => {
-    if (!isDragging) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const deltaX = e.clientX - dragStartRef.current.mouseX;
-      const deltaY = e.clientY - dragStartRef.current.mouseY;
-      const maxPan = (zoom - 1) * 450;
-      setPanOffset({
-        x: Math.max(-maxPan, Math.min(maxPan, dragStartRef.current.startPanX + deltaX)),
-        y: Math.max(-maxPan, Math.min(maxPan, dragStartRef.current.startPanY + deltaY)),
-      });
-    };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [isDragging, zoom]);
 
   const handleWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey || zoom > 1) {
