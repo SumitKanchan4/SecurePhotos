@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { 
   FileText, 
-  Search, 
   Lock, 
   Receipt, 
   CreditCard, 
@@ -35,9 +34,8 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
   onTogglePin: propTogglePin,
   onDeleteDocument: propDeleteDocument,
 }) => {
-  const { showToast } = useAppStore();
+  const { searchQuery, showToast } = useAppStore();
   const [activeCategory, setActiveCategory] = useState<DocumentCategory>("all");
-  const [searchQuery, setSearchQuery] = useState("");
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isScanning, setIsScanning] = useState<boolean>(false);
@@ -434,43 +432,8 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
           </span>
         </div>
 
-        {/* Right Column (flex: 1): Search & Scan Triggers */}
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px", minWidth: "160px" }}>
-          {/* Real-time OCR Search */}
-          <div 
-            style={{
-              width: "100%",
-              maxWidth: "160px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              padding: "6px 12px",
-              backgroundColor: "var(--glass-pill-bg)",
-              borderRadius: "var(--radius-full)",
-              border: "1px solid var(--glass-border)",
-              flexShrink: 1,
-            }}
-          >
-            <Search size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-            <input
-              type="text"
-              placeholder="Search OCR..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                flex: 1,
-                background: "transparent",
-                border: "none",
-                color: "var(--text-primary)",
-                fontSize: "12px",
-                outline: "none",
-                minWidth: 0,
-                width: "100%",
-              }}
-            />
-          </div>
-
-          {/* 1-Click Scan Documents Button */}
+        {/* Right Column (flex: 1): Scan Documents Action */}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px" }}>
           <button
             onClick={handleScanDocuments}
             disabled={isScanning}
@@ -493,7 +456,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
             }}
           >
             <RefreshCw size={13} className={isScanning ? "spin" : ""} style={{ color: "var(--accent-primary)" }} />
-            <span>{isScanning ? "Scanning..." : "Scan"}</span>
+            <span>{isScanning ? "Scanning Library..." : "Scan Documents"}</span>
           </button>
         </div>
       </div>

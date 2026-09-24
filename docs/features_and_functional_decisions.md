@@ -3179,12 +3179,14 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
    - Resolved the defect where deleting documents in the Lightbox viewer left stale cards displayed upon returning to the Documents & Receipts grid.
    - Wired `photos-changed` custom event dispatching in `App.tsx` (`handleDeletePhoto`) with `{ action: "deleted", photoId }`.
    - `DocumentsView.tsx` listens to `photos-changed` and immediately purges deleted IDs from its local state, guaranteeing instant synchronization between Lightbox, Documents grid, and Trash.
-2. **Balanced 3-Column Header & Overlap Prevention (Section 4 Compliance & Rule 3)**:
-   - Fixed the layout collision where the `Search OCR text...` pill shifted and overlapped the `23 documents` badge on mid-sized viewports.
-   - Built a balanced 3-column sticky liquid glass container (`gap: 16px`):
-     - **Left Column** (`flex: 1`): Direct `[ 📥 Add Document ]` ingestion button (`var(--accent-primary)`, pill geometry) and a subtle `<CheckCircle2 /> On-Device OCR` badge.
-     - **Center Column** (`flex: 0 1 auto`): Centered `Documents & Receipts` title (`22px` Plus Jakarta Sans, `fontWeight: 800`, `letterSpacing: -0.03em`) with inline frosted capsule badge `[ N documents ]` on the exact horizontal baseline (`flexShrink: 0`, zero overlap).
-     - **Right Column** (`flex: 1`): Constrained search input (`maxWidth: 160px`, `flexShrink: 1`) and compact scan button `[ 🔄 Scan ]`.
+2. **Contextual Global Search Unification & Duplicate Input Removal (Section 4 Compliance & Rule 3)**:
+   - Eliminated the redundant second local search box from the `DocumentsView.tsx` toolbar, unifying with the contextual global search pattern established in Section 8.
+   - Bound `DocumentsView.tsx` directly to `useAppStore.searchQuery`, enabling seamless real-time OCR and metadata filtering.
+   - Enhanced `TitleBar.tsx` `getSearchPlaceholder()` to dynamically display:
+     - Documents tab: `"Search documents by OCR text, category, or title... (Ctrl+K)"`.
+     - Trash tab: `"Search items in trash... (Ctrl+K)"`.
+   - Updated `TitleBar.tsx` `onKeyDown` to prevent `Enter` from switching tabs when active on Documents, People, Albums, or Trash.
+   - The Right Column of `DocumentsView.tsx` now cleanly hosts the `[ 🔄 Scan Documents ]` button with zero horizontal crowding or overlap risk across all viewport widths.
 3. **Direct Document Deletion from Card Grid**:
    - Added a direct `<Trash2 size={13} />` action button on each document card footer next to the "Inspect" button.
    - Clicking immediately optimistically removes the card from the UI, executes `DELETE /api/photos/{docId}` (soft-delete to the 30-day trash safe), broadcasts the `photos-changed` event, and displays a reassuring toast: `"Document moved to Trash (safe for 30 days)"` per Rule 7.
@@ -3201,6 +3203,9 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
    - Lightbox viewer receives `isDocumentView={activeTab === "documents"}` and renders a dedicated Pin/Pinned action button instead of Like, also supporting keyboard shortcuts `P` and `F` to toggle pin state.
 
 ### Functional Decision Points & Rationale
+- **Single Contextual Search vs. Duplicate Local Inputs**:
+  - *Decision*: Strip redundant local search inputs from `DocumentsView` and rely strictly on the global `TitleBar` search bar with contextual placeholder and shortcut binding (`Ctrl+K`).
+  - *Rationale*: Eliminates duplicate search UI, harmonizes interaction patterns with `PeopleView`, and completely removes horizontal header clutter on narrower screens.
 - **Pin vs. Like Semantics for Document Workflows**:
   - *Decision*: Strip heart/like controls from document contexts in favor of pin/unpin to top.
   - *Rationale*: Documents are utilitarian assets (passports, tax filings, warranties, lease contracts). Users rarely "like" a tax return, but frequently need critical identification or active records anchored permanently to the top of their list.
@@ -3212,19 +3217,21 @@ Eliminates remaining blunt, flat row headers across root views, achieving 100% a
   - *Rationale*: Documents and receipts are predominantly PDF files. Ingestion without PDF support caused document imports to silently fail.
 
 ### Technical Touchpoints
+- `src/components/TitleBar.tsx`: Added contextual placeholder for `"documents"` and `"trash"`; preserved active tab on `Enter`.
+- `src/components/DocumentsView.tsx`: Bound to `useAppStore.searchQuery`; removed local search input; expanded `[ 🔄 Scan Documents ]` in right column.
 - `engine/database.py`: Ensured `is_pinned` schema migration and index creation order.
 - `engine/services/ingestion_service.py`: Added `.pdf` to `SUPPORTED_EXTENSIONS`, handled `application/pdf` in `ingest_single_photo`.
 - `engine/services/document_service.py`: Added `is_pinned` to `list_documents` query and return dictionary; implemented `toggle_document_pin` and `import_documents_direct`.
 - `engine/api/documents.py`: Added `is_pinned` to `DocumentResponse`; implemented `POST /api/documents/{photo_id}/pin` and `POST /api/documents/import`.
 - `engine/tests/test_documents.py`: Comprehensive test coverage for pin toggle, pinned top ordering, and direct document import.
 - `src/types/index.ts`: Added `is_pinned?: boolean` to `DocumentItem` and `PhotoItem`.
-- `src/components/DocumentsView.tsx`: Redesigned header to 3-column layout (`gap: 16px`), added `[ 📥 Add Document ]` button, added direct `<Trash2 />` card deletion, added Pin button and pinned card styling, added `photos-changed` event listener.
 - `src/components/Lightbox.tsx`: Added `isDocumentView` and `onTogglePin` props, rendered Pin button instead of Like button, enabled `P`/`F` keyboard shortcuts.
 - `src/App.tsx`: Dispatched `photos-changed` on deletion and pin toggle, passed `isDocumentView={activeTab === "documents"}` and `onTogglePin` to `Lightbox`.
 
 ### State & Lifecycle Impact
 - Backend tests verified: 4/4 passed in `engine/tests/test_documents.py`.
 - Frontend build verified: `tsc && vite build` built cleanly with 0 errors.
+- Single global search works contextually across all views with `Ctrl+K`.
 - Document deletions in Lightbox synchronize instantly to the Documents grid.
 - Pinned documents remain reliably anchored at the top of the collection across categories.
 

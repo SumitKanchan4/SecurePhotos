@@ -56,6 +56,12 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
     if (activeTab === "albums") {
       return "Search albums by title... (Ctrl+K)";
     }
+    if (activeTab === "documents") {
+      return "Search documents by OCR text, category, or title... (Ctrl+K)";
+    }
+    if (activeTab === "trash") {
+      return "Search items in trash... (Ctrl+K)";
+    }
     return "Search photos, people, tags, OCR documents... (Ctrl+K)";
   };
 
@@ -279,7 +285,9 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 setIsFlyoutOpen(false);
-                setActiveTab("photos");
+                if (activeTab !== "people" && activeTab !== "albums" && activeTab !== "documents" && activeTab !== "trash") {
+                  setActiveTab("photos");
+                }
               }
             }}
             style={{
