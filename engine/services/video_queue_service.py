@@ -216,7 +216,7 @@ async def _process_next_video_job() -> bool:
         await conn.execute(
             """
             DELETE FROM video_processing_queue 
-            WHERE photo_id NOT IN (SELECT id FROM photos WHERE trashed_at IS NULL);
+            WHERE photo_id NOT IN (SELECT id FROM photos WHERE trashed_at IS NULL AND is_encrypted = 0);
             """
         )
 
@@ -249,6 +249,7 @@ async def _process_next_video_job() -> bool:
                 )
             )
             AND p.trashed_at IS NULL
+            AND p.is_encrypted = 0
             ORDER BY 
                 CASE WHEN q.status = 'queued' THEN 0 ELSE 1 END ASC,
                 q.created_at ASC

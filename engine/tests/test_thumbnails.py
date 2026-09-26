@@ -98,3 +98,47 @@ async def test_thumbnail_regeneration_api():
                 await conn.commit()
             await conn.close()
 
+
+@pytest.mark.asyncio
+async def test_thumbnail_regeneration_ignores_encrypted_media(caplog):
+    """Verifies that thumbnail regeneration skips encrypted vault media without raising errors."""
+    await run_migrations()
+    from engine.api.photos import run_background_thumbnail_regeneration
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        # Create a dummy .enc file representing encrypted vault ciphertext
+        enc_file = tmp_path / "vault_item.jpg.enc"
+        enc_file.write_bytes(b"\x00" * 256)
+
+        conn = await get_db_connection()
+        enc_photo_id = None
+        try:
+            cursor = await conn.execute(
+                """
+                INSERT INTO photos (
+                    filename, filepath, file_hash, file_size, mime_type,
+                    width, height, is_encrypted, trashed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, NULL);
+                """,
+                ("vault_item.jpg", str(enc_file), "fakehash_enc_12345", 256, "image/jpeg", 800, 600),
+            )
+            enc_photo_id = cursor.lastrowid
+            await conn.commit()
+
+            # Execute background regeneration pass
+            await run_background_thumbnail_regeneration()
+
+            # Check that no ERROR was logged for this photo
+            error_logs = [
+                record for record in caplog.records 
+                if record.levelname == "ERROR" and f"photo {enc_photo_id}" in record.message
+            ]
+            assert len(error_logs) == 0, f"Unexpected error logged for encrypted photo: {error_logs}"
+        finally:
+            if enc_photo_id:
+                await conn.execute("DELETE FROM photos WHERE id = ?;", (enc_photo_id,))
+                await conn.commit()
+            await conn.close()
+
+

@@ -130,6 +130,7 @@ async def run_background_optimization():
                     WHERE (mime_type IS NULL OR mime_type NOT LIKE 'video/%')
                       AND is_optimized = 0 
                       AND trashed_at IS NULL 
+                      AND is_encrypted = 0
                     ORDER BY id ASC;
                     """
                 ) as cursor:
@@ -263,7 +264,12 @@ async def run_background_thumbnail_regeneration():
             conn = await get_db_connection()
             try:
                 async with conn.execute(
-                    "SELECT id, filename, filepath, file_hash, thumbnail_path FROM photos WHERE trashed_at IS NULL ORDER BY id ASC;"
+                    """
+                    SELECT id, filename, filepath, file_hash, thumbnail_path, mime_type, is_encrypted 
+                    FROM photos 
+                    WHERE trashed_at IS NULL AND is_encrypted = 0 
+                    ORDER BY id ASC;
+                    """
                 ) as cursor:
                     photos_list = await cursor.fetchall()
             finally:
@@ -276,35 +282,58 @@ async def run_background_thumbnail_regeneration():
             thumbnail_regen_state["total_count"] = len(photos_list)
             thumbnail_regen_state["completed_count"] = 0
 
-            from engine.services.thumbnail_service import generate_micro_thumbnail
+            from engine.services.thumbnail_service import generate_micro_thumbnail, get_sharded_thumbnail_path
+            from engine.services.video_service import generate_video_thumbnail
 
             for row in photos_list:
                 photo_id = row["id"]
                 filename = row["filename"]
                 filepath = row["filepath"]
                 file_hash = row["file_hash"]
+                mime_type = row["mime_type"] or ""
+                is_encrypted = bool(row["is_encrypted"])
 
                 thumbnail_regen_state["active_photo_id"] = photo_id
                 thumbnail_regen_state["active_filename"] = filename
 
+                # Zero-trust safety defense: strictly skip encrypted vault media
+                if is_encrypted:
+                    thumbnail_regen_state["completed_count"] += 1
+                    continue
+
                 try:
                     target_file = Path(filepath)
-                    if target_file.exists():
-                        thumb_path, tw, th = generate_micro_thumbnail(
-                            target_file,
-                            file_hash=file_hash,
-                            size=1024,
-                            force=True,
+                    if target_file.exists() and target_file.suffix.lower() != ".enc":
+                        is_video = bool(
+                            mime_type.startswith("video/")
+                            or target_file.suffix.lower() in [".mp4", ".mov", ".avi", ".mkv", ".webm", ".ts"]
                         )
-                        update_conn = await get_db_connection()
-                        try:
-                            await update_conn.execute(
-                                "UPDATE photos SET thumbnail_path = ? WHERE id = ?;",
-                                (str(thumb_path), photo_id),
+                        if is_video:
+                            raw_thumb = Path(row["thumbnail_path"]) if row["thumbnail_path"] else None
+                            thumb_dest = raw_thumb if (raw_thumb and raw_thumb.is_absolute()) else (
+                                (settings.data_dir / raw_thumb) if raw_thumb else get_sharded_thumbnail_path(file_hash, is_encrypted=False)
                             )
-                            await update_conn.commit()
-                        finally:
-                            await update_conn.close()
+                            # Generate video thumbnail via ffmpeg/OpenCV frame extraction
+                            success = generate_video_thumbnail(str(target_file), str(thumb_dest))
+                            thumb_path = thumb_dest if success else None
+                        else:
+                            thumb_path, tw, th = generate_micro_thumbnail(
+                                target_file,
+                                file_hash=file_hash,
+                                size=1024,
+                                force=True,
+                            )
+
+                        if thumb_path and Path(thumb_path).exists():
+                            update_conn = await get_db_connection()
+                            try:
+                                await update_conn.execute(
+                                    "UPDATE photos SET thumbnail_path = ? WHERE id = ?;",
+                                    (str(thumb_path), photo_id),
+                                )
+                                await update_conn.commit()
+                            finally:
+                                await update_conn.close()
                 except Exception as e:
                     logger.error("Failed to regenerate thumbnail for photo %s: %s", photo_id, e)
 

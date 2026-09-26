@@ -66,15 +66,15 @@ async def run_background_face_scan(force: bool = False) -> Dict[str, Any]:
                 persons_in_db = p_row[0] if p_row else 0
 
             if faces_in_db == 0 and persons_in_db == 0:
-                await conn.execute("UPDATE photos SET faces_scanned = 0 WHERE trashed_at IS NULL;")
+                await conn.execute("UPDATE photos SET faces_scanned = 0 WHERE trashed_at IS NULL AND is_encrypted = 0;")
                 await conn.commit()
 
             # Query all active photos that haven't been scanned for faces yet
             async with conn.execute(
                 """
-                SELECT id, filename, filepath, mime_type, thumbnail_path, preview_path
+                SELECT id, filename, filepath, mime_type, thumbnail_path, preview_path, is_encrypted
                 FROM photos
-                WHERE faces_scanned = 0 AND trashed_at IS NULL
+                WHERE faces_scanned = 0 AND trashed_at IS NULL AND is_encrypted = 0
                 ORDER BY id ASC;
                 """
             ) as cursor:
@@ -105,6 +105,10 @@ async def run_background_face_scan(force: bool = False) -> Dict[str, Any]:
                 face_scan_state["current_photo"] = filename
 
                 photo_path = Path(filepath_str)
+                if row["is_encrypted"] or photo_path.suffix.lower() == ".enc":
+                    face_scan_state["scanned_photos"] += 1
+                    continue
+
                 is_video = mime_type.startswith("video/") or photo_path.suffix.lower() in [
                     ".mp4", ".mov", ".avi", ".mkv", ".webm"
                 ]

@@ -3715,3 +3715,49 @@ This enhancement introduces:
   - Set `position: "relative"` and `zIndex: isCardActive ? 50 : 1` on cluster cards in `unlabeledClusters.map`.
   - Connected `onOpenChange` and reset callbacks across selection and submission handlers.
 - `engine/tests/test_people.py`: All 10 backend people unit tests verified passing.
+
+---
+
+## 75. Zero-Trust Encrypted Vault Isolation & Video Stream Handling in Background Thumbnail Regeneration
+
+### Functionality Overview
+On initial application launch, the desktop client automatically issues a background request to `POST /api/photos/regenerate-thumbnails` to ensure all library media items possess crisp, High-DPI micro-thumbnails with unsharp mask filtering.
+
+Previously, this worker queried all un-trashed records (`SELECT ... FROM photos WHERE trashed_at IS NULL`) and unconditionally passed every file to Pillow's `Image.open()`. This caused two classes of recurring runtime console errors:
+1. **Encrypted Vault Media Failures (`.enc` files)**:
+   - When photos/videos are encrypted in the private vault (`is_encrypted = 1`), they reside on disk as AES-256-GCM ciphertexts.
+   - Pillow raised `cannot identify image file ... .jpg.enc` because encrypted blobs cannot be parsed as plain image files without in-memory cryptographic key unwrapping.
+2. **Video File Failures (`.mp4`, `.mov`, `.ts` files)**:
+   - Video media containers cannot be decoded by Pillow's static image parser, raising `cannot identify image file ... .mp4`.
+
+This enhancement introduces:
+1. **Zero-Trust Encrypted Media Isolation**:
+   - Background media worker queries (`run_background_thumbnail_regeneration`, `run_background_optimization`, `face_scan_worker`, `video_queue_service`) strictly enforce `AND is_encrypted = 0` at the database query level.
+   - Defense-in-depth checks within processing loops immediately bypass any encrypted records or `.enc` disk files, preserving zero-trust security boundaries and preventing unauthenticated access attempts.
+   - Vault thumbnails remain exclusively handled in-memory on demand via `/api/vault/thumbnail/{id}` with valid session token authentication.
+2. **Dedicated Video Frame Extraction in Regeneration Pipeline**:
+   - In `run_background_thumbnail_regeneration()`, media items are classified by `mime_type` and container extension.
+   - Video items dispatch to `engine.services.video_service.generate_video_thumbnail()` using hardware-accelerated FFmpeg / OpenCV frame extraction rather than Pillow.
+   - Generates clean 400px WebP micro-thumbnails and updates `thumbnail_path` in SQLite.
+
+### Functional Decision Points & Rationale
+- **Database Query Filtering (`is_encrypted = 0`) vs. In-Loop Try/Catch**:
+  - *Problem*: Relying solely on `try...except` inside the loop allowed locked vault items to trigger `UnidentifiedImageError` and spam the console with alarming `[ERROR]` logs on every app launch.
+  - *Decision*: Filter `AND is_encrypted = 0` directly in the SQL `WHERE` clause, and add a guard clause in the loop as defense-in-depth.
+  - *Rationale*: Guarantees zero unauthenticated disk operations on encrypted payloads, conforms to the project's Zero-Trust Crypto specification, and eliminates spurious console error noise.
+- **Dedicated Video Thumbnail Extraction**:
+  - *Decision*: Integrate `generate_video_thumbnail` into the regeneration pipeline for video entries.
+  - *Rationale*: Ensures both image and video libraries benefit from uniform high-resolution thumbnail generation without failing or skipping video media.
+
+### Technical Touchpoints
+- `engine/api/photos.py`:
+  - Updated `run_background_thumbnail_regeneration()` SQL query to filter `trashed_at IS NULL AND is_encrypted = 0`.
+  - Added video container detection and dispatched video items to `generate_video_thumbnail()`.
+  - Added `AND is_encrypted = 0` to `run_background_optimization()`.
+- `engine/services/face_scan_worker.py`:
+  - Added `AND is_encrypted = 0` to unscanned photo candidate queries and added defense-in-depth check for `.enc` files.
+- `engine/services/video_queue_service.py`:
+  - Added `AND is_encrypted = 0` to job cleanup and fetch queries.
+- `engine/tests/test_thumbnails.py`:
+  - Added `test_thumbnail_regeneration_ignores_encrypted_media` verifying that encrypted media is skipped without logging errors.
+
