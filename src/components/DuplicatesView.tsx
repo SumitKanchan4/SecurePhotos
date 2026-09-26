@@ -13,8 +13,7 @@ import {
   Info
 } from "lucide-react";
 import { DuplicateGroupItem, PhotoItem } from "../types";
-
-const API_BASE = "http://127.0.0.1:8000/api";
+import { apiFetch, getThumbnailUrl } from "../services/api";
 
 interface DuplicatesViewProps {
   onBack: () => void;
@@ -86,7 +85,7 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
   const fetchDuplicates = useCallback(async () => {
     setIsLoading(true);
     try {
-      const grpRes = await fetch(`${API_BASE}/duplicates/groups`);
+      const grpRes = await apiFetch("/api/duplicates/groups");
       if (grpRes.ok) {
         const grpData = await grpRes.json();
         setGroups(grpData);
@@ -107,7 +106,7 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
     setIsScanning(true);
     setNotification("Scanning library for identical hashes and burst clusters...");
     try {
-      const res = await fetch(`${API_BASE}/duplicates/scan`, { method: "POST" });
+      const res = await apiFetch("/api/duplicates/scan", { method: "POST" });
       if (res.ok) {
         const updatedGroups = await res.json();
         setGroups(updatedGroups);
@@ -127,7 +126,7 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
     setResolvingGroupId(groupId);
     const targetIds = Array.isArray(keepPhotoIds) ? keepPhotoIds : [keepPhotoIds];
     try {
-      const res = await fetch(`${API_BASE}/duplicates/resolve`, {
+      const res = await apiFetch("/api/duplicates/resolve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ group_id: groupId, keep_photo_ids: targetIds }),
@@ -177,7 +176,7 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
 
     setIsResolvingAll(true);
     try {
-      const res = await fetch(`${API_BASE}/duplicates/resolve-all-best`, { method: "POST" });
+      const res = await apiFetch("/api/duplicates/resolve-all-best", { method: "POST" });
       if (res.ok) {
         const data = await res.json();
         setGroups([]);
@@ -631,7 +630,7 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                     {group.photos.map((photo, pIdx) => {
                       const isBest = photo.id === group.suggested_best_photo_id;
                       const isSelected = selectedIds.includes(photo.id);
-                      const thumbUrl = `${API_BASE}/photos/${photo.id}/thumbnail?v=3`;
+                      const thumbUrl = getThumbnailUrl(photo.id);
 
                       return (
                         <div

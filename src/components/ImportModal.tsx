@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/useAppStore";
+import { apiFetch } from "../services/api";
 
 interface ImportModalProps {
   isOpen: boolean;
@@ -237,7 +238,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
 
       pollInterval = setInterval(async () => {
         try {
-          const pRes = await fetch("http://127.0.0.1:8000/api/photos/import-progress");
+          const pRes = await apiFetch("/api/photos/import-progress");
           if (pRes.ok) {
             const pData = await pRes.json();
             if (pData.total_count > 0) {
@@ -251,7 +252,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
         } catch {}
       }, 300);
 
-      const res = await fetch("http://127.0.0.1:8000/api/photos/import", {
+      const res = await apiFetch("/api/photos/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

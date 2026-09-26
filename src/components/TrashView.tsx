@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
+import { apiFetch, getApiUrl } from "../services/api";
 
 interface TrashedItem {
   id: number;
@@ -47,7 +48,7 @@ export const TrashView: React.FC = () => {
   const loadTrashedPhotos = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/trash");
+      const res = await apiFetch("/api/trash");
       if (res.ok) {
         const data: TrashedItem[] = await res.json();
         setTrashedItems(data);
@@ -79,7 +80,7 @@ export const TrashView: React.FC = () => {
     const ids = Array.from(selectedIds);
     setIsActionInProgress(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/trash/restore", {
+      const res = await apiFetch("/api/trash/restore", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photo_ids: ids }),
@@ -105,7 +106,7 @@ export const TrashView: React.FC = () => {
     }
     setIsActionInProgress(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/trash/permanent", {
+      const res = await apiFetch("/api/trash/permanent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photo_ids: ids }),
@@ -130,7 +131,7 @@ export const TrashView: React.FC = () => {
     }
     setIsActionInProgress(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/trash/empty", {
+      const res = await apiFetch("/api/trash/empty", {
         method: "DELETE",
       });
       if (res.ok) {
@@ -359,7 +360,7 @@ export const TrashView: React.FC = () => {
                   }}
                 >
                   <img 
-                    src={`http://127.0.0.1:8000/api/photos/${item.id}/thumbnail?v=3`} 
+                    src={getApiUrl(`/api/photos/${item.id}/thumbnail?v=3`)} 
                     alt={item.filename}
                     onLoad={(e) => {
                       const img = e.currentTarget;

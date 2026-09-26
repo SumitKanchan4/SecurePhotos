@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { PhotoItem, OptimizationProgress } from "../types";
 import { useAppStore } from "../store/useAppStore";
+import { apiFetch, getApiUrl } from "../services/api";
 
 interface LightboxProps {
   photos: PhotoItem[];
@@ -203,19 +204,19 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const isQueued = Boolean(!isVideo && optimizationProgress?.is_active && !currentPhoto?.is_optimized && !isOptimizingThis);
 
   const isVaultItem = Boolean(currentPhoto?.is_encrypted);
-  const vaultStreamUrl = `http://127.0.0.1:8000/api/vault/stream/${currentPhoto?.id}`;
+  const vaultStreamUrl = getApiUrl(`/api/vault/stream/${currentPhoto?.id}`);
   const previewUrl = isVaultItem 
     ? vaultStreamUrl 
-    : `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/preview`;
+    : getApiUrl(`/api/photos/${currentPhoto?.id}/preview`);
   const originalUrl = isVaultItem 
     ? vaultStreamUrl 
-    : `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/original${videoVersion > 0 ? `?v=${videoVersion}` : ""}`;
+    : getApiUrl(`/api/photos/${currentPhoto?.id}/original${videoVersion > 0 ? `?v=${videoVersion}` : ""}`);
   const videoStreamUrl = isVaultItem
     ? vaultStreamUrl
-    : `http://127.0.0.1:8000/api/videos/${currentPhoto?.id}/stream${videoVersion > 0 ? `?v=${videoVersion}` : ""}`;
+    : getApiUrl(`/api/videos/${currentPhoto?.id}/stream${videoVersion > 0 ? `?v=${videoVersion}` : ""}`);
   const thumbnailUrl = isVaultItem 
-    ? `http://127.0.0.1:8000/api/vault/thumbnail/${currentPhoto?.id}` 
-    : `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/thumbnail`;
+    ? getApiUrl(`/api/vault/thumbnail/${currentPhoto?.id}`) 
+    : getApiUrl(`/api/photos/${currentPhoto?.id}/thumbnail`);
 
   // Display the enhanced proxy if completed; otherwise display the unprocessed original
   const primaryImageUrl = isCompleted ? previewUrl : originalUrl;
@@ -351,7 +352,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
   const executeRestore = async (photoId: number) => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/vault/photos/unlock", {
+      const res = await apiFetch("/api/vault/photos/unlock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photo_ids: [photoId] }),
@@ -373,7 +374,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
   const executeLock = async (photoId: number) => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/vault/photos/lock", {
+      const res = await apiFetch("/api/vault/photos/lock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photo_ids: [photoId] }),
@@ -441,7 +442,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
     if (!currentPhoto || isDeleting) return;
     setIsDeleting(true);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/photos/${currentPhoto.id}`, {
+      const res = await apiFetch(`/api/photos/${currentPhoto.id}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -467,7 +468,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
       showToast(`📥 Downloading ${mediaTypeLabel} "${filename}" to your computer's Downloads folder...`, "info");
     }
 
-    const downloadUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto.id}/download?mode=${mode}`;
+    const downloadUrl = getApiUrl(`/api/photos/${currentPhoto.id}/download?mode=${mode}`);
     const link = document.createElement("a");
     link.href = downloadUrl;
     link.setAttribute("download", filename);
@@ -1760,7 +1761,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                             try {
                               setIsEnhancing4K(true);
                               showToast("Starting 4K UHD upscale with Lanczos & 3D denoising...", "info");
-                              const res = await fetch(`http://127.0.0.1:8000/api/videos/${currentPhoto.id}/enhance`, {
+                              const res = await apiFetch(`/api/videos/${currentPhoto.id}/enhance`, {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ target_height: 2160 }),

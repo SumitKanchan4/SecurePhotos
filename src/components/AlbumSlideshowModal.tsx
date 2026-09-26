@@ -13,8 +13,7 @@ import {
   SkipForward
 } from "lucide-react";
 import { PhotoItem } from "../types";
-
-const API_BASE = "http://127.0.0.1:8000/api";
+import { apiFetch, getApiUrl, getThumbnailUrl, getPreviewUrl, getVideoStreamUrl } from "../services/api";
 
 interface MusicTrackItem {
   id: string;
@@ -65,7 +64,7 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
     }
     const loadTracks = async () => {
       try {
-        const res = await fetch(`${API_BASE}/stories/music`);
+        const res = await apiFetch("/api/stories/music");
         if (res.ok) {
           const list: MusicTrackItem[] = await res.json();
           setTracks(list);
@@ -85,7 +84,7 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
   const audioSrc = activeTrack
     ? (activeTrack.stream_url.startsWith("http")
         ? activeTrack.stream_url
-        : `http://127.0.0.1:8000${activeTrack.stream_url}`)
+        : getApiUrl(activeTrack.stream_url))
     : null;
 
   // Synchronize soundtrack playback with slideshow play/pause and mute
@@ -201,8 +200,8 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
     currentPhoto?.mime_type?.startsWith("video/") ||
     currentPhoto?.filename?.match(/\.(mp4|mov|webm|avi|mkv)$/i)
   );
-  const imageUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/preview`;
-  const videoUrl = `http://127.0.0.1:8000/api/videos/${currentPhoto?.id}/stream`;
+  const imageUrl = currentPhoto ? getPreviewUrl(currentPhoto.id) : "";
+  const videoUrl = currentPhoto ? getVideoStreamUrl(currentPhoto.id) : "";
 
   return (
     <div
@@ -253,7 +252,7 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
         >
           <video
             src={videoUrl}
-            poster={`http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/thumbnail`}
+            poster={currentPhoto ? getThumbnailUrl(currentPhoto.id) : undefined}
             autoPlay
             playsInline
             muted={isMuted}

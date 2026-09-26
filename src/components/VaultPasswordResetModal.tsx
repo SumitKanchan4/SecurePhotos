@@ -16,6 +16,7 @@ import {
 import { useAppStore } from "../store/useAppStore";
 import { extractGridCardFromPng } from "../utils/gridCardRenderer";
 import { VaultRecoveryChallenge } from "../types";
+import { apiFetch } from "../services/api";
 
 interface VaultPasswordResetModalProps {
   isOpen: boolean;
@@ -65,7 +66,7 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
     setIsLoadingChallenge(true);
     setErrorMessage("");
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/vault/recovery/challenge");
+      const res = await apiFetch("/api/vault/recovery/challenge");
       if (res.ok) {
         const data = await res.json();
         setChallengeData(data);
@@ -213,7 +214,7 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
     }
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/vault/reset-password", {
+      const res = await apiFetch("/api/vault/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

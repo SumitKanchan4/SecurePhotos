@@ -72,6 +72,11 @@ class AppConfig(BaseSettings):
     default_theme: str = "dark"
     host: str = "127.0.0.1"
     port: int = 8000
+    ipc_secret: Optional[str] = Field(
+        default=None,
+        alias="SECUREPHOTOS_IPC_SECRET",
+        description="Cryptographic shared secret for local IPC authorization",
+    )
 
     @property
     def database_path(self) -> Path:

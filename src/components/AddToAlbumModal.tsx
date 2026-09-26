@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { X, FolderPlus, Folder, Plus, Check, Loader2 } from "lucide-react";
 import { AlbumItem } from "../types";
+import { apiFetch, getThumbnailUrl } from "../services/api";
 
 interface AddToAlbumModalProps {
   isOpen: boolean;
@@ -32,7 +33,7 @@ export const AddToAlbumModal: React.FC<AddToAlbumModalProps> = ({
   const loadAlbums = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/albums");
+      const res = await apiFetch("/api/albums");
       if (res.ok) {
         const data: AlbumItem[] = await res.json();
         setAlbums(data.filter((a) => a.name.toLowerCase() !== "collages"));
@@ -48,7 +49,7 @@ export const AddToAlbumModal: React.FC<AddToAlbumModalProps> = ({
     if (isSubmitting || selectedPhotoIds.length === 0) return;
     setIsSubmitting(true);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/albums/${albumId}/photos`, {
+      const res = await apiFetch(`/api/albums/${albumId}/photos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photo_ids: selectedPhotoIds }),
@@ -69,7 +70,7 @@ export const AddToAlbumModal: React.FC<AddToAlbumModalProps> = ({
     if (!trimmed || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/albums", {
+      const res = await apiFetch("/api/albums", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: trimmed, photo_ids: selectedPhotoIds }),
@@ -291,7 +292,7 @@ export const AddToAlbumModal: React.FC<AddToAlbumModalProps> = ({
                   >
                     {album.cover_photo_id ? (
                       <img
-                        src={`http://127.0.0.1:8000/api/photos/${album.cover_photo_id}/thumbnail`}
+                        src={getThumbnailUrl(album.cover_photo_id)}
                         alt={album.name}
                         style={{ width: "100%", height: "100%", objectFit: "cover" }}
                       />

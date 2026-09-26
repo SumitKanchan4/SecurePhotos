@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { VaultPasswordResetModal } from "./VaultPasswordResetModal";
+import { apiFetch } from "../services/api";
 
 interface VaultUnlockModalProps {
   isOpen: boolean;
@@ -78,7 +79,7 @@ export const VaultUnlockModal: React.FC<VaultUnlockModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/vault/unlock", {
+      const res = await apiFetch("/api/vault/unlock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

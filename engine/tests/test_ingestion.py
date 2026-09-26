@@ -208,12 +208,20 @@ async def test_whatsapp_extraction_and_undated_api_filter():
 async def test_import_endpoint_file_paths():
     """Verifies that /api/photos/import accepts explicit file_paths list."""
     import time
+    import random
     ts = time.time_ns()
     with tempfile.TemporaryDirectory() as tmpdir:
         f1 = Path(tmpdir) / f"test_import_f1_{ts}.jpg"
         f2 = Path(tmpdir) / f"test_import_f2_{ts}.jpg"
-        create_dummy_image(f1, 640, 480, color=(10, 20, (ts % 200)))
-        create_dummy_image(f2, 640, 480, color=(40, 50, ((ts + 50) % 200)))
+        img1 = Image.new("RGB", (640, 480), color=(random.randint(0, 100), random.randint(0, 100), random.randint(0, 100)))
+        img1.putpixel((0, 0), (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
+        img1.putpixel((1, 1), (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
+        img1.save(f1, format="JPEG")
+
+        img2 = Image.new("RGB", (640, 480), color=(random.randint(101, 200), random.randint(101, 200), random.randint(101, 200)))
+        img2.putpixel((0, 0), (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
+        img2.putpixel((1, 1), (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
+        img2.save(f2, format="JPEG")
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://testserver") as client:

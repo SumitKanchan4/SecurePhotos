@@ -20,8 +20,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { DocumentItem, DocumentCategory, DocumentScanResult } from "../types";
 import { useAppStore } from "../store/useAppStore";
-
-const API_BASE = "http://127.0.0.1:8000/api";
+import { apiFetch, getThumbnailUrl } from "../services/api";
 
 interface DocumentsViewProps {
   onDocumentClick?: (index: number, documents: DocumentItem[]) => void;
@@ -63,7 +62,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
       if (cat !== "all") params.append("category", cat);
       if (query.trim()) params.append("q", query.trim());
 
-      const res = await fetch(`${API_BASE}/documents?${params.toString()}`);
+      const res = await apiFetch(`/api/documents?${params.toString()}`);
       if (res.ok) {
         const data: DocumentItem[] = await res.json();
         setDocuments(sortDocuments(data));
@@ -107,7 +106,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
   const handleScanDocuments = async () => {
     setIsScanning(true);
     try {
-      const res = await fetch(`${API_BASE}/documents/scan`, { method: "POST" });
+      const res = await apiFetch("/api/documents/scan", { method: "POST" });
       if (res.ok) {
         const scanRes: DocumentScanResult = await res.json();
         showToast?.(
@@ -162,7 +161,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
   const handleDirectImportDocuments = async (filePaths: string[]) => {
     setIsImporting(true);
     try {
-      const res = await fetch(`${API_BASE}/documents/import`, {
+      const res = await apiFetch("/api/documents/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ file_paths: filePaths }),
@@ -196,7 +195,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
     setDocuments((prev) => prev.filter((d) => d.id !== docId));
     propDeleteDocument?.(docId);
     try {
-      const res = await fetch(`${API_BASE}/photos/${docId}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/photos/${docId}`, { method: "DELETE" });
       if (res.ok) {
         showToast?.("Document moved to Trash (safe for 30 days)", "info");
         window.dispatchEvent(
@@ -224,7 +223,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
     propTogglePin?.(docId);
 
     try {
-      const res = await fetch(`${API_BASE}/documents/${docId}/pin`, { method: "POST" });
+      const res = await apiFetch(`/api/documents/${docId}/pin`, { method: "POST" });
       if (res.ok) {
         const data = await res.json();
         showToast?.(data.is_pinned ? "Document pinned to top" : "Document unpinned", "info");
@@ -245,7 +244,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
   // Handle re-categorizing a document
   const handleUpdateCategory = async (docId: number, newCategory: string) => {
     try {
-      const res = await fetch(`${API_BASE}/documents/${docId}`, {
+      const res = await apiFetch(`/api/documents/${docId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ category: newCategory }),
@@ -747,7 +746,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
                   }}
                 >
                   <img
-                    src={`${API_BASE}/photos/${doc.id}/thumbnail`}
+                    src={getThumbnailUrl(doc.id)}
                     alt={doc.title}
                     loading="lazy"
                     style={{

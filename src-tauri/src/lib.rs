@@ -1,7 +1,8 @@
-use std::net::TcpStream;
+use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 use tauri::{
     menu::{Menu, MenuItem},
@@ -9,7 +10,18 @@ use tauri::{
     AppHandle, Manager,
 };
 
-pub struct BackendManager(pub Arc<Mutex<Option<std::process::Child>>>);
+pub struct AppEngineState {
+    pub port: AtomicU16,
+    pub token: RwLock<String>,
+    pub process: Arc<Mutex<Option<std::process::Child>>>,
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct EngineConfigDto {
+    pub port: u16,
+    pub token: String,
+    pub base_url: String,
+}
 
 #[derive(serde::Serialize, Clone)]
 pub struct SystemVolumeInfo {
@@ -43,6 +55,60 @@ pub struct SystemPrerequisites {
     pub all_ready: bool,
 }
 
+fn find_available_port() -> u16 {
+    TcpListener::bind("127.0.0.1:0")
+        .and_then(|listener| listener.local_addr())
+        .map(|addr| addr.port())
+        .unwrap_or(8000)
+}
+
+#[cfg(target_os = "windows")]
+fn generate_secure_token() -> String {
+    #[link(name = "bcrypt")]
+    extern "system" {
+        fn BCryptGenRandom(
+            h_algorithm: *mut std::ffi::c_void,
+            pb_buffer: *mut u8,
+            cb_buffer: u32,
+            dw_flags: u32,
+        ) -> i32;
+    }
+    let mut buf = [0u8; 32];
+    unsafe {
+        let status = BCryptGenRandom(
+            std::ptr::null_mut(),
+            buf.as_mut_ptr(),
+            buf.len() as u32,
+            0x00000002, // BCRYPT_USE_SYSTEM_PREFERRED_RNG
+        );
+        if status == 0 {
+            return buf.iter().map(|b| format!("{:02x}", b)).collect();
+        }
+    }
+    fallback_token()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn generate_secure_token() -> String {
+    if let Ok(mut file) = std::fs::File::open("/dev/urandom") {
+        use std::io::Read;
+        let mut buf = [0u8; 32];
+        if file.read_exact(&mut buf).is_ok() {
+            return buf.iter().map(|b| format!("{:02x}", b)).collect();
+        }
+    }
+    fallback_token()
+}
+
+fn fallback_token() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let pid = std::process::id();
+    format!("{:032x}{:032x}", now, pid)
+}
+
 #[tauri::command]
 fn get_engine_status() -> serde_json::Value {
     serde_json::json!({
@@ -53,9 +119,20 @@ fn get_engine_status() -> serde_json::Value {
 }
 
 #[tauri::command]
+fn get_engine_config(state: tauri::State<AppEngineState>) -> EngineConfigDto {
+    let port = state.port.load(Ordering::SeqCst);
+    let token = state.token.read().unwrap().clone();
+    EngineConfigDto {
+        port,
+        token,
+        base_url: format!("http://127.0.0.1:{}", port),
+    }
+}
+
+#[tauri::command]
 fn relaunch_app(app: AppHandle) {
-    let state = app.state::<BackendManager>();
-    if let Ok(mut lock) = state.0.lock() {
+    let state = app.state::<AppEngineState>();
+    if let Ok(mut lock) = state.process.lock() {
         if let Some(mut child) = lock.take() {
             let _ = child.kill();
         }
@@ -87,13 +164,15 @@ fn find_sidecar_executable() -> Option<PathBuf> {
 }
 
 #[tauri::command]
-fn check_system_prerequisites() -> SystemPrerequisites {
-    // 1. Probe FastAPI Engine responsiveness on localhost:8000
-    let backend_running = TcpStream::connect_timeout(
-        &"127.0.0.1:8000".parse().unwrap(),
-        Duration::from_millis(400),
-    )
-    .is_ok();
+fn check_system_prerequisites(state: tauri::State<AppEngineState>) -> SystemPrerequisites {
+    let current_port = state.port.load(Ordering::SeqCst);
+    let target_port = if current_port > 0 { current_port } else { 8000 };
+    let addr_str = format!("127.0.0.1:{}", target_port);
+
+    let backend_running = addr_str
+        .parse()
+        .map(|addr| TcpStream::connect_timeout(&addr, Duration::from_millis(400)).is_ok())
+        .unwrap_or(false);
 
     let sidecar_exists = find_sidecar_executable().is_some();
 
@@ -149,8 +228,8 @@ fn check_system_prerequisites() -> SystemPrerequisites {
         },
         backend: BackendPrerequisite {
             running: backend_running,
-            port: 8000,
-            url: "http://127.0.0.1:8000".to_string(),
+            port: target_port,
+            url: format!("http://127.0.0.1:{}", target_port),
         },
         all_ready,
     }
@@ -189,15 +268,27 @@ fn find_project_root() -> Option<PathBuf> {
 }
 
 #[tauri::command]
-fn start_backend_engine(state: tauri::State<BackendManager>) -> serde_json::Value {
-    if TcpStream::connect_timeout(
-        &"127.0.0.1:8000".parse().unwrap(),
-        Duration::from_millis(300),
-    ).is_ok() {
-        return serde_json::json!({
-            "status": "running",
-            "message": "Engine is already active on port 8000"
-        });
+fn start_backend_engine(state: tauri::State<AppEngineState>) -> serde_json::Value {
+    let current_port = state.port.load(Ordering::SeqCst);
+    if current_port > 0 {
+        let addr_str = format!("127.0.0.1:{}", current_port);
+        if let Ok(addr) = addr_str.parse() {
+            if TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok() {
+                return serde_json::json!({
+                    "status": "running",
+                    "port": current_port,
+                    "message": format!("Engine is already active on port {}", current_port)
+                });
+            }
+        }
+    }
+
+    let chosen_port = find_available_port();
+    let token = generate_secure_token();
+
+    state.port.store(chosen_port, Ordering::SeqCst);
+    if let Ok(mut t_lock) = state.token.write() {
+        *t_lock = token.clone();
     }
 
     let project_root = find_project_root();
@@ -222,19 +313,21 @@ fn start_backend_engine(state: tauri::State<BackendManager>) -> serde_json::Valu
                     cmd.current_dir(root);
                     cmd.env("PYTHONPATH", root);
                 }
-                cmd.args(["-m", "uvicorn", "engine.main:app", "--port", "8000", "--reload"]);
+                cmd.env("SECUREPHOTOS_IPC_SECRET", &token);
+                cmd.args(["-m", "uvicorn", "engine.main:app", "--port", &chosen_port.to_string(), "--reload"]);
                 #[cfg(target_os = "windows")]
                 {
                     use std::os::windows::process::CommandExt;
                     cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
                 }
                 if let Ok(child) = cmd.spawn() {
-                    if let Ok(mut lock) = state.0.lock() {
+                    if let Ok(mut lock) = state.process.lock() {
                         *lock = Some(child);
                     }
                     return serde_json::json!({
                         "status": "starting",
-                        "message": "Development Python engine started via .venv"
+                        "port": chosen_port,
+                        "message": format!("Development Python engine started on port {}", chosen_port)
                     });
                 }
             }
@@ -245,7 +338,8 @@ fn start_backend_engine(state: tauri::State<BackendManager>) -> serde_json::Valu
     if let Some(sidecar_path) = find_sidecar_executable() {
         let mut cmd = Command::new(&sidecar_path);
         let data_dir = sidecar_path.parent().map(|p| p.join("data")).unwrap_or_else(|| std::path::PathBuf::from("data"));
-        cmd.args(["--port", "8000", "--data-dir", data_dir.to_str().unwrap_or("data")]);
+        cmd.env("SECUREPHOTOS_IPC_SECRET", &token);
+        cmd.args(["--port", &chosen_port.to_string(), "--data-dir", data_dir.to_str().unwrap_or("data")]);
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
@@ -254,12 +348,13 @@ fn start_backend_engine(state: tauri::State<BackendManager>) -> serde_json::Valu
 
         match cmd.spawn() {
             Ok(child) => {
-                if let Ok(mut lock) = state.0.lock() {
+                if let Ok(mut lock) = state.process.lock() {
                     *lock = Some(child);
                 }
                 return serde_json::json!({
                     "status": "starting",
-                    "message": "Bundled engine sidecar started"
+                    "port": chosen_port,
+                    "message": format!("Bundled engine sidecar started on port {}", chosen_port)
                 });
             }
             Err(err) => {
@@ -300,7 +395,8 @@ fn start_backend_engine(state: tauri::State<BackendManager>) -> serde_json::Valu
         cmd.current_dir(root);
         cmd.env("PYTHONPATH", root);
     }
-    cmd.args(["-m", "uvicorn", "engine.main:app", "--port", "8000"]);
+    cmd.env("SECUREPHOTOS_IPC_SECRET", &token);
+    cmd.args(["-m", "uvicorn", "engine.main:app", "--port", &chosen_port.to_string()]);
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
@@ -309,12 +405,13 @@ fn start_backend_engine(state: tauri::State<BackendManager>) -> serde_json::Valu
 
     match cmd.spawn() {
         Ok(child) => {
-            if let Ok(mut lock) = state.0.lock() {
+            if let Ok(mut lock) = state.process.lock() {
                 *lock = Some(child);
             }
             serde_json::json!({
                 "status": "starting",
-                "message": "Background engine started via Python"
+                "port": chosen_port,
+                "message": format!("Background engine started on port {}", chosen_port)
             })
         }
         Err(err) => {
@@ -327,8 +424,8 @@ fn start_backend_engine(state: tauri::State<BackendManager>) -> serde_json::Valu
 }
 
 #[tauri::command]
-fn stop_backend_engine(state: tauri::State<BackendManager>) -> bool {
-    if let Ok(mut lock) = state.0.lock() {
+fn stop_backend_engine(state: tauri::State<AppEngineState>) -> bool {
+    if let Ok(mut lock) = state.process.lock() {
         if let Some(mut child) = lock.take() {
             let _ = child.kill();
             return true;
@@ -390,12 +487,19 @@ fn get_system_drives() -> Vec<SystemVolumeInfo> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let engine_state = AppEngineState {
+        port: AtomicU16::new(0),
+        token: RwLock::new(String::new()),
+        process: Arc::new(Mutex::new(None)),
+    };
+
     tauri::Builder::default()
-        .manage(BackendManager(Arc::new(Mutex::new(None))))
+        .manage(engine_state)
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_engine_status,
+            get_engine_config,
             check_system_prerequisites,
             relaunch_app,
             start_backend_engine,
@@ -408,7 +512,7 @@ pub fn run() {
             // Auto-launch backend engine silently in the background
             let handle = app.handle().clone();
             std::thread::spawn(move || {
-                let state = handle.state::<BackendManager>();
+                let state = handle.state::<AppEngineState>();
                 let _ = start_backend_engine(state);
             });
 
@@ -420,8 +524,8 @@ pub fn run() {
                 .menu(&menu)
                 .on_menu_event(|app: &AppHandle, event| match event.id.as_ref() {
                     "quit" => {
-                        let state = app.state::<BackendManager>();
-                        if let Ok(mut lock) = state.0.lock() {
+                        let state = app.state::<AppEngineState>();
+                        if let Ok(mut lock) = state.process.lock() {
                             if let Some(mut child) = lock.take() {
                                 let _ = child.kill();
                             }

@@ -40,6 +40,7 @@ import { useAppStore } from "./store/useAppStore";
 import { PhotoItem, SystemPrerequisites, OptimizationProgress, VideoOptimizationProgress, TimelineYearsData, SearchResponse, ImportProgressState } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { check, Update } from "@tauri-apps/plugin-updater";
+import { apiFetch, getApiUrl, performHandshake } from "./services/api";
 
 export const App: React.FC = () => {
   const { 
@@ -58,11 +59,29 @@ export const App: React.FC = () => {
     setTotalPhotosCount,
     showToast,
     checkVaultStatus,
+    setEngineConfig,
+    setIsEngineReady,
   } = useAppStore();
 
   useEffect(() => {
-    checkVaultStatus();
-  }, [checkVaultStatus]);
+    async function initEngine() {
+      try {
+        const config = await invoke<{ port: number; token: string; base_url: string }>("get_engine_config");
+        if (config && config.base_url) {
+          setEngineConfig(config.base_url, config.token || null);
+          if (config.token) {
+            await performHandshake(config.base_url, config.token);
+          }
+        }
+      } catch (err) {
+        console.info("Tauri engine config not available, running in standard mode:", err);
+      } finally {
+        setIsEngineReady(true);
+        checkVaultStatus();
+      }
+    }
+    initEngine();
+  }, [setEngineConfig, setIsEngineReady, checkVaultStatus]);
 
 
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
@@ -113,7 +132,7 @@ export const App: React.FC = () => {
 
   const loadTimelineYears = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/photos/timeline-years");
+      const res = await apiFetch("/api/photos/timeline-years");
       if (res.ok) {
         const data: TimelineYearsData = await res.json();
         setTimelineData(data);
@@ -124,13 +143,13 @@ export const App: React.FC = () => {
   // Load photos from engine with optional Year or Undated filtering
   const loadPhotos = async (selectedYear: string = activeYear) => {
     try {
-      let url = "http://127.0.0.1:8000/api/photos?limit=500";
+      let url = "/api/photos?limit=500";
       if (selectedYear === "Undated") {
         url += "&year=Undated";
       } else if (selectedYear && selectedYear !== "All Years") {
         url += `&year=${selectedYear}`;
       }
-      const res = await fetch(url);
+      const res = await apiFetch(url);
       if (res.ok) {
         const data = await res.json();
         setPhotos(data);
@@ -139,7 +158,7 @@ export const App: React.FC = () => {
         // Auto-trigger background 512px Retina thumbnail regeneration once on load
         if (!hasRegeneratedThumbnailsRef.current && data.length > 0) {
           hasRegeneratedThumbnailsRef.current = true;
-          fetch("http://127.0.0.1:8000/api/photos/regenerate-thumbnails", { method: "POST" }).catch(() => {});
+          apiFetch("/api/photos/regenerate-thumbnails", { method: "POST" }).catch(() => {});
         }
 
         // Auto-trigger background 8K optimization queue ONLY for photos (not videos)
@@ -147,7 +166,7 @@ export const App: React.FC = () => {
           (p: PhotoItem) => !p.is_optimized && (!p.mime_type || !p.mime_type.startsWith("video/"))
         );
         if (hasUnoptimizedPhotos) {
-          fetch("http://127.0.0.1:8000/api/photos/start-optimization", { method: "POST" }).catch(() => {});
+          apiFetch("/api/photos/start-optimization", { method: "POST" }).catch(() => {});
         }
       }
     } catch {
@@ -176,7 +195,7 @@ export const App: React.FC = () => {
 
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:8000/api/search?q=${encodeURIComponent(trimmed)}`);
+        const res = await apiFetch(`/api/search?q=${encodeURIComponent(trimmed)}`);
         if (res.ok && isMounted) {
           const data: SearchResponse = await res.json();
           const mapped: PhotoItem[] = data.photos.map((p) => ({
@@ -224,9 +243,9 @@ export const App: React.FC = () => {
     const interval = setInterval(async () => {
       try {
         const [photoRes, videoRes, importRes] = await Promise.all([
-          fetch("http://127.0.0.1:8000/api/photos/optimization-progress").catch(() => null),
-          fetch("http://127.0.0.1:8000/api/videos/optimization-progress").catch(() => null),
-          fetch("http://127.0.0.1:8000/api/photos/import-progress").catch(() => null),
+          apiFetch("/api/photos/optimization-progress").catch(() => null),
+          apiFetch("/api/videos/optimization-progress").catch(() => null),
+          apiFetch("/api/photos/import-progress").catch(() => null),
         ]);
 
         if (photoRes && photoRes.ok) {
@@ -367,7 +386,7 @@ export const App: React.FC = () => {
       } else if (e.key === "l" || e.key === "L") {
         if (isVaultUnlocked) {
           setIsVaultUnlocked(false);
-          fetch("http://127.0.0.1:8000/api/vault/lock", { method: "POST" }).catch(() => {});
+          apiFetch("/api/vault/lock", { method: "POST" }).catch(() => {});
         }
       } else if (e.key === "Escape") {
         clearSelection();
@@ -404,7 +423,7 @@ export const App: React.FC = () => {
       );
     }
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/documents/${photoId}/pin`, {
+      const res = await apiFetch(`/api/documents/${photoId}/pin`, {
         method: "POST",
       });
       if (res.ok) {
@@ -435,7 +454,7 @@ export const App: React.FC = () => {
       );
     }
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/photos/${photoId}/toggle-favorite`, {
+      const res = await apiFetch(`/api/photos/${photoId}/toggle-favorite`, {
         method: "POST",
       });
       if (!res.ok) {
@@ -463,7 +482,7 @@ export const App: React.FC = () => {
     if (selectedPhotoIds.size === 0) return;
     const ids = Array.from(selectedPhotoIds);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/photos/batch-trash", {
+      const res = await apiFetch("/api/photos/batch-trash", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photo_ids: ids }),
@@ -497,7 +516,7 @@ export const App: React.FC = () => {
     }
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/vault/photos/lock", {
+      const res = await apiFetch("/api/vault/photos/lock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photo_ids: ids }),
@@ -538,10 +557,10 @@ export const App: React.FC = () => {
   const executeAlbumVaultAction = async (albumId: number, isVaultAlbum: boolean) => {
     try {
       const endpoint = isVaultAlbum
-        ? `http://127.0.0.1:8000/api/vault/albums/${albumId}/unlock`
-        : `http://127.0.0.1:8000/api/vault/albums/${albumId}/lock`;
+        ? `/api/vault/albums/${albumId}/unlock`
+        : `/api/vault/albums/${albumId}/lock`;
 
-      const res = await fetch(endpoint, { method: "POST" });
+      const res = await apiFetch(endpoint, { method: "POST" });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         if (!isVaultAlbum && data.photo_ids && Array.isArray(data.photo_ids) && data.photo_ids.length > 0) {
@@ -580,7 +599,7 @@ export const App: React.FC = () => {
         const photo = photos.find((p) => p.id === id);
         const filename = photo?.filename || `photo_${id}.jpg`;
         const link = document.createElement("a");
-        link.href = `http://127.0.0.1:8000/api/photos/${id}/download`;
+        link.href = getApiUrl(`/api/photos/${id}/download`);
         link.setAttribute("download", filename);
         document.body.appendChild(link);
         link.click();

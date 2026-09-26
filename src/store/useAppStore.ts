@@ -30,6 +30,9 @@ interface AppState {
   prerequisites: SystemPrerequisites | null;
   totalPhotosCount: number;
   toast: { id: number; message: string; type: "info" | "success" | "warning" } | null;
+  apiBaseUrl: string;
+  apiToken: string | null;
+  isEngineReady: boolean;
   
   // Actions
   setTheme: (theme: "dark" | "light") => void;
@@ -52,6 +55,8 @@ interface AppState {
   setTotalPhotosCount: (count: number) => void;
   showToast: (message: string, type?: "info" | "success" | "warning") => void;
   hideToast: () => void;
+  setEngineConfig: (baseUrl: string, token: string | null) => void;
+  setIsEngineReady: (ready: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -71,6 +76,12 @@ export const useAppStore = create<AppState>((set) => ({
   prerequisites: null,
   totalPhotosCount: 0,
   toast: null,
+  apiBaseUrl: "http://127.0.0.1:8000",
+  apiToken: null,
+  isEngineReady: false,
+
+  setEngineConfig: (apiBaseUrl, apiToken) => set({ apiBaseUrl, apiToken }),
+  setIsEngineReady: (isEngineReady) => set({ isEngineReady }),
 
   setTheme: (theme) => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -110,7 +121,15 @@ export const useAppStore = create<AppState>((set) => ({
   setIsVaultPinLocked: (isVaultPinLocked) => set({ isVaultPinLocked }),
   checkVaultStatus: async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/vault/status");
+      const { apiBaseUrl, apiToken } = useAppStore.getState();
+      const headers: Record<string, string> = {};
+      if (apiToken) {
+        headers["X-SecurePhotos-Token"] = apiToken;
+      }
+      const res = await fetch(`${apiBaseUrl}/api/vault/status`, {
+        headers,
+        credentials: "include",
+      });
       if (res.ok) {
         const data = await res.json();
         set({

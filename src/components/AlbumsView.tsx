@@ -29,6 +29,7 @@ import { AddToAlbumModal } from "./AddToAlbumModal";
 import { CollageModal } from "./CollageModal";
 import { useAppStore } from "../store/useAppStore";
 import collagesDefaultCover from "../assets/covers/collages_default.jpg";
+import { apiFetch, getApiUrl, getThumbnailUrl } from "../services/api";
 
 // Deterministic vibrant dual-tone gradients for empty custom albums based on name hash
 const ALBUM_PALETTES = [
@@ -181,7 +182,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
         const photo = albumPhotos.find((p) => p.id === id);
         const filename = photo?.filename || `photo_${id}.jpg`;
         const link = document.createElement("a");
-        link.href = `http://127.0.0.1:8000/api/photos/${id}/download`;
+        link.href = getApiUrl(`/api/photos/${id}/download`);
         link.setAttribute("download", filename);
         document.body.appendChild(link);
         link.click();
@@ -197,7 +198,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     try {
       await Promise.all(
         ids.map((id) =>
-          fetch(`http://127.0.0.1:8000/api/photos/${id}/toggle-favorite`, { method: "POST" })
+          apiFetch(`/api/photos/${id}/toggle-favorite`, { method: "POST" })
         )
       );
       const unstarredSet = new Set(ids);
@@ -217,7 +218,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     const ids = Array.from(selectedAlbumPhotoIds);
     setIsRemovalProcessing(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/photos/batch-trash", {
+      const res = await apiFetch("/api/photos/batch-trash", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photo_ids: ids }),
@@ -256,7 +257,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   // Listen for real-time stories save / delete / mutate events across the app
   useEffect(() => {
     const handleStoriesChanged = () => {
-      fetch("http://127.0.0.1:8000/api/stories?saved_only=true")
+      apiFetch("/api/stories?saved_only=true")
         .then((res) => (res.ok ? res.json() : []))
         .then((data: StoryModel[]) => setSavedStories(data))
         .catch(() => {});
@@ -269,9 +270,9 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     setIsLoading(true);
     try {
       const [albumsRes, favsRes, storiesRes] = await Promise.all([
-        fetch("http://127.0.0.1:8000/api/albums"),
-        fetch("http://127.0.0.1:8000/api/photos?favorite_only=true"),
-        fetch("http://127.0.0.1:8000/api/stories?saved_only=true"),
+        apiFetch("/api/albums"),
+        apiFetch("/api/photos?favorite_only=true"),
+        apiFetch("/api/stories?saved_only=true"),
       ]);
       if (albumsRes.ok) {
         const data: AlbumItem[] = await albumsRes.json();
@@ -297,7 +298,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     const trimmed = newAlbumName.trim();
     if (!trimmed) return;
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/albums", {
+      const res = await apiFetch("/api/albums", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: trimmed }),
@@ -320,7 +321,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     if (initialMeta) setActiveAlbumMeta(initialMeta);
     setIsDetailLoading(true);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/albums/${albumId}`);
+      const res = await apiFetch(`/api/albums/${albumId}`);
       if (res.ok) {
         const data = await res.json();
         setActiveAlbumMeta(data);
@@ -346,7 +347,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     }
     try {
       setIsRenameSaving(true);
-      const res = await fetch(`http://127.0.0.1:8000/api/albums/${activeAlbumId}`, {
+      const res = await apiFetch(`/api/albums/${activeAlbumId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: trimmed }),
@@ -379,7 +380,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
       return;
     }
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/albums/${albumId}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/albums/${albumId}`, { method: "DELETE" });
       if (res.ok) {
         setAlbums((prev) => prev.filter((a) => a.id !== albumId));
         if (activeAlbumId === albumId) {
@@ -400,7 +401,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
       return;
     }
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/albums/${albumId}/toggle-favorite`, { method: "POST" });
+      const res = await apiFetch(`/api/albums/${albumId}/toggle-favorite`, { method: "POST" });
       if (res.ok) {
         const data = await res.json();
         setAlbums((prev) =>
@@ -430,7 +431,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     });
     setIsDetailLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/photos?favorite_only=true");
+      const res = await apiFetch("/api/photos?favorite_only=true");
       if (res.ok) {
         const data: PhotoItem[] = await res.json();
         setAlbumPhotos(data);
@@ -462,7 +463,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   const handleSetAlbumCover = async (photoId: number) => {
     if (!activeAlbumId || activeAlbumId === -1) return;
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/albums/${activeAlbumId}/cover`, {
+      const res = await apiFetch(`/api/albums/${activeAlbumId}/cover`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photo_id: photoId }),
@@ -505,7 +506,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     setIsRemovalProcessing(true);
     const ids = removalModalTarget.photoIds;
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/albums/${activeAlbumId}/photos/batch-remove`, {
+      const res = await apiFetch(`/api/albums/${activeAlbumId}/photos/batch-remove`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photo_ids: ids }),
@@ -543,7 +544,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     setIsRemovalProcessing(true);
     const ids = removalModalTarget.photoIds;
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/photos/batch-trash", {
+      const res = await apiFetch("/api/photos/batch-trash", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photo_ids: ids }),
@@ -580,7 +581,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     setPickerSelectedIds(new Set());
     setIsPhotoPickerOpen(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/photos?limit=500");
+      const res = await apiFetch("/api/photos?limit=500");
       if (res.ok) {
         const all: PhotoItem[] = await res.json();
         // Filter out photos that are already in this album
@@ -606,7 +607,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     setIsAddingPhotos(true);
     try {
       const ids = Array.from(pickerSelectedIds);
-      const res = await fetch(`http://127.0.0.1:8000/api/albums/${activeAlbumId}/photos`, {
+      const res = await apiFetch(`/api/albums/${activeAlbumId}/photos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photo_ids: ids }),
@@ -631,7 +632,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     setDirectImportCount(filePaths.length);
     showToast(`Importing ${filePaths.length} photo(s) directly into "${activeAlbumMeta?.name}"...`, "info");
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/photos/import", {
+      const res = await apiFetch("/api/photos/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1230,7 +1231,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               >
                 {savedStories.map((story) => {
                   const coverUrl = story.cover_photo_id
-                    ? `http://127.0.0.1:8000/api/photos/${story.cover_photo_id}/thumbnail`
+                    ? getThumbnailUrl(story.cover_photo_id)
                     : undefined;
                   return (
                     <div
@@ -1571,7 +1572,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     onClick={() => onPhotoClick?.(idx, albumPhotos)}
                   >
                     <img
-                      src={`http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail?v=3`}
+                      src={getThumbnailUrl(photo.id)}
                       alt={photo.filename}
                       onLoad={(e) => {
                         const img = e.currentTarget;
@@ -2035,7 +2036,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                           }}
                         >
                           <img
-                            src={`http://127.0.0.1:8000/api/photos/${p.id}/thumbnail?v=3`}
+                            src={getThumbnailUrl(p.id)}
                             alt={p.filename}
                             onLoad={(e) => {
                               const img = e.currentTarget;
@@ -2744,7 +2745,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     >
                       {favoriteCoverId && !failedCoverIds.has(favoriteCoverId) ? (
                         <img
-                          src={`http://127.0.0.1:8000/api/photos/${favoriteCoverId}/thumbnail?v=3`}
+                          src={getThumbnailUrl(favoriteCoverId)}
                           alt="Favorites"
                           onError={() => setFailedCoverIds((prev) => new Set(prev).add(favoriteCoverId))}
                           style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
@@ -2844,7 +2845,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     >
                       {collagesAlbum && collagesAlbum.cover_photo_id && !failedCoverIds.has(collagesAlbum.cover_photo_id) ? (
                         <img
-                          src={`http://127.0.0.1:8000/api/photos/${collagesAlbum.cover_photo_id}/thumbnail?v=3`}
+                          src={getThumbnailUrl(collagesAlbum.cover_photo_id)}
                           alt="Collages"
                           onError={() => setFailedCoverIds((prev) => new Set(prev).add(collagesAlbum.cover_photo_id!))}
                           style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
@@ -2958,7 +2959,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                       savedStories[0]?.cover_photo_id &&
                       !failedCoverIds.has(savedStories[0].cover_photo_id) ? (
                         <img
-                          src={`http://127.0.0.1:8000/api/photos/${savedStories[0].cover_photo_id}/thumbnail?v=3`}
+                          src={getThumbnailUrl(savedStories[0].cover_photo_id)}
                           alt="Saved Stories"
                           onError={() => setFailedCoverIds((prev) => new Set(prev).add(savedStories[0].cover_photo_id!))}
                           style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
@@ -3118,7 +3119,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                           >
                             {hasValidCover ? (
                               <img
-                                src={`http://127.0.0.1:8000/api/photos/${album.cover_photo_id}/thumbnail?v=3`}
+                                src={getThumbnailUrl(album.cover_photo_id!)}
                                 alt={album.name}
                                 onError={() => setFailedCoverIds((prev) => new Set(prev).add(album.cover_photo_id!))}
                                 style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}

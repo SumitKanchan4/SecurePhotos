@@ -4360,6 +4360,57 @@ This update elevates the overall visual polish, branding, ergonomics, and thumbn
 - Total standalone installer size: **696.8 MB** (`SecurePhotos_0.1.0_x64-setup.exe`).
 - All 11 vault backend tests pass; TypeScript 0 errors; Vite bundle built cleanly in 13.20s; NSIS installer built cleanly in 1m 52s.
 
+---
+
+## 85. Dynamic Ephemeral Port Allocation & Zero-Trust Local IPC Authentication
+
+### Overview
+Replaced the hardcoded, static `8000` port with OS-assigned ephemeral dynamic port binding (`127.0.0.1:0`) and implemented a zero-trust local Inter-Process Communication (IPC) authentication barrier. The Tauri host dynamically reserves an available TCP port, generates a 256-bit cryptographically secure token using the Windows OS CSPRNG (`BCryptGenRandom`), launches the Python backend sidecar with `SECUREPHOTOS_IPC_SECRET`, and establishes an authenticated handshake before exposing endpoints to the frontend. Any unauthorized process, script, or browser tab attempting to call the SecurePhotos API on loopback is rejected with `403 Forbidden`.
+
+### Key Functional Decision Points
+1. **Dynamic Ephemeral Port Selection**:
+   - Rather than reserving a fixed port `8000` (which conflicts with developer servers or other running apps), Tauri binds to `127.0.0.1:0`. The operating system instantly assigns an ephemeral unassigned port.
+   - The chosen port is passed to the backend sidecar via `--port <port>` and stored in the Rust host state (`AppEngineState`).
+2. **True Zero-Dependency Windows OS CSPRNG**:
+   - To eliminate external crates or network dependencies during offline compilation, Rust interacts directly with Windows `bcrypt.dll` via `extern "system" fn BCryptGenRandom(...)` with `BCRYPT_USE_SYSTEM_PREFERRED_RNG`.
+   - Generates 32 bytes (256 bits) of entropy, hex-encoded into a 64-character token.
+3. **Defense-in-Depth Local IPC Security Middleware**:
+   - `LocalIPCSecurityMiddleware` runs as the outermost application layer.
+   - Validates requests via:
+     - Header: `X-SecurePhotos-Token`
+     - Cookie: `securephotos_ipc`
+     - Query Parameter: `?token=` (for stream URLs if needed)
+   - Constant-time verification using `hmac.compare_digest` to prevent side-channel timing attacks.
+   - Transparent development bypass: If `SECUREPHOTOS_IPC_SECRET` is unset, the engine runs unrestricted for standalone unit tests.
+4. **Media Tag Authentication via HttpOnly Loopback Cookie**:
+   - Native HTML `<img>`, `<video>`, `<audio>` tags cannot supply custom HTTP request headers.
+   - At startup, the Tauri frontend calls `performHandshake()` to `POST /api/auth/handshake`, which returns `Set-Cookie: securephotos_ipc=<token>; HttpOnly; SameSite=Lax; Path=/`.
+   - Browser automatically attaches this cookie on subsequent media stream requests without leaking tokens in URL queries.
+5. **Centralized Frontend Client (`src/services/api.ts`)**:
+   - Replaced all ad-hoc `fetch("http://127.0.0.1:8000/...")` calls across the entire codebase with `apiFetch()`, `getApiUrl()`, and `getThumbnailUrl()`.
+   - Automatically injects the `X-SecurePhotos-Token` header and dynamically queries the active port from Zustand store.
+
+### Technical Touchpoints
+- **Host (Rust)**: `src-tauri/src/lib.rs`, `src-tauri/Cargo.toml` (`AppEngineState`, `find_available_port()`, `generate_secure_token()`, `get_engine_config`).
+- **Backend (Python)**:
+  - `engine/config.py`: `ipc_secret` attribute in `AppConfig`.
+  - `engine/main.py`: `--ipc-secret` CLI parser and middleware registration.
+  - `engine/middleware/auth_middleware.py`: `LocalIPCSecurityMiddleware`.
+  - `engine/api/auth.py`: `POST /api/auth/handshake`.
+  - `engine/tests/test_ipc_auth.py`: 7 automated tests covering all authentication modalities.
+- **Frontend (TypeScript / React)**:
+  - `src/services/api.ts`: Centralized `apiFetch`, `getApiUrl`, `performHandshake`.
+  - `src/store/useAppStore.ts`: `apiBaseUrl`, `apiToken`, `isEngineReady`.
+  - `src/App.tsx`: Startup initialization via `invoke("get_engine_config")` and `performHandshake()`.
+  - All views updated: `AlbumsView`, `AddToAlbumModal`, `AlbumSlideshowModal`, `CollageModal`, `DashboardView`, `DocumentsView`, `DuplicatesView`, `ImportModal`, `Lightbox`, `PeopleView`, `PhotoGrid`, `StoriesView`, `StoryPlayerModal`, `TitleBar`, `TrashView`, `VaultPasswordResetModal`, `VaultSetupWizard`, `VaultUnlockModal`, `VaultView`, `VideoOptimizerView`.
+
+### State & Lifecycle Impact
+- Zero port collision errors on startup.
+- Completely prevents unauthorized local processes or browser tabs from probing, exfiltrating, or altering private photos or vault items.
+- All 117 backend pytest tests pass.
+- Frontend builds with 0 TypeScript errors.
+
+
 
 
 

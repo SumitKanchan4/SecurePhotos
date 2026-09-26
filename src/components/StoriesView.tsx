@@ -25,8 +25,7 @@ import {
 } from "lucide-react";
 import { StoryModel, MusicTrackItem, SuggestedCollage, PhotoItem } from "../types";
 import { NavTab, useAppStore } from "../store/useAppStore";
-
-const API_BASE = "http://127.0.0.1:8000/api";
+import { apiFetch, getApiUrl } from "../services/api";
 
 interface StoriesViewProps {
   onPlayStory: (storyId: number) => void;
@@ -101,7 +100,7 @@ function renderCollageCanvas(
         style={{ width: "100%", height: "100%", position: "relative", cursor: onImageClick ? "pointer" : "default" }}
       >
         <img
-          src={`${API_BASE}/photos/${savedPhotoId}/preview`}
+          src={getApiUrl(`/api/photos/${savedPhotoId}/preview`)}
           alt="4K Collage"
           style={{ width: "100%", height: "100%", objectFit: "contain", backgroundColor: "#000000" }}
         />
@@ -138,7 +137,7 @@ function renderCollageCanvas(
       <div style={{ display: "flex", width: "100%", height: "100%", gap: "2px" }}>
         <div style={{ flex: 1.6, height: "100%", overflow: "hidden" }}>
           <img
-            src={`${API_BASE}/photos/${photoIds[0]}/thumbnail`}
+            src={getApiUrl(`/api/photos/${photoIds[0]}/thumbnail`)}
             alt=""
             loading="lazy"
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
@@ -148,7 +147,7 @@ function renderCollageCanvas(
           {photoIds.slice(1, 3).map((pid) => (
             <div key={pid} style={{ flex: 1, overflow: "hidden" }}>
               <img
-                src={`${API_BASE}/photos/${pid}/thumbnail`}
+                src={getApiUrl(`/api/photos/${pid}/thumbnail`)}
                 alt=""
                 loading="lazy"
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
@@ -166,7 +165,7 @@ function renderCollageCanvas(
         {photoIds.slice(0, 4).map((pid) => (
           <div key={pid} style={{ overflow: "hidden", width: "100%", height: "100%" }}>
             <img
-              src={`${API_BASE}/photos/${pid}/thumbnail`}
+              src={getApiUrl(`/api/photos/${pid}/thumbnail`)}
               alt=""
               loading="lazy"
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
@@ -183,7 +182,7 @@ function renderCollageCanvas(
       {photoIds.slice(0, 3).map((pid) => (
         <div key={pid} style={{ flex: 1, height: "100%", overflow: "hidden" }}>
           <img
-            src={`${API_BASE}/photos/${pid}/thumbnail`}
+            src={getApiUrl(`/api/photos/${pid}/thumbnail`)}
             alt=""
             loading="lazy"
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
@@ -239,7 +238,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
   const handleDeleteStory = async (e: React.MouseEvent, storyId: number) => {
     e.stopPropagation();
     try {
-      const res = await fetch(`${API_BASE}/stories/${storyId}`, {
+      const res = await apiFetch(`/api/stories/${storyId}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -254,7 +253,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
     e.stopPropagation();
     const nextSaved = !currentSaved;
     try {
-      const res = await fetch(`${API_BASE}/stories/${storyId}/save`, {
+      const res = await apiFetch(`/api/stories/${storyId}/save`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_saved: nextSaved }),
@@ -278,7 +277,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
   const fetchStories = useCallback(async () => {
     try {
       // Shelf displays ephemeral suggestions; saved stories are preserved in Saved Stories smart album
-      const res = await fetch(`${API_BASE}/stories?ephemeral_only=true`);
+      const res = await apiFetch("/api/stories?ephemeral_only=true");
       if (res.ok) {
         const storiesData: StoryModel[] = await res.json();
         setStories(storiesData);
@@ -295,7 +294,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
   const fetchCollages = useCallback(async () => {
     setIsLoadingCollages(true);
     try {
-      const res = await fetch(`${API_BASE}/creatives/suggestions`);
+      const res = await apiFetch("/api/creatives/suggestions");
       if (res.ok) {
         const data = await res.json();
         setCollages(data.suggestions || []);
@@ -315,7 +314,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
   const handleOpenLightbox = async (photoId: number) => {
     if (!onPhotoClick) return;
     try {
-      const res = await fetch(`${API_BASE}/photos/${photoId}`);
+      const res = await apiFetch(`/api/photos/${photoId}`);
       if (res.ok) {
         const photoData = await res.json();
         onPhotoClick(0, [photoData]);
@@ -346,7 +345,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
     setSavingCollageId(suggestion.id);
     const layoutToUse = layoutOverride || suggestion.layout || "mosaic";
     try {
-      const res = await fetch(`${API_BASE}/creatives/suggestions/save`, {
+      const res = await apiFetch("/api/creatives/suggestions/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -386,13 +385,13 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
   const handleDownloadCollage = (e: React.MouseEvent, photoId?: number | null) => {
     e.stopPropagation();
     if (!photoId) return;
-    window.open(`${API_BASE}/photos/${photoId}/download`, "_blank");
+    window.open(getApiUrl(`/api/photos/${photoId}/download`), "_blank");
   };
 
   const fetchMusicTracks = useCallback(async () => {
     setIsLoadingMusic(true);
     try {
-      const res = await fetch(`${API_BASE}/stories/music`);
+      const res = await apiFetch("/api/stories/music");
       if (res.ok) {
         const tracks: MusicTrackItem[] = await res.json();
         setMusicTracks(tracks);
@@ -446,7 +445,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
   const handleGenerateStories = async () => {
     setIsGenerating(true);
     try {
-      const res = await fetch(`${API_BASE}/stories/generate`, {
+      const res = await apiFetch("/api/stories/generate", {
         method: "POST",
       });
       if (res.ok) {
@@ -473,7 +472,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
         const formData = new FormData();
         formData.append("file", file);
 
-        const res = await fetch(`${API_BASE}/stories/music/upload`, {
+        const res = await apiFetch("/api/stories/music/upload", {
           method: "POST",
           body: formData,
         });
@@ -504,7 +503,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
 
   const handleDeleteTrack = async (trackId: string) => {
     try {
-      const res = await fetch(`${API_BASE}/stories/music/${trackId}`, {
+      const res = await apiFetch(`/api/stories/music/${trackId}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -526,7 +525,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
 
   const handleUpdateMood = async (trackId: string, newMood: string) => {
     try {
-      const res = await fetch(`${API_BASE}/stories/music/${trackId}`, {
+      const res = await apiFetch(`/api/stories/music/${trackId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mood: newMood }),
@@ -558,7 +557,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
       }
       const streamUrl = track.stream_url.startsWith("http")
         ? track.stream_url
-        : `http://127.0.0.1:8000${track.stream_url.startsWith("/") ? "" : "/"}${track.stream_url}`;
+        : getApiUrl(track.stream_url);
       const audio = new Audio(streamUrl);
       audio.volume = 0.6;
       audio.play().catch((e) => console.warn("Audio play error:", e));
@@ -928,7 +927,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
                     >
                       {coverId ? (
                         <img 
-                          src={`${API_BASE}/photos/${coverId}/thumbnail`} 
+                          src={getApiUrl(`/api/photos/${coverId}/thumbnail`)} 
                           alt={story.title}
                           style={{
                             width: "100%",
@@ -1589,7 +1588,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
                       }}
                     >
                       <img
-                        src={`${API_BASE}/photos/${pid}/thumbnail`}
+                        src={getApiUrl(`/api/photos/${pid}/thumbnail`)}
                         alt=""
                         style={{ width: "100%", height: "100%", objectFit: "cover" }}
                       />

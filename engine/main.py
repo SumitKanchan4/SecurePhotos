@@ -20,7 +20,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from engine.config import settings
 from engine.database import run_migrations
-from engine.api import health, system, photos, vault, stories, people, albums, creatives, trash, duplicates, videos, search, documents
+from engine.middleware import LocalIPCSecurityMiddleware
+from engine.api import health, system, photos, vault, stories, people, albums, creatives, trash, duplicates, videos, search, documents, auth
 
 # Configure enterprise structured logging
 logging.basicConfig(
@@ -66,6 +67,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Configure zero-trust local IPC security middleware
+    app.add_middleware(LocalIPCSecurityMiddleware)
+
     # Configure strict localhost CORS middleware for Tauri IPC
     app.add_middleware(
         CORSMiddleware,
@@ -76,6 +80,7 @@ def create_app() -> FastAPI:
     )
 
     # Mount API routers
+    app.include_router(auth.router)
     app.include_router(health.router)
     app.include_router(health.router, prefix="/api")
     app.include_router(system.router)
@@ -118,6 +123,12 @@ def parse_args() -> argparse.Namespace:
         default=settings.host,
         help="Host address to bind to (strictly 127.0.0.1 for local IPC)",
     )
+    parser.add_argument(
+        "--ipc-secret",
+        type=str,
+        default=None,
+        help="Shared secret token for local IPC authorization (assigned by Tauri)",
+    )
     return parser.parse_args()
 
 
@@ -126,8 +137,12 @@ if __name__ == "__main__":
     settings.port = args.port
     settings.host = args.host
     settings.data_dir = Path(args.data_dir)
+    if args.ipc_secret:
+        settings.ipc_secret = args.ipc_secret
 
     logger.info(f"Starting {settings.app_name} on http://{settings.host}:{settings.port}")
+    if settings.ipc_secret:
+        logger.info("Local IPC zero-trust token authentication active.")
     logger.info(f"Data Directory: {settings.data_dir}")
 
     uvicorn.run(

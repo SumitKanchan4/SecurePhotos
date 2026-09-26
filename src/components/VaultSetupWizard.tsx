@@ -18,6 +18,7 @@ import {
   CreditCard
 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
+import { apiFetch } from "../services/api";
 import { downloadGridCardImage, downloadGridCardText, GridCardData } from "../utils/gridCardRenderer";
 
 interface VaultSetupWizardProps {
@@ -66,7 +67,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
   const fetchGridCard = async () => {
     setIsLoadingCard(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/vault/grid-card/generate");
+      const res = await apiFetch("/api/vault/grid-card/generate");
       if (res.ok) {
         const data = await res.json();
         setGridCard(data);
@@ -214,7 +215,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
     const pinStr = pin.join("");
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/vault/setup", {
+      const res = await apiFetch("/api/vault/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -232,7 +233,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
       }
 
       // Automatically unlock after successful setup
-      const unlockRes = await fetch("http://127.0.0.1:8000/api/vault/unlock", {
+      const unlockRes = await apiFetch("/api/vault/unlock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),

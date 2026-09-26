@@ -27,6 +27,7 @@ import { PhotoGrid } from "./PhotoGrid";
 import { PhotoItem, VaultAlbumItem } from "../types";
 import { VaultSetupWizard } from "./VaultSetupWizard";
 import { VaultPasswordResetModal } from "./VaultPasswordResetModal";
+import { apiFetch, getApiUrl } from "../services/api";
 
 interface VaultViewProps {
   onUnlockRequest?: () => void;
@@ -155,7 +156,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     if (!isVaultUnlocked) return;
     setIsLoadingAlbums(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/vault/albums");
+      const res = await apiFetch("/api/vault/albums");
       if (res.ok) {
         const albums: VaultAlbumItem[] = await res.json();
         setVaultAlbums(albums);
@@ -171,7 +172,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   const fetchVaultAlbumPhotos = useCallback(async (albumId: number) => {
     setIsLoadingAlbumPhotos(true);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/vault/albums/${albumId}/photos`);
+      const res = await apiFetch(`/api/vault/albums/${albumId}/photos`);
       if (res.ok) {
         const photos: PhotoItem[] = await res.json();
         setVaultAlbumPhotos(photos);
@@ -194,7 +195,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     if (!isVaultUnlocked) return;
     setIsLoadingPhotos(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/vault/photos");
+      const res = await apiFetch("/api/vault/photos");
       if (res.ok) {
         const photos: PhotoItem[] = await res.json();
         setVaultPhotos(photos);
@@ -219,7 +220,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     if (e) e.stopPropagation();
     setRestoringAlbumId(albumId);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/vault/albums/${albumId}/unlock`, { method: "POST" });
+      const res = await apiFetch(`/api/vault/albums/${albumId}/unlock`, { method: "POST" });
       if (res.ok) {
         showToast("Album decrypted and restored to public library.", "success");
         setVaultAlbums((prev) => prev.filter((a) => a.id !== albumId));
@@ -243,7 +244,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     if (e) e.stopPropagation();
     setRestoringDocId(photoId);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/vault/photos/unlock", {
+      const res = await apiFetch("/api/vault/photos/unlock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photo_ids: [photoId] }),
@@ -305,7 +306,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     setActiveVaultAlbumId(null);
     setVaultAlbumPhotos([]);
     try {
-      await fetch("http://127.0.0.1:8000/api/vault/lock", { method: "POST" });
+      await apiFetch("/api/vault/lock", { method: "POST" });
     } catch (err) {
       console.error("Error locking vault:", err);
     }
@@ -319,7 +320,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/vault/unlock", {
+      const res = await apiFetch("/api/vault/unlock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -395,7 +396,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
 
     setIsResetting(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/vault/reset", {
+      const res = await apiFetch("/api/vault/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ confirm_phrase: "ERASE ALL DATA" }),
@@ -1583,7 +1584,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                       <div style={{ position: "relative", width: "100%", height: "170px", backgroundColor: "rgba(15, 23, 42, 0.6)", overflow: "hidden" }}>
                         {album.cover_photo_id ? (
                           <img
-                            src={`http://127.0.0.1:8000/api/vault/thumbnail/${album.cover_photo_id}`}
+                            src={getApiUrl(`/api/vault/thumbnail/${album.cover_photo_id}`)}
                             alt={album.name}
                             style={{ width: "100%", height: "100%", objectFit: "cover" }}
                             onError={(e) => { (e.currentTarget as HTMLElement).style.display = "none"; }}

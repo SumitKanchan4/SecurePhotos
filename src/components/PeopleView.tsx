@@ -27,8 +27,7 @@ import {
 import { PersonItem, UnlabeledClusterItem, FaceScanStatus, PhotoItem } from "../types";
 import { useAppStore } from "../store/useAppStore";
 import { AlbumSlideshowModal } from "./AlbumSlideshowModal";
-
-const API_BASE = "http://127.0.0.1:8000/api";
+import { apiFetch, getApiUrl } from "../services/api";
 
 export const RELATIONSHIP_OPTIONS = [
   "Family",
@@ -341,7 +340,7 @@ const ClusterNameAutocomplete: React.FC<ClusterNameAutocompleteProps> = ({
                   >
                     {person.cover_face_id ? (
                       <img
-                        src={`${API_BASE}/people/faces/${person.cover_face_id}/crop`}
+                        src={getApiUrl(`/api/people/faces/${person.cover_face_id}/crop`)}
                         alt={person.name}
                         style={{ width: "100%", height: "100%", objectFit: "cover" }}
                         onError={(e) => {
@@ -479,7 +478,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
   // Load recognized people
   const fetchPeople = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/people`);
+      const res = await apiFetch("/api/people");
       if (res.ok) {
         const data: PersonItem[] = await res.json();
         setPeople(data);
@@ -492,7 +491,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
   // Load unsupervised clusters
   const fetchClusters = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/people/clusters`);
+      const res = await apiFetch("/api/people/clusters");
       if (res.ok) {
         const data: UnlabeledClusterItem[] = await res.json();
         setUnlabeledClusters(data);
@@ -505,7 +504,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
   // Poll scan progress
   const checkScanStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/people/scan-progress`);
+      const res = await apiFetch("/api/people/scan-progress");
       if (res.ok) {
         const data: FaceScanStatus = await res.json();
         setScanStatus(data);
@@ -564,7 +563,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
   // Trigger manual face scan
   const handleTriggerScan = async () => {
     try {
-      const res = await fetch(`${API_BASE}/people/scan`, { method: "POST" });
+      const res = await apiFetch("/api/people/scan", { method: "POST" });
       if (res.ok) {
         const statusData: FaceScanStatus = await res.json();
         setScanStatus(statusData);
@@ -603,7 +602,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
   const handleDismissCluster = async (clusterId: string) => {
     setDismissingCluster(clusterId);
     try {
-      const res = await fetch(`${API_BASE}/people/clusters/${clusterId}/dismiss`, {
+      const res = await apiFetch(`/api/people/clusters/${clusterId}/dismiss`, {
         method: "POST",
       });
       if (res.ok) {
@@ -622,7 +621,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
     setInspectingFaceId(faceId);
     setLoadingInspectFace(true);
     try {
-      const res = await fetch(`${API_BASE}/people/faces/${faceId}`);
+      const res = await apiFetch(`/api/people/faces/${faceId}`);
       if (res.ok) {
         const data = await res.json();
         setInspectingFaceData(data);
@@ -637,7 +636,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
   // Unlink a single mis-tagged photo from a recognized person
   const handleUnlinkPhoto = async (personId: number, photoId: number) => {
     try {
-      const res = await fetch(`${API_BASE}/people/${personId}/unlink-photo/${photoId}`, {
+      const res = await apiFetch(`/api/people/${personId}/unlink-photo/${photoId}`, {
         method: "POST",
       });
       if (res.ok) {
@@ -655,7 +654,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/people/${personId}`, {
+      const res = await apiFetch(`/api/people/${personId}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -678,7 +677,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
 
     setSubmittingCluster(cluster.cluster_id);
     try {
-      const res = await fetch(`${API_BASE}/people/tag-cluster`, {
+      const res = await apiFetch("/api/people/tag-cluster", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -711,7 +710,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
     setLastClickedYear(null);
     setIsRangePopoverOpen(false);
     try {
-      const res = await fetch(`${API_BASE}/people/${person.id}/photos`);
+      const res = await apiFetch(`/api/people/${person.id}/photos`);
       if (res.ok) {
         const photos: PhotoItem[] = await res.json();
         setPersonPhotos(photos);
@@ -727,7 +726,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
   const handleUpdatePerson = async (personId: number, updates: { name?: string; relationship_type?: string; is_close_one?: boolean }) => {
     setUpdatingPerson(true);
     try {
-      const res = await fetch(`${API_BASE}/people/${personId}`, {
+      const res = await apiFetch(`/api/people/${personId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
@@ -778,7 +777,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
     }
     setIsResetting(true);
     try {
-      const res = await fetch(`${API_BASE}/people/reset`, { method: "POST" });
+      const res = await apiFetch("/api/people/reset", { method: "POST" });
       if (res.ok) {
         setSelectedPerson(null);
         await Promise.all([fetchPeople(), fetchClusters(), checkScanStatus()]);
@@ -1059,7 +1058,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
               >
                 {selectedPerson.cover_face_id ? (
                   <img
-                    src={`${API_BASE}/people/faces/${selectedPerson.cover_face_id}/crop`}
+                    src={getApiUrl(`/api/people/faces/${selectedPerson.cover_face_id}/crop`)}
                     alt={selectedPerson.name}
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
@@ -1841,7 +1840,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                           }}
                         >
                           <img
-                            src={`http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail`}
+                            src={getApiUrl(`/api/photos/${photo.id}/thumbnail`)}
                             alt={photo.filename}
                             loading="lazy"
                             onLoad={(e) => {
@@ -2325,7 +2324,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                     >
                       {person.cover_face_id ? (
                         <img
-                          src={`${API_BASE}/people/faces/${person.cover_face_id}/crop`}
+                          src={getApiUrl(`/api/people/faces/${person.cover_face_id}/crop`)}
                           alt={person.name}
                           loading="lazy"
                           style={{ width: "100%", height: "100%", objectFit: "cover" }}
@@ -2566,7 +2565,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                                   }}
                                 >
                                   <img
-                                    src={`${API_BASE}/people/faces/${faceId}/crop`}
+                                    src={getApiUrl(`/api/people/faces/${faceId}/crop`)}
                                     alt="Face crop"
                                     loading="lazy"
                                     style={{
@@ -2973,7 +2972,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                       >
                         {person.cover_face_id ? (
                           <img
-                            src={`${API_BASE}/people/faces/${person.cover_face_id}/crop`}
+                            src={getApiUrl(`/api/people/faces/${person.cover_face_id}/crop`)}
                             alt={person.name}
                             loading="lazy"
                             style={{ width: "100%", height: "100%", objectFit: "cover" }}
@@ -3209,11 +3208,11 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
               ) : inspectingFaceData ? (
                 <div style={{ position: "relative", display: "inline-block", maxWidth: "100%", maxHeight: "100%" }}>
                   <img
-                    src={`${API_BASE}/photos/${inspectingFaceData.photo_id}/preview`}
+                    src={getApiUrl(`/api/photos/${inspectingFaceData.photo_id}/preview`)}
                     onError={(e) => {
                       const target = e.currentTarget;
                       if (!target.src.includes("/thumbnail")) {
-                        target.src = `${API_BASE}/photos/${inspectingFaceData.photo_id}/thumbnail`;
+                        target.src = getApiUrl(`/api/photos/${inspectingFaceData.photo_id}/thumbnail`);
                       }
                     }}
                     alt={inspectingFaceData.filename}

@@ -22,8 +22,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAppStore } from "../store/useAppStore";
 import { SearchResponse, SearchPhotoItem, SearchAlbumItem, SearchPersonItem } from "../types";
 import appIcon3d from "../assets/securephotos_3d_icon.webp";
-
-const API_BASE = "http://127.0.0.1:8000/api";
+import { apiFetch, getApiUrl } from "../services/api";
 
 interface TitleBarProps {
   onSelectPhoto?: (photo: SearchPhotoItem, allPhotos: SearchPhotoItem[]) => void;
@@ -100,7 +99,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
     }
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(trimmed)}`);
+      const res = await apiFetch(`/api/search?q=${encodeURIComponent(trimmed)}`);
       if (res.ok) {
         const data: SearchResponse = await res.json();
         setResults(data);
@@ -566,7 +565,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
                             >
                               {person.cover_face_id ? (
                                 <img 
-                                  src={`${API_BASE}/people/faces/${person.cover_face_id}/crop`} 
+                                  src={getApiUrl(`/api/people/faces/${person.cover_face_id}/crop`)} 
                                   alt={person.name}
                                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
                                   onError={(e) => {
@@ -659,7 +658,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
                             >
                               {album.cover_photo_id ? (
                                 <img 
-                                  src={`${API_BASE}/photos/${album.cover_photo_id}/thumbnail?v=3`} 
+                                  src={getApiUrl(`/api/photos/${album.cover_photo_id}/thumbnail?v=3`)} 
                                   alt={album.name}
                                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
                                   onError={(e) => {
@@ -758,7 +757,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
                           }}
                         >
                           <img
-                            src={`${API_BASE}/photos/${photo.id}/thumbnail?v=3`}
+                            src={getApiUrl(`/api/photos/${photo.id}/thumbnail?v=3`)}
                             alt={photo.filename}
                             style={{ width: "100%", height: "100%", objectFit: "cover" }}
                             onError={(e) => {

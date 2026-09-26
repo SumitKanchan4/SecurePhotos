@@ -32,6 +32,7 @@ import {
 import { NavTab } from "../store/useAppStore";
 import { DuplicatesView } from "./DuplicatesView";
 import { VideoOptimizerView } from "./VideoOptimizerView";
+import { apiFetch } from "../services/api";
 
 interface DashboardViewProps {
   onNavigate: (tab: NavTab) => void;
@@ -76,10 +77,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
     if (showRefreshingState) setIsRefreshing(true);
     try {
       const [dashRes, insRes, dupRes, optRes] = await Promise.all([
-        fetch("http://127.0.0.1:8000/api/system/dashboard"),
-        fetch("http://127.0.0.1:8000/api/stories/insights"),
-        fetch("http://127.0.0.1:8000/api/duplicates/summary").catch(() => null),
-        fetch("http://127.0.0.1:8000/api/system/optimization-status").catch(() => null),
+        apiFetch("/api/system/dashboard"),
+        apiFetch("/api/stories/insights"),
+        apiFetch("/api/duplicates/summary").catch(() => null),
+        apiFetch("/api/system/optimization-status").catch(() => null),
       ]);
 
       if (!dashRes.ok) throw new Error(`Dashboard API error: ${dashRes.statusText}`);
@@ -119,7 +120,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
   useEffect(() => {
     if (optStatus?.service_status !== "processing") return;
     const interval = setInterval(() => {
-      fetch("http://127.0.0.1:8000/api/system/optimization-status")
+      apiFetch("/api/system/optimization-status")
         .then((res) => res.ok ? res.json() : null)
         .then((data) => {
           if (data) setOptStatus(data);
@@ -132,7 +133,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
   const handleRescanDuplicates = async () => {
     setIsRescanningDuplicates(true);
     try {
-      await fetch("http://127.0.0.1:8000/api/duplicates/scan", { method: "POST" });
+      await apiFetch("/api/duplicates/scan", { method: "POST" });
       await fetchDashboardData(false);
     } catch (e) {
       console.error("Failed to rescan duplicates:", e);
@@ -144,7 +145,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
   const handleTriggerOptimization = async () => {
     setIsTriggeringOptimization(true);
     try {
-      await fetch("http://127.0.0.1:8000/api/system/optimization/trigger", { method: "POST" });
+      await apiFetch("/api/system/optimization/trigger", { method: "POST" });
       await fetchDashboardData(false);
     } catch (e) {
       console.error("Failed to trigger optimization:", e);
@@ -155,7 +156,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
 
   const handlePauseOptimization = async () => {
     try {
-      await fetch("http://127.0.0.1:8000/api/system/optimization/pause", { method: "POST" });
+      await apiFetch("/api/system/optimization/pause", { method: "POST" });
       await fetchDashboardData(false);
     } catch (e) {
       console.error("Failed to pause optimization:", e);
@@ -164,7 +165,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
 
   const handleResumeOptimization = async () => {
     try {
-      await fetch("http://127.0.0.1:8000/api/system/optimization/resume", { method: "POST" });
+      await apiFetch("/api/system/optimization/resume", { method: "POST" });
       await fetchDashboardData(false);
     } catch (e) {
       console.error("Failed to resume optimization:", e);

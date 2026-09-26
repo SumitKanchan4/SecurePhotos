@@ -16,8 +16,7 @@ import {
   Trash2
 } from "lucide-react";
 import { StoryModel, MusicTrackItem } from "../types";
-
-const API_BASE = "http://127.0.0.1:8000/api";
+import { apiFetch, getApiUrl } from "../services/api";
 
 interface StoryPlayerModalProps {
   storyId: number | null;
@@ -247,7 +246,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
   // Fetch available tracks for the in-player soundtrack picker
   const fetchMusicTracks = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/stories/music`);
+      const res = await apiFetch("/api/stories/music");
       if (res.ok) {
         const tracks: MusicTrackItem[] = await res.json();
         setAvailableTracks(tracks);
@@ -261,7 +260,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
   const fetchStory = useCallback(async (id: number) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/stories/${id}`);
+      const res = await apiFetch(`/api/stories/${id}`);
       if (res.ok) {
         const data: StoryModel = await res.json();
         setStory(data);
@@ -269,7 +268,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         if (data.audio_url) {
           const streamUrl = data.audio_url.startsWith("http")
             ? data.audio_url
-            : `http://127.0.0.1:8000${data.audio_url.startsWith("/") ? "" : "/"}${data.audio_url}`;
+            : getApiUrl(data.audio_url);
           setActiveAudioUrl(streamUrl);
           setActiveTrackTitle(`${data.vibe_mood ? data.vibe_mood.charAt(0).toUpperCase() + data.vibe_mood.slice(1) : "Curated"} Soundtrack`);
         } else {
@@ -278,7 +277,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         }
       } else {
         // Fallback: try loading all stories and find matching ID
-        const allRes = await fetch(`${API_BASE}/stories`);
+        const allRes = await apiFetch("/api/stories");
         if (allRes.ok) {
           const allStories: StoryModel[] = await allRes.json();
           const found = allStories.find((s) => s.id === id);
@@ -288,7 +287,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
             if (found.audio_url) {
               const streamUrl = found.audio_url.startsWith("http")
                 ? found.audio_url
-                : `http://127.0.0.1:8000${found.audio_url.startsWith("/") ? "" : "/"}${found.audio_url}`;
+                : getApiUrl(found.audio_url);
               setActiveAudioUrl(streamUrl);
               setActiveTrackTitle(`${found.vibe_mood ? found.vibe_mood.charAt(0).toUpperCase() + found.vibe_mood.slice(1) : "Curated"} Soundtrack`);
             } else {
@@ -309,7 +308,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
     if (!story) return;
     const nextSaved = !story.is_saved;
     try {
-      const res = await fetch(`${API_BASE}/stories/${story.id}/save`, {
+      const res = await apiFetch(`/api/stories/${story.id}/save`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_saved: nextSaved }),
@@ -326,7 +325,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
   const handleDelete = async () => {
     if (!story) return;
     try {
-      const res = await fetch(`${API_BASE}/stories/${story.id}`, {
+      const res = await apiFetch(`/api/stories/${story.id}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -360,7 +359,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
     const currentSlide = story.slides[currentSlideIndex];
     if (!currentSlide) return;
 
-    const imgUrl = `${API_BASE}/photos/${currentSlide.photo_id}/preview`;
+    const imgUrl = getApiUrl(`/api/photos/${currentSlide.photo_id}/preview`);
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.src = imgUrl;
@@ -440,7 +439,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         }
         const streamUrl = activeAudioUrl.startsWith("http")
           ? activeAudioUrl
-          : `http://127.0.0.1:8000${activeAudioUrl.startsWith("/") ? "" : "/"}${activeAudioUrl}`;
+          : getApiUrl(activeAudioUrl);
         const audio = new Audio(streamUrl);
         audio.loop = true;
         audio.volume = 0.5;
@@ -787,7 +786,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
               {availableTracks.map((trk) => {
                 const streamUrl = trk.stream_url.startsWith("http")
                   ? trk.stream_url
-                  : `http://127.0.0.1:8000${trk.stream_url.startsWith("/") ? "" : "/"}${trk.stream_url}`;
+                  : getApiUrl(trk.stream_url);
                 const isSelected = activeAudioUrl === streamUrl || activeAudioUrl === trk.stream_url;
                 return (
                   <div
@@ -975,8 +974,8 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
               <video
                 ref={videoRef}
                 key={`video-${currentSlide.photo_id}`}
-                src={`${API_BASE}/videos/${currentSlide.photo_id}/stream`}
-                poster={`${API_BASE}/photos/${currentSlide.photo_id}/preview`}
+                src={getApiUrl(`/api/videos/${currentSlide.photo_id}/stream`)}
+                poster={getApiUrl(`/api/photos/${currentSlide.photo_id}/preview`)}
                 autoPlay
                 playsInline
                 muted={isMuted}
@@ -1030,10 +1029,10 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                 }}
               >
                 <img
-                  src={`${API_BASE}/photos/${currentSlide.photo_id}/preview`}
+                  src={getApiUrl(`/api/photos/${currentSlide.photo_id}/preview`)}
                   onError={(e) => {
                     // Fallback to original image if 8K preview proxy is not yet generated
-                    (e.target as HTMLImageElement).src = `${API_BASE}/photos/${currentSlide.photo_id}/original`;
+                    (e.target as HTMLImageElement).src = getApiUrl(`/api/photos/${currentSlide.photo_id}/original`);
                   }}
                   alt={currentSlide.filename}
                   style={{

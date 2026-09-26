@@ -12,8 +12,7 @@ import {
   TrendingDown
 } from "lucide-react";
 import { VideoCandidate, VideoSummary, VideoOptimizationProgress, PhotoItem } from "../types";
-
-const API_BASE = "http://127.0.0.1:8000/api";
+import { apiFetch, getApiUrl } from "../services/api";
 
 interface VideoOptimizerViewProps {
   onBack: () => void;
@@ -61,8 +60,8 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
     setIsLoading(true);
     try {
       const [sumRes, candRes] = await Promise.all([
-        fetch(`${API_BASE}/videos/summary`),
-        fetch(`${API_BASE}/videos/candidates`),
+        apiFetch("/api/videos/summary"),
+        apiFetch("/api/videos/candidates"),
       ]);
 
       if (sumRes.ok) {
@@ -90,7 +89,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
     let wasActive = false;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`${API_BASE}/videos/optimization-progress`);
+        const res = await apiFetch("/api/videos/optimization-progress");
         if (res.ok) {
           const data: VideoOptimizationProgress = await res.json();
           setVideoProgress(data);
@@ -126,7 +125,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
     setProcessingIds((prev) => new Set(prev).add(photoId));
     setStatusMessage("Compressing video to visually lossless H.265...");
     try {
-      const res = await fetch(`${API_BASE}/videos/${photoId}/compress`, {
+      const res = await apiFetch(`/api/videos/${photoId}/compress`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ crf: 23 }),
@@ -157,7 +156,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
     setIsBatchProcessing(true);
     setStatusMessage(`Batch optimizing ${compressibleVideos.length} heavy videos...`);
     try {
-      const res = await fetch(`${API_BASE}/videos/compress-all`, {
+      const res = await apiFetch("/api/videos/compress-all", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ crf: 23 }),
@@ -186,7 +185,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
     setProcessingIds((prev) => new Set(prev).add(photoId));
     setStatusMessage(`Restoring & upscaling clip to ${targetH === 2160 ? "4K UHD" : `${targetH}p HD`} with temporal denoising...`);
     try {
-      const res = await fetch(`${API_BASE}/videos/${photoId}/enhance`, {
+      const res = await apiFetch(`/api/videos/${photoId}/enhance`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target_height: targetH, denoise: true, deinterlace: true }),
@@ -541,7 +540,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
                 const isThisVideoActive = videoProgress?.is_active && videoProgress.active_video_id === video.id;
                 const isProcessing = processingIds.has(video.id) || isBatchProcessing || isThisVideoActive;
                 const isBatchQueued = videoProgress?.is_active && !isThisVideoActive;
-                const thumbUrl = `http://127.0.0.1:8000/api/photos/${video.id}/thumbnail`;
+                const thumbUrl = getApiUrl(`/api/photos/${video.id}/thumbnail`);
 
                 return (
                   <div
@@ -761,7 +760,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({
                 const isThisVideoActive = videoProgress?.is_active && videoProgress.active_video_id === video.id;
                 const isProcessing = processingIds.has(video.id) || isThisVideoActive;
                 const isBatchQueued = videoProgress?.is_active && !isThisVideoActive;
-                const thumbUrl = `http://127.0.0.1:8000/api/photos/${video.id}/thumbnail`;
+                const thumbUrl = getApiUrl(`/api/photos/${video.id}/thumbnail`);
                 const targetH = targetHeights[video.id] || 720;
 
                 return (

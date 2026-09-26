@@ -3,6 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check, Sparkles, Heart, Loader2, Image as ImageIcon, Clock, Play, Folder } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { PhotoItem, OptimizationProgress, VideoOptimizationProgress } from "../types";
+import { getThumbnailUrl } from "../services/api";
 
 import { EmptyLibraryState } from "./EmptyLibraryState";
 
@@ -63,9 +64,7 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
     return Boolean(photo.height && photo.width && photo.height > photo.width);
   });
 
-  const thumbnailUrl = photo.is_encrypted
-    ? `http://127.0.0.1:8000/api/vault/thumbnail/${photo.id}`
-    : `http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail?v=3`;
+  const thumbnailUrl = getThumbnailUrl(photo.id, photo.is_encrypted);
   const isVideo = Boolean(photo.mime_type?.startsWith("video/"));
   const isPhoto = !isVideo;
   const isOptimizingThis = Boolean(isPhoto && optimizationProgress?.is_active && optimizationProgress.active_photo_id === photo.id);

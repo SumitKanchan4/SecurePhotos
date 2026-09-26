@@ -10,6 +10,7 @@ import {
   Layers,
   Calendar
 } from "lucide-react";
+import { apiFetch, getApiUrl } from "../services/api";
 
 interface CollageModalProps {
   isOpen: boolean;
@@ -43,7 +44,7 @@ export const CollageModal: React.FC<CollageModalProps> = ({
     setSuccessMessage(null);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/creatives/collage", {
+      const res = await apiFetch("/api/creatives/collage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -178,7 +179,7 @@ export const CollageModal: React.FC<CollageModalProps> = ({
                   }}
                 >
                   <img 
-                    src={`http://127.0.0.1:8000/api/photos/${id}/thumbnail`} 
+                    src={getApiUrl(`/api/photos/${id}/thumbnail`)} 
                     alt={`Photo ${id}`} 
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
