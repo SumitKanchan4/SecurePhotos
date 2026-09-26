@@ -23,6 +23,11 @@ _CACHED_ENCODER: Optional[Dict[str, Any]] = None
 
 def get_app_root() -> Path:
     """Returns the project or application root directory."""
+    if getattr(sys, "frozen", False):
+        exe_path = Path(sys.executable).resolve()
+        if exe_path.parent.name == "binaries":
+            return exe_path.parent.parent
+        return exe_path.parent
     return Path(__file__).resolve().parent.parent.parent
 
 

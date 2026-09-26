@@ -30,8 +30,8 @@ _session = None
 
 def get_model_path() -> Path:
     """Returns absolute path to the local Real-ESRGAN ONNX model file."""
-    base_dir = Path(__file__).resolve().parent.parent.parent
-    return base_dir / "data" / "models" / MODEL_FILENAME
+    from engine.config import settings
+    return settings.models_dir / MODEL_FILENAME
 
 
 def ensure_model_downloaded() -> Path:

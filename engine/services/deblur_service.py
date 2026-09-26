@@ -30,8 +30,8 @@ _deblur_session = None
 
 def get_deblur_model_path() -> Path:
     """Returns absolute path to the 1x optical de-blur ONNX model file."""
-    base_dir = Path(__file__).resolve().parent.parent.parent
-    return base_dir / "data" / "models" / MODEL_FILENAME
+    from engine.config import settings
+    return settings.models_dir / MODEL_FILENAME
 
 
 def ensure_deblur_model_downloaded() -> Path:

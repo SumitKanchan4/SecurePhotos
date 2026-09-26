@@ -45,16 +45,16 @@ _arcface_session = None
 
 def get_models_dir() -> Path:
     """Returns the absolute directory path where ONNX neural models are stored."""
-    base_dir = Path(__file__).resolve().parent.parent.parent
-    models_dir = base_dir / "data" / "models"
+    from engine.config import settings
+    models_dir = settings.models_dir
     models_dir.mkdir(parents=True, exist_ok=True)
     return models_dir
 
 
 def get_face_thumbnails_dir() -> Path:
     """Returns the absolute directory path where face crop avatar thumbnails are cached."""
-    base_dir = Path(__file__).resolve().parent.parent.parent
-    faces_dir = base_dir / "data" / "thumbnails" / "faces"
+    from engine.config import settings
+    faces_dir = settings.thumbnails_dir / "faces"
     faces_dir.mkdir(parents=True, exist_ok=True)
     return faces_dir
 

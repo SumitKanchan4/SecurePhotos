@@ -31,8 +31,8 @@ _codeformer_session = None
 
 def get_models_dir() -> Path:
     """Returns the directory containing neural models."""
-    base_dir = Path(__file__).resolve().parent.parent.parent
-    models_dir = base_dir / "data" / "models"
+    from engine.config import settings
+    models_dir = settings.models_dir
     models_dir.mkdir(parents=True, exist_ok=True)
     return models_dir
 

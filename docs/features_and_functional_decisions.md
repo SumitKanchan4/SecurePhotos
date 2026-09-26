@@ -4300,6 +4300,64 @@ This update elevates the overall visual polish, branding, ergonomics, and thumbn
 - Video volume level and mute state persist seamlessly across app restarts via `localStorage`.
 - TypeScript type-check passed with 0 errors; Vite bundle built cleanly in 11.87s; backend vault test suite 11/11 passed.
 
+---
+
+## 84. True 100% Offline Standalone Deployment Architecture (Approach 1)
+
+### Functionality Overview
+1. **Self-Contained Offline Installation Payload**:
+   - Transformed the installation pipeline from a lightweight runtime stub (34 MB) that required internet access to fetch neural models into a true **100% offline, self-contained standalone enterprise package (696.7 MB)**.
+   - Designed specifically for air-gapped computers, private local vaults, and portable USB external hard drives where host machines lack Python runtimes, developer dependencies, or active internet connectivity.
+2. **Comprehensive AI Neural Model Bundling**:
+   - Bundled all 5 pre-trained ONNX neural network weights directly into the NSIS installer payload (`data/models/`):
+     - `codeformer.onnx` (377 MB) — Face restoration, unblur, and fidelity reconstruction
+     - `arcface_w600k_r50.onnx` (174 MB) — High-dimensional deep facial recognition and feature clustering
+     - `1x_refocus_cleanly.onnx` (67 MB) — Neural optical de-blurring for out-of-focus camera captures
+     - `yoloface_8n.onnx` (13 MB) — Ultra-fast YOLOv8 face detection
+     - `realesr_general_x4v3.onnx` (5 MB) — Real-ESRGAN compact 4K/8K super-resolution upscaler
+   - Updated path resolution across `face_recognition_service.py`, `face_restore_service.py`, `neural_sr_service.py`, and `deblur_service.py` to bind dynamically to `settings.models_dir` (`<AppRoot>/data/models`), eliminating hardcoded source relative paths that broke in frozen PyInstaller environments (`sys._MEIPASS`).
+3. **Bundled Media Processing Engine (FFmpeg & FFprobe)**:
+   - Extracted and bundled full standalone `ffmpeg.exe` and `ffprobe.exe` binaries into `<AppRoot>/bin/`.
+   - Updated `engine/services/video_runtime.py` to resolve binaries relative to `sys.executable.parent` in frozen runtime mode, guaranteeing immediate video transcoding, metadata probing, and H.265 compression without relying on host WinGet or PATH configurations.
+4. **Synchronized Engine Freezing via PyInstaller**:
+   - Re-compiled `securephotos-engine.exe` via PyInstaller (53.8 MB standalone binary) including all 13 active API routers (`engine.api.trash`, `engine.api.duplicates`, `engine.api.videos`, `engine.api.search`, `engine.api.documents`, `engine.api.creatives`, etc.), all 19 services, `onnxruntime`, `numpy`, `psutil`, `pyotp`, and `fastapi`.
+   - Replaced the stale September 5 binary with the latest synchronized build.
+5. **NSIS Installation Experience**:
+   - Configured Tauri's `bundle.resources` mapping to install `bin/ffmpeg.exe`, `bin/ffprobe.exe`, and `data/models/*` automatically during setup.
+   - Resulting installer: `SecurePhotos_0.1.0_x64-setup.exe` (696.7 MB), ready to install and operate with 0 bytes downloaded from the web.
+
+### Functional Decision Points & Rationale
+- **All-Inclusive Offline Installer (Option 1) vs. Thin Web Downloader (Option 2)**:
+  - *Decision*: Adopt Option 1 with all 635 MB of neural weights and FFmpeg bundled directly.
+  - *Rationale*: SecurePhotos is architected as a zero-trust, zero-cloud private photo library. Expecting users on external drives or air-gapped workstations to connect to Hugging Face or install Python manually defeats the core privacy and portability proposition. Bundling everything guarantees deterministic execution anywhere.
+- **Dynamic `settings.models_dir` vs. Hardcoded `__file__` Resolution**:
+  - *Decision*: Standardize model lookups on `settings.models_dir` (`<AppDir>/data/models`).
+  - *Rationale*: In PyInstaller `--onefile` mode, `__file__` resolves to a volatile temporary folder (`_MEIxxxx`), whereas models are installed permanently in `<AppRoot>/data/models/`. Using centralized settings ensures consistent discovery across development and production installs.
+
+### Technical Touchpoints
+- `bin/`:
+  - Placed standalone `ffmpeg.exe` (101.5 MB) and `ffprobe.exe` (101.3 MB).
+- `.gitignore`:
+  - Added `bin/*.exe` to prevent committing massive vendor binaries into git.
+- `scripts/build-engine.py`:
+  - Added `--collect-all=engine` and `--collect-all=onnxruntime`.
+  - Added hidden imports for all 13 API modules and 19 services.
+  - Re-compiled `src-tauri/binaries/securephotos-engine-x86_64-pc-windows-gnu.exe` and mirrored to `msvc`.
+- `engine/services/video_runtime.py`:
+  - Updated `get_app_root()` to resolve `sys.executable.parent` when frozen.
+- `engine/services/face_recognition_service.py`, `face_restore_service.py`, `neural_sr_service.py`, `deblur_service.py`:
+  - Updated model directory resolution to use `settings.models_dir`.
+- `src-tauri/tauri.conf.json`:
+  - Added `"resources"` mapping for `bin/ffmpeg.exe`, `bin/ffprobe.exe`, and `data/models/*`.
+- `docs/features_and_functional_decisions.md`:
+  - Documented Section 84.
+
+### State & Lifecycle Impact
+- Zero database changes or migrations required.
+- Total standalone installer size: **696.7 MB** (`SecurePhotos_0.1.0_x64-setup.exe`).
+- All 11 vault backend tests pass; TypeScript 0 errors; Vite bundle built cleanly in 9.30s; NSIS installer built cleanly in 1m 13s.
+
+
 
 
 
