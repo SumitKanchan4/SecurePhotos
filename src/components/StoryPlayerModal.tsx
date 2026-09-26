@@ -221,7 +221,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
 
   // Video element state & refs
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [videoProgress, setVideoProgress] = useState(0);
+  const activeVideoProgressBarRef = useRef<HTMLDivElement | null>(null);
 
   const slides = story?.slides || [];
   const currentSlide = slides[currentSlideIndex];
@@ -482,15 +482,21 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
   useEffect(() => {
     if (!videoRef.current) return;
     if (isCurrentSlideVideo) {
+      if (activeVideoProgressBarRef.current) {
+        activeVideoProgressBarRef.current.style.width = "0%";
+      }
       videoRef.current.muted = isMuted;
       if (isPlaying) {
-        videoRef.current.play().catch((err) => {
-          console.warn("Unmuted video autoplay blocked by browser policy, falling back to muted:", err);
-          if (videoRef.current) {
-            videoRef.current.muted = true;
-            videoRef.current.play().catch(() => {});
-          }
-        });
+        const playPromise = videoRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((err) => {
+            console.warn("Unmuted video autoplay blocked by browser policy, falling back to muted:", err);
+            if (videoRef.current) {
+              videoRef.current.muted = true;
+              videoRef.current.play().catch(() => {});
+            }
+          });
+        }
       } else {
         videoRef.current.pause();
       }
@@ -621,12 +627,13 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
               }}
             >
               <div 
+                ref={isCurrent && isCurrentSlideVideo ? activeVideoProgressBarRef : undefined}
                 style={{
                   height: "100%",
                   width: isPassed
                     ? "100%"
                     : isCurrent
-                      ? (isCurrentSlideVideo ? `${Math.min(100, Math.round(videoProgress * 100))}%` : "100%")
+                      ? (isCurrentSlideVideo ? "0%" : "100%")
                       : "0%",
                   backgroundColor: "#ffffff",
                   transition: isCurrent && isPlaying && !isCurrentSlideVideo ? `width ${pacingMs}ms linear` : "none",
@@ -969,25 +976,23 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                 ref={videoRef}
                 key={`video-${currentSlide.photo_id}`}
                 src={`${API_BASE}/videos/${currentSlide.photo_id}/stream`}
-                poster={`${API_BASE}/photos/${currentSlide.photo_id}/thumbnail`}
+                poster={`${API_BASE}/photos/${currentSlide.photo_id}/preview`}
                 autoPlay
                 playsInline
                 muted={isMuted}
+                preload="auto"
                 onLoadedMetadata={() => {
-                  setVideoProgress(0);
-                  if (videoRef.current && isPlaying) {
-                    videoRef.current.play().catch((err) => {
-                      console.warn("Unmuted video autoplay restricted, playing muted:", err);
-                      if (videoRef.current) {
-                        videoRef.current.muted = true;
-                        videoRef.current.play().catch(() => {});
-                      }
-                    });
+                  if (activeVideoProgressBarRef.current) {
+                    activeVideoProgressBarRef.current.style.width = "0%";
                   }
                 }}
-                onTimeUpdate={() => {
-                  if (videoRef.current && videoRef.current.duration) {
-                    setVideoProgress(videoRef.current.currentTime / videoRef.current.duration);
+                onTimeUpdate={(e) => {
+                  const el = e.currentTarget;
+                  if (el && el.duration) {
+                    const pct = Math.min(100, (el.currentTime / el.duration) * 100);
+                    if (activeVideoProgressBarRef.current) {
+                      activeVideoProgressBarRef.current.style.width = `${pct}%`;
+                    }
                   }
                 }}
                 onEnded={() => {
@@ -1006,6 +1011,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                   height: "100%",
                   objectFit: "contain",
                   transform: "none",
+                  backgroundColor: "#000000",
                 }}
               />
             ) : (

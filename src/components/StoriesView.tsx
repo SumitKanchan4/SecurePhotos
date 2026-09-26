@@ -4,8 +4,6 @@ import {
   Play, 
   RefreshCw, 
   Music, 
-  ChevronLeft, 
-  ChevronRight, 
   Layers,
   Upload,
   X,
@@ -89,7 +87,6 @@ function getArchetypeDetails(storyType?: string, title?: string) {
  */
 export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
   const [stories, setStories] = useState<StoryModel[]>([]);
-  const [activeStoryIdx, setActiveStoryIdx] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,9 +112,6 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
       });
       if (res.ok) {
         setStories((prev) => prev.filter((s) => s.id !== storyId));
-        if (activeStoryIdx >= stories.length - 1) {
-          setActiveStoryIdx(Math.max(0, stories.length - 2));
-        }
       }
     } catch (err) {
       console.error("Failed to delete story:", err);
@@ -137,9 +131,6 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
         if (nextSaved) {
           // Auto-archive off ephemeral suggestions shelf into Saved Stories smart album
           setStories((prev) => prev.filter((s) => s.id !== storyId));
-          if (activeStoryIdx >= stories.length - 1) {
-            setActiveStoryIdx(Math.max(0, stories.length - 2));
-          }
         } else {
           setStories((prev) => prev.map((s) => (s.id === storyId ? { ...s, is_saved: false } : s)));
         }
@@ -230,7 +221,6 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
       if (res.ok) {
         const updatedStories: StoryModel[] = await res.json();
         setStories(updatedStories);
-        setActiveStoryIdx(0);
       }
     } catch (err) {
       console.error("Error generating stories:", err);
@@ -366,9 +356,6 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
     );
   }
 
-  const activeStory = stories.length > 0 ? stories[activeStoryIdx % stories.length] : null;
-  const activeArchetype = activeStory ? getArchetypeDetails(activeStory.story_type, activeStory.title) : null;
-
   return (
     <div 
       style={{ 
@@ -484,252 +471,8 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
         </div>
       )}
 
-      {/* ── SECTION 1: Cinematic Hero Story Spotlight ──────────────────── */}
-      {activeStory ? (
-        <div
-          className="glass-panel"
-          style={{
-            borderRadius: "var(--radius-lg)",
-            overflow: "hidden",
-            position: "relative",
-            minHeight: "260px",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "space-between",
-            padding: "24px 30px",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
-            background: "linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.85) 100%)",
-            border: "1px solid var(--glass-border)",
-          }}
-        >
-          {/* Background Blurred Ambient Cover Photo */}
-          {(activeStory.cover_photo_id || activeStory.slides?.[0]?.photo_id) && (
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                backgroundImage: `url(${API_BASE}/photos/${activeStory.cover_photo_id || activeStory.slides[0].photo_id}/preview)`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-                filter: "blur(20px) brightness(0.35)",
-                opacity: 0.65,
-                transform: "scale(1.05)",
-                zIndex: 0,
-              }}
-            />
-          )}
-
-          {/* Top Row Badges & Carousel Navigation */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 2 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              {/* Dynamic Story Archetype Badge */}
-              {activeArchetype && (
-                <span 
-                  style={{
-                    backgroundColor: activeArchetype.bg,
-                    color: activeArchetype.color,
-                    border: `1px solid ${activeArchetype.border}`,
-                    padding: "4px 12px",
-                    borderRadius: "var(--radius-full)",
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "5px",
-                    backdropFilter: "blur(12px)",
-                  }}
-                >
-                  {activeArchetype.label}
-                </span>
-              )}
-
-              {activeStory.is_saved && (
-                <span
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    backgroundColor: "rgba(59, 130, 246, 0.85)",
-                    color: "#ffffff",
-                    backdropFilter: "blur(10px)",
-                    padding: "4px 10px",
-                    borderRadius: "var(--radius-full)",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "5px",
-                    border: "1px solid rgba(255, 255, 255, 0.2)",
-                  }}
-                >
-                  <Bookmark size={11} fill="#ffffff" />
-                  Saved
-                </span>
-              )}
-
-              <span 
-                style={{
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  color: "rgba(255, 255, 255, 0.85)",
-                  backgroundColor: "rgba(0, 0, 0, 0.45)",
-                  backdropFilter: "blur(10px)",
-                  padding: "4px 10px",
-                  borderRadius: "var(--radius-full)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  border: "1px solid rgba(255, 255, 255, 0.12)",
-                }}
-              >
-                <Music size={11} style={{ color: "var(--accent-primary)" }} />
-                <span style={{ textTransform: "capitalize" }}>{activeStory.vibe_mood} Vibe</span>
-              </span>
-            </div>
-
-            {/* Next / Prev Carousel Controls */}
-            {stories.length > 1 && (
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <button
-                  onClick={() => setActiveStoryIdx((prev) => (prev > 0 ? prev - 1 : stories.length - 1))}
-                  className="clickable"
-                  title="Previous Story"
-                  style={{
-                    width: "30px",
-                    height: "30px",
-                    borderRadius: "50%",
-                    backgroundColor: "rgba(255, 255, 255, 0.12)",
-                    border: "1px solid rgba(255, 255, 255, 0.2)",
-                    color: "#ffffff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                  }}
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <span style={{ fontSize: "11px", color: "rgba(255, 255, 255, 0.8)", fontFamily: "var(--font-mono)", padding: "0 4px" }}>
-                  {activeStoryIdx + 1} / {stories.length}
-                </span>
-                <button
-                  onClick={() => setActiveStoryIdx((prev) => (prev + 1) % stories.length)}
-                  className="clickable"
-                  title="Next Story"
-                  style={{
-                    width: "30px",
-                    height: "30px",
-                    borderRadius: "50%",
-                    backgroundColor: "rgba(255, 255, 255, 0.12)",
-                    border: "1px solid rgba(255, 255, 255, 0.2)",
-                    color: "#ffffff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                  }}
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Center Story Content */}
-          <div style={{ margin: "24px 0", zIndex: 2 }}>
-            <h2 
-              style={{ 
-                fontSize: "26px", 
-                fontWeight: 800, 
-                color: "#ffffff", 
-                letterSpacing: "-0.02em", 
-                lineHeight: 1.2,
-                margin: "0 0 8px 0",
-              }}
-            >
-              {activeStory.title}
-            </h2>
-            <p style={{ fontSize: "13px", color: "rgba(255, 255, 255, 0.82)", margin: 0 }}>
-              {activeStory.slides_count || activeStory.slides?.length || 0} moments • {activeStory.vibe_mood ? activeStory.vibe_mood.charAt(0).toUpperCase() + activeStory.vibe_mood.slice(1) : "Curated"} Montage
-            </p>
-          </div>
-
-          {/* Bottom Action Triggers */}
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", zIndex: 2 }}>
-            <button
-              onClick={() => onPlayStory(activeStory.id)}
-              className="clickable"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "10px 24px",
-                borderRadius: "var(--radius-full)",
-                backgroundColor: "#ffffff",
-                color: "#0f172a",
-                fontWeight: 800,
-                fontSize: "13px",
-                border: "none",
-                cursor: "pointer",
-                boxShadow: "0 4px 14px rgba(255, 255, 255, 0.25)",
-                transition: "transform 0.15s ease",
-              }}
-            >
-              <Play size={14} fill="#0f172a" />
-              <span>Play Montage</span>
-            </button>
-
-            <button
-              onClick={(e) => handleToggleSaveStory(e, activeStory.id, activeStory.is_saved)}
-              className="clickable"
-              title={activeStory.is_saved ? "Remove from Saved Stories" : "Save this story permanently"}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "10px 18px",
-                borderRadius: "var(--radius-full)",
-                backgroundColor: activeStory.is_saved ? "var(--accent-primary)" : "rgba(255, 255, 255, 0.15)",
-                backdropFilter: "blur(12px)",
-                border: activeStory.is_saved ? "1px solid var(--accent-primary)" : "1px solid rgba(255, 255, 255, 0.3)",
-                color: "#ffffff",
-                fontWeight: 700,
-                fontSize: "13px",
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-            >
-              <Bookmark size={14} fill={activeStory.is_saved ? "#ffffff" : "none"} />
-              <span>{activeStory.is_saved ? "Saved" : "Save Story"}</span>
-            </button>
-
-            <button
-              onClick={(e) => handleDeleteStory(e, activeStory.id)}
-              className="clickable"
-              title="Delete story"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: "38px",
-                height: "38px",
-                borderRadius: "var(--radius-full)",
-                backgroundColor: "rgba(239, 68, 68, 0.2)",
-                backdropFilter: "blur(12px)",
-                border: "1px solid rgba(239, 68, 68, 0.4)",
-                color: "#fca5a5",
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "rgba(239, 68, 68, 0.35)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "rgba(239, 68, 68, 0.2)";
-              }}
-            >
-              <Trash2 size={15} />
-            </button>
-          </div>
-        </div>
-      ) : (
+      {/* ── Empty State when no stories curated ──────────────── */}
+      {stories.length === 0 ? (
         <div
           className="glass-panel"
           style={{
@@ -774,10 +517,8 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
             <span>{isGenerating ? "Synthesizing..." : "Synthesize Highlights Now"}</span>
           </button>
         </div>
-      )}
-
-      {/* ── SECTION 2: Milestone Stories Collection Shelf ──────────────── */}
-      {stories.length > 0 && (
+      ) : (
+        /* ── Milestone Stories Collection Shelf ──────────────── */
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <h2 style={{ fontSize: "15px", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
@@ -785,7 +526,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
               Milestone Stories Collection
             </h2>
             <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-              {stories.length} curations available
+              {stories.length} {stories.length === 1 ? "story" : "stories"} available
             </span>
           </div>
 
@@ -796,30 +537,34 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
               gap: "14px" 
             }}
           >
-            {stories.map((story, idx) => {
-              const isSelected = idx === activeStoryIdx;
+            {stories.map((story) => {
               const coverId = story.cover_photo_id || (story.slides && story.slides[0]?.photo_id);
               const cardArchetype = getArchetypeDetails(story.story_type, story.title);
 
               return (
                 <div
                   key={story.id}
-                  onClick={() => {
-                    setActiveStoryIdx(idx);
-                    onPlayStory(story.id);
-                  }}
+                  onClick={() => onPlayStory(story.id)}
                   className="clickable glass-panel"
                   style={{
                     borderRadius: "var(--radius-md)",
                     overflow: "hidden",
-                    border: `1px solid ${isSelected ? "var(--accent-primary)" : "var(--border-subtle)"}`,
+                    border: "1px solid var(--border-subtle)",
                     backgroundColor: "var(--bg-surface)",
                     position: "relative",
                     display: "flex",
                     flexDirection: "column",
                     cursor: "pointer",
-                    transition: "transform 0.15s ease, box-shadow 0.15s ease",
-                    boxShadow: isSelected ? "0 4px 18px rgba(59, 130, 246, 0.2)" : "var(--shadow-sm)",
+                    transition: "transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease",
+                    boxShadow: "var(--shadow-sm)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "var(--accent-primary)";
+                    e.currentTarget.style.transform = "translateY(-2px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "var(--border-subtle)";
+                    e.currentTarget.style.transform = "none";
                   }}
                 >
                   {/* Card Cover Preview */}

@@ -489,20 +489,21 @@ async def stream_video_endpoint(photo_id: int):
             headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"},
         )
 
-    # On-the-fly ultrafast H.264 transcode with faststart for instant streaming
+    # On-the-fly high-fidelity H.264 transcode with faststart for instant streaming
+    # Retains full 1080p clarity (crf 20, veryfast) with Web & WebView2 compatibility
     # Uses asyncio.to_thread with subprocess.run to guarantee Windows / Uvicorn compatibility
     temp_preview = preview_file.with_suffix(".tmp.mp4")
     cmd = [
         ffmpeg, "-y",
         "-i", str(src_file),
-        "-vf", "scale=trunc(iw*min(1\\,720/ih)/2)*2:trunc(ih*min(1\\,720/ih)/2)*2",
+        "-vf", "scale=trunc(iw*min(1\\,1080/ih)/2)*2:trunc(ih*min(1\\,1080/ih)/2)*2",
         "-c:v", "libx264",
-        "-preset", "ultrafast",
+        "-preset", "veryfast",
         "-tune", "fastdecode",
-        "-crf", "24",
+        "-crf", "20",
         "-pix_fmt", "yuv420p",
         "-c:a", "aac",
-        "-b:a", "128k",
+        "-b:a", "192k",
         "-movflags", "+faststart",
         str(temp_preview),
     ]
