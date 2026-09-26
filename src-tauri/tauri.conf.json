@@ -59,7 +59,8 @@
     "resources": {
       "../bin/ffmpeg.exe": "bin/ffmpeg.exe",
       "../bin/ffprobe.exe": "bin/ffprobe.exe",
-      "../data/models/*": "data/models/"
+      "../data/models/*": "data/models/",
+      "WebView2Loader.dll": "WebView2Loader.dll"
     },
     "windows": {
       "nsis": {

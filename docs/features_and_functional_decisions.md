@@ -4348,14 +4348,17 @@ This update elevates the overall visual polish, branding, ergonomics, and thumbn
 - `engine/services/face_recognition_service.py`, `face_restore_service.py`, `neural_sr_service.py`, `deblur_service.py`:
   - Updated model directory resolution to use `settings.models_dir`.
 - `src-tauri/tauri.conf.json`:
-  - Added `"resources"` mapping for `bin/ffmpeg.exe`, `bin/ffprobe.exe`, and `data/models/*`.
+  - Added `"resources"` mapping for `bin/ffmpeg.exe`, `bin/ffprobe.exe`, `data/models/*`, and `WebView2Loader.dll`.
+- `src-tauri/WebView2Loader.dll`:
+  - Staged x64 WebView2 runtime loader DLL for GNU MinGW target compatibility in NSIS setup.
 - `docs/features_and_functional_decisions.md`:
   - Documented Section 84.
 
 ### State & Lifecycle Impact
 - Zero database changes or migrations required.
-- Total standalone installer size: **696.7 MB** (`SecurePhotos_0.1.0_x64-setup.exe`).
-- All 11 vault backend tests pass; TypeScript 0 errors; Vite bundle built cleanly in 9.30s; NSIS installer built cleanly in 1m 13s.
+- Resolved Windows System Error `WebView2Loader.dll was not found` on freshly installed standalone systems.
+- Total standalone installer size: **696.8 MB** (`SecurePhotos_0.1.0_x64-setup.exe`).
+- All 11 vault backend tests pass; TypeScript 0 errors; Vite bundle built cleanly in 13.20s; NSIS installer built cleanly in 1m 52s.
 
 
 
