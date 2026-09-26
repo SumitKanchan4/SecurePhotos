@@ -1850,6 +1850,36 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                               objectFit: "cover",
                             }}
                           />
+
+                          {/* Video Play Indicator Badge */}
+                          {(photo.mime_type?.startsWith("video/") || photo.filename.toLowerCase().endsWith(".mp4") || photo.filename.toLowerCase().endsWith(".mov")) && (
+                            <div
+                              style={{
+                                position: "absolute",
+                                bottom: "8px",
+                                left: "8px",
+                                zIndex: 3,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                padding: "2px 7px",
+                                borderRadius: "var(--radius-full)",
+                                background: "rgba(10, 12, 18, 0.75)",
+                                backdropFilter: "blur(10px)",
+                                WebkitBackdropFilter: "blur(10px)",
+                                border: "1px solid rgba(255, 255, 255, 0.2)",
+                                color: "#ffffff",
+                                fontSize: "10px",
+                                fontWeight: 700,
+                                letterSpacing: "0.2px",
+                                boxShadow: "0 2px 6px rgba(0, 0, 0, 0.6)",
+                                pointerEvents: "none",
+                              }}
+                            >
+                              <Play size={10} fill="#ffffff" color="#ffffff" />
+                              <span>VIDEO</span>
+                            </div>
+                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();

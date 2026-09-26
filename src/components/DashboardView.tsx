@@ -232,14 +232,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
   const freeDash = freeShare * circumference;
 
   // Contextual User Media Breakdown
-  const photosBytes = (stats?.app_storage.originals_bytes || 0);
+  const photosBytes = stats?.app_storage.images_bytes ?? (stats?.app_storage.originals_bytes || 0);
+  const videosBytes = stats?.app_storage.videos_bytes ?? 0;
   const cacheBytes = (stats?.app_storage.thumbnails_bytes || 0) + (stats?.app_storage.previews_bytes || 0);
-  const memoriesBytes = Math.round(mediaBytes * 0.08); // Stories & montage metadata
-  const totalMediaCatalogBytes = Math.max(1, photosBytes + cacheBytes + memoriesBytes);
+  const totalMediaCatalogBytes = Math.max(1, photosBytes + videosBytes + cacheBytes);
 
   const photosPct = Math.round((photosBytes / totalMediaCatalogBytes) * 100);
-  const cachePct = Math.round((cacheBytes / totalMediaCatalogBytes) * 100);
-  const memoriesPct = Math.max(0, 100 - photosPct - cachePct);
+  const videosPct = Math.round((videosBytes / totalMediaCatalogBytes) * 100);
+  const cachePct = Math.max(0, 100 - photosPct - videosPct);
 
   // Helper for time-of-day period icon & color
   const getTimePeriodMeta = (period: string) => {
@@ -645,8 +645,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
               }}
             >
               <div style={{ width: `${photosPct}%`, backgroundColor: "#3b82f6" }} title={`Photos: ${photosPct}%`} />
-              <div style={{ width: `${cachePct}%`, backgroundColor: "#10b981" }} title={`Thumbnails & Cache: ${cachePct}%`} />
-              <div style={{ width: `${memoriesPct}%`, backgroundColor: "#8b5cf6" }} title={`Memories: ${memoriesPct}%`} />
+              <div style={{ width: `${videosPct}%`, backgroundColor: "#f59e0b" }} title={`Videos: ${videosPct}%`} />
+              <div style={{ width: `${cachePct}%`, backgroundColor: "#10b981" }} title={`Thumbnails & Display Cache: ${cachePct}%`} />
             </div>
 
             {/* Contextual User Sub-allocations list */}
@@ -667,24 +667,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                   Videos:
                 </span>
                 <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
-                  {stats?.media_counts.videos && stats.media_counts.videos > 0 ? formatBytes(Math.round(mediaBytes * 0.15)) : "0 B"}
-                </span>
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <Sparkles size={13} style={{ color: "#8b5cf6" }} />
-                  Curated Stories & Memories:
-                </span>
-                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
-                  {formatBytes(memoriesBytes)}
+                  {formatBytes(videosBytes)}
                 </span>
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px" }}>
                   <Layers size={13} style={{ color: "#10b981" }} />
-                  Thumbnails & Instant Cache:
+                  Thumbnails & Display Cache:
                 </span>
                 <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
                   {formatBytes(cacheBytes)}

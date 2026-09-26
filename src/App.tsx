@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { 
   Lock, 
   Plus, 
-  FolderSync, 
   LayoutGrid,
   Loader2,
   Trash2,
@@ -934,25 +933,6 @@ export const App: React.FC = () => {
                     </button>
                   ) : (
                     <>
-                      <button
-                        className="clickable"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "6px 14px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "var(--glass-pill-bg)",
-                          border: "1px solid var(--glass-pill-border)",
-                          color: "var(--text-primary)",
-                          fontSize: "12px",
-                          fontWeight: 500,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        <FolderSync size={14} />
-                        Sync Folder
-                      </button>
                       <button
                         onClick={() => setIsImportModalOpen(true)}
                         className="clickable"

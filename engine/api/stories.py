@@ -173,13 +173,16 @@ async def get_stories_insights() -> StoriesInsightsResponse:
         async with conn.execute("SELECT count(*) as cnt FROM stories;") as c:
             story_count = (await c.fetchone())["cnt"]
 
-        # 2. Most captured people
+        # 2. Most captured people (strictly active, unencrypted library photos)
         async with conn.execute(
             """
-            SELECT p.id, p.name, p.relationship_type, p.is_close_one, count(f.id) as photo_count
+            SELECT p.id, p.name, p.relationship_type, p.is_close_one, count(DISTINCT ph.id) as photo_count
             FROM persons p
             JOIN faces f ON f.person_id = p.id
+            JOIN photos ph ON f.photo_id = ph.id
+            WHERE ph.trashed_at IS NULL AND ph.is_encrypted = 0
             GROUP BY p.id
+            HAVING photo_count > 0
             ORDER BY photo_count DESC
             LIMIT 5;
             """

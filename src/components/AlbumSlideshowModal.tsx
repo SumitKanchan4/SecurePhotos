@@ -8,9 +8,23 @@ import {
   Volume2, 
   VolumeX, 
   Maximize,
-  Sparkles 
+  Sparkles,
+  Music,
+  SkipForward
 } from "lucide-react";
 import { PhotoItem } from "../types";
+
+const API_BASE = "http://127.0.0.1:8000/api";
+
+interface MusicTrackItem {
+  id: string;
+  filename: string;
+  title: string;
+  artist: string;
+  mood: string;
+  duration_formatted: string;
+  stream_url: string;
+}
 
 interface AlbumSlideshowModalProps {
   isOpen: boolean;
@@ -18,142 +32,6 @@ interface AlbumSlideshowModalProps {
   photos: PhotoItem[];
   initialIndex?: number;
   onClose: () => void;
-}
-
-/**
- * Ambient Synthesizer using native Web Audio API.
- * Generates continuous, soothing ambient chord pads without any external audio files.
- */
-class AmbientSoundscapeGenerator {
-  private ctx: AudioContext | null = null;
-  private isPlaying: boolean = false;
-  private masterGain: GainNode | null = null;
-  private timer: number | null = null;
-
-  // Soothing warm chord progressions in the clearly audible 175Hz - 550Hz range
-  private chords = [
-    [261.63, 329.63, 392.00, 523.25], // C4, E4, G4, C5 (C Major)
-    [220.00, 261.63, 329.63, 440.00], // A3, C4, E4, A4 (A minor)
-    [293.66, 369.99, 440.00, 587.33], // D4, F#4, A4, D5 (D Major)
-    [174.61, 261.63, 349.23, 392.00], // F3, C4, F4, G4 (F sus2)
-  ];
-  private chordIndex = 0;
-
-  public async start() {
-    if (this.isPlaying) return;
-    try {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (!AudioCtx) return;
-      this.ctx = new AudioCtx();
-      this.isPlaying = true;
-
-      this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.setValueAtTime(0.001, this.ctx.currentTime);
-      this.masterGain.gain.exponentialRampToValueAtTime(0.35, this.ctx.currentTime + 1.5);
-      this.masterGain.connect(this.ctx.destination);
-
-      if (this.ctx.state === "suspended") {
-        await this.ctx.resume().catch(() => {});
-      }
-
-      this.scheduleNextPad();
-    } catch (err) {
-      console.warn("Web Audio API not allowed or supported:", err);
-    }
-  }
-
-  public resume() {
-    if (this.ctx && this.ctx.state === "suspended") {
-      this.ctx.resume().then(() => {
-        if (this.isPlaying && !this.timer) {
-          this.scheduleNextPad();
-        }
-      }).catch(() => {});
-    }
-  }
-
-  private scheduleNextPad() {
-    if (!this.ctx || !this.isPlaying || !this.masterGain) return;
-
-    // If context is suspended by the browser, wait for unlock
-    if (this.ctx.state === "suspended") {
-      this.ctx.resume().then(() => {
-        if (this.isPlaying) this.scheduleNextPad();
-      }).catch(() => {});
-      return;
-    }
-
-    const chord = this.chords[this.chordIndex % this.chords.length];
-    this.chordIndex++;
-
-    const now = this.ctx.currentTime;
-    const duration = 6.0; // 6 seconds per chord pad
-
-    // Create a soft low-pass filter (950Hz provides rich warmth without muffling sound)
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = "lowpass";
-    filter.frequency.setValueAtTime(950, now);
-    filter.Q.setValueAtTime(1.0, now);
-    filter.connect(this.masterGain);
-
-    chord.forEach((freq, i) => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const oscGain = this.ctx.createGain();
-
-      // Soft sine + triangle for pure warm tone
-      osc.type = i % 2 === 0 ? "sine" : "triangle";
-      osc.frequency.setValueAtTime(freq, now);
-
-      // Subtle detune for rich celestial chorus
-      osc.detune.setValueAtTime((i - 1.5) * 6, now);
-
-      // Clear, gentle attack and release envelope
-      const peakGain = 0.14;
-      oscGain.gain.setValueAtTime(0.001, now);
-      oscGain.gain.exponentialRampToValueAtTime(peakGain, now + 1.8);
-      oscGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-
-      osc.connect(oscGain);
-      oscGain.connect(filter);
-
-      osc.start(now);
-      osc.stop(now + duration + 0.1);
-    });
-
-    this.timer = window.setTimeout(() => {
-      if (this.isPlaying) this.scheduleNextPad();
-    }, 4800); // 4.8s overlap creates smooth cross-dissolve chords
-  }
-
-  public setMute(muted: boolean) {
-    if (!this.masterGain || !this.ctx) return;
-    const now = this.ctx.currentTime;
-    if (muted) {
-      this.masterGain.gain.cancelScheduledValues(now);
-      this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-      this.masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
-    } else {
-      this.resume();
-      this.masterGain.gain.cancelScheduledValues(now);
-      this.masterGain.gain.setValueAtTime(this.masterGain.gain.value || 0.001, now);
-      this.masterGain.gain.exponentialRampToValueAtTime(0.35, now + 0.5);
-    }
-  }
-
-  public stop() {
-    this.isPlaying = false;
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
-    if (this.ctx) {
-      try {
-        this.ctx.close();
-      } catch {}
-      this.ctx = null;
-    }
-  }
 }
 
 export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
@@ -169,42 +47,88 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
   const [showControls, setShowControls] = useState(true);
   const [animationKey, setAnimationKey] = useState(0);
 
-  const soundscapeRef = useRef<AmbientSoundscapeGenerator | null>(null);
+  // Soundtrack streaming state
+  const [tracks, setTracks] = useState<MusicTrackItem[]>([]);
+  const [currentTrackIndex, setCurrentTrackIndex] = useState<number>(0);
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const idleTimerRef = useRef<number | null>(null);
 
-  // Initialize soundscape
+  // Load real music tracks from backend
   useEffect(() => {
-    if (isOpen) {
-      soundscapeRef.current = new AmbientSoundscapeGenerator();
-      soundscapeRef.current.start();
+    if (!isOpen) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      return;
     }
-    return () => {
-      soundscapeRef.current?.stop();
-      soundscapeRef.current = null;
+    const loadTracks = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/stories/music`);
+        if (res.ok) {
+          const list: MusicTrackItem[] = await res.json();
+          setTracks(list);
+          if (list.length > 0) {
+            // Pick a random starting soundtrack
+            setCurrentTrackIndex(Math.floor(Math.random() * list.length));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load slideshow music tracks:", err);
+      }
     };
+    loadTracks();
   }, [isOpen]);
 
-  // Unlock audio on any user gesture (click anywhere, touch, or keydown)
+  const activeTrack = tracks[currentTrackIndex] || null;
+  const audioSrc = activeTrack
+    ? (activeTrack.stream_url.startsWith("http")
+        ? activeTrack.stream_url
+        : `http://127.0.0.1:8000${activeTrack.stream_url}`)
+    : null;
+
+  // Synchronize soundtrack playback with slideshow play/pause and mute
+  useEffect(() => {
+    if (!audioRef.current) return;
+    if (isPlaying && !isMuted && audioSrc) {
+      audioRef.current.play().catch((e) => {
+        console.warn("Audio playback awaiting user gesture:", e);
+      });
+    } else {
+      audioRef.current.pause();
+    }
+  }, [isPlaying, isMuted, audioSrc]);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.muted = isMuted;
+    }
+  }, [isMuted]);
+
+  // Audio unlock listener for browser autoplay policy
   useEffect(() => {
     if (!isOpen) return;
 
     const unlockAudio = () => {
-      soundscapeRef.current?.resume();
+      if (audioRef.current && isPlaying && !isMuted) {
+        audioRef.current.play().catch(() => {});
+      }
     };
 
-    window.addEventListener("pointerdown", unlockAudio);
-    window.addEventListener("keydown", unlockAudio);
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
 
     return () => {
       window.removeEventListener("pointerdown", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
     };
-  }, [isOpen]);
+  }, [isOpen, isPlaying, isMuted]);
 
-  // Handle mute changes
-  useEffect(() => {
-    soundscapeRef.current?.setMute(isMuted);
-  }, [isMuted]);
+  const handleNextTrack = useCallback(() => {
+    if (tracks.length <= 1) return;
+    setCurrentTrackIndex((prev) => (prev + 1) % tracks.length);
+  }, [tracks.length]);
 
   // Slideshow auto-advance timer (5 seconds per slide)
   useEffect(() => {
@@ -386,14 +310,19 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
         </button>
       </div>
 
+      {/* Hidden Audio Element for Genuine Story Soundtrack Streaming */}
+      <audio
+        ref={audioRef}
+        src={audioSrc || undefined}
+        loop
+        preload="auto"
+      />
+
       {/* Left / Right Nav Touch Triggers */}
       {photos.length > 1 && (
         <>
           <button
-            onClick={() => {
-              soundscapeRef.current?.resume();
-              handlePrev();
-            }}
+            onClick={handlePrev}
             style={{
               position: "absolute",
               left: "20px",
@@ -419,10 +348,7 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
             <ChevronLeft size={22} />
           </button>
           <button
-            onClick={() => {
-              soundscapeRef.current?.resume();
-              handleNext();
-            }}
+            onClick={handleNext}
             style={{
               position: "absolute",
               right: "20px",
@@ -471,10 +397,7 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
       >
         {/* Play / Pause Toggle */}
         <button
-          onClick={() => {
-            soundscapeRef.current?.resume();
-            setIsPlaying((p) => !p);
-          }}
+          onClick={() => setIsPlaying((p) => !p)}
           className="clickable"
           title={isPlaying ? "Pause (Space)" : "Play (Space)"}
           style={{
@@ -493,31 +416,58 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
           {isPlaying ? <Pause size={16} fill="#ffffff" /> : <Play size={16} fill="#ffffff" style={{ marginLeft: "2px" }} />}
         </button>
 
-        {/* Ambient Music Toggle */}
-        <button
-          onClick={() => {
-            soundscapeRef.current?.resume();
-            setIsMuted((m) => !m);
-          }}
-          className="clickable"
-          title={isMuted ? "Unmute Ambient Music (M)" : "Mute Ambient Music (M)"}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: isMuted ? "var(--text-muted, #94a3b8)" : "#fbbf24",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            fontSize: "12px",
-            fontWeight: 600,
-            cursor: "pointer",
-            padding: "6px 10px",
-            borderRadius: "var(--radius-sm, 6px)",
-          }}
-        >
-          {isMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
-          <span>{isMuted ? "Music Off" : "Ambient Music"}</span>
-        </button>
+        {/* Real Soundtrack Music Controls */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <button
+            onClick={() => setIsMuted((m) => !m)}
+            className="clickable"
+            title={isMuted ? "Unmute Music (M)" : "Mute Music (M)"}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: isMuted ? "var(--text-muted, #94a3b8)" : "#fbbf24",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: "pointer",
+              padding: "6px 8px",
+              borderRadius: "var(--radius-sm, 6px)",
+            }}
+          >
+            {isMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
+            <Music size={13} style={{ opacity: 0.85 }} />
+            <span style={{ maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {isMuted
+                ? "Music Off"
+                : (activeTrack ? activeTrack.title : "Soundtrack")}
+            </span>
+          </button>
+
+          {tracks.length > 1 && (
+            <button
+              onClick={handleNextTrack}
+              className="clickable"
+              title="Next Track"
+              style={{
+                background: "rgba(255,255,255,0.1)",
+                border: "none",
+                borderRadius: "50%",
+                color: "#ffffff",
+                width: "26px",
+                height: "26px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              <SkipForward size={13} />
+            </button>
+          )}
+        </div>
 
         <span style={{ height: "18px", width: "1px", background: "rgba(255,255,255,0.2)" }} />
 

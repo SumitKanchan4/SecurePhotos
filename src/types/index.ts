@@ -161,10 +161,13 @@ export interface AppStorageStats {
   media_bytes: number;         // Photos, videos, proxies & thumbnails combined
   app_system_bytes: number;    // Database, search indices & AI models
   originals_bytes: number;
+  images_bytes?: number;
+  videos_bytes?: number;
   thumbnails_bytes: number;
   previews_bytes: number;
   database_bytes: number;
   models_bytes: number;
+  orphaned_bytes?: number;
 }
 
 export interface DriveStorageStats {

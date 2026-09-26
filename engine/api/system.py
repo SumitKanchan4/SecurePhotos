@@ -12,7 +12,7 @@ import platform
 import shutil
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, status
 from pydantic import BaseModel
 
@@ -45,13 +45,16 @@ class MediaCountsResponse(BaseModel):
 class AppStorageStats(BaseModel):
     """Storage footprint consumed by SecurePhotos application."""
     total_bytes: int
-    media_bytes: int            # Photos, videos, proxies & thumbnails combined
+    media_bytes: int            # Active photos, videos, proxies & thumbnails combined
     app_system_bytes: int       # Database, search indices & AI models
     originals_bytes: int
+    images_bytes: int = 0
+    videos_bytes: int = 0
     thumbnails_bytes: int
     previews_bytes: int
     database_bytes: int
     models_bytes: int
+    orphaned_bytes: int = 0
 
 
 class DriveStorageStats(BaseModel):
@@ -134,8 +137,37 @@ def calculate_app_storage_footprint(force_refresh: bool = False) -> AppStorageSt
         except (OSError, FileNotFoundError):
             pass
 
+    # Query active media sizes directly from SQLite
+    images_size = 0
+    videos_size = 0
+    active_originals_size = 0
+    try:
+        import sqlite3
+        if settings.database_path.exists():
+            with sqlite3.connect(settings.database_path) as sconn:
+                cur = sconn.cursor()
+                cur.execute(
+                    """
+                    SELECT 
+                        COALESCE(SUM(CASE WHEN (mime_type NOT LIKE 'video/%' AND lower(filename) NOT LIKE '%.mp4' AND lower(filename) NOT LIKE '%.mov' AND lower(filename) NOT LIKE '%.mkv' AND lower(filename) NOT LIKE '%.avi' AND lower(filename) NOT LIKE '%.webm') THEN file_size ELSE 0 END), 0),
+                        COALESCE(SUM(CASE WHEN (mime_type LIKE 'video/%' OR lower(filename) LIKE '%.mp4' OR lower(filename) LIKE '%.mov' OR lower(filename) LIKE '%.mkv' OR lower(filename) LIKE '%.avi' OR lower(filename) LIKE '%.webm') THEN file_size ELSE 0 END), 0),
+                        COALESCE(SUM(file_size), 0)
+                    FROM photos
+                    WHERE trashed_at IS NULL AND is_encrypted = 0;
+                    """
+                )
+                row = cur.fetchone()
+                if row:
+                    images_size = int(row[0] or 0)
+                    videos_size = int(row[1] or 0)
+                    active_originals_size = int(row[2] or 0)
+    except Exception as e:
+        logger.warning(f"Failed to query active media sizes from DB: {e}")
+
     # 2. Managed original files
-    originals_size = _calc_directory_size(settings.originals_dir)
+    disk_originals_size = _calc_directory_size(settings.originals_dir)
+    originals_size = active_originals_size if active_originals_size > 0 else disk_originals_size
+    orphaned_bytes = max(0, disk_originals_size - active_originals_size) if active_originals_size > 0 else 0
 
     # 3. Micro-thumbnails (.webp)
     thumbnails_size = _calc_directory_size(settings.thumbnails_dir)
@@ -155,10 +187,13 @@ def calculate_app_storage_footprint(force_refresh: bool = False) -> AppStorageSt
         media_bytes=media_size,
         app_system_bytes=app_sys_size,
         originals_bytes=originals_size,
+        images_bytes=images_size,
+        videos_bytes=videos_size,
         thumbnails_bytes=thumbnails_size,
         previews_bytes=previews_size,
         database_bytes=db_size,
         models_bytes=models_size,
+        orphaned_bytes=orphaned_bytes,
     )
     _last_storage_scan_time = now
     return _cached_app_storage
@@ -175,7 +210,7 @@ async def get_volumes() -> List[VolumeInfo]:
 async def get_dashboard_overview() -> DashboardOverviewResponse:
     """Returns consolidated media counts, app storage footprint, and drive usage metrics.
 
-    Executes a single unified SQLite covering query for media counts and queries
+    Executes a single unified SQLite covering query for active unencrypted media counts and queries
     Windows Win32 filesystem disk status for capacity and partition type.
 
     Returns:
@@ -183,7 +218,7 @@ async def get_dashboard_overview() -> DashboardOverviewResponse:
     """
     conn = await get_db_connection()
     try:
-        # 1. Consolidated media count query using composite covering index
+        # 1. Consolidated media count query using composite covering index (strictly active unencrypted library)
         async with conn.execute(
             """
             SELECT 
@@ -193,7 +228,7 @@ async def get_dashboard_overview() -> DashboardOverviewResponse:
                 COALESCE(SUM(CASE WHEN is_favorite = 1 THEN 1 ELSE 0 END), 0) as favorites_count,
                 COUNT(*) as total_count
             FROM photos
-            WHERE trashed_at IS NULL;
+            WHERE trashed_at IS NULL AND is_encrypted = 0;
             """
         ) as cursor:
             row = await cursor.fetchone()
@@ -203,12 +238,20 @@ async def get_dashboard_overview() -> DashboardOverviewResponse:
             favs_cnt = row[3] or 0
             total_cnt = row[4] or 0
 
-        # Query albums and people counts
+        # Query albums and people counts (strictly persons with active unencrypted photos)
         async with conn.execute("SELECT COUNT(*) FROM albums;") as cursor:
             albums_row = await cursor.fetchone()
             albums_cnt = albums_row[0] if albums_row else 0
 
-        async with conn.execute("SELECT COUNT(*) FROM persons;") as cursor:
+        async with conn.execute(
+            """
+            SELECT COUNT(DISTINCT p.id)
+            FROM persons p
+            JOIN faces f ON f.person_id = p.id
+            JOIN photos ph ON f.photo_id = ph.id
+            WHERE ph.trashed_at IS NULL AND ph.is_encrypted = 0;
+            """
+        ) as cursor:
             persons_row = await cursor.fetchone()
             persons_cnt = persons_row[0] if persons_row else 0
 
@@ -438,5 +481,62 @@ async def trigger_optimization():
 
         start_video_queue_worker()
         return {"status": "started", "enqueued_count": enqueued}
+    finally:
+        await conn.close()
+
+
+@router.post("/prune-orphans", status_code=status.HTTP_200_OK)
+async def prune_orphaned_originals() -> Dict[str, Any]:
+    """Detects and safely removes unreferenced media files in originals directory.
+
+    Reconciles all media files on disk with database records (active, trashed, and encrypted),
+    safely removing leftover orphaned files and reclaiming storage.
+
+    Returns:
+        Dict with pruned_files_count, reclaimed_bytes, and reclaimed_formatted.
+    """
+    global _cached_app_storage
+    conn = await get_db_connection()
+    try:
+        # Collect all referenced filesystem paths in the database
+        async with conn.execute("SELECT filepath, original_path FROM photos;") as cursor:
+            rows = await cursor.fetchall()
+            db_paths = set()
+            for r in rows:
+                if r[0]:
+                    try:
+                        db_paths.add(Path(r[0]).resolve())
+                    except Exception:
+                        pass
+                if r[1]:
+                    try:
+                        db_paths.add(Path(r[1]).resolve())
+                    except Exception:
+                        pass
+
+        pruned_count = 0
+        reclaimed_bytes = 0
+        originals_dir = settings.originals_dir.resolve()
+
+        if originals_dir.exists():
+            for root, _, files in os.walk(originals_dir):
+                for f in files:
+                    file_path = (Path(root) / f).resolve()
+                    if file_path.is_file() and file_path not in db_paths:
+                        try:
+                            f_size = file_path.stat().st_size
+                            file_path.unlink()
+                            pruned_count += 1
+                            reclaimed_bytes += f_size
+                        except Exception as err:
+                            logger.warning(f"Could not remove orphan file {file_path}: {err}")
+
+        # Invalidate storage cache so next read calculates fresh numbers
+        _cached_app_storage = None
+        return {
+            "pruned_files_count": pruned_count,
+            "reclaimed_bytes": reclaimed_bytes,
+            "reclaimed_formatted": f"{reclaimed_bytes / (1024 * 1024):.1f} MB",
+        }
     finally:
         await conn.close()

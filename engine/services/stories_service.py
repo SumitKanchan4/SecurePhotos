@@ -357,8 +357,8 @@ async def generate_vacation_and_trip_stories() -> List[StoryModel]:
             WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0
             GROUP BY folder_name, yr, mo
             HAVING cnt >= 3
-            ORDER BY cnt DESC
-            LIMIT 4;
+            ORDER BY (CASE WHEN folder_name IS NOT NULL AND folder_name != '' THEN 1 ELSE 0 END) DESC, cnt DESC
+            LIMIT 8;
             """
         ) as cursor:
             clusters = await cursor.fetchall()

@@ -21,13 +21,15 @@ logger = logging.getLogger("securephotos.document_service")
 # Keyword lexicons for deterministic local categorization
 CATEGORY_KEYWORDS = {
     "receipt": [
-        "receipt", "invoice", "bill", "payment", "subtotal", "total", "cashier",
+        "receipt", "invoice", "bill", "payment", "subtotal", "sub_tot", "total", "cashier",
         "merchant", "pos", "order", "checkout", "transaction", "purchase",
         "supermarket", "walmart", "target", "costco", "amazon", "uber", "lyft",
+        "gst", "fssai", "cash/bill", "qty", "rate", "amount", "cinemas", "movie", "ticket",
     ],
     "identity": [
         "passport", "license", "driver", "identification", "national_id", "aadhaar",
         "citizenship", "visa", "voter", "birth_certificate", "ssn", "identity",
+        "card", "mail id", "whatsapp",
     ],
     "tax": [
         "tax", "1040", "w2", "w-2", "1099", "irs", "revenue", "deduction",
@@ -36,6 +38,8 @@ CATEGORY_KEYWORDS = {
     "medical": [
         "medical", "prescription", "rx", "patient", "doctor", "clinic", "hospital",
         "diagnosis", "health", "pharmacy", "vaccine", "lab_report", "blood_test",
+        "tab", "capsule", "drops", "syrup", "dosage", "mg", "bed time", "after lunch",
+        "before breakfast",
     ],
     "legal": [
         "contract", "agreement", "lease", "nda", "terms", "deed", "certificate",
@@ -43,7 +47,7 @@ CATEGORY_KEYWORDS = {
     ],
     "warranty": [
         "warranty", "guarantee", "manual", "user_guide", "serial_number",
-        "model_no", "instructions", "coverage", "appliance",
+        "model_no", "instructions", "coverage", "appliance", "route", "schedule",
     ],
 }
 
@@ -57,6 +61,38 @@ def format_file_size(size_bytes: int) -> str:
     elif size_bytes < 1024 * 1024 * 1024:
         return f"{size_bytes / (1024 * 1024):.1f} MB"
     return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+
+
+async def extract_ocr_text_on_device(filepath: Path | str) -> str:
+    """Extracts text tokens from an image using local on-device hardware-accelerated OCR.
+
+    Leverages Windows.Media.Ocr (via winocr) with zero cloud dependencies or model downloads.
+
+    Args:
+        filepath: Absolute path to the image file on disk.
+
+    Returns:
+        Extracted text string or empty string if no text found.
+    """
+    path = Path(filepath)
+    if not path.exists() or path.stat().st_size == 0 or path.suffix.lower() == ".enc":
+        return ""
+
+    try:
+        from PIL import Image
+        import winocr
+
+        with Image.open(path) as img:
+            max_side = 1600
+            if max(img.width, img.height) > max_side:
+                img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+            res = await winocr.recognize_pil(img, "en-US")
+            if res and hasattr(res, "text") and res.text:
+                return res.text.strip()
+    except Exception as e:
+        logger.debug("Local OCR extraction skipped for %s: %s", path.name, e)
+
+    return ""
 
 
 def classify_document(
@@ -115,20 +151,28 @@ def is_candidate_document(
     doc_indicators = [
         "doc", "scan", "receipt", "invoice", "bill", "passport", "license",
         "tax", "1040", "w2", "medical", "rx", "contract", "statement", "form",
-        "ticket", "boarding_pass", "paper", "memo", "letter",
+        "ticket", "boarding_pass", "paper", "memo", "letter", "schedule", "prescription",
     ]
     for ind in doc_indicators:
         if ind in fn_lower:
             return True
 
-    if ocr_text and len(ocr_text.strip()) > 20:
-        return True
+    if ocr_text:
+        txt = ocr_text.strip().lower()
+        if len(txt) >= 20:
+            for kw_list in CATEGORY_KEYWORDS.values():
+                if any(kw in txt for kw in kw_list):
+                    return True
+            if len(txt) >= 40:
+                return True
 
     return False
 
 
 async def scan_library_for_documents() -> Dict[str, Any]:
     """Scans all active library photos and classifies newly identified documents.
+
+    Extracts on-device OCR text where missing and automatically identifies documents.
 
     Returns:
         Dictionary containing total_scanned, newly_detected, and category breakdown.
@@ -139,7 +183,7 @@ async def scan_library_for_documents() -> Dict[str, Any]:
             """
             SELECT id, filename, filepath, file_size, mime_type, is_document, ocr_text, content_tags
             FROM photos
-            WHERE trashed_at IS NULL
+            WHERE trashed_at IS NULL AND is_encrypted = 0
             ORDER BY id ASC;
             """
         ) as cursor:
@@ -152,9 +196,20 @@ async def scan_library_for_documents() -> Dict[str, Any]:
         for r in rows:
             photo_id = r["id"]
             filename = r["filename"] or ""
+            filepath = r["filepath"] or ""
             ocr_text = r["ocr_text"] or ""
             mime_type = r["mime_type"] or ""
             current_is_doc = bool(r["is_document"])
+
+            # If OCR text not yet extracted for this image, run local on-device OCR
+            if not ocr_text and filepath and (not mime_type or not mime_type.startswith("video/")):
+                extracted = await extract_ocr_text_on_device(filepath)
+                if extracted:
+                    ocr_text = extracted
+                    await conn.execute(
+                        "UPDATE photos SET ocr_text = ? WHERE id = ?;",
+                        (ocr_text, photo_id),
+                    )
 
             # Check if this item qualifies as a document
             if not current_is_doc and is_candidate_document(filename, ocr_text, mime_type):

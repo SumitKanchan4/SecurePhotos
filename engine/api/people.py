@@ -453,7 +453,7 @@ async def get_person_photos(person_id: int):
         async with conn.execute(
             """
             SELECT p.id, p.filename, p.filepath, p.thumbnail_path, p.preview_path,
-                   p.width, p.height, p.taken_at, p.created_at, p.is_favorite
+                   p.width, p.height, p.taken_at, p.created_at, p.is_favorite, p.mime_type
             FROM photos p
             JOIN faces f ON f.photo_id = p.id
             WHERE f.person_id = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
