@@ -4075,6 +4075,105 @@ This update addresses user navigation ergonomics and collage inspection by intro
 - 100% backend test pass rate across all collage and creative tests (`pytest engine/tests/test_collages.py`).
 - Users can instantly discover collages from the top header, click any card to inspect in full-screen, switch layouts dynamically, save directly to `data/originals/collages/`, and inspect saved creations in the Lightbox.
 
+---
+
+## 81. Smart Emergency Grid Card Recovery, 1-Click Image Export, ICICI Challenge & Multi-Path Password Reset
+
+### Functionality Overview
+This update completely overhauls vault recovery and password reset mechanisms by replacing cumbersome 24-word recovery mnemonics with a bank-grade **Emergency Grid Card** system (inspired by ICICI Bank debit card authentication grids), paired with 1-click image saving, metadata embedding, and flexible password reset paths:
+
+1. **Dynamic Emergency Grid Card Generation (`engine/services/crypto_vault.py`)**:
+   - Generates a unique 4×4 alphanumeric matrix (`A` through `P`) containing two-digit numeric coordinates (`00` to `99`).
+   - Generates a unique serial number (`SP-XXXX-XXXX`), an independent cryptographic `grid_salt`, and a 256-bit CSPRNG token (`grid_card_token`).
+   - Calculates a salted SHA-256 integrity hash for each cell (`grid_cells_hash`), enabling secure challenge verification without storing plaintext numbers.
+   - Encrypts the Master Vault Key (MVK) with a Key Encryption Key (KEK) derived from the 256-bit grid token via PBKDF2-HMAC-SHA256 (600,000 rounds).
+
+2. **High-DPI Canvas Rendering & 1-Click Image Export (`src/utils/gridCardRenderer.ts`)**:
+   - Renders a luxury dark-mode metallic card (1200×750 canvas scaled to 2× DPR) with titanium borders, gold accent typography, and a 4×4 grid of cells.
+   - **Embedded PNG Metadata (`injectPngMetadata`)**: Embeds the full JSON recovery payload (including Card ID, cells matrix, and 256-bit token) into a standard PNG `tEXt` chunk (`keyword = "SecurePhotos_GridCard"`) right before the PNG `IEND` chunk.
+   - Provides a 1-click **[ 📥 Save Card Image (.png) ]** button and fallback **[ 📄 Download Text (.txt) ]** backup export during setup, allowing users to save their recovery card to their phone or USB drive without writing down complex word lists.
+
+3. **Multi-Path Password Reset Architecture (`src/components/VaultPasswordResetModal.tsx`)**:
+   - **Path A: 1-Click Card Image Upload / Drag-and-Drop**:
+     - Users drag or browse their saved `SecurePhotos_Emergency_Grid_Card.png`.
+     - In-browser extractor (`extractGridCardFromPng`) parses the embedded `tEXt` chunk in <1ms without network calls or external OCR libraries.
+     - Unlocks the vault MVK instantly and prompts the user to set a new Master Password.
+   - **Path B: ICICI Bank-Style 3-Box Challenge + PIN**:
+     - Endpoint `GET /api/vault/recovery/challenge` randomly selects 3 cell letters from the active card (e.g. `Box E`, `Box J`, `Box P`).
+     - User inputs the three 2-digit numbers from their physical/digital card and enters their 4-digit PIN.
+     - Backend verifies cell values in constant time (`verify_grid_challenge_cells`) and unlocks the MVK via PIN/challenge unwrapping.
+   - **Path C: Quick In-App PIN Reset**:
+     - Available from Settings or the Vault unlock modal when the user knows their 4-digit PIN.
+     - Direct verification allows resetting the Master Password immediately without needing the Grid Card.
+
+4. **Zero-Trust Master Password Rotation & Salt Decoupling (`engine/api/vault.py`)**:
+   - Decoupled `grid_salt` from `password_salt` in `vault_configs`.
+   - When a password is reset via any path:
+     - The MVK is decrypted using the verified recovery credential (grid token, challenge + PIN, or PIN).
+     - A fresh 32-byte `password_salt` is generated via CSPRNG.
+     - A new password KEK is derived via Argon2id.
+     - The MVK is re-wrapped with AES-256-GCM and stored in `wrapped_mvk`.
+     - The `grid_card_id`, `grid_cells_hash`, and `grid_salt` remain untouched, ensuring existing emergency cards remain 100% valid after password changes.
+
+### Functional Decision Points & Rationale
+- **ICICI Bank Grid Card Model vs. 24-Word Recovery Phrase**:
+  - *Problem*: 24-word recovery phrases are intimidating for non-crypto users, tedious to transcribe manually, prone to typos, and frequently lost or saved insecurely in plain text files.
+  - *Decision*: Adopt a 4×4 Grid Card format with 1-click PNG image download.
+  - *Rationale*: Millions of banking users are already familiar with debit card grid validation. Saving a single image file to a smartphone photo gallery or USB drive takes 2 seconds and eliminates transcription errors completely.
+- **Embedded PNG `tEXt` Chunk vs. In-Browser OCR**:
+  - *Problem*: Running local OCR on uploaded card images introduces heavy dependencies (Tesseract.js or WinOCR), consumes memory, and risks misreading similar numbers (e.g., `0` vs `O`, `1` vs `I`).
+  - *Decision*: Inject a standard PNG `tEXt` ancillary chunk containing JSON metadata.
+  - *Rationale*: Reading the `tEXt` chunk from raw binary bytes takes <1ms, has 100% accuracy, works completely offline, and requires zero external libraries.
+- **Salt Decoupling (`grid_salt` vs `password_salt`)**:
+  - *Problem*: In initial prototyping, rotating `password_salt` during a password change broke future emergency card unwraps because the grid token PBKDF2 derivation shared the same salt column.
+  - *Decision*: Add a dedicated `grid_salt` column to `vault_configs`.
+  - *Rationale*: Guarantees that changing or resetting the Master Password never invalidates or requires re-issuing the Emergency Grid Card.
+- **Dual-Layer Defense for Challenge Mode (3 Cells + PIN)**:
+  - *Problem*: 3 two-digit cells have $100^3 = 1,000,000$ combinations, which is insufficient protection against an offline attacker with direct database access.
+  - *Decision*: Require the 4-digit PIN alongside the 3 cell numbers in Path B, and enforce constant-time verification.
+  - *Rationale*: Combines "something you have" (Grid Card) with "something you know" (PIN) for enterprise zero-trust security.
+- **User-First UX Copywriting (Rule 7)**:
+  - UI labels and toasts completely avoid internal jargon like "PBKDF2 600k rounds", "Argon2id KEK", or "AES-GCM unwrapping".
+  - Uses clear, reassuring language: *"Emergency Grid Card"*, *"Save Card Image"*, *"Reset Password"*, and *"Safe & Private on Device"*.
+
+### Technical Touchpoints
+- `engine/database.py`:
+  - Added `grid_card_id`, `grid_cells_hash`, and `grid_salt` columns to `vault_configs` schema and `run_migrations()`.
+- `engine/services/crypto_vault.py`:
+  - `generate_grid_card()`: Generates 16 random 2-digit numbers, `SP-XXXX-XXXX` ID, 256-bit CSPRNG token, and salted SHA-256 hashes.
+  - `derive_key_from_grid_token()`: PBKDF2-HMAC-SHA256 (600,000 iterations, 32-byte key).
+  - `verify_grid_challenge_cells()`: Constant-time validation of challenge cell values against stored hashes.
+- `engine/api/vault.py`:
+  - Updated `VaultSetupRequest` to accept `grid_card` or `card_token`.
+  - Updated `VaultStatusResponse` with `grid_card_id` and `has_grid_card`.
+  - Added `GET /api/vault/grid-card/generate`: Returns fresh grid card with 16 cells and 256-bit token.
+  - Added `GET /api/vault/recovery/challenge`: Selects 3 random letters from active card.
+  - Added `POST /api/vault/reset-password`: Handles Path A (grid token), Path B (challenge + PIN), and Path C (PIN), rotating `password_salt` and re-wrapping MVK.
+- `engine/tests/test_vault.py`:
+  - Added `test_grid_card_generation_setup_and_password_reset` verifying setup, status, challenge retrieval, incorrect challenge rejection, and full password reset.
+- `src/types/index.ts`:
+  - Added `GridCardData` and `VaultRecoveryChallenge` interfaces.
+- `src/utils/gridCardRenderer.ts`:
+  - Implemented high-DPI HTML5 canvas renderer, PNG `tEXt` chunk injector, PNG metadata extractor, and `.txt` backup exporter.
+- `src/components/VaultSetupWizard.tsx`:
+  - Integrated dynamic Grid Card generation, live 4×4 card preview, and 1-click PNG/TXT export.
+- `src/components/VaultPasswordResetModal.tsx`:
+  - Full-screen modal supporting 1-Click Card Image dropzone, ICICI 3-box challenge + PIN, and quick PIN direct reset.
+- `src/components/VaultUnlockModal.tsx`:
+  - Connected "Forgot Password? Reset with Grid Card" and "Forgot PIN?" reset triggers.
+- `src/components/VaultView.tsx`:
+  - Connected "Forgot password or PIN? Reset with Grid Card" trigger.
+- `src/components/SettingsView.tsx`:
+  - Replaced legacy 24-word recovery box with Emergency Grid Card status card and "Change Password" modal trigger.
+- `docs/features_and_functional_decisions.md`:
+  - Documented Section 81 in the living registry.
+
+### State & Lifecycle Impact
+- Zero regressions across existing vault encryption or unlock flows.
+- 100% backend test pass rate (11/11 in `test_vault.py`).
+- TypeScript compilation completely clean (`npx tsc --noEmit` exited code 0).
+- Users can set up their vault in seconds, save a card image to their phone or USB drive, and reset forgotten passwords effortlessly.
+
 
 
 

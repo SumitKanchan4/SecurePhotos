@@ -697,6 +697,155 @@ async def test_vault_relative_thumbnail_and_video_handling():
             await client.post("/api/vault/reset")
 
 
+@pytest.mark.asyncio
+async def test_grid_card_generation_setup_and_password_reset():
+    """Verifies the complete ICICI-style Emergency Grid Card lifecycle:
+    1. Grid Card Generation with CSPRNG entropy.
+    2. Vault Setup with Grid Card payload.
+    3. Recovery Challenge API returning 3 random letters.
+    4. Password Reset via ICICI Challenge (3 cells + 4-digit PIN).
+    5. Password Reset via Full Card Token (uploaded card key).
+    6. Rejection of invalid credentials.
+    """
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Step 0: Ensure fresh vault state
+        await client.post("/api/vault/reset")
+
+        # Step 1: Generate Grid Card
+        gen_res = await client.get("/api/vault/grid-card/generate")
+        assert gen_res.status_code == 200
+        card = gen_res.json()
+        assert card["card_id"].startswith("SP-")
+        assert len(card["cells"]) == 16
+        assert len(card["card_token"]) == 64
+        assert len(card["challenge_hashes"]) == 16
+
+        # Step 2: Configure Vault with Grid Card + PIN
+        setup_payload = {
+            "password": "InitialMasterPassword123!",
+            "pin": "4819",
+            "grid_card": card,
+            "password_hint": "Vault Initial Hint",
+        }
+        setup_res = await client.post("/api/vault/setup", json=setup_payload)
+        assert setup_res.status_code == 201
+        setup_data = setup_res.json()
+        assert setup_data["status"] == "configured"
+        assert setup_data["has_pin"] is True
+        assert setup_data["grid_card_id"] == card["card_id"]
+
+        # Verify status endpoint returns grid card metadata
+        status_res = await client.get("/api/vault/status")
+        assert status_res.status_code == 200
+        status_data = status_res.json()
+        assert status_data["is_configured"] is True
+        assert status_data["has_grid_card"] is True
+        assert status_data["grid_card_id"] == card["card_id"]
+
+        # Step 3: Fetch ICICI Recovery Challenge
+        chal_res = await client.get("/api/vault/recovery/challenge")
+        assert chal_res.status_code == 200
+        chal_data = chal_res.json()
+        assert chal_data["card_id"] == card["card_id"]
+        assert len(chal_data["required_cells"]) == 3
+        req_letters = chal_data["required_cells"]
+
+        # Step 4: Reset Password via Path B (ICICI Challenge Cells + PIN)
+        provided_cells = {letter: card["cells"][letter] for letter in req_letters}
+        reset_res = await client.post(
+            "/api/vault/reset-password",
+            json={
+                "new_password": "NewMasterPassword456!",
+                "new_password_hint": "Second Hint",
+                "challenge_cells": provided_cells,
+                "pin": "4819",
+            },
+        )
+        assert reset_res.status_code == 200
+        assert reset_res.json()["status"] == "success"
+
+        # Verify old password fails to unlock
+        old_unlock = await client.post(
+            "/api/vault/unlock", json={"password": "InitialMasterPassword123!"}
+        )
+        assert old_unlock.status_code == 401
+
+        # Verify new password unlocks cleanly
+        new_unlock = await client.post(
+            "/api/vault/unlock", json={"password": "NewMasterPassword456!"}
+        )
+        assert new_unlock.status_code == 200
+        assert new_unlock.json()["status"] == "unlocked"
+        await client.post("/api/vault/lock")
+
+        # Step 5: Reset Password via Path A (Full Grid Card Token)
+        token_reset_res = await client.post(
+            "/api/vault/reset-password",
+            json={
+                "new_password": "ThirdMasterPassword789!",
+                "new_password_hint": "Third Hint",
+                "card_token": card["card_token"],
+            },
+        )
+        assert token_reset_res.status_code == 200
+
+        # Verify third password unlocks
+        third_unlock = await client.post(
+            "/api/vault/unlock", json={"password": "ThirdMasterPassword789!"}
+        )
+        assert third_unlock.status_code == 200
+        await client.post("/api/vault/lock")
+
+        # Step 6: Negative Tests / Security Constraints
+        # Wrong challenge cells must reject
+        wrong_cells = {letter: "00" for letter in req_letters}
+        wrong_cell_res = await client.post(
+            "/api/vault/reset-password",
+            json={
+                "new_password": "ShouldFailPassword123!",
+                "challenge_cells": wrong_cells,
+                "pin": "4819",
+            },
+        )
+        assert wrong_cell_res.status_code == 401
+
+        # Wrong PIN with correct cells must reject
+        wrong_pin_res = await client.post(
+            "/api/vault/reset-password",
+            json={
+                "new_password": "ShouldFailPassword123!",
+                "challenge_cells": provided_cells,
+                "pin": "9999",
+            },
+        )
+        assert wrong_pin_res.status_code == 401
+
+        # Invalid token must reject
+        invalid_token_res = await client.post(
+            "/api/vault/reset-password",
+            json={
+                "new_password": "ShouldFailPassword123!",
+                "card_token": "invalid_hex_token_that_does_not_unwrap_the_master_key_1234567890",
+            },
+        )
+        assert invalid_token_res.status_code == 401
+
+        # Password < 8 characters must reject
+        short_pass_res = await client.post(
+            "/api/vault/reset-password",
+            json={
+                "new_password": "short",
+                "card_token": card["card_token"],
+            },
+        )
+        assert short_pass_res.status_code == 400
+
+        # Step 7: Teardown
+        await client.post("/api/vault/reset")
+
+
+
 
 
 

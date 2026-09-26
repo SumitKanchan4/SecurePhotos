@@ -12,12 +12,13 @@ import base64
 import ctypes
 import hashlib
 import io
+import json
 import logging
 import os
 import secrets
 import struct
 from pathlib import Path
-from typing import AsyncGenerator, Generator, Optional, Tuple
+from typing import Any, AsyncGenerator, Dict, Generator, List, Optional, Tuple
 
 import argon2.low_level
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -102,6 +103,98 @@ def derive_key_from_recovery_phrase(mnemonic: str, salt: bytes) -> bytes:
         iterations=600_000,
         dklen=32,
     )
+
+
+def generate_grid_card() -> Dict[str, Any]:
+    """Generates an ICICI Bank-style 4x4 Emergency Grid Card with CSPRNG entropy.
+
+    Returns:
+        Dict containing:
+            - card_id: Formatted card serial (e.g. SP-8492-7104).
+            - cells: Dict mapping 'A' through 'P' to 2-digit numeric codes.
+            - card_token: 32-byte (64-char hex) raw recovery token.
+            - grid_salt: 16-byte hex salt for challenge hashing.
+            - challenge_hashes: Dict mapping each letter to its SHA-256 hash.
+    """
+    letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"]
+    
+    available_numbers = list(range(10, 100))
+    rng = secrets.SystemRandom()
+    rng.shuffle(available_numbers)
+    selected_numbers = available_numbers[:16]
+    
+    cells = {letters[i]: f"{selected_numbers[i]:02d}" for i in range(16)}
+    
+    card_id = f"SP-{secrets.token_hex(2).upper()}-{secrets.token_hex(2).upper()}"
+    card_token = secrets.token_hex(32)
+    grid_salt = secrets.token_bytes(16)
+    grid_salt_hex = grid_salt.hex()
+    
+    challenge_hashes = {}
+    for letter, code in cells.items():
+        cell_sig = f"{letter}:{code}:{grid_salt_hex}".encode("utf-8")
+        challenge_hashes[letter] = hashlib.sha256(cell_sig).hexdigest()
+        
+    return {
+        "card_id": card_id,
+        "cells": cells,
+        "card_token": card_token,
+        "grid_salt": grid_salt_hex,
+        "challenge_hashes": challenge_hashes,
+    }
+
+
+def derive_key_from_grid_token(token: str, salt: bytes) -> bytes:
+    """Derives a 256-bit AES key from an Emergency Grid Card recovery token.
+
+    Args:
+        token: 64-character hex card token string.
+        salt: Randomized 16-byte cryptographic salt.
+
+    Returns:
+        32-byte derived Key Encryption Key (KEK).
+    """
+    clean_token = token.strip().lower()
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        clean_token.encode("utf-8"),
+        salt,
+        iterations=600_000,
+        dklen=32,
+    )
+
+
+def verify_grid_challenge_cells(
+    provided_cells: Dict[str, str], 
+    stored_hashes: Dict[str, str], 
+    grid_salt_hex: str
+) -> bool:
+    """Verifies that provided cell codes match their stored SHA-256 hashes.
+
+    Args:
+        provided_cells: Dict of cell letter -> code (e.g. {'C': '19', 'H': '42', 'N': '87'}).
+        stored_hashes: Dict of cell letter -> SHA-256 hash.
+        grid_salt_hex: 16-byte hex salt used when generating challenge hashes.
+
+    Returns:
+        True if all provided cells match and at least 3 distinct cells are provided.
+    """
+    if not provided_cells or len(provided_cells) < 3:
+        return False
+        
+    for letter, raw_code in provided_cells.items():
+        clean_letter = letter.strip().upper()
+        clean_code = str(raw_code).strip()
+        expected_hash = stored_hashes.get(clean_letter)
+        if not expected_hash:
+            return False
+            
+        cell_sig = f"{clean_letter}:{clean_code}:{grid_salt_hex}".encode("utf-8")
+        computed_hash = hashlib.sha256(cell_sig).hexdigest()
+        if not secrets.compare_digest(expected_hash, computed_hash):
+            return False
+            
+    return True
 
 
 def wrap_master_key(master_key: bytes, kek: bytes) -> str:

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { 
   KeyRound, 
   Eye, 
@@ -8,26 +8,23 @@ import {
   Sparkles, 
   Lock, 
   ArrowRight, 
-  ArrowLeft,
+  ArrowLeft, 
   ShieldAlert, 
-  Loader2,
-  Hash
+  Loader2, 
+  Hash,
+  Download,
+  FileText,
+  RefreshCw,
+  CreditCard
 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
+import { downloadGridCardImage, downloadGridCardText, GridCardData } from "../utils/gridCardRenderer";
 
 interface VaultSetupWizardProps {
   onComplete: () => void;
   onSwitchToUnlock?: () => void;
   onCancel?: () => void;
 }
-
-// 24 standard BIP-39 mnemonic seed words for cryptographic recovery
-const SAMPLE_RECOVERY_WORDS = [
-  "timber", "ocean", "canyon", "desert", "mountain", "river",
-  "breeze", "stone", "valley", "thunder", "shadow", "apple",
-  "harbor", "meadow", "beacon", "summit", "forest", "glacier",
-  "aurora", "island", "pebble", "willow", "zenith", "crystal"
-];
 
 /**
  * VaultSetupWizard Component
@@ -58,13 +55,32 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
   const pinInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const confirmPinInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Step 3: Recovery
+  // Step 3: Emergency Grid Card
+  const [gridCard, setGridCard] = useState<GridCardData | null>(null);
+  const [isLoadingCard, setIsLoadingCard] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [hasConfirmedSeed, setHasConfirmedSeed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const recoveryPhrase = SAMPLE_RECOVERY_WORDS.join(" ");
+  const fetchGridCard = async () => {
+    setIsLoadingCard(true);
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/vault/grid-card/generate");
+      if (res.ok) {
+        const data = await res.json();
+        setGridCard(data);
+      }
+    } catch (err) {
+      console.error("Failed to generate grid card:", err);
+    } finally {
+      setIsLoadingCard(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchGridCard();
+  }, []);
 
   // Password strength calculation
   const getPasswordStrength = () => {
@@ -159,17 +175,36 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
     setStep(3);
   };
 
-  const handleCopyPhrase = () => {
-    navigator.clipboard.writeText(recoveryPhrase);
+  const handleDownloadCard = async () => {
+    if (!gridCard) return;
+    try {
+      await downloadGridCardImage(gridCard);
+      showToast("Emergency Grid Card downloaded! Keep it in your phone photos or USB drive.", "success");
+      setHasConfirmedSeed(true);
+    } catch {
+      showToast("Failed to download card image.", "warning");
+    }
+  };
+
+  const handleDownloadText = () => {
+    if (!gridCard) return;
+    downloadGridCardText(gridCard);
+    showToast("Text backup downloaded.", "success");
+    setHasConfirmedSeed(true);
+  };
+
+  const handleCopyKey = () => {
+    if (!gridCard) return;
+    navigator.clipboard.writeText(gridCard.card_token);
     setIsCopied(true);
-    showToast("Recovery phrase copied to clipboard. Save it securely!", "success");
+    showToast("Emergency Card Key copied to clipboard.", "success");
     setTimeout(() => setIsCopied(false), 3000);
   };
 
   // Finalize setup
   const handleFinalizeSetup = async () => {
     if (!hasConfirmedSeed) {
-      setErrorMessage("Please confirm that you have saved your 24-word recovery phrase.");
+      setErrorMessage("Please confirm that you have saved your Emergency Grid Card.");
       return;
     }
 
@@ -185,7 +220,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
         body: JSON.stringify({
           password,
           pin: pinStr.length === 4 ? pinStr : undefined,
-          recovery_phrase: recoveryPhrase,
+          grid_card: gridCard,
           password_hint: passwordHint.trim() || undefined,
           enable_totp: false,
         }),
@@ -221,7 +256,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
   const stepTitles = [
     "Create Master Password",
     "Set 4-Digit Quick PIN",
-    "Save Recovery Phrase"
+    "Save Emergency Grid Card"
   ];
 
   return (
@@ -633,29 +668,193 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
                   transition: "all 0.15s ease",
                 }}
               >
-                <span>Continue to Recovery Phrase</span>
+                <span>Continue to Emergency Grid Card</span>
                 <ArrowRight size={15} />
               </button>
             </div>
           </form>
         )}
 
-        {/* ── STEP 3: 24-Word Recovery Phrase ─────────────────────── */}
+        {/* ── STEP 3: ICICI-Style Emergency Grid Card ──────────────── */}
         {step === 3 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-primary)" }}>
-                Emergency 24-Word Recovery Phrase
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <CreditCard size={16} style={{ color: "var(--accent-primary)" }} />
+                <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)" }}>
+                  Emergency Grid Card
+                </span>
+                {gridCard && (
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontFamily: "var(--font-mono)",
+                      color: "#fbbf24",
+                      backgroundColor: "rgba(251, 191, 36, 0.12)",
+                      padding: "2px 8px",
+                      borderRadius: "var(--radius-full)",
+                      border: "1px solid rgba(251, 191, 36, 0.25)",
+                    }}
+                  >
+                    {gridCard.card_id}
+                  </span>
+                )}
+              </div>
+
               <button
                 type="button"
-                onClick={handleCopyPhrase}
+                onClick={fetchGridCard}
+                disabled={isLoadingCard}
+                title="Generate new random grid card"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  padding: "4px 8px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "var(--glass-pill-bg)",
+                  border: "1px solid var(--glass-border)",
+                  color: "var(--text-secondary)",
+                  fontSize: "11px",
+                  cursor: "pointer",
+                }}
+              >
+                <RefreshCw size={11} className={isLoadingCard ? "spin-animation" : ""} />
+                <span>Shuffle</span>
+              </button>
+            </div>
+
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0, lineHeight: "1.4" }}>
+              Save this emergency card to your phone photos or USB drive. If you ever forget your master password, you can reset it instantly by uploading this image or typing 3 requested box numbers + your PIN.
+            </p>
+
+            {/* Virtual Metallic Grid Card Preview */}
+            {gridCard ? (
+              <div
+                style={{
+                  backgroundColor: "#0b0f19",
+                  borderRadius: "16px",
+                  border: "1.5px solid rgba(56, 189, 248, 0.35)",
+                  padding: "14px",
+                  boxShadow: "0 12px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                }}
+              >
+                {/* Card Top Brand Strip */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <div
+                      style={{
+                        width: "24px",
+                        height: "18px",
+                        borderRadius: "3px",
+                        background: "linear-gradient(135deg, #fbbf24, #b45309)",
+                        border: "1px solid rgba(0,0,0,0.3)",
+                      }}
+                    />
+                    <span style={{ fontSize: "11px", fontWeight: 800, color: "#38bdf8", letterSpacing: "0.05em" }}>
+                      SECUREPHOTOS
+                    </span>
+                  </div>
+                  <span style={{ fontSize: "11px", fontFamily: "var(--font-mono)", color: "#facc15", fontWeight: 700 }}>
+                    {gridCard.card_id}
+                  </span>
+                </div>
+
+                {/* 4x4 Grid Matrix */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(4, 1fr)",
+                    gap: "6px",
+                  }}
+                >
+                  {["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"].map((letter) => (
+                    <div
+                      key={letter}
+                      style={{
+                        backgroundColor: "rgba(15, 23, 42, 0.8)",
+                        borderRadius: "8px",
+                        border: "1px solid rgba(56, 189, 248, 0.22)",
+                        padding: "6px 8px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <span style={{ fontSize: "11px", fontWeight: 800, color: "#38bdf8" }}>{letter}</span>
+                      <span style={{ fontSize: "14px", fontWeight: 700, fontFamily: "var(--font-mono)", color: "#f8fafc" }}>
+                        {gridCard.cells[letter]}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "140px" }}>
+                <Loader2 size={24} className="spin-animation" style={{ color: "var(--accent-primary)" }} />
+              </div>
+            )}
+
+            {/* Action Buttons: Download Card Image, Text Backup, Copy Key */}
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={handleDownloadCard}
+                className="clickable"
+                style={{
+                  flex: "1 1 auto",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                  padding: "8px 14px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "rgba(56, 189, 248, 0.15)",
+                  border: "1px solid rgba(56, 189, 248, 0.4)",
+                  color: "#38bdf8",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                <Download size={13} />
+                <span>Save Card Image (.png)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadText}
                 className="clickable"
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: "6px",
-                  padding: "4px 12px",
+                  gap: "5px",
+                  padding: "8px 12px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "var(--glass-pill-bg)",
+                  border: "1px solid var(--glass-border)",
+                  color: "var(--text-secondary)",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <FileText size={12} />
+                <span>Text Backup</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCopyKey}
+                className="clickable"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  padding: "8px 12px",
                   borderRadius: "var(--radius-full)",
                   backgroundColor: "var(--glass-pill-bg)",
                   border: "1px solid var(--glass-border)",
@@ -666,47 +865,8 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
                 }}
               >
                 {isCopied ? <Check size={12} /> : <Copy size={12} />}
-                <span>{isCopied ? "Copied!" : "Copy Words"}</span>
+                <span>{isCopied ? "Copied" : "Copy Key"}</span>
               </button>
-            </div>
-
-            <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0, lineHeight: "1.4" }}>
-              Write these words down or save them in a password manager. If you ever forget your master password and PIN, this phrase is the only way to recover your vault photos.
-            </p>
-
-            {/* Recovery Words Grid */}
-            <div 
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: "6px",
-                padding: "12px",
-                backgroundColor: "var(--bg-surface)",
-                borderRadius: "var(--radius-md)",
-                border: "1px solid var(--glass-border)",
-                maxHeight: "220px",
-                overflowY: "auto",
-              }}
-            >
-              {SAMPLE_RECOVERY_WORDS.map((word, idx) => (
-                <div 
-                  key={idx}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    padding: "5px 8px",
-                    backgroundColor: "var(--glass-pill-bg)",
-                    borderRadius: "var(--radius-sm)",
-                    fontSize: "11px",
-                    fontFamily: "var(--font-mono)",
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  <span style={{ color: "var(--text-muted)", fontSize: "10px" }}>{idx + 1}.</span>
-                  <span style={{ fontWeight: 600 }}>{word}</span>
-                </div>
-              ))}
             </div>
 
             {/* Confirmation Checkbox */}
@@ -718,7 +878,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
                 fontSize: "12px",
                 color: "var(--text-secondary)",
                 cursor: "pointer",
-                marginTop: "4px",
+                marginTop: "2px",
               }}
             >
               <input 
@@ -727,7 +887,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
                 onChange={(e) => setHasConfirmedSeed(e.target.checked)}
                 style={{ marginTop: "2px", accentColor: "var(--accent-primary)" }}
               />
-              <span>I have safely written down or copied these 24 recovery words offline.</span>
+              <span>I have downloaded or saved my Emergency Grid Card (keep it in phone photos or USB).</span>
             </label>
 
             <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>

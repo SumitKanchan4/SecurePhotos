@@ -26,6 +26,7 @@ import { useAppStore } from "../store/useAppStore";
 import { PhotoGrid } from "./PhotoGrid";
 import { PhotoItem, VaultAlbumItem } from "../types";
 import { VaultSetupWizard } from "./VaultSetupWizard";
+import { VaultPasswordResetModal } from "./VaultPasswordResetModal";
 
 interface VaultViewProps {
   onUnlockRequest?: () => void;
@@ -107,6 +108,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
 
   // Guarded factory reset modal
   const [showResetModal, setShowResetModal] = useState(false);
+  const [showPasswordResetModal, setShowPasswordResetModal] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState("");
   const [isResetting, setIsResetting] = useState(false);
 
@@ -1274,21 +1276,22 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "center", marginTop: "4px" }}>
                 <button
                   type="button"
-                  onClick={() => {
-                    setAuthMode("recovery");
-                    setLoginError("");
-                  }}
+                  onClick={() => setShowPasswordResetModal(true)}
                   style={{
                     background: "none",
                     border: "none",
-                    color: "var(--text-muted)",
-                    fontSize: "11px",
+                    color: "var(--accent-primary)",
+                    fontSize: "12px",
+                    fontWeight: 600,
                     cursor: "pointer",
-                    textDecoration: "underline",
                     padding: "2px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
                   }}
                 >
-                  Forgot password or PIN? Restore with Recovery Phrase
+                  <CreditCard size={13} />
+                  <span>Forgot password or PIN? Reset with Grid Card</span>
                 </button>
 
                 <button
@@ -1953,6 +1956,15 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
         </div>
       )}
 
+      <VaultPasswordResetModal
+        isOpen={showPasswordResetModal}
+        onClose={() => setShowPasswordResetModal(false)}
+        onSuccess={() => {
+          setShowPasswordResetModal(false);
+          showToast("Master password reset successfully! Please unlock with your new password.", "success");
+          setAuthMode("password");
+        }}
+      />
     </div>
   );
 };

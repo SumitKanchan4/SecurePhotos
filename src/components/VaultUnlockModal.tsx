@@ -8,9 +8,11 @@ import {
   EyeOff, 
   Loader2,
   Sparkles,
-  Unlock
+  Unlock,
+  CreditCard
 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
+import { VaultPasswordResetModal } from "./VaultPasswordResetModal";
 
 interface VaultUnlockModalProps {
   isOpen: boolean;
@@ -47,6 +49,7 @@ export const VaultUnlockModal: React.FC<VaultUnlockModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
   const pinInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -390,24 +393,42 @@ export const VaultUnlockModal: React.FC<VaultUnlockModalProps> = ({
                     </div>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthMode("password");
-                      setErrorMessage("");
-                    }}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "var(--accent-primary)",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      padding: "4px",
-                    }}
-                  >
-                    Unlock with Master Password instead
-                  </button>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", marginTop: "4px" }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode("password");
+                        setErrorMessage("");
+                      }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--accent-primary)",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        padding: "4px",
+                      }}
+                    >
+                      Unlock with Master Password instead
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsResetModalOpen(true)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--text-muted)",
+                        fontSize: "11px",
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                        padding: "4px",
+                      }}
+                    >
+                      Forgot PIN?
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -481,21 +502,22 @@ export const VaultUnlockModal: React.FC<VaultUnlockModalProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => {
-                        setAuthMode("recovery");
-                        setErrorMessage("");
-                      }}
+                      onClick={() => setIsResetModalOpen(true)}
                       style={{
                         background: "none",
                         border: "none",
-                        color: "var(--text-muted)",
+                        color: "var(--accent-primary)",
                         fontSize: "11px",
+                        fontWeight: 600,
                         cursor: "pointer",
-                        textDecoration: "underline",
                         padding: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
                       }}
                     >
-                      Use Recovery Phrase
+                      <CreditCard size={12} />
+                      <span>Forgot Password? Reset with Grid Card</span>
                     </button>
                   </div>
 
@@ -652,6 +674,16 @@ export const VaultUnlockModal: React.FC<VaultUnlockModalProps> = ({
 
         </div>
       </div>
+
+      <VaultPasswordResetModal
+        isOpen={isResetModalOpen}
+        onClose={() => setIsResetModalOpen(false)}
+        onSuccess={() => {
+          setIsResetModalOpen(false);
+          showToast("Password updated. Please log in with your new password.", "success");
+          setAuthMode("password");
+        }}
+      />
     </div>
   );
 };

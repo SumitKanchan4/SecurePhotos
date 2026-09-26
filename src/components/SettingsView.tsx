@@ -6,7 +6,6 @@ import {
   Sparkles, 
   Moon, 
   Sun, 
-  FileKey, 
   BatteryMedium,
   RefreshCw,
   CheckCircle2,
@@ -14,14 +13,16 @@ import {
   Cpu,
   Palette,
   Clock,
-  ArrowRight,
-  FolderLock
+  FolderLock,
+  CreditCard,
+  KeyRound
 } from "lucide-react";
 import { check, Update } from "@tauri-apps/plugin-updater";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/useAppStore";
 import { UpdateModal } from "./UpdateModal";
 import { SystemPrerequisites } from "../types";
+import { VaultPasswordResetModal } from "./VaultPasswordResetModal";
 
 /**
  * SettingsView Component
@@ -36,9 +37,7 @@ export const SettingsView: React.FC = () => {
     toggleTheme, 
     prerequisites, 
     setPrerequisites, 
-    showToast, 
-    setActiveTab, 
-    isVaultConfigured 
+    showToast 
   } = useAppStore();
 
   const [autoLockDuration, setAutoLockDuration] = useState("300");
@@ -52,6 +51,7 @@ export const SettingsView: React.FC = () => {
   const [availableUpdateVersion, setAvailableUpdateVersion] = useState<string | null>(null);
   const [activeUpdate, setActiveUpdate] = useState<Update | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
 
   // Prerequisites state
   const [isRecheckingPrereqs, setIsRecheckingPrereqs] = useState(false);
@@ -91,16 +91,6 @@ export const SettingsView: React.FC = () => {
       showToast?.("Error checking engine environment", "warning");
     } finally {
       setIsRecheckingPrereqs(false);
-    }
-  };
-
-  const handleViewRecoveryKit = () => {
-    if (isVaultConfigured) {
-      showToast?.("Unlock your Encrypted Vault to view your 24-word secret recovery phrase.", "info");
-      setActiveTab("vault");
-    } else {
-      showToast?.("Set up your Private Vault to generate your 24-word emergency recovery phrase.", "info");
-      setActiveTab("vault");
     }
   };
 
@@ -726,7 +716,7 @@ export const SettingsView: React.FC = () => {
               </select>
             </div>
 
-            {/* Emergency Recovery Key */}
+            {/* Emergency Recovery Key & Password Change */}
             <div 
               style={{ 
                 display: "flex", 
@@ -739,19 +729,19 @@ export const SettingsView: React.FC = () => {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <FileKey size={16} style={{ color: "#f59e0b", flexShrink: 0 }} />
+                <CreditCard size={18} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
                 <div>
                   <p style={{ fontSize: "13px", fontWeight: 600, margin: "0 0 2px 0", color: "var(--text-primary)" }}>
-                    24-Word Emergency Recovery Phrase
+                    Emergency Grid Card & Master Password Reset
                   </p>
                   <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0 }}>
-                    Your master backup key to safely regain access if you ever forget your password.
+                    Change your Master Password or recover access using your 4-digit PIN or Emergency Grid Card.
                   </p>
                 </div>
               </div>
 
               <button
-                onClick={handleViewRecoveryKit}
+                onClick={() => setShowResetPasswordModal(true)}
                 className="clickable"
                 style={{
                   display: "flex",
@@ -759,16 +749,16 @@ export const SettingsView: React.FC = () => {
                   gap: "6px",
                   padding: "6px 14px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: "var(--glass-surface)",
-                  border: "1px solid var(--glass-border)",
-                  color: "var(--text-primary)",
+                  backgroundColor: "rgba(56, 189, 248, 0.15)",
+                  border: "1px solid rgba(56, 189, 248, 0.35)",
+                  color: "var(--accent-primary)",
                   fontSize: "12px",
                   fontWeight: 600,
                   cursor: "pointer",
                 }}
               >
-                <span>View Guidance</span>
-                <ArrowRight size={13} />
+                <KeyRound size={13} />
+                <span>Change Password</span>
               </button>
             </div>
           </div>
@@ -1002,6 +992,16 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <VaultPasswordResetModal
+        isOpen={showResetPasswordModal}
+        onClose={() => setShowResetPasswordModal(false)}
+        onSuccess={() => {
+          setShowResetPasswordModal(false);
+          showToast?.("Master password updated successfully!", "success");
+        }}
+        initialMode="pin"
+      />
     </div>
   );
 };

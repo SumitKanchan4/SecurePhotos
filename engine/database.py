@@ -261,6 +261,9 @@ CREATE TABLE IF NOT EXISTS vault_configs (
     has_pin BOOLEAN DEFAULT 0,               -- Flag indicating PIN is enrolled
     totp_secret_encrypted TEXT,              -- Optional encrypted secret key for RFC 6238 TOTP
     has_biometrics BOOLEAN DEFAULT 0,
+    grid_card_id TEXT,                       -- Emergency Grid Card ID (e.g. SP-8492-7104)
+    grid_cells_hash TEXT,                    -- Salted JSON hashes of 16 card cells for challenge verification
+    grid_salt TEXT,                          -- Randomized salt for card cell verification
     is_configured BOOLEAN DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -574,6 +577,12 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
             await conn.execute("ALTER TABLE vault_configs ADD COLUMN pin_failed_attempts INTEGER DEFAULT 0;")
         if "has_pin" not in existing_cols:
             await conn.execute("ALTER TABLE vault_configs ADD COLUMN has_pin BOOLEAN DEFAULT 0;")
+        if "grid_card_id" not in existing_cols:
+            await conn.execute("ALTER TABLE vault_configs ADD COLUMN grid_card_id TEXT;")
+        if "grid_cells_hash" not in existing_cols:
+            await conn.execute("ALTER TABLE vault_configs ADD COLUMN grid_cells_hash TEXT;")
+        if "grid_salt" not in existing_cols:
+            await conn.execute("ALTER TABLE vault_configs ADD COLUMN grid_salt TEXT;")
 
         # Original media size migration: dynamically add original_file_size column if not present
         async with conn.execute("PRAGMA table_info(photos);") as cursor:

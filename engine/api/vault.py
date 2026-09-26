@@ -1,11 +1,12 @@
 """Zero-Trust Vault Authentication, Streaming, and Migration API Router."""
 
 import io
+import json
 import logging
 import secrets
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Header, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -16,6 +17,9 @@ from engine.services.crypto_vault import (
     derive_key_from_password,
     derive_key_from_pin,
     derive_key_from_recovery_phrase,
+    derive_key_from_grid_token,
+    generate_grid_card,
+    verify_grid_challenge_cells,
     encrypt_file_chunked,
     decrypt_file_chunked_stream,
     decrypt_file_to_bytes,
@@ -69,10 +73,20 @@ def lock_vault_memory() -> None:
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
+class GridCardPayload(BaseModel):
+    card_id: str
+    cells: Dict[str, str]
+    card_token: str
+    grid_salt: str
+    challenge_hashes: Dict[str, str]
+
+
 class VaultSetupRequest(BaseModel):
     password: str
     pin: Optional[str] = None
-    recovery_phrase: str
+    recovery_phrase: Optional[str] = None
+    grid_card: Optional[GridCardPayload] = None
+    card_token: Optional[str] = None
     password_hint: Optional[str] = None
     enable_totp: bool = False
 
@@ -82,6 +96,20 @@ class VaultUnlockRequest(BaseModel):
     password: Optional[str] = None
     recovery_phrase: Optional[str] = None
     totp_code: Optional[str] = None
+
+
+class VaultPasswordResetRequest(BaseModel):
+    new_password: str
+    new_password_hint: Optional[str] = None
+    card_token: Optional[str] = None
+    challenge_cells: Optional[Dict[str, str]] = None
+    pin: Optional[str] = None
+    current_password: Optional[str] = None
+
+
+class VaultRecoveryChallengeResponse(BaseModel):
+    card_id: Optional[str] = None
+    required_cells: List[str]
 
 
 class VaultPhotosLockRequest(BaseModel):
@@ -100,6 +128,8 @@ class VaultStatusResponse(BaseModel):
     has_totp: bool
     has_biometrics: bool
     password_hint: Optional[str] = None
+    grid_card_id: Optional[str] = None
+    has_grid_card: bool = False
 
 
 class VaultResetRequest(BaseModel):
@@ -117,7 +147,7 @@ async def get_vault_status() -> VaultStatusResponse:
         async with conn.execute(
             """
             SELECT is_configured, password_hint, has_pin, pin_failed_attempts, 
-                   totp_secret_encrypted, has_biometrics 
+                   totp_secret_encrypted, has_biometrics, grid_card_id
             FROM vault_configs WHERE vault_type = 'private';
             """
         ) as cursor:
@@ -133,9 +163,12 @@ async def get_vault_status() -> VaultStatusResponse:
             is_pin_locked=False,
             has_totp=False,
             has_biometrics=False,
+            grid_card_id=None,
+            has_grid_card=False,
         )
 
     pin_attempts = row["pin_failed_attempts"] or 0
+    card_id = row["grid_card_id"] if "grid_card_id" in row.keys() else None
     return VaultStatusResponse(
         is_configured=bool(row["is_configured"]),
         is_unlocked=ACTIVE_VAULT_SESSION["is_unlocked"],
@@ -144,6 +177,8 @@ async def get_vault_status() -> VaultStatusResponse:
         has_totp=bool(row["totp_secret_encrypted"]),
         has_biometrics=bool(row["has_biometrics"]),
         password_hint=row["password_hint"],
+        grid_card_id=card_id,
+        has_grid_card=bool(card_id),
     )
 
 
@@ -173,8 +208,31 @@ async def setup_vault(payload: VaultSetupRequest) -> dict:
         wrapped_pin = wrap_master_key(mvk, kek_pin)
         has_pin = 1
 
-    # Derive Slot 3 (24-word recovery key)
-    kek_recovery = derive_key_from_recovery_phrase(payload.recovery_phrase, salt)
+    # Derive Slot 3 (Emergency Recovery Key: Grid Card or Phrase)
+    grid_card_id = None
+    grid_cells_hash = None
+    grid_salt = None
+
+    if payload.grid_card:
+        card_token = payload.grid_card.card_token
+        grid_salt = payload.grid_card.grid_salt
+        grid_salt_bytes = bytes.fromhex(grid_salt)
+        kek_recovery = derive_key_from_grid_token(card_token, grid_salt_bytes)
+        grid_card_id = payload.grid_card.card_id
+        grid_cells_hash = json.dumps(payload.grid_card.challenge_hashes)
+    elif payload.card_token:
+        grid_salt_raw = secrets.token_bytes(16)
+        grid_salt = grid_salt_raw.hex()
+        kek_recovery = derive_key_from_grid_token(payload.card_token, grid_salt_raw)
+    elif payload.recovery_phrase:
+        kek_recovery = derive_key_from_recovery_phrase(payload.recovery_phrase, salt)
+    else:
+        generated = generate_grid_card()
+        grid_salt = generated["grid_salt"]
+        kek_recovery = derive_key_from_grid_token(generated["card_token"], bytes.fromhex(grid_salt))
+        grid_card_id = generated["card_id"]
+        grid_cells_hash = json.dumps(generated["challenge_hashes"])
+
     wrapped_recovery = wrap_master_key(mvk, kek_recovery)
 
     totp_secret = None
@@ -190,8 +248,8 @@ async def setup_vault(payload: VaultSetupRequest) -> dict:
             INSERT OR REPLACE INTO vault_configs (
                 vault_type, mvk_wrapped_password, mvk_wrapped_pin, mvk_wrapped_recovery,
                 password_salt, pin_salt, password_hint, pin_failed_attempts, has_pin,
-                totp_secret_encrypted, is_configured
-            ) VALUES ('private', ?, ?, ?, ?, ?, ?, 0, ?, ?, 1);
+                totp_secret_encrypted, grid_card_id, grid_cells_hash, grid_salt, is_configured
+            ) VALUES ('private', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 1);
             """,
             (
                 wrapped_password,
@@ -202,6 +260,9 @@ async def setup_vault(payload: VaultSetupRequest) -> dict:
                 payload.password_hint,
                 has_pin,
                 totp_secret,
+                grid_card_id,
+                grid_cells_hash,
+                grid_salt,
             ),
         )
         await conn.commit()
@@ -211,6 +272,7 @@ async def setup_vault(payload: VaultSetupRequest) -> dict:
     return {
         "status": "configured",
         "has_pin": bool(has_pin),
+        "grid_card_id": grid_card_id,
         "totp_secret": totp_secret,
         "totp_uri": totp_uri,
     }
@@ -225,7 +287,7 @@ async def unlock_vault(payload: VaultUnlockRequest) -> dict:
         async with conn.execute(
             """
             SELECT mvk_wrapped_password, mvk_wrapped_pin, mvk_wrapped_recovery, 
-                   password_salt, pin_salt, has_pin, pin_failed_attempts, totp_secret_encrypted
+                   password_salt, pin_salt, has_pin, pin_failed_attempts, totp_secret_encrypted, grid_salt
             FROM vault_configs WHERE vault_type = 'private';
             """
         ) as cursor:
@@ -285,12 +347,17 @@ async def unlock_vault(payload: VaultUnlockRequest) -> dict:
         if not unwrapped_mvk:
             raise HTTPException(status_code=401, detail="Incorrect master password. Please try again.")
 
-    # Option C: 24-Word Recovery Phrase Unlock
+    # Option C: Recovery Unlock (Emergency Grid Card Token or 24-Word Recovery Phrase)
     elif payload.recovery_phrase:
-        kek_rec = derive_key_from_recovery_phrase(payload.recovery_phrase, salt)
-        unwrapped_mvk = unwrap_master_key(row["mvk_wrapped_recovery"], kek_rec)
+        clean_token = payload.recovery_phrase.strip()
+        rec_salt = bytes.fromhex(row["grid_salt"]) if ("grid_salt" in row.keys() and row["grid_salt"]) else salt
+        kek_grid = derive_key_from_grid_token(clean_token, rec_salt)
+        unwrapped_mvk = unwrap_master_key(row["mvk_wrapped_recovery"], kek_grid)
         if not unwrapped_mvk:
-            raise HTTPException(status_code=401, detail="Invalid 24-word recovery phrase.")
+            kek_rec = derive_key_from_recovery_phrase(clean_token, salt)
+            unwrapped_mvk = unwrap_master_key(row["mvk_wrapped_recovery"], kek_rec)
+        if not unwrapped_mvk:
+            raise HTTPException(status_code=401, detail="Invalid Emergency Grid Card key or recovery phrase.")
 
     else:
         raise HTTPException(status_code=400, detail="Must provide PIN, master password, or recovery phrase.")
@@ -339,6 +406,169 @@ async def reset_vault(payload: Optional[VaultResetRequest] = None) -> dict:
     finally:
         await conn.close()
     return {"status": "vault_reset"}
+
+
+@router.get("/grid-card/generate", status_code=status.HTTP_200_OK)
+async def get_generated_grid_card() -> dict:
+    """Generates a cryptographically randomized 4x4 Emergency Grid Card with CSPRNG entropy."""
+    return generate_grid_card()
+
+
+@router.get("/recovery/challenge", response_model=VaultRecoveryChallengeResponse, status_code=status.HTTP_200_OK)
+async def get_recovery_challenge() -> VaultRecoveryChallengeResponse:
+    """Returns the card ID and 3 randomly selected letters for ICICI-style grid verification."""
+    conn = await get_db_connection()
+    row = None
+    try:
+        async with conn.execute(
+            "SELECT grid_card_id, grid_cells_hash FROM vault_configs WHERE vault_type = 'private';"
+        ) as cursor:
+            row = await cursor.fetchone()
+    finally:
+        await conn.close()
+
+    all_letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"]
+    if not row or not row["grid_cells_hash"]:
+        chosen = sorted(secrets.SystemRandom().sample(all_letters, 3))
+        return VaultRecoveryChallengeResponse(card_id=None, required_cells=chosen)
+
+    try:
+        hashes = json.loads(row["grid_cells_hash"])
+        letters = sorted(list(hashes.keys()))
+        if len(letters) >= 3:
+            chosen = sorted(secrets.SystemRandom().sample(letters, 3))
+        else:
+            chosen = sorted(secrets.SystemRandom().sample(all_letters, 3))
+    except Exception:
+        chosen = sorted(secrets.SystemRandom().sample(all_letters, 3))
+
+    return VaultRecoveryChallengeResponse(card_id=row["grid_card_id"], required_cells=chosen)
+
+
+@router.post("/reset-password", status_code=status.HTTP_200_OK)
+async def reset_vault_password(
+    payload: VaultPasswordResetRequest,
+    x_session_token: Optional[str] = Header(None, alias="X-Session-Token"),
+) -> dict:
+    """Resets the Master Password using Grid Card Token, ICICI Challenge + PIN, or active session."""
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New master password must be at least 8 characters long.")
+
+    conn = await get_db_connection()
+    row = None
+    try:
+        async with conn.execute(
+            """
+            SELECT mvk_wrapped_password, mvk_wrapped_pin, mvk_wrapped_recovery,
+                   password_salt, pin_salt, has_pin, grid_card_id, grid_cells_hash, grid_salt
+            FROM vault_configs WHERE vault_type = 'private';
+            """
+        ) as cursor:
+            row = await cursor.fetchone()
+    finally:
+        await conn.close()
+
+    if not row:
+        raise HTTPException(status_code=400, detail="Vault is not configured yet.")
+
+    salt = bytes.fromhex(row["password_salt"])
+    unwrapped_mvk = None
+
+    # Path A: Full Grid Token (Uploaded Card / Key File)
+    if payload.card_token:
+        clean_token = payload.card_token.strip()
+        rec_salt = bytes.fromhex(row["grid_salt"]) if row["grid_salt"] else salt
+        kek_grid = derive_key_from_grid_token(clean_token, rec_salt)
+        unwrapped_mvk = unwrap_master_key(row["mvk_wrapped_recovery"], kek_grid)
+        if not unwrapped_mvk:
+            kek_rec = derive_key_from_recovery_phrase(clean_token, salt)
+            unwrapped_mvk = unwrap_master_key(row["mvk_wrapped_recovery"], kek_rec)
+
+        if not unwrapped_mvk:
+            raise HTTPException(status_code=401, detail="Invalid Emergency Grid Card key or recovery token.")
+
+    # Path B: ICICI Challenge Cells + 4-Digit PIN
+    elif payload.challenge_cells:
+        if not payload.pin or len(payload.pin.strip()) != 4:
+            raise HTTPException(status_code=400, detail="Must provide your 4-digit PIN along with the card letters.")
+        if not row["grid_cells_hash"] or not row["grid_salt"]:
+            raise HTTPException(status_code=400, detail="Grid card verification is not configured on this vault.")
+
+        try:
+            stored_hashes = json.loads(row["grid_cells_hash"])
+        except Exception:
+            raise HTTPException(status_code=500, detail="Stored grid card hashes corrupted.")
+
+        is_cells_valid = verify_grid_challenge_cells(
+            payload.challenge_cells, stored_hashes, row["grid_salt"]
+        )
+        if not is_cells_valid:
+            raise HTTPException(status_code=401, detail="Incorrect numbers for the requested card boxes.")
+
+        if not row["has_pin"] or not row["mvk_wrapped_pin"] or not row["pin_salt"]:
+            raise HTTPException(status_code=400, detail="PIN is not configured on this vault.")
+
+        pin_salt = bytes.fromhex(row["pin_salt"])
+        kek_pin = derive_key_from_pin(payload.pin.strip(), pin_salt)
+        unwrapped_mvk = unwrap_master_key(row["mvk_wrapped_pin"], kek_pin)
+        if not unwrapped_mvk:
+            raise HTTPException(status_code=401, detail="Incorrect 4-digit PIN.")
+
+    # Path C: Active Session or Current Credentials
+    elif payload.current_password:
+        kek_cur = derive_key_from_password(payload.current_password, salt)
+        unwrapped_mvk = unwrap_master_key(row["mvk_wrapped_password"], kek_cur)
+        if not unwrapped_mvk:
+            raise HTTPException(status_code=401, detail="Incorrect current master password.")
+
+    elif ACTIVE_VAULT_SESSION["is_unlocked"] and ACTIVE_VAULT_SESSION["mvk"]:
+        unwrapped_mvk = bytes(ACTIVE_VAULT_SESSION["mvk"])
+
+    elif payload.pin and row["has_pin"] and row["mvk_wrapped_pin"] and row["pin_salt"]:
+        pin_salt = bytes.fromhex(row["pin_salt"])
+        kek_pin = derive_key_from_pin(payload.pin.strip(), pin_salt)
+        unwrapped_mvk = unwrap_master_key(row["mvk_wrapped_pin"], kek_pin)
+        if not unwrapped_mvk:
+            raise HTTPException(status_code=401, detail="Incorrect 4-digit PIN.")
+
+    else:
+        raise HTTPException(
+            status_code=400, 
+            detail="Must provide Grid Card token, ICICI challenge + PIN, or current credentials."
+        )
+
+    # Re-wrap Master Key with New Password and Fresh Salt
+    new_salt = secrets.token_bytes(16)
+    new_kek = derive_key_from_password(payload.new_password, new_salt)
+    new_wrapped_password = wrap_master_key(unwrapped_mvk, new_kek)
+
+    conn = await get_db_connection()
+    try:
+        await conn.execute(
+            """
+            UPDATE vault_configs
+            SET mvk_wrapped_password = ?,
+                password_salt = ?,
+                password_hint = ?,
+                pin_failed_attempts = 0,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE vault_type = 'private';
+            """,
+            (
+                new_wrapped_password,
+                new_salt.hex(),
+                payload.new_password_hint.strip() if payload.new_password_hint else None,
+            ),
+        )
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    # If session is active, refresh last activity
+    if ACTIVE_VAULT_SESSION["is_unlocked"]:
+        ACTIVE_VAULT_SESSION["last_activity"] = time.time()
+
+    return {"status": "success", "message": "Master password reset successfully."}
 
 
 @router.get("/stream/{photo_id}")
