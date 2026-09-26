@@ -18,6 +18,8 @@ interface TrashedItem {
   formatted_size: string;
   trashed_at: string;
   days_remaining: number;
+  width?: number;
+  height?: number;
 }
 
 export const TrashView: React.FC = () => {
@@ -359,10 +361,17 @@ export const TrashView: React.FC = () => {
                   <img 
                     src={`http://127.0.0.1:8000/api/photos/${item.id}/thumbnail?v=3`} 
                     alt={item.filename}
+                    onLoad={(e) => {
+                      const img = e.currentTarget;
+                      if (img.naturalHeight > img.naturalWidth) {
+                        img.style.objectPosition = "center 18%";
+                      }
+                    }}
                     style={{
                       width: "100%",
                       height: "100%",
                       objectFit: "cover",
+                      objectPosition: (item.height && item.width && item.height > item.width) ? "center 18%" : "center center",
                       filter: "grayscale(30%)",
                       imageRendering: "-webkit-optimize-contrast",
                     }}

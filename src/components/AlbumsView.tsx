@@ -1573,7 +1573,19 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     <img
                       src={`http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail?v=3`}
                       alt={photo.filename}
-                      style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
+                      onLoad={(e) => {
+                        const img = e.currentTarget;
+                        if (img.naturalHeight > img.naturalWidth) {
+                          img.style.objectPosition = "center 18%";
+                        }
+                      }}
+                      style={{ 
+                        width: "100%", 
+                        height: "100%", 
+                        objectFit: "cover", 
+                        objectPosition: (photo.height && photo.width && photo.height > photo.width) ? "center 18%" : "center center",
+                        imageRendering: "-webkit-optimize-contrast" 
+                      }}
                       loading="lazy"
                     />
 
@@ -2025,7 +2037,19 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                           <img
                             src={`http://127.0.0.1:8000/api/photos/${p.id}/thumbnail?v=3`}
                             alt={p.filename}
-                            style={{ width: "100%", height: "100%", objectFit: "cover", imageRendering: "-webkit-optimize-contrast" }}
+                            onLoad={(e) => {
+                              const img = e.currentTarget;
+                              if (img.naturalHeight > img.naturalWidth) {
+                                img.style.objectPosition = "center 18%";
+                              }
+                            }}
+                            style={{ 
+                              width: "100%", 
+                              height: "100%", 
+                              objectFit: "cover", 
+                              objectPosition: (p.height && p.width && p.height > p.width) ? "center 18%" : "center center",
+                              imageRendering: "-webkit-optimize-contrast" 
+                            }}
                             loading="lazy"
                           />
                           <div

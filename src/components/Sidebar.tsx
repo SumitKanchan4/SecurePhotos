@@ -9,7 +9,6 @@ import {
   Lock, 
   Trash2, 
   Settings, 
-  Zap,
   HardDrive
 } from "lucide-react";
 import { useAppStore, NavTab } from "../store/useAppStore";
@@ -156,30 +155,82 @@ export const Sidebar: React.FC = () => {
       </nav>
 
       {/* Bottom Status Card */}
-      <div 
-        style={{
-          padding: "10px",
-          borderRadius: "var(--radius-md)",
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-subtle)",
-          display: "flex",
-          flexDirection: "column",
-          gap: "8px",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "var(--text-secondary)" }}>
-            <HardDrive size={13} style={{ color: isDriveConnected ? "var(--accent-success)" : "var(--accent-danger)" }} />
-            <span>{activeVolume?.volume_name || "Local Storage"}</span>
+      {(() => {
+        const isExternal = Boolean(
+          activeVolume && (
+            activeVolume.volume_name?.toLowerCase().includes("external") || 
+            activeVolume.volume_name?.toLowerCase().includes("usb") || 
+            (activeVolume.drive_letter && activeVolume.drive_letter !== "C:\\")
+          )
+        );
+        const driveLabel = isExternal ? "External Drive" : "Local Storage";
+        const driveLetter = activeVolume?.drive_letter ? activeVolume.drive_letter.replace(/\\$/, "") : "C:";
+
+        return (
+          <div 
+            style={{
+              padding: "10px 12px",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--border-subtle)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "7px", fontSize: "11px", color: "var(--text-secondary)" }}>
+                <HardDrive size={13} style={{ color: isDriveConnected ? "var(--accent-success)" : "var(--accent-danger)", flexShrink: 0 }} />
+                <span style={{ fontWeight: 500 }}>{driveLabel} ({driveLetter})</span>
+              </div>
+              <span style={{ fontSize: "10px", color: isDriveConnected ? "var(--accent-success)" : "var(--accent-danger)", fontWeight: 600 }}>
+                {isDriveConnected ? "READY" : "OFFLINE"}
+              </span>
+            </div>
+            
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "11px", color: prerequisites?.backend.running ? "var(--text-secondary)" : "var(--text-muted)" }}>
+              {prerequisites?.backend.running ? (
+                <span style={{ position: "relative", display: "inline-flex", width: "8px", height: "8px", flexShrink: 0, marginLeft: "2px" }}>
+                  <span 
+                    className="status-ping-beacon"
+                    style={{ 
+                      position: "absolute", 
+                      inset: 0, 
+                      borderRadius: "var(--radius-full)", 
+                      backgroundColor: "var(--accent-success)",
+                    }} 
+                  />
+                  <span 
+                    style={{ 
+                      position: "relative", 
+                      display: "inline-flex", 
+                      borderRadius: "var(--radius-full)", 
+                      width: "8px", 
+                      height: "8px", 
+                      backgroundColor: "var(--accent-success)",
+                      boxShadow: "0 0 8px rgba(16, 185, 129, 0.6)",
+                    }} 
+                  />
+                </span>
+              ) : (
+                <span 
+                  style={{ 
+                    width: "8px", 
+                    height: "8px", 
+                    borderRadius: "var(--radius-full)", 
+                    backgroundColor: "var(--text-muted)",
+                    flexShrink: 0,
+                    marginLeft: "2px",
+                  }} 
+                />
+              )}
+              <span style={{ fontWeight: 450 }}>
+                {prerequisites?.backend.running ? "8K AI Engine Active" : "Initializing Engine..."}
+              </span>
+            </div>
           </div>
-          <span style={{ fontSize: "10px", color: "var(--accent-success)", fontWeight: 600 }}>READY</span>
-        </div>
-        
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: prerequisites?.backend.running ? "var(--accent-success)" : "var(--text-muted)" }}>
-          <Zap size={13} style={{ color: prerequisites?.backend.running ? "var(--accent-success)" : "var(--accent-primary)" }} />
-          <span>{prerequisites?.backend.running ? "8K AI Engine Active" : "Initializing Engine..."}</span>
-        </div>
-      </div>
+        );
+      })()}
     </aside>
   );
 };

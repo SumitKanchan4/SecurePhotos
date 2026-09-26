@@ -670,10 +670,17 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({
                               src={thumbUrl}
                               alt={photo.filename}
                               loading="lazy"
+                              onLoad={(e) => {
+                                const img = e.currentTarget;
+                                if (img.naturalHeight > img.naturalWidth) {
+                                  img.style.objectPosition = "center 18%";
+                                }
+                              }}
                               style={{
                                 width: "100%",
                                 height: "100%",
                                 objectFit: "cover",
+                                objectPosition: (photo.height && photo.width && photo.height > photo.width) ? "center 18%" : "center center",
                                 transition: "transform 0.2s ease",
                               }}
                               onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.03)")}

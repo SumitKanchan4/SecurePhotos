@@ -59,6 +59,9 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [isPortrait, setIsPortrait] = useState<boolean>(() => {
+    return Boolean(photo.height && photo.width && photo.height > photo.width);
+  });
 
   const thumbnailUrl = photo.is_encrypted
     ? `http://127.0.0.1:8000/api/vault/thumbnail/${photo.id}`
@@ -127,7 +130,13 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
           alt={photo.filename}
           loading="lazy"
           decoding="async"
-          onLoad={() => setIsLoaded(true)}
+          onLoad={(e) => {
+            setIsLoaded(true);
+            const img = e.currentTarget;
+            if (img.naturalHeight && img.naturalWidth && img.naturalHeight > img.naturalWidth) {
+              setIsPortrait(true);
+            }
+          }}
           onError={() => setHasError(true)}
           style={{
             position: "absolute",
@@ -135,6 +144,7 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
             width: "100%",
             height: "100%",
             objectFit: "cover",
+            objectPosition: isPortrait ? "center 18%" : "center center",
             opacity: isLoaded ? 1 : 0,
             transition: "opacity 0.35s ease",
             zIndex: 1,

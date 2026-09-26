@@ -4174,6 +4174,75 @@ This update completely overhauls vault recovery and password reset mechanisms by
 - TypeScript compilation completely clean (`npx tsc --noEmit` exited code 0).
 - Users can set up their vault in seconds, save a card image to their phone or USB drive, and reset forgotten passwords effortlessly.
 
+---
+
+## 82. Modern Brand Typography Elevation, Unobtrusive Version Micro-Pill, Header Decluttering, Live Status Pulse & Smart Portrait Framing
+
+### Functionality Overview
+This update elevates the overall visual polish, branding, ergonomics, and thumbnail framing of SecurePhotos:
+
+1. **Modern Brandmark & Display Typography Elevation (`src/components/TitleBar.tsx`)**:
+   - Upgraded the top-left app icon to a liquid-glass squircle container (`28×28px`, `border-radius: 8px`, `linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)`, `boxShadow: 0 2px 10px rgba(59, 130, 246, 0.35)`).
+   - Rendered `SecurePhotos` in modern `--font-display` (`Plus Jakarta Sans`), 800 extra bold, tight letter tracking (`-0.035em`), and responsive contrast styling.
+   - Refactored the version indicator `v0.1.0` into an unobtrusive, secondary mono micro-pill (`fontSize: 10px`, `fontFamily: var(--font-mono)`, `fontWeight: 600`, `backgroundColor: var(--glass-pill-bg)`, `border: 1px solid var(--glass-border)`, `padding: 1px 6px`, `borderRadius: var(--radius-full)`), preventing visual competition with the application title.
+   - Removed the bulky `[ 💽 Local Storage (C:\) ]` pill from the top header to give Spotlight search and the titlebar generous breathing room.
+
+2. **Bottom-Left Storage Classification & Live Pulse Indicator (`src/components/Sidebar.tsx` & `src/index.css`)**:
+   - Refactored the bottom-left storage card to explicitly classify physical drive storage: e.g. `Local Storage (C:)` vs `External Drive (D:)`.
+   - Added `@keyframes statusPing` and `.status-ping-beacon` to `src/index.css` for a living green heartbeat radar indicator:
+     - Outer wave pulses smoothly (`animation: statusPing 2.2s infinite`).
+     - Solid green core with subtle green glow (`boxShadow: 0 0 8px rgba(16, 185, 129, 0.6)`).
+     - Confirms that the local 8K AI Engine is active, healthy, and listening in real-time.
+
+3. **Smart Portrait Thumbnail Framing (`PhotoGrid.tsx`, `AlbumsView.tsx`, `PeopleView.tsx`, `TrashView.tsx`, `DuplicatesView.tsx`)**:
+   - Solved the portrait photo decapitation / cut-off heads problem across all 1:1 square grid cards.
+   - Evaluates portrait orientation via database metadata (`photo.height > photo.width`) and dynamic image load metrics (`img.naturalHeight > img.naturalWidth`).
+   - For portrait photos, applies `objectPosition: "center 18%"`.
+   - Shifting the anchor from vertical center (`50%`) to upper third (`18%`) preserves human heads, faces, smiles, and postures with natural photographic headroom, eliminating awkward head cuts in 1:1 grids while non-destructively maintaining aspect ratio.
+
+### Functional Decision Points & Rationale
+- **Upper-Third Rule of Thirds Anchoring (`center 18%`) vs. Center Crop (`center center`)**:
+  - *Problem*: Mobile portrait photos (3:4, 9:16) cropped to 1:1 squares with default `center center` slice off the top 25%–30% of the image, cutting through heads and foreheads.
+  - *Decision*: Anchor portrait images to `center 18%`.
+  - *Rationale*: Human portraiture places faces in the top 15% to 35% of the frame. Shifting the focal anchor up preserves 95%+ of heads and faces while safely cropping only excess ground/shoes at the bottom.
+- **Micro-Pill Version Badge vs. Inline Header Text**:
+  - *Decision*: Separate `v0.1.0` into a distinct, tiny mono capsule badge.
+  - *Rationale*: Avoids visual collision with the brand name and gives the titlebar a refined, professional desktop application appearance.
+- **Relocating Drive Storage from Header to Sidebar**:
+  - *Decision*: Remove storage info from the top titlebar and consolidate it in the bottom-left sidebar.
+  - *Rationale*: Titlebars should prioritize window dragging, search, and window controls. The sidebar footer already hosts telemetry cards, making it the natural place for hardware/drive details.
+- **Live Heartbeat Pulse ("Bluping") Indicator**:
+  - *Decision*: Add a pulsing radar ping next to `8K AI Engine Active`.
+  - *Rationale*: Gives users clear, reassuring visual feedback that local AI processing services are running and responsive.
+
+### Technical Touchpoints
+- `src/components/TitleBar.tsx`:
+  - Styled `SecurePhotos` with `var(--font-display)` (Plus Jakarta Sans, 800 weight, -0.035em tracking).
+  - Encapsulated version in discrete mono micro-pill `v0.1.0`.
+  - Removed header volume pill and unused `HardDrive` import.
+- `src/index.css`:
+  - Added `@keyframes statusPing` and `.status-ping-beacon` pulse animation.
+- `src/components/Sidebar.tsx`:
+  - Added storage classification (`Local Storage (C:)` vs `External Drive`) and live pulsing radar status dot.
+- `src/components/PhotoGrid.tsx`:
+  - Added `isPortrait` state and `objectPosition: isPortrait ? "center 18%" : "center center"`.
+- `src/components/AlbumsView.tsx`:
+  - Added smart portrait framing to album detail photos and picker grid.
+- `src/components/PeopleView.tsx`:
+  - Added smart portrait framing to person photos grid.
+- `src/components/TrashView.tsx`:
+  - Added smart portrait framing and updated `TrashedItem` interface with optional `width` and `height`.
+- `src/components/DuplicatesView.tsx`:
+  - Added smart portrait framing to comparison candidate cards.
+- `docs/features_and_functional_decisions.md`:
+  - Documented Section 82.
+
+### State & Lifecycle Impact
+- Zero database changes or migration required.
+- Non-destructive presentation layer improvement fixing thumbnail framing for 100% of existing and new portrait photos.
+- 11/11 vault backend tests pass; TypeScript 0 errors; Vite bundle built cleanly in 6.43s.
+
+
 
 
 

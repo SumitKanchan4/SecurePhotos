@@ -1844,10 +1844,17 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                             src={`http://127.0.0.1:8000/api/photos/${photo.id}/thumbnail`}
                             alt={photo.filename}
                             loading="lazy"
+                            onLoad={(e) => {
+                              const img = e.currentTarget;
+                              if (img.naturalHeight > img.naturalWidth) {
+                                img.style.objectPosition = "center 18%";
+                              }
+                            }}
                             style={{
                               width: "100%",
                               height: "100%",
                               objectFit: "cover",
+                              objectPosition: (photo.height && photo.width && photo.height > photo.width) ? "center 18%" : "center center",
                             }}
                           />
 

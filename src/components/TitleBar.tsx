@@ -7,7 +7,6 @@ import {
   Square, 
   X, 
   ShieldCheck, 
-  HardDrive,
   Star,
   Film,
   FileText,
@@ -37,9 +36,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
     activeTab, 
     setActiveTab,
     searchQuery, 
-    setSearchQuery, 
-    activeVolume, 
-    isDriveConnected 
+    setSearchQuery 
   } = useAppStore();
 
   const [isFlyoutOpen, setIsFlyoutOpen] = useState(false);
@@ -207,43 +204,49 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }} data-tauri-drag-region>
         <div 
           style={{
-            width: "26px",
-            height: "26px",
-            borderRadius: "var(--radius-sm)",
-            backgroundColor: "var(--accent-primary)",
+            width: "28px",
+            height: "28px",
+            borderRadius: "8px",
+            background: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             color: "#ffffff",
+            boxShadow: "0 2px 10px rgba(59, 130, 246, 0.35)",
+            border: "1px solid rgba(255, 255, 255, 0.2)",
+            flexShrink: 0,
           }}
         >
-          <ShieldCheck size={16} />
+          <ShieldCheck size={16} strokeWidth={2.4} />
         </div>
-        <span style={{ fontWeight: 700, fontSize: "13px", letterSpacing: "-0.01em", color: "var(--text-primary)" }}>
-          SecurePhotos <span style={{ color: "var(--accent-primary)", fontSize: "11px", fontWeight: 700 }}>0.1.0</span>
-        </span>
-
-        {/* Volume Status Pill */}
-        {activeVolume && (
-          <div 
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "3px 10px",
-              borderRadius: "var(--radius-full)",
-              fontSize: "11px",
-              fontWeight: 600,
-              backgroundColor: isDriveConnected ? "rgba(16, 185, 129, 0.12)" : "rgba(239, 68, 68, 0.12)",
-              border: isDriveConnected ? "1px solid rgba(16, 185, 129, 0.25)" : "1px solid rgba(239, 68, 68, 0.25)",
-              color: isDriveConnected ? "var(--accent-success)" : "var(--accent-danger)",
-              marginLeft: "12px",
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span 
+            style={{ 
+              fontFamily: "var(--font-display)", 
+              fontWeight: 800, 
+              fontSize: "14px", 
+              letterSpacing: "-0.035em",
+              color: "var(--text-primary)",
             }}
           >
-            <HardDrive size={12} />
-            <span>{activeVolume.volume_name} ({activeVolume.drive_letter})</span>
-          </div>
-        )}
+            SecurePhotos
+          </span>
+          <span 
+            style={{ 
+              fontSize: "10px", 
+              fontFamily: "var(--font-mono)", 
+              fontWeight: 600,
+              color: "var(--text-muted)",
+              backgroundColor: "var(--glass-pill-bg)",
+              border: "1px solid var(--glass-border)",
+              padding: "1px 6px",
+              borderRadius: "var(--radius-full)",
+              lineHeight: "1.4",
+            }}
+          >
+            v0.1.0
+          </span>
+        </div>
       </div>
 
       {/* Global Spotlight Hybrid Search (Ctrl + K) */}
