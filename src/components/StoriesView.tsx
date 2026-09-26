@@ -16,10 +16,12 @@ import {
   Sun,
   Trash2,
   Bookmark,
-  Search
+  Search,
+  Download,
+  Check
 } from "lucide-react";
-import { StoryModel, MusicTrackItem } from "../types";
-import { NavTab } from "../store/useAppStore";
+import { StoryModel, MusicTrackItem, SuggestedCollage } from "../types";
+import { NavTab, useAppStore } from "../store/useAppStore";
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
@@ -85,11 +87,17 @@ function getArchetypeDetails(storyType?: string, title?: string) {
  * "Through the Years" journeys, Vacation bursts, On This Day anniversaries,
  * and user soundtracks with automated mood tagging.
  */
-export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
+export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigate }) => {
   const [stories, setStories] = useState<StoryModel[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Intelligent 4K Collages state
+  const [collages, setCollages] = useState<SuggestedCollage[]>([]);
+  const [isLoadingCollages, setIsLoadingCollages] = useState<boolean>(true);
+  const [savingCollageId, setSavingCollageId] = useState<string | null>(null);
+  const showToast = useAppStore((state) => state.showToast);
 
   // Soundtracks modal state
   const [showMusicModal, setShowMusicModal] = useState<boolean>(false);
@@ -160,6 +168,64 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
     }
   }, []);
 
+  const fetchCollages = useCallback(async () => {
+    setIsLoadingCollages(true);
+    try {
+      const res = await fetch(`${API_BASE}/creatives/suggestions`);
+      if (res.ok) {
+        const data = await res.json();
+        setCollages(data.suggestions || []);
+      }
+    } catch (err) {
+      console.error("Failed to load collage suggestions:", err);
+    } finally {
+      setIsLoadingCollages(false);
+    }
+  }, []);
+
+  const handleSaveCollage = async (e: React.MouseEvent, suggestion: SuggestedCollage) => {
+    e.stopPropagation();
+    if (savingCollageId || suggestion.is_already_saved) return;
+    setSavingCollageId(suggestion.id);
+    try {
+      const res = await fetch(`${API_BASE}/creatives/suggestions/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          suggestion_id: suggestion.id,
+          photo_ids: suggestion.photo_ids,
+          layout: suggestion.layout,
+          title: suggestion.title,
+        }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setCollages((prev) =>
+          prev.map((c) =>
+            c.id === suggestion.id
+              ? { ...c, is_already_saved: true, saved_photo_id: result.photo_id }
+              : c
+          )
+        );
+        showToast("Saved 4K collage to your Collages collection", "success");
+        window.dispatchEvent(new CustomEvent("library-changed"));
+      } else {
+        showToast("Failed to save collage", "warning");
+      }
+    } catch (err) {
+      console.error("Failed to save collage:", err);
+      showToast("Failed to save collage", "warning");
+    } finally {
+      setSavingCollageId(null);
+    }
+  };
+
+  const handleDownloadCollage = (e: React.MouseEvent, photoId?: number | null) => {
+    e.stopPropagation();
+    if (!photoId) return;
+    window.open(`${API_BASE}/photos/${photoId}/download`, "_blank");
+  };
+
   const fetchMusicTracks = useCallback(async () => {
     setIsLoadingMusic(true);
     try {
@@ -177,15 +243,17 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
 
   useEffect(() => {
     fetchStories();
-  }, [fetchStories]);
+    fetchCollages();
+  }, [fetchStories, fetchCollages]);
 
   useEffect(() => {
     const handleStoriesChanged = () => {
       fetchStories();
+      fetchCollages();
     };
     window.addEventListener("stories-changed", handleStoriesChanged);
     return () => window.removeEventListener("stories-changed", handleStoriesChanged);
-  }, [fetchStories]);
+  }, [fetchStories, fetchCollages]);
 
   const filteredMusicTracks = useMemo(() => {
     if (!musicSearchQuery.trim()) return musicTracks;
@@ -749,6 +817,299 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory }) => {
           </div>
         </div>
       )}
+
+      {/* ── Intelligent 4K Collages Shelf ──────────────── */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "14px", marginTop: stories.length > 0 ? "24px" : "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h2 style={{ fontSize: "15px", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+            <Sparkles size={16} style={{ color: "var(--accent-primary)" }} />
+            Intelligent 4K Collages
+          </h2>
+          <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+            {collages.length} {collages.length === 1 ? "composition" : "compositions"} ready
+          </span>
+        </div>
+
+        {isLoadingCollages ? (
+          <div style={{ padding: "30px", textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>
+            Curating intelligent 4K collage compositions...
+          </div>
+        ) : collages.length === 0 ? (
+          <div
+            className="glass-panel"
+            style={{
+              padding: "24px",
+              borderRadius: "var(--radius-md)",
+              border: "1px dashed var(--border-subtle)",
+              textAlign: "center",
+              color: "var(--text-muted)",
+              fontSize: "12px",
+            }}
+          >
+            Collages will appear automatically as you add more photos and tag close ones.
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+              gap: "16px",
+            }}
+          >
+            {collages.map((c) => {
+              const isSaved = c.is_already_saved;
+              const isSaving = savingCollageId === c.id;
+              const layoutLabel = c.layout === "mosaic" ? "4K Mosaic" : c.layout === "hero_grid" ? "4K Hero Grid" : "4K Treemap";
+
+              return (
+                <div
+                  key={c.id}
+                  className="glass-panel"
+                  style={{
+                    borderRadius: "var(--radius-md)",
+                    overflow: "hidden",
+                    border: "1px solid var(--border-subtle)",
+                    backgroundColor: "var(--bg-surface)",
+                    display: "flex",
+                    flexDirection: "column",
+                    boxShadow: "var(--shadow-sm)",
+                    transition: "transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "var(--accent-primary)";
+                    e.currentTarget.style.transform = "translateY(-2px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "var(--border-subtle)";
+                    e.currentTarget.style.transform = "none";
+                  }}
+                >
+                  {/* 16:9 Composite Canvas Preview */}
+                  <div
+                    style={{
+                      width: "100%",
+                      aspectRatio: "16 / 9",
+                      position: "relative",
+                      backgroundColor: "rgba(15, 23, 42, 0.7)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {isSaved && c.saved_photo_id ? (
+                      <img
+                        src={`${API_BASE}/photos/${c.saved_photo_id}/preview`}
+                        alt={c.title}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      /* Dynamic multi-photo layout representation */
+                      c.layout === "hero_grid" && c.photo_ids.length >= 3 ? (
+                        <div style={{ display: "flex", width: "100%", height: "100%", gap: "2px" }}>
+                          <div style={{ flex: 1.6, height: "100%", overflow: "hidden" }}>
+                            <img
+                              src={`${API_BASE}/photos/${c.photo_ids[0]}/thumbnail`}
+                              alt=""
+                              loading="lazy"
+                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            />
+                          </div>
+                          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "2px", height: "100%" }}>
+                            {c.photo_ids.slice(1, 3).map((pid) => (
+                              <div key={pid} style={{ flex: 1, overflow: "hidden" }}>
+                                <img
+                                  src={`${API_BASE}/photos/${pid}/thumbnail`}
+                                  alt=""
+                                  loading="lazy"
+                                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : c.photo_ids.length === 4 ? (
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", gap: "2px", width: "100%", height: "100%" }}>
+                          {c.photo_ids.slice(0, 4).map((pid) => (
+                            <div key={pid} style={{ overflow: "hidden", width: "100%", height: "100%" }}>
+                              <img
+                                src={`${API_BASE}/photos/${pid}/thumbnail`}
+                                alt=""
+                                loading="lazy"
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        /* 3 vertical portrait columns filling 16:9 4K canvas without cropping */
+                        <div style={{ display: "flex", width: "100%", height: "100%", gap: "2px" }}>
+                          {c.photo_ids.slice(0, 3).map((pid) => (
+                            <div key={pid} style={{ flex: 1, height: "100%", overflow: "hidden" }}>
+                              <img
+                                src={`${API_BASE}/photos/${pid}/thumbnail`}
+                                alt=""
+                                loading="lazy"
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    )}
+
+                    {/* Gradient Overlay for badges */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        background: "linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 40%)",
+                        pointerEvents: "none",
+                      }}
+                    />
+
+                    {/* Top Left Layout & Cluster Badges */}
+                    <div style={{ position: "absolute", top: "8px", left: "8px", display: "flex", gap: "6px", alignItems: "center", zIndex: 2 }}>
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          backgroundColor: "rgba(15, 23, 42, 0.75)",
+                          color: "#ffffff",
+                          border: "1px solid rgba(255, 255, 255, 0.2)",
+                          backdropFilter: "blur(8px)",
+                          padding: "2px 8px",
+                          borderRadius: "var(--radius-full)",
+                          letterSpacing: "0.02em",
+                        }}
+                      >
+                        {layoutLabel}
+                      </span>
+                      {isSaved && (
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            backgroundColor: "rgba(16, 185, 129, 0.85)",
+                            color: "#ffffff",
+                            backdropFilter: "blur(8px)",
+                            padding: "2px 7px",
+                            borderRadius: "var(--radius-full)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "3px",
+                          }}
+                        >
+                          <Check size={9} strokeWidth={3} />
+                          Saved
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Card Info & Action Footer */}
+                  <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <div>
+                      <div style={{ fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text-primary)" }}>
+                        {c.title}
+                      </div>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
+                        {c.subtitle}
+                      </div>
+                    </div>
+
+                    {/* Action Bar */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", paddingTop: "4px" }}>
+                      {isSaved ? (
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onNavigate("albums");
+                            }}
+                            className="clickable"
+                            style={{
+                              flex: 1,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "6px",
+                              padding: "6px 12px",
+                              borderRadius: "var(--radius-full)",
+                              backgroundColor: "var(--glass-pill-bg)",
+                              border: "1px solid var(--glass-border)",
+                              color: "var(--text-primary)",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            <Layers size={12} style={{ color: "var(--accent-primary)" }} />
+                            <span>View in Collages</span>
+                          </button>
+
+                          {c.saved_photo_id && (
+                            <button
+                              onClick={(e) => handleDownloadCollage(e, c.saved_photo_id)}
+                              className="clickable"
+                              title="Download 4K Collage"
+                              style={{
+                                width: "30px",
+                                height: "30px",
+                                borderRadius: "50%",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                backgroundColor: "var(--glass-pill-bg)",
+                                border: "1px solid var(--glass-border)",
+                                color: "var(--text-secondary)",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <Download size={13} />
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <button
+                          onClick={(e) => handleSaveCollage(e, c)}
+                          disabled={isSaving}
+                          className="clickable"
+                          style={{
+                            flex: 1,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "6px",
+                            padding: "7px 14px",
+                            borderRadius: "var(--radius-full)",
+                            backgroundColor: isSaving ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+                            border: isSaving ? "1px solid var(--accent-primary)" : "1px solid var(--glass-border)",
+                            color: isSaving ? "#ffffff" : "var(--accent-primary)",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            cursor: isSaving ? "not-allowed" : "pointer",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          {isSaving ? (
+                            <>
+                              <RefreshCw size={12} className="spin-animation" />
+                              <span>Saving 4K...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Bookmark size={12} />
+                              <span>Save to Collages</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* ── SOUNDTRACK STUDIO MODAL (Upload & Auto-Tagging) ──────────────── */}
       {showMusicModal && (

@@ -3951,5 +3951,73 @@ This update eliminates video flickering and compression artifacts in Stories and
 - Videos in Stories play in crisp 1080p with smooth 60fps progress tracking and zero canvas flickering.
 - Stories tab presents a clean, uncluttered interface tailored for vertical mobile photography.
 
+---
+
+## 79. Intelligent 4K AI Collages, Dedicated Collages Folder Storage & Aspect-Aware Phone Portrait Mosaics
+
+### Functionality Overview
+This update introduces intelligent, automatic 4K UHD collage synthesis and establishes a dedicated originals storage directory for all saved collages:
+
+1. **Intelligent AI Collage Synthesis (`engine/services/collage_service.py`)**:
+   - Synthesizes aesthetic 4K UHD (3840×2160) collage suggestions across four memory archetypes:
+     - **Close Ones & People**: Clusters tagged individuals (`is_close_one` or high affinity), selecting 2 to 3 highest-quality moments.
+     - **Event & Trip Bursts**: Identifies multi-photo date clusters (e.g. 3–4 photos taken on the same day or trip), grouping them into event highlight composites.
+     - **Golden Favorites**: Gathers top-rated photos (`is_favorite = 1`) into curated multi-moment showcases.
+     - **Seasonal & Recent Retrospectives**: Fallback highlights for general library memories.
+   - **Aspect-Ratio-Aware Composition (`select_optimal_collage_layout`)**:
+     - Modern smartphone photos are predominantly vertical (9:16 or 3:4). Placing 3 vertical photos side-by-side in a 3-column `mosaic` layout naturally fills a 16:9 4K canvas (three 1258×2112 vertical boxes) with minimal or zero awkward cropping of subjects.
+     - For clusters with 1 dominant landscape photo and 2 portrait photos, automatically chooses `hero_grid` (1 large left hero + 2 stacked right portraits).
+     - For 4-photo clusters, creates a balanced 2×2 `mosaic`.
+
+2. **Dedicated Collages Directory Storage (`data/originals/collages/`)**:
+   - Collages are now persisted directly into `data/originals/collages/` (`settings.collages_dir`), rather than buried inside `creatives/collages`.
+   - `ensure_directories()` in `engine/config.py` guarantees this folder exists on engine startup.
+   - When a collage is created or saved from suggestions:
+     - The 4K canvas is saved into `settings.collages_dir/{title}_{timestamp}.webp`.
+     - Ingested immediately into SQLite via `ingest_single_photo(conn, dest_path, mode="in_place")`.
+     - Linked to the system `Collages` smart album (`albums` id).
+     - Assigns a non-empty `taken_at` timestamp using smart event dating so collages never show up as "Undated".
+
+3. **Intelligent Collages Shelf & Live Canvas Previews (`src/components/StoriesView.tsx`)**:
+   - Placed directly in the Stories tab below the Milestone Stories Collection.
+   - Renders 16:9 composite layout previews reflecting the exact multi-photo layout (3 vertical portrait columns, hero grid, or 2×2 grid).
+   - One-Click **[ 💾 Save to Collages ]**: Saves the composite in 4K directly into `data/originals/collages`, ingests it, associates it with the `Collages` album, updates the card to "Saved", and displays an encouraging confirmation toast.
+   - One-Click **[ 📥 Download ]**: Direct full-resolution download of the rendered 4K composite.
+   - Quick navigation: **[ View in Collages ]** links directly to the Albums tab.
+
+### Functional Decision Points & Rationale
+- **Dedicated Collages Folder (`data/originals/collages/`)**:
+   - *Problem*: Previously, collages were saved under `originals/creatives/collages`, separating them from user expectations and causing confusion about where creative outputs reside on disk.
+   - *Decision*: Standardize collage storage directly under `data/originals/collages/` via `settings.collages_dir`.
+   - *Rationale*: Clean folder hierarchy, predictable backup boundaries, and clear filesystem organization.
+- **3-Portrait Vertical Columns in 16:9 4K Canvas**:
+   - *Problem*: Smartphone photos are vertical (9:16). Cropping them into single wide landscape banners cuts off faces, heads, and bodies.
+   - *Decision*: In `select_optimal_collage_layout`, 3 portrait photos automatically select the 3-column `mosaic` layout.
+   - *Rationale*: Three 9:16 vertical columns placed side-by-side divide a 3840×2160 canvas into three 1258×2112 boxes, which matches the 9:16 portrait aspect ratio almost perfectly (~0.60 vs 0.5625), preserving the full height of smartphone photos without subject decapitation.
+- **AI Suggestions with Saved Tracking**:
+   - *Problem*: Showing suggestions without indicating if the user already saved them causes duplicate saves and visual clutter.
+   - *Decision*: Cross-reference suggestions against `photos` in the `Collages` album, providing `is_already_saved` and `saved_photo_id`.
+   - *Rationale*: Instant feedback in the UI showing "Saved" status with direct download and album navigation.
+
+### Technical Touchpoints
+- `engine/config.py`: Added `collages_dir` property (`self.originals_dir / "collages"`) and created it in `ensure_directories()`.
+- `engine/services/collage_service.py`: Added `select_optimal_collage_layout` and `generate_intelligent_collages` clustering engine.
+- `engine/api/creatives.py`:
+  - Updated `POST /api/creatives/collage` to save to `settings.collages_dir`.
+  - Added `GET /api/creatives/suggestions`.
+  - Added `POST /api/creatives/suggestions/save`.
+- `engine/tests/test_collages.py`:
+  - Added `test_select_optimal_collage_layout` (portrait 9:16 vs landscape handling).
+  - Added `test_collage_suggestions_api_and_save_endpoint` (testing suggestions, save to `collages_dir`, ingestion, and album linking).
+- `src/types/index.ts`: Added `SuggestedCollage` interface.
+- `src/components/StoriesView.tsx`: Integrated collage suggestion fetching, state management, live 16:9 composite layout cards, and one-click save/download controls.
+- `docs/features_and_functional_decisions.md`: Documented Section 79.
+
+### State & Lifecycle Impact
+- All 9 collage backend tests passing (100% success rate).
+- TypeScript compiler verification clean (`npx tsc --noEmit` exits code 0).
+- Users can view and save intelligent 4K collages with smartphone-friendly portrait layouts that save directly into `data/originals/collages/`.
+
+
 
 

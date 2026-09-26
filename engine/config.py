@@ -103,6 +103,11 @@ class AppConfig(BaseSettings):
         """Returns the directory holding user-provided story music and soundtracks."""
         return self.data_dir / "music"
 
+    @property
+    def collages_dir(self) -> Path:
+        """Returns the dedicated directory holding saved 4K collages."""
+        return self.originals_dir / "collages"
+
     def ensure_directories(self) -> None:
         """Creates all required directory structures idempotently, migrating legacy data if present."""
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,6 +115,7 @@ class AppConfig(BaseSettings):
         self.previews_dir.mkdir(parents=True, exist_ok=True)
         self.models_dir.mkdir(parents=True, exist_ok=True)
         self.originals_dir.mkdir(parents=True, exist_ok=True)
+        self.collages_dir.mkdir(parents=True, exist_ok=True)
         self.music_dir.mkdir(parents=True, exist_ok=True)
 
         # Automatic legacy migration from ~/.securephotos_data if present

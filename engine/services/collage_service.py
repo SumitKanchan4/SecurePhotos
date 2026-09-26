@@ -6,9 +6,11 @@ geometric layouts (Mosaic, Hero Grid 1+4, and Geometric Treemap).
 """
 
 import datetime
+import hashlib
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
+import aiosqlite
 from PIL import Image, ImageOps, ImageFilter
 
 logger = logging.getLogger("securephotos.collage_service")
@@ -246,3 +248,220 @@ def render_collage(
     # Apply subtle unsharp masking across composite to enhance edge definitions
     canvas = canvas.filter(ImageFilter.UnsharpMask(radius=0.9, percent=110, threshold=2))
     return canvas
+
+
+def select_optimal_collage_layout(photo_dimensions: List[Tuple[int, int]]) -> str:
+    """Selects the most aesthetic layout based on constituent photo orientations.
+    
+    - When 3 photos are predominantly vertical (portrait 9:16/3:4), uses 'mosaic'
+      (3 vertical columns) to naturally fit a 16:9 4K canvas without cutting subjects.
+    - When there is 1 dominant landscape + 2 portraits, uses 'hero_grid'.
+    - When 4 photos, uses 2x2 'mosaic'.
+    """
+    count = len(photo_dimensions)
+    if count == 3:
+        portrait_count = sum(1 for w, h in photo_dimensions if h > w)
+        landscape_count = sum(1 for w, h in photo_dimensions if w >= h)
+        if portrait_count == 3:
+            return "mosaic"  # 3 vertical columns fits 9:16 portrait mobile photos cleanly
+        if landscape_count == 1:
+            return "hero_grid"  # 1 dominant landscape hero + 2 stacked portraits
+        return "mosaic"
+    elif count == 4:
+        return "mosaic"  # 2x2 grid
+    elif count == 2:
+        return "mosaic"  # 2 columns
+    return "mosaic"
+
+
+async def generate_intelligent_collages(conn: aiosqlite.Connection) -> List[Dict[str, Any]]:
+    """Synthesizes intelligent 4K collage suggestions based on temporal, person, and event clusters.
+
+    Generates balanced 4K compositions optimized for smartphone photography:
+    - 3-column vertical Mosaic for portrait photos (zero awkward cropping).
+    - Hero Grid (1 large hero + stacked secondary) for mixed landscape/portrait.
+    - 2x2 Mosaic for balanced 4-photo clusters.
+    """
+    conn.row_factory = aiosqlite.Row
+
+    # 1. Fetch active, un-trashed, un-encrypted photos (excluding raw video containers)
+    async with conn.execute(
+        """
+        SELECT id, filename, filepath, taken_at, width, height, is_favorite, mime_type
+        FROM photos
+        WHERE trashed_at IS NULL AND is_encrypted = 0
+          AND (mime_type IS NULL OR mime_type NOT LIKE 'video/%')
+        ORDER BY taken_at DESC, id DESC;
+        """
+    ) as cursor:
+        photos = [dict(r) for r in await cursor.fetchall()]
+
+    if len(photos) < 2:
+        return []
+
+    photo_map = {p["id"]: p for p in photos}
+
+    # 2. Fetch existing collages in "Collages" album to track is_already_saved
+    saved_collages_map: Dict[str, int] = {}
+    async with conn.execute(
+        """
+        SELECT p.id, p.caption, p.filename
+        FROM photos p
+        JOIN photo_album pa ON p.id = pa.photo_id
+        JOIN albums a ON pa.album_id = a.id
+        WHERE LOWER(a.name) = 'collages' AND p.trashed_at IS NULL AND p.is_encrypted = 0;
+        """
+    ) as cursor:
+        for r in await cursor.fetchall():
+            caption = (r["caption"] or "").lower()
+            saved_collages_map[caption] = r["id"]
+
+    # 3. Fetch Person associations
+    person_photos: Dict[int, List[int]] = {}
+    person_meta: Dict[int, Dict[str, Any]] = {}
+    async with conn.execute(
+        """
+        SELECT p.id as person_id, p.name, p.is_close_one, f.photo_id
+        FROM persons p
+        JOIN faces f ON p.id = f.person_id
+        JOIN photos ph ON f.photo_id = ph.id
+        WHERE p.name IS NOT NULL AND p.name != ''
+          AND ph.trashed_at IS NULL AND ph.is_encrypted = 0
+          AND (ph.mime_type IS NULL OR ph.mime_type NOT LIKE 'video/%')
+        ORDER BY p.is_close_one DESC, p.id ASC;
+        """
+    ) as cursor:
+        for r in await cursor.fetchall():
+            pid = r["person_id"]
+            if pid not in person_photos:
+                person_photos[pid] = []
+                person_meta[pid] = {"name": r["name"], "is_close_one": bool(r["is_close_one"])}
+            if r["photo_id"] not in person_photos[pid]:
+                person_photos[pid].append(r["photo_id"])
+
+    suggestions: List[Dict[str, Any]] = []
+    seen_photo_sets = set()
+
+    def add_suggestion(
+        cluster_id: str,
+        title: str,
+        subtitle: str,
+        cluster_type: str,
+        candidate_ids: List[int],
+    ):
+        chosen_ids = candidate_ids[:4]
+        if len(chosen_ids) < 2:
+            return
+        if len(chosen_ids) not in (2, 3, 4):
+            chosen_ids = chosen_ids[:3]
+
+        frozen_set = frozenset(chosen_ids)
+        if frozen_set in seen_photo_sets:
+            return
+        seen_photo_sets.add(frozen_set)
+
+        dims = [
+            (photo_map[pid].get("width") or 1920, photo_map[pid].get("height") or 1080)
+            for pid in chosen_ids
+            if pid in photo_map
+        ]
+        layout = select_optimal_collage_layout(dims)
+
+        # Check if saved
+        caption_key = f"4k collage ({layout}): {title}".lower()
+        saved_id = saved_collages_map.get(caption_key) or saved_collages_map.get(title.lower())
+
+        # Determine reference taken_at
+        dts = [
+            photo_map[pid].get("taken_at")
+            for pid in chosen_ids
+            if pid in photo_map and photo_map[pid].get("taken_at")
+        ]
+        ref_dt = dts[0] if dts else None
+
+        suggestions.append({
+            "id": cluster_id,
+            "title": title,
+            "subtitle": subtitle,
+            "cluster_type": cluster_type,
+            "layout": layout,
+            "photo_ids": chosen_ids,
+            "preview_photo_ids": chosen_ids,
+            "taken_at": ref_dt,
+            "is_already_saved": saved_id is not None,
+            "saved_photo_id": saved_id,
+        })
+
+    # Strategy A: Close Ones & People Collages
+    for pid, pids in person_photos.items():
+        if len(pids) >= 2:
+            name = person_meta[pid]["name"]
+            sorted_pids = sorted(
+                pids,
+                key=lambda x: (not photo_map.get(x, {}).get("is_favorite", 0), -(photo_map.get(x, {}).get("id") or 0)),
+            )
+            cand = sorted_pids[:3] if len(sorted_pids) >= 3 else sorted_pids[:2]
+            cid = f"person_{pid}_{hashlib.sha256(str(cand).encode()).hexdigest()[:6]}"
+            add_suggestion(
+                cluster_id=cid,
+                title=f"Moments with {name}",
+                subtitle=f"{len(cand)} cherished moments",
+                cluster_type="person",
+                candidate_ids=cand,
+            )
+
+    # Strategy B: Event & Trip Burst Clusters (photos taken on the same date or trip burst)
+    date_groups: Dict[str, List[int]] = {}
+    for p in photos:
+        ta = p.get("taken_at")
+        if ta:
+            date_key = ta[:10]  # YYYY-MM-DD
+            date_groups.setdefault(date_key, []).append(p["id"])
+
+    for d_str, d_pids in date_groups.items():
+        if len(d_pids) >= 3:
+            try:
+                dt_obj = datetime.datetime.strptime(d_str, "%Y-%m-%d")
+                formatted_date = dt_obj.strftime("%B %d, %Y")
+                month_year = dt_obj.strftime("%B %Y")
+            except Exception:
+                formatted_date = d_str
+                month_year = d_str
+
+            cand = d_pids[:4]
+            cid = f"event_{d_str.replace('-', '')}_{hashlib.sha256(str(cand).encode()).hexdigest()[:6]}"
+            add_suggestion(
+                cluster_id=cid,
+                title=f"Event Highlights • {formatted_date}",
+                subtitle=f"{len(cand)} moments • {month_year}",
+                cluster_type="event",
+                candidate_ids=cand,
+            )
+
+    # Strategy C: Favorites Collection (if at least 2 favorites)
+    fav_ids = [p["id"] for p in photos if p.get("is_favorite")]
+    if len(fav_ids) >= 2:
+        cand = fav_ids[:4]
+        cid = f"favorites_{hashlib.sha256(str(cand).encode()).hexdigest()[:6]}"
+        add_suggestion(
+            cluster_id=cid,
+            title="Golden Favorites Showcase",
+            subtitle=f"{len(cand)} top-rated memories",
+            cluster_type="favorites",
+            candidate_ids=cand,
+        )
+
+    # Strategy D: Recent Moments (general library highlight fallback)
+    if len(photos) >= 3 and len(suggestions) < 3:
+        cand = [p["id"] for p in photos[:3]]
+        cid = f"recent_{hashlib.sha256(str(cand).encode()).hexdigest()[:6]}"
+        add_suggestion(
+            cluster_id=cid,
+            title="Recent Highlights",
+            subtitle=f"{len(cand)} moments",
+            cluster_type="seasonal",
+            candidate_ids=cand,
+        )
+
+    return suggestions
+

@@ -14,6 +14,8 @@ from engine.services.collage_service import (
     compute_hero_boxes,
     compute_treemap_boxes,
     determine_collage_taken_at,
+    select_optimal_collage_layout,
+    generate_intelligent_collages,
 )
 from engine.services.thumbnail_service import calculate_file_hash
 
@@ -386,6 +388,105 @@ async def test_collages_smart_album_parity():
             assert final_row["is_favorite"] == 0
     finally:
         await conn.close()
+
+
+def test_select_optimal_collage_layout():
+    """Validates aspect-ratio layout selection:
+    - 3 portrait photos (e.g. 1080x1920) map to 'mosaic' (3 vertical columns filling 16:9 canvas).
+    - 1 landscape + 2 portraits map to 'hero_grid'.
+    - 4 photos map to 'mosaic' (2x2 grid).
+    - 2 photos map to 'mosaic'.
+    """
+    assert select_optimal_collage_layout([(1080, 1920), (1080, 1920), (1080, 1920)]) == "mosaic"
+    assert select_optimal_collage_layout([(1920, 1080), (1080, 1920), (1080, 1920)]) == "hero_grid"
+    assert select_optimal_collage_layout([(1920, 1080), (1920, 1080), (1920, 1080), (1920, 1080)]) == "mosaic"
+    assert select_optimal_collage_layout([(1920, 1080), (1920, 1080)]) == "mosaic"
+
+
+@pytest.mark.asyncio
+async def test_collage_suggestions_api_and_save_endpoint():
+    """Validates GET /api/creatives/suggestions and POST /api/creatives/suggestions/save:
+    - Saves directly into settings.collages_dir (data/originals/collages).
+    - Ingests into photos table.
+    - Associates with Collages smart album.
+    """
+    await run_migrations()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        p1 = await create_collage_test_photo(tmp_path, "sug_1.jpg", (200, 100, 50), "2026-08-01 10:00:00")
+        p2 = await create_collage_test_photo(tmp_path, "sug_2.jpg", (50, 150, 200), "2026-08-01 11:00:00")
+        p3 = await create_collage_test_photo(tmp_path, "sug_3.jpg", (100, 200, 50), "2026-08-01 12:00:00")
+
+        # Mark p1 and p2 as favorites
+        conn = await get_db_connection()
+        await conn.execute("UPDATE photos SET is_favorite = 1 WHERE id IN (?, ?);", (p1, p2))
+        await conn.commit()
+        await conn.close()
+
+        saved_collage_id = None
+        saved_file_path = None
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                # 1. GET /api/creatives/suggestions
+                sug_res = await client.get("/api/creatives/suggestions")
+                assert sug_res.status_code == 200
+                sug_data = sug_res.json()
+                assert "suggestions" in sug_data
+                assert len(sug_data["suggestions"]) > 0
+
+                # 2. POST /api/creatives/suggestions/save
+                save_res = await client.post(
+                    "/api/creatives/suggestions/save",
+                    json={
+                        "photo_ids": [p1, p2, p3],
+                        "layout": "mosaic",
+                        "title": "Summer Adventure Burst",
+                    },
+                )
+                assert save_res.status_code == 201
+                saved_data = save_res.json()
+                assert saved_data["status"] == "ok"
+                saved_collage_id = saved_data["photo_id"]
+                assert saved_collage_id is not None
+
+                # 3. Verify destination folder is settings.collages_dir (data/originals/collages)
+                conn = await get_db_connection()
+                async with conn.execute("SELECT filepath, caption FROM photos WHERE id = ?;", (saved_collage_id,)) as cur:
+                    c_row = await cur.fetchone()
+                assert c_row is not None
+                saved_file_path = Path(c_row["filepath"])
+                assert saved_file_path.exists()
+                assert saved_file_path.parent.resolve() == settings.collages_dir.resolve()
+                assert "Summer Adventure Burst" in c_row["caption"]
+
+                # 4. Verify association with Collages album
+                async with conn.execute(
+                    "SELECT a.name FROM albums a JOIN photo_album pa ON a.id = pa.album_id WHERE pa.photo_id = ?;",
+                    (saved_collage_id,),
+                ) as cur:
+                    a_row = await cur.fetchone()
+                assert a_row is not None
+                assert a_row["name"] == "Collages"
+
+                await conn.close()
+        finally:
+            conn = await get_db_connection()
+            try:
+                for pid in [p1, p2, p3, saved_collage_id]:
+                    if pid:
+                        await conn.execute("DELETE FROM photo_album WHERE photo_id = ?;", (pid,))
+                        await conn.execute("DELETE FROM photos WHERE id = ?;", (pid,))
+                await conn.commit()
+            finally:
+                await conn.close()
+
+            if saved_file_path and saved_file_path.exists():
+                try:
+                    saved_file_path.unlink()
+                except OSError:
+                    pass
+
 
 
 

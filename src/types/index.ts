@@ -214,6 +214,19 @@ export interface StoryModel {
   slides: StorySlide[];
 }
 
+export interface SuggestedCollage {
+  id: string;
+  title: string;
+  subtitle: string;
+  cluster_type: 'person' | 'event' | 'favorites' | 'seasonal' | string;
+  layout: 'mosaic' | 'hero_grid' | 'treemap' | string;
+  photo_ids: number[];
+  preview_photo_ids: number[];
+  taken_at?: string | null;
+  is_already_saved: boolean;
+  saved_photo_id?: number | null;
+}
+
 export interface MusicTrackItem {
   id: string;
   filename: string;
