@@ -6,7 +6,6 @@ import {
   Minus, 
   Square, 
   X, 
-  ShieldCheck, 
   Star,
   Film,
   FileText,
@@ -22,6 +21,7 @@ import {
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAppStore } from "../store/useAppStore";
 import { SearchResponse, SearchPhotoItem, SearchAlbumItem, SearchPersonItem } from "../types";
+import appIcon3d from "../assets/securephotos_3d_icon.webp";
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
@@ -202,23 +202,19 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
     >
       {/* Brand & App Title */}
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }} data-tauri-drag-region>
-        <div 
+        <img 
+          src={appIcon3d} 
+          alt="SecurePhotos Logo" 
           style={{
             width: "28px",
             height: "28px",
-            borderRadius: "8px",
-            background: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#ffffff",
-            boxShadow: "0 2px 10px rgba(59, 130, 246, 0.35)",
-            border: "1px solid rgba(255, 255, 255, 0.2)",
+            borderRadius: "7px",
+            objectFit: "cover",
+            boxShadow: "0 2px 10px rgba(59, 130, 246, 0.4)",
+            border: "1px solid rgba(255, 255, 255, 0.15)",
             flexShrink: 0,
-          }}
-        >
-          <ShieldCheck size={16} strokeWidth={2.4} />
-        </div>
+          }} 
+        />
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span 
             style={{ 

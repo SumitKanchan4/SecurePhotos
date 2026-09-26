@@ -4217,9 +4217,12 @@ This update elevates the overall visual polish, branding, ergonomics, and thumbn
 
 ### Technical Touchpoints
 - `src/components/TitleBar.tsx`:
+  - Integrated modern 3D brandmark (`securephotos_3d_icon.webp` - Glass Shield & Gold Lens).
   - Styled `SecurePhotos` with `var(--font-display)` (Plus Jakarta Sans, 800 weight, -0.035em tracking).
   - Encapsulated version in discrete mono micro-pill `v0.1.0`.
   - Removed header volume pill and unused `HardDrive` import.
+- `index.html` & `src-tauri/icons/icon.png`:
+  - Updated application favicon and Tauri desktop icon to high-resolution 3D asset.
 - `src/index.css`:
   - Added `@keyframes statusPing` and `.status-ping-beacon` pulse animation.
 - `src/components/Sidebar.tsx`:
@@ -4240,7 +4243,7 @@ This update elevates the overall visual polish, branding, ergonomics, and thumbn
 ### State & Lifecycle Impact
 - Zero database changes or migration required.
 - Non-destructive presentation layer improvement fixing thumbnail framing for 100% of existing and new portrait photos.
-- 11/11 vault backend tests pass; TypeScript 0 errors; Vite bundle built cleanly in 6.43s.
+- 11/11 vault backend tests pass; TypeScript 0 errors; Vite bundle built cleanly in 7.02s.
 
 
 
