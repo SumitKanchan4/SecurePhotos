@@ -4018,6 +4018,64 @@ This update introduces intelligent, automatic 4K UHD collage synthesis and estab
 - TypeScript compiler verification clean (`npx tsc --noEmit` exits code 0).
 - Users can view and save intelligent 4K collages with smartphone-friendly portrait layouts that save directly into `data/originals/collages/`.
 
+---
+
+## 80. Interactive Collage Studio Modal, Top Segment Discovery Switcher & Lightbox Inspection Parity
+
+### Functionality Overview
+This update addresses user navigation ergonomics and collage inspection by introducing a full-screen interactive Collage Studio modal, top segment filtering, and seamless Lightbox viewer integration:
+
+1. **Top Segment Switcher & Dual Count Header Badging (`src/components/StoriesView.tsx`)**:
+   - **Segmented Filter Pills**: Added a liquid-glass segmented control at the top of the Stories view allowing users to toggle between:
+     - `[ ✨ All Creations ]`
+     - `[ 🎬 Milestone Stories (${stories.length}) ]`
+     - `[ 🖼 4K Collages (${collages.length}) ]`
+   - **Dual Count Capsule**: Header badge now displays combined live counts: `{stories.length} Stories • {collages.length} Collages`.
+   - **Smooth Jump Anchor**: In the `All Creations` view, added a frosted jump pill `[ Jump to 4K Collages (${collages.length}) ↓ ]` that smoothly scrolls the viewport to the Collages section using `collagesShelfRef.current?.scrollIntoView({ behavior: 'smooth' })`.
+
+2. **Clickable Collage Cards & Interactive Collage Studio Modal (`src/components/StoriesView.tsx`)**:
+   - **Card Clickability**: Transformed static collage preview cards into interactive launchpads (`cursor: pointer`, hover glow, zoom effect, and click handler).
+   - **Full-Screen Studio & Inspection Modal (`CollagePreviewModal`)**:
+     - Large, high-resolution 16:9 composite stage showcasing the exact multi-photo layout.
+     - **Dynamic Layout Switcher**: Live layout toggle (`3-Column Portrait Mosaic`, `Hero Grid`, `2x2 Balanced Grid`) allowing users to preview and save the composition in their preferred layout before saving.
+     - **Constituent Photos Filmstrip**: Displays all constituent source photos along the bottom with individual aspect tags (`[ Portrait ]`, `[ Landscape ]`).
+     - **Contextual Action Bar**:
+       - *Unsaved Collages*: Provides `[ 💾 Save to Collages Folder ]`, instantly persisting the 4K composite to `data/originals/collages/` with the selected layout, triggering ingestion, and updating UI state in-place.
+       - *Saved Collages*: Shows `[ 🔍 Inspect in Lightbox ]`, `[ 📥 Download 4K ]`, and `[ 📁 View in Collages Album ]`.
+
+3. **Application-Level Lightbox Inspection Parity (`src/App.tsx`)**:
+   - Wired `onPhotoClick?: (idx: number, photos: PhotoItem[]) => void` into `<StoriesView>`, matching the existing integration pattern used in `AlbumsView`, `PeopleView`, and `DocumentsView`.
+   - Clicking `[ 🔍 Inspect in Lightbox ]` immediately loads the 4K collage asset into the main Lightbox viewer, enabling full-resolution zooming, pan navigation, EXIF details, and keyboard shortcuts.
+
+### Functional Decision Points & Rationale
+- **Top Segment Switcher vs. Hidden Sub-Shelves**:
+  - *Problem*: Having 4K Collages positioned underneath multiple rows of Milestone Stories made them invisible to users unless they scrolled all the way to the bottom.
+  - *Decision*: Provide top-level segment pills (`All Creations`, `Stories`, `Collages`) and an immediate jump button.
+  - *Rationale*: Guarantees instant discoverability on page load without requiring blind vertical scrolling.
+- **Interactive Studio Modal vs. Direct Lightbox on Card Click**:
+  - *Problem*: Unsaved collages do not yet have a single photo ID in the database; attempting to open an unsaved collage in the Lightbox would fail or require premature file creation.
+  - *Decision*: Open an interactive Collage Studio modal on card click. Unsaved collages can be inspected, have their layout modified, and be saved with one click. Saved collages can be inspected in the Lightbox directly from the modal or card.
+  - *Rationale*: Provides a creative workspace for users to customize compositions while maintaining complete zero-trust integrity.
+- **Architectural Parity for Lightbox Invocation**:
+  - *Decision*: Pass `onPhotoClick` from `App.tsx` into `StoriesView.tsx`.
+  - *Rationale*: Leverages the battle-tested, high-performance `Lightbox.tsx` component without re-implementing duplicate viewing logic.
+
+### Technical Touchpoints
+- `src/App.tsx`: Passed `onPhotoClick` handler to `<StoriesView />`.
+- `src/components/StoriesView.tsx`:
+  - Added `StoriesViewProps.onPhotoClick` interface definition.
+  - Added `activeSection`, `previewCollage`, `previewLayout`, and `collagesShelfRef` states.
+  - Implemented `renderCollageCanvas` helper for unified 16:9 composite rendering across cards and modal.
+  - Added full-screen `CollagePreviewModal` component with live layout switching, filmstrip, and action buttons.
+  - Added top segment switcher pills and dual count header capsule.
+- `docs/features_and_functional_decisions.md`: Documented Section 80 in the living registry.
+
+### State & Lifecycle Impact
+- Zero TypeScript compiler errors (`npx tsc --noEmit` verified).
+- 100% backend test pass rate across all collage and creative tests (`pytest engine/tests/test_collages.py`).
+- Users can instantly discover collages from the top header, click any card to inspect in full-screen, switch layouts dynamically, save directly to `data/originals/collages/`, and inspect saved creations in the Lightbox.
+
+
 
 
 

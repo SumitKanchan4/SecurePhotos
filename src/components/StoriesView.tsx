@@ -18,9 +18,12 @@ import {
   Bookmark,
   Search,
   Download,
-  Check
+  Check,
+  Maximize2,
+  ChevronDown,
+  LayoutGrid
 } from "lucide-react";
-import { StoryModel, MusicTrackItem, SuggestedCollage } from "../types";
+import { StoryModel, MusicTrackItem, SuggestedCollage, PhotoItem } from "../types";
 import { NavTab, useAppStore } from "../store/useAppStore";
 
 const API_BASE = "http://127.0.0.1:8000/api";
@@ -28,6 +31,7 @@ const API_BASE = "http://127.0.0.1:8000/api";
 interface StoriesViewProps {
   onPlayStory: (storyId: number) => void;
   onNavigate: (tab: NavTab) => void;
+  onPhotoClick?: (idx: number, photos: PhotoItem[]) => void;
 }
 
 /**
@@ -81,23 +85,143 @@ function getArchetypeDetails(storyType?: string, title?: string) {
 }
 
 /**
+ * Renders the 16:9 composite layout representation of a 4K collage.
+ */
+function renderCollageCanvas(
+  photoIds: number[],
+  layout: string,
+  isSaved?: boolean,
+  savedPhotoId?: number | null,
+  onImageClick?: () => void
+) {
+  if (isSaved && savedPhotoId) {
+    return (
+      <div 
+        onClick={onImageClick}
+        style={{ width: "100%", height: "100%", position: "relative", cursor: onImageClick ? "pointer" : "default" }}
+      >
+        <img
+          src={`${API_BASE}/photos/${savedPhotoId}/preview`}
+          alt="4K Collage"
+          style={{ width: "100%", height: "100%", objectFit: "contain", backgroundColor: "#000000" }}
+        />
+        {onImageClick && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: "10px",
+              right: "10px",
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              padding: "4px 10px",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "rgba(0, 0, 0, 0.65)",
+              backdropFilter: "blur(6px)",
+              color: "#ffffff",
+              fontSize: "11px",
+              fontWeight: 600,
+              pointerEvents: "none",
+            }}
+          >
+            <Maximize2 size={11} />
+            <span>Click to inspect in Lightbox</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Dynamic layout preview
+  if (layout === "hero_grid" && photoIds.length >= 3) {
+    return (
+      <div style={{ display: "flex", width: "100%", height: "100%", gap: "2px" }}>
+        <div style={{ flex: 1.6, height: "100%", overflow: "hidden" }}>
+          <img
+            src={`${API_BASE}/photos/${photoIds[0]}/thumbnail`}
+            alt=""
+            loading="lazy"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        </div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "2px", height: "100%" }}>
+          {photoIds.slice(1, 3).map((pid) => (
+            <div key={pid} style={{ flex: 1, overflow: "hidden" }}>
+              <img
+                src={`${API_BASE}/photos/${pid}/thumbnail`}
+                alt=""
+                loading="lazy"
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (photoIds.length === 4) {
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", gap: "2px", width: "100%", height: "100%" }}>
+        {photoIds.slice(0, 4).map((pid) => (
+          <div key={pid} style={{ overflow: "hidden", width: "100%", height: "100%" }}>
+            <img
+              src={`${API_BASE}/photos/${pid}/thumbnail`}
+              alt=""
+              loading="lazy"
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Default: 3-column vertical portrait mosaic (fits 9:16 mobile photos without cutting subjects)
+  return (
+    <div style={{ display: "flex", width: "100%", height: "100%", gap: "2px" }}>
+      {photoIds.slice(0, 3).map((pid) => (
+        <div key={pid} style={{ flex: 1, height: "100%", overflow: "hidden" }}>
+          <img
+            src={`${API_BASE}/photos/${pid}/thumbnail`}
+            alt=""
+            loading="lazy"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
  * StoriesView Component (AI Cinema Studio)
  *
  * Dedicated cinema & memory theater for AI-curated nostalgia montages,
  * "Through the Years" journeys, Vacation bursts, On This Day anniversaries,
  * and user soundtracks with automated mood tagging.
  */
-export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigate }) => {
+export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigate, onPhotoClick }) => {
   const [stories, setStories] = useState<StoryModel[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Top segment switcher state: "all" | "stories" | "collages"
+  const [activeSection, setActiveSection] = useState<"all" | "stories" | "collages">("all");
 
   // Intelligent 4K Collages state
   const [collages, setCollages] = useState<SuggestedCollage[]>([]);
   const [isLoadingCollages, setIsLoadingCollages] = useState<boolean>(true);
   const [savingCollageId, setSavingCollageId] = useState<string | null>(null);
   const showToast = useAppStore((state) => state.showToast);
+
+  // Collage Preview & Studio Modal state
+  const [previewCollage, setPreviewCollage] = useState<SuggestedCollage | null>(null);
+  const [previewLayout, setPreviewLayout] = useState<string>("mosaic");
+
+  // Ref to collages shelf for smooth scroll
+  const collagesShelfRef = useRef<HTMLDivElement | null>(null);
 
   // Soundtracks modal state
   const [showMusicModal, setShowMusicModal] = useState<boolean>(false);
@@ -183,10 +307,44 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
     }
   }, []);
 
-  const handleSaveCollage = async (e: React.MouseEvent, suggestion: SuggestedCollage) => {
-    e.stopPropagation();
+  const handleOpenCollagePreview = (collage: SuggestedCollage) => {
+    setPreviewCollage(collage);
+    setPreviewLayout(collage.layout || "mosaic");
+  };
+
+  const handleOpenLightbox = async (photoId: number) => {
+    if (!onPhotoClick) return;
+    try {
+      const res = await fetch(`${API_BASE}/photos/${photoId}`);
+      if (res.ok) {
+        const photoData = await res.json();
+        onPhotoClick(0, [photoData]);
+        setPreviewCollage(null);
+        return;
+      }
+    } catch (err) {
+      console.error("Failed to load photo for lightbox:", err);
+    }
+    // Fallback minimal PhotoItem
+    onPhotoClick(0, [{
+      id: photoId,
+      filename: `Collage_${photoId}.webp`,
+      filepath: "",
+      file_size: 0,
+      mime_type: "image/webp",
+      is_favorite: false,
+      is_encrypted: false,
+      is_optimized: true,
+      is_enhanced: true,
+    }]);
+    setPreviewCollage(null);
+  };
+
+  const handleSaveCollage = async (e: React.MouseEvent | null, suggestion: SuggestedCollage, layoutOverride?: string) => {
+    if (e) e.stopPropagation();
     if (savingCollageId || suggestion.is_already_saved) return;
     setSavingCollageId(suggestion.id);
+    const layoutToUse = layoutOverride || suggestion.layout || "mosaic";
     try {
       const res = await fetch(`${API_BASE}/creatives/suggestions/save`, {
         method: "POST",
@@ -194,19 +352,24 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
         body: JSON.stringify({
           suggestion_id: suggestion.id,
           photo_ids: suggestion.photo_ids,
-          layout: suggestion.layout,
+          layout: layoutToUse,
           title: suggestion.title,
         }),
       });
       if (res.ok) {
         const result = await res.json();
+        const updatedCollage = {
+          ...suggestion,
+          layout: layoutToUse,
+          is_already_saved: true,
+          saved_photo_id: result.photo_id,
+        };
         setCollages((prev) =>
-          prev.map((c) =>
-            c.id === suggestion.id
-              ? { ...c, is_already_saved: true, saved_photo_id: result.photo_id }
-              : c
-          )
+          prev.map((c) => (c.id === suggestion.id ? updatedCollage : c))
         );
+        if (previewCollage && previewCollage.id === suggestion.id) {
+          setPreviewCollage(updatedCollage);
+        }
         showToast("Saved 4K collage to your Collages collection", "success");
         window.dispatchEvent(new CustomEvent("library-changed"));
       } else {
@@ -482,7 +645,8 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
             style={{
               display: "inline-flex",
               alignItems: "center",
-              padding: "2px 8px",
+              gap: "6px",
+              padding: "2px 10px",
               borderRadius: "var(--radius-full)",
               fontSize: "11px",
               fontWeight: 700,
@@ -492,7 +656,9 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
               fontFamily: "var(--font-mono)",
             }}
           >
-            {stories.length} {stories.length === 1 ? "Story" : "Stories"} Active
+            <span>{stories.length} Stories</span>
+            <span style={{ opacity: 0.4 }}>•</span>
+            <span style={{ color: "var(--accent-primary)" }}>{collages.length} Collages</span>
           </span>
         </div>
 
@@ -524,6 +690,121 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
         </div>
       </div>
 
+      {/* ── Top Segment Switcher: All Creations | Stories | 4K Collages ────── */}
+      <div 
+        style={{ 
+          display: "flex", 
+          alignItems: "center", 
+          justifyContent: "space-between", 
+          gap: "12px", 
+          flexWrap: "wrap",
+          padding: "2px 0",
+        }}
+      >
+        <div 
+          style={{ 
+            display: "inline-flex", 
+            alignItems: "center", 
+            gap: "4px", 
+            padding: "4px", 
+            borderRadius: "var(--radius-full)", 
+            backgroundColor: "var(--glass-surface)", 
+            border: "1px solid var(--glass-border)", 
+            backdropFilter: "blur(16px)" 
+          }}
+        >
+          <button
+            onClick={() => setActiveSection("all")}
+            className="clickable"
+            style={{
+              padding: "6px 14px",
+              borderRadius: "var(--radius-full)",
+              fontSize: "12px",
+              fontWeight: 700,
+              border: "none",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+              backgroundColor: activeSection === "all" ? "var(--accent-primary)" : "transparent",
+              color: activeSection === "all" ? "#ffffff" : "var(--text-secondary)",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <Sparkles size={13} />
+            <span>All Creations ({stories.length + collages.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSection("stories")}
+            className="clickable"
+            style={{
+              padding: "6px 14px",
+              borderRadius: "var(--radius-full)",
+              fontSize: "12px",
+              fontWeight: 700,
+              border: "none",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+              backgroundColor: activeSection === "stories" ? "var(--accent-primary)" : "transparent",
+              color: activeSection === "stories" ? "#ffffff" : "var(--text-secondary)",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <Play size={13} />
+            <span>Milestone Stories ({stories.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSection("collages")}
+            className="clickable"
+            style={{
+              padding: "6px 14px",
+              borderRadius: "var(--radius-full)",
+              fontSize: "12px",
+              fontWeight: 700,
+              border: "none",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+              backgroundColor: activeSection === "collages" ? "var(--accent-primary)" : "transparent",
+              color: activeSection === "collages" ? "#ffffff" : "var(--text-secondary)",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <Layers size={13} />
+            <span>4K Collages ({collages.length})</span>
+          </button>
+        </div>
+
+        {activeSection === "all" && collages.length > 0 && (
+          <button
+            onClick={() => collagesShelfRef.current?.scrollIntoView({ behavior: "smooth" })}
+            className="clickable"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              padding: "6px 14px",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "var(--glass-pill-bg)",
+              border: "1px solid var(--glass-border)",
+              color: "var(--text-secondary)",
+              fontSize: "11px",
+              fontWeight: 600,
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <span>Jump to 4K Collages ({collages.length})</span>
+            <ChevronDown size={13} style={{ color: "var(--accent-primary)" }} />
+          </button>
+        )}
+      </div>
+
       {error && (
         <div 
           style={{ 
@@ -539,491 +820,492 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
         </div>
       )}
 
-      {/* ── Empty State when no stories curated ──────────────── */}
-      {stories.length === 0 ? (
-        <div
-          className="glass-panel"
-          style={{
-            borderRadius: "var(--radius-lg)",
-            border: "1px solid var(--border-subtle)",
-            padding: "48px 24px",
-            textAlign: "center",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "14px",
-          }}
-        >
-          <Sparkles size={34} style={{ color: "var(--accent-primary)" }} />
-          <h3 style={{ fontSize: "16px", fontWeight: 700, margin: 0 }}>
-            No Milestone Stories Curated Yet
-          </h3>
-          <p style={{ fontSize: "13px", color: "var(--text-muted)", maxWidth: "420px", margin: 0 }}>
-            Stories are synthesized automatically as memories unfold. You can also generate new cinematic highlights right now.
-          </p>
-          <button
-            onClick={handleGenerateStories}
-            disabled={isGenerating}
-            className="clickable"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "8px 20px",
-              borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--accent-primary)",
-              color: "#ffffff",
-              fontSize: "12px",
-              fontWeight: 700,
-              border: "none",
-              cursor: isGenerating ? "not-allowed" : "pointer",
-              marginTop: "4px",
-            }}
-          >
-            <Sparkles size={13} className={isGenerating ? "spin-animation" : ""} />
-            <span>{isGenerating ? "Synthesizing..." : "Synthesize Highlights Now"}</span>
-          </button>
-        </div>
-      ) : (
-        /* ── Milestone Stories Collection Shelf ──────────────── */
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <h2 style={{ fontSize: "15px", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
-              <Layers size={16} style={{ color: "var(--accent-primary)" }} />
-              Milestone Stories Collection
-            </h2>
-            <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-              {stories.length} {stories.length === 1 ? "story" : "stories"} available
-            </span>
-          </div>
-
-          <div 
-            style={{ 
-              display: "grid", 
-              gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", 
-              gap: "14px" 
-            }}
-          >
-            {stories.map((story) => {
-              const coverId = story.cover_photo_id || (story.slides && story.slides[0]?.photo_id);
-              const cardArchetype = getArchetypeDetails(story.story_type, story.title);
-
-              return (
-                <div
-                  key={story.id}
-                  onClick={() => onPlayStory(story.id)}
-                  className="clickable glass-panel"
-                  style={{
-                    borderRadius: "var(--radius-md)",
-                    overflow: "hidden",
-                    border: "1px solid var(--border-subtle)",
-                    backgroundColor: "var(--bg-surface)",
-                    position: "relative",
-                    display: "flex",
-                    flexDirection: "column",
-                    cursor: "pointer",
-                    transition: "transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease",
-                    boxShadow: "var(--shadow-sm)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "var(--accent-primary)";
-                    e.currentTarget.style.transform = "translateY(-2px)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "var(--border-subtle)";
-                    e.currentTarget.style.transform = "none";
-                  }}
-                >
-                  {/* Card Cover Preview */}
-                  <div 
-                    style={{ 
-                      height: "130px", 
-                      position: "relative", 
-                      backgroundColor: "rgba(15, 23, 42, 0.6)",
-                      overflow: "hidden" 
-                    }}
-                  >
-                    {coverId ? (
-                      <img 
-                        src={`${API_BASE}/photos/${coverId}/thumbnail`} 
-                        alt={story.title}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          transition: "transform 0.3s ease",
-                        }}
-                      />
-                    ) : (
-                      <div 
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          background: "linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <Sparkles size={28} style={{ color: "rgba(255,255,255,0.4)" }} />
-                      </div>
-                    )}
-
-                    {/* Gradient Overlay */}
-                    <div 
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        background: "linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 60%)",
-                      }}
-                    />
-
-                    {/* Top Floating Archetype & Saved Badges */}
-                    <div style={{ position: "absolute", top: "8px", left: "8px", display: "flex", gap: "6px", alignItems: "center", zIndex: 2 }}>
-                      <span 
-                        style={{
-                          fontSize: "10px",
-                          fontWeight: 700,
-                          backgroundColor: cardArchetype.bg,
-                          color: cardArchetype.color,
-                          border: `1px solid ${cardArchetype.border}`,
-                          backdropFilter: "blur(8px)",
-                          padding: "2px 8px",
-                          borderRadius: "var(--radius-full)",
-                        }}
-                      >
-                        {cardArchetype.label}
-                      </span>
-                      {story.is_saved && (
-                        <span
-                          style={{
-                            fontSize: "10px",
-                            fontWeight: 700,
-                            backgroundColor: "rgba(59, 130, 246, 0.9)",
-                            color: "#ffffff",
-                            backdropFilter: "blur(8px)",
-                            padding: "2px 7px",
-                            borderRadius: "var(--radius-full)",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "3px",
-                          }}
-                        >
-                          <Bookmark size={9} fill="#ffffff" />
-                          Saved
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Top Right Save & Delete Action Buttons */}
-                    <div 
-                      style={{ 
-                        position: "absolute", 
-                        top: "8px", 
-                        right: "8px", 
-                        display: "flex", 
-                        alignItems: "center", 
-                        gap: "5px",
-                        zIndex: 3,
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        onClick={(e) => handleToggleSaveStory(e, story.id, story.is_saved)}
-                        className="clickable"
-                        title={story.is_saved ? "Remove from saved" : "Save story"}
-                        style={{
-                          width: "28px",
-                          height: "28px",
-                          borderRadius: "50%",
-                          backgroundColor: story.is_saved ? "var(--accent-primary)" : "rgba(0, 0, 0, 0.55)",
-                          backdropFilter: "blur(6px)",
-                          border: story.is_saved ? "1px solid var(--accent-primary)" : "1px solid rgba(255, 255, 255, 0.25)",
-                          color: "#ffffff",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <Bookmark size={12} fill={story.is_saved ? "#ffffff" : "none"} />
-                      </button>
-                      <button
-                        onClick={(e) => handleDeleteStory(e, story.id)}
-                        className="clickable"
-                        title="Delete story"
-                        style={{
-                          width: "28px",
-                          height: "28px",
-                          borderRadius: "50%",
-                          backgroundColor: "rgba(0, 0, 0, 0.55)",
-                          backdropFilter: "blur(6px)",
-                          border: "1px solid rgba(255, 255, 255, 0.25)",
-                          color: "rgba(255, 255, 255, 0.8)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          cursor: "pointer",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = "rgba(239, 68, 68, 0.85)";
-                          e.currentTarget.style.borderColor = "transparent";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = "rgba(0, 0, 0, 0.55)";
-                          e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.25)";
-                        }}
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-
-                    {/* Play Icon Pill on Corner */}
-                    <div 
-                      style={{
-                        position: "absolute",
-                        bottom: "8px",
-                        right: "8px",
-                        width: "28px",
-                        height: "28px",
-                        borderRadius: "50%",
-                        backgroundColor: "rgba(255, 255, 255, 0.9)",
-                        color: "#0f172a",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-                      }}
-                    >
-                      <Play size={12} fill="#0f172a" />
-                    </div>
-                  </div>
-
-                  {/* Card Info Footer */}
-                  <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <div style={{ fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {story.title}
-                    </div>
-                    <div style={{ fontSize: "11px", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span>{story.slides_count || story.slides?.length || 0} moments</span>
-                      <span>•</span>
-                      <span style={{ textTransform: "capitalize" }}>{story.vibe_mood} vibe</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ── Intelligent 4K Collages Shelf ──────────────── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "14px", marginTop: stories.length > 0 ? "24px" : "8px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h2 style={{ fontSize: "15px", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
-            <Sparkles size={16} style={{ color: "var(--accent-primary)" }} />
-            Intelligent 4K Collages
-          </h2>
-          <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-            {collages.length} {collages.length === 1 ? "composition" : "compositions"} ready
-          </span>
-        </div>
-
-        {isLoadingCollages ? (
-          <div style={{ padding: "30px", textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>
-            Curating intelligent 4K collage compositions...
-          </div>
-        ) : collages.length === 0 ? (
+      {/* ── Milestone Stories Section ──────────────── */}
+      {(activeSection === "all" || activeSection === "stories") && (
+        stories.length === 0 ? (
           <div
             className="glass-panel"
             style={{
-              padding: "24px",
-              borderRadius: "var(--radius-md)",
-              border: "1px dashed var(--border-subtle)",
+              borderRadius: "var(--radius-lg)",
+              border: "1px solid var(--border-subtle)",
+              padding: "48px 24px",
               textAlign: "center",
-              color: "var(--text-muted)",
-              fontSize: "12px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "14px",
             }}
           >
-            Collages will appear automatically as you add more photos and tag close ones.
+            <Sparkles size={34} style={{ color: "var(--accent-primary)" }} />
+            <h3 style={{ fontSize: "16px", fontWeight: 700, margin: 0 }}>
+              No Milestone Stories Curated Yet
+            </h3>
+            <p style={{ fontSize: "13px", color: "var(--text-muted)", maxWidth: "420px", margin: 0 }}>
+              Stories are synthesized automatically as memories unfold. You can also generate new cinematic highlights right now.
+            </p>
+            <button
+              onClick={handleGenerateStories}
+              disabled={isGenerating}
+              className="clickable"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "8px 20px",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "var(--accent-primary)",
+                color: "#ffffff",
+                fontSize: "12px",
+                fontWeight: 700,
+                border: "none",
+                cursor: isGenerating ? "not-allowed" : "pointer",
+                marginTop: "4px",
+              }}
+            >
+              <Sparkles size={13} className={isGenerating ? "spin-animation" : ""} />
+              <span>{isGenerating ? "Synthesizing..." : "Synthesize Highlights Now"}</span>
+            </button>
           </div>
         ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-              gap: "16px",
-            }}
-          >
-            {collages.map((c) => {
-              const isSaved = c.is_already_saved;
-              const isSaving = savingCollageId === c.id;
-              const layoutLabel = c.layout === "mosaic" ? "4K Mosaic" : c.layout === "hero_grid" ? "4K Hero Grid" : "4K Treemap";
+          /* ── Milestone Stories Collection Shelf ──────────────── */
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h2 style={{ fontSize: "15px", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+                <Layers size={16} style={{ color: "var(--accent-primary)" }} />
+                Milestone Stories Collection
+              </h2>
+              <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                {stories.length} {stories.length === 1 ? "story" : "stories"} available
+              </span>
+            </div>
 
-              return (
-                <div
-                  key={c.id}
-                  className="glass-panel"
-                  style={{
-                    borderRadius: "var(--radius-md)",
-                    overflow: "hidden",
-                    border: "1px solid var(--border-subtle)",
-                    backgroundColor: "var(--bg-surface)",
-                    display: "flex",
-                    flexDirection: "column",
-                    boxShadow: "var(--shadow-sm)",
-                    transition: "transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "var(--accent-primary)";
-                    e.currentTarget.style.transform = "translateY(-2px)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "var(--border-subtle)";
-                    e.currentTarget.style.transform = "none";
-                  }}
-                >
-                  {/* 16:9 Composite Canvas Preview */}
+            <div 
+              style={{ 
+                display: "grid", 
+                gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", 
+                gap: "14px" 
+              }}
+            >
+              {stories.map((story) => {
+                const coverId = story.cover_photo_id || (story.slides && story.slides[0]?.photo_id);
+                const cardArchetype = getArchetypeDetails(story.story_type, story.title);
+
+                return (
                   <div
+                    key={story.id}
+                    onClick={() => onPlayStory(story.id)}
+                    className="clickable glass-panel"
                     style={{
-                      width: "100%",
-                      aspectRatio: "16 / 9",
-                      position: "relative",
-                      backgroundColor: "rgba(15, 23, 42, 0.7)",
+                      borderRadius: "var(--radius-md)",
                       overflow: "hidden",
+                      border: "1px solid var(--border-subtle)",
+                      backgroundColor: "var(--bg-surface)",
+                      position: "relative",
+                      display: "flex",
+                      flexDirection: "column",
+                      cursor: "pointer",
+                      transition: "transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease",
+                      boxShadow: "var(--shadow-sm)",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = "var(--accent-primary)";
+                      e.currentTarget.style.transform = "translateY(-2px)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = "var(--border-subtle)";
+                      e.currentTarget.style.transform = "none";
                     }}
                   >
-                    {isSaved && c.saved_photo_id ? (
-                      <img
-                        src={`${API_BASE}/photos/${c.saved_photo_id}/preview`}
-                        alt={c.title}
-                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                      />
-                    ) : (
-                      /* Dynamic multi-photo layout representation */
-                      c.layout === "hero_grid" && c.photo_ids.length >= 3 ? (
-                        <div style={{ display: "flex", width: "100%", height: "100%", gap: "2px" }}>
-                          <div style={{ flex: 1.6, height: "100%", overflow: "hidden" }}>
-                            <img
-                              src={`${API_BASE}/photos/${c.photo_ids[0]}/thumbnail`}
-                              alt=""
-                              loading="lazy"
-                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                            />
-                          </div>
-                          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "2px", height: "100%" }}>
-                            {c.photo_ids.slice(1, 3).map((pid) => (
-                              <div key={pid} style={{ flex: 1, overflow: "hidden" }}>
-                                <img
-                                  src={`${API_BASE}/photos/${pid}/thumbnail`}
-                                  alt=""
-                                  loading="lazy"
-                                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : c.photo_ids.length === 4 ? (
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", gap: "2px", width: "100%", height: "100%" }}>
-                          {c.photo_ids.slice(0, 4).map((pid) => (
-                            <div key={pid} style={{ overflow: "hidden", width: "100%", height: "100%" }}>
-                              <img
-                                src={`${API_BASE}/photos/${pid}/thumbnail`}
-                                alt=""
-                                loading="lazy"
-                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        /* 3 vertical portrait columns filling 16:9 4K canvas without cropping */
-                        <div style={{ display: "flex", width: "100%", height: "100%", gap: "2px" }}>
-                          {c.photo_ids.slice(0, 3).map((pid) => (
-                            <div key={pid} style={{ flex: 1, height: "100%", overflow: "hidden" }}>
-                              <img
-                                src={`${API_BASE}/photos/${pid}/thumbnail`}
-                                alt=""
-                                loading="lazy"
-                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      )
-                    )}
-
-                    {/* Gradient Overlay for badges */}
-                    <div
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        background: "linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 40%)",
-                        pointerEvents: "none",
+                    {/* Card Cover Preview */}
+                    <div 
+                      style={{ 
+                        height: "130px", 
+                        position: "relative", 
+                        backgroundColor: "rgba(15, 23, 42, 0.6)",
+                        overflow: "hidden" 
                       }}
-                    />
+                    >
+                      {coverId ? (
+                        <img 
+                          src={`${API_BASE}/photos/${coverId}/thumbnail`} 
+                          alt={story.title}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                            transition: "transform 0.3s ease",
+                          }}
+                        />
+                      ) : (
+                        <div 
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            background: "linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Sparkles size={28} style={{ color: "rgba(255,255,255,0.4)" }} />
+                        </div>
+                      )}
 
-                    {/* Top Left Layout & Cluster Badges */}
-                    <div style={{ position: "absolute", top: "8px", left: "8px", display: "flex", gap: "6px", alignItems: "center", zIndex: 2 }}>
-                      <span
+                      {/* Gradient Overlay */}
+                      <div 
                         style={{
-                          fontSize: "10px",
-                          fontWeight: 700,
-                          backgroundColor: "rgba(15, 23, 42, 0.75)",
-                          color: "#ffffff",
-                          border: "1px solid rgba(255, 255, 255, 0.2)",
-                          backdropFilter: "blur(8px)",
-                          padding: "2px 8px",
-                          borderRadius: "var(--radius-full)",
-                          letterSpacing: "0.02em",
+                          position: "absolute",
+                          inset: 0,
+                          background: "linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 60%)",
+                        }}
+                      />
+
+                      {/* Top Floating Archetype & Saved Badges */}
+                      <div style={{ position: "absolute", top: "8px", left: "8px", display: "flex", gap: "6px", alignItems: "center", zIndex: 2 }}>
+                        <span 
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            backgroundColor: cardArchetype.bg,
+                            color: cardArchetype.color,
+                            border: `1px solid ${cardArchetype.border}`,
+                            backdropFilter: "blur(8px)",
+                            padding: "2px 8px",
+                            borderRadius: "var(--radius-full)",
+                          }}
+                        >
+                          {cardArchetype.label}
+                        </span>
+                        {story.is_saved && (
+                          <span
+                            style={{
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              backgroundColor: "rgba(59, 130, 246, 0.9)",
+                              color: "#ffffff",
+                              backdropFilter: "blur(8px)",
+                              padding: "2px 7px",
+                              borderRadius: "var(--radius-full)",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "3px",
+                            }}
+                          >
+                            <Bookmark size={9} fill="#ffffff" />
+                            Saved
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Top Right Save & Delete Action Buttons */}
+                      <div 
+                        style={{ 
+                          position: "absolute", 
+                          top: "8px", 
+                          right: "8px", 
+                          display: "flex", 
+                          alignItems: "center", 
+                          gap: "5px",
+                          zIndex: 3,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={(e) => handleToggleSaveStory(e, story.id, story.is_saved)}
+                          className="clickable"
+                          title={story.is_saved ? "Remove from saved" : "Save story"}
+                          style={{
+                            width: "28px",
+                            height: "28px",
+                            borderRadius: "50%",
+                            backgroundColor: story.is_saved ? "var(--accent-primary)" : "rgba(0, 0, 0, 0.55)",
+                            backdropFilter: "blur(6px)",
+                            border: story.is_saved ? "1px solid var(--accent-primary)" : "1px solid rgba(255, 255, 255, 0.25)",
+                            color: "#ffffff",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <Bookmark size={12} fill={story.is_saved ? "#ffffff" : "none"} />
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteStory(e, story.id)}
+                          className="clickable"
+                          title="Delete story"
+                          style={{
+                            width: "28px",
+                            height: "28px",
+                            borderRadius: "50%",
+                            backgroundColor: "rgba(0, 0, 0, 0.55)",
+                            backdropFilter: "blur(6px)",
+                            border: "1px solid rgba(255, 255, 255, 0.25)",
+                            color: "rgba(255, 255, 255, 0.8)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = "rgba(239, 68, 68, 0.85)";
+                            e.currentTarget.style.borderColor = "transparent";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "rgba(0, 0, 0, 0.55)";
+                            e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.25)";
+                          }}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+
+                      {/* Play Icon Pill on Corner */}
+                      <div 
+                        style={{
+                          position: "absolute",
+                          bottom: "8px",
+                          right: "8px",
+                          width: "28px",
+                          height: "28px",
+                          borderRadius: "50%",
+                          backgroundColor: "rgba(255, 255, 255, 0.9)",
+                          color: "#0f172a",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
                         }}
                       >
-                        {layoutLabel}
-                      </span>
-                      {isSaved && (
+                        <Play size={12} fill="#0f172a" />
+                      </div>
+                    </div>
+
+                    {/* Card Info Footer */}
+                    <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <div style={{ fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {story.title}
+                      </div>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span>{story.slides_count || story.slides?.length || 0} moments</span>
+                        <span>•</span>
+                        <span style={{ textTransform: "capitalize" }}>{story.vibe_mood} vibe</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )
+      )}
+
+      {/* ── Intelligent 4K Collages Shelf ──────────────── */}
+      {(activeSection === "all" || activeSection === "collages") && (
+        <div 
+          ref={collagesShelfRef} 
+          style={{ 
+            display: "flex", 
+            flexDirection: "column", 
+            gap: "14px", 
+            marginTop: (activeSection === "all" && stories.length > 0) ? "24px" : "8px" 
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <h2 style={{ fontSize: "15px", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+              <Sparkles size={16} style={{ color: "var(--accent-primary)" }} />
+              Intelligent 4K Collages
+            </h2>
+            <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+              {collages.length} {collages.length === 1 ? "composition" : "compositions"} ready
+            </span>
+          </div>
+
+          {isLoadingCollages ? (
+            <div style={{ padding: "30px", textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>
+              Curating intelligent 4K collage compositions...
+            </div>
+          ) : collages.length === 0 ? (
+            <div
+              className="glass-panel"
+              style={{
+                padding: "24px",
+                borderRadius: "var(--radius-md)",
+                border: "1px dashed var(--border-subtle)",
+                textAlign: "center",
+                color: "var(--text-muted)",
+                fontSize: "12px",
+              }}
+            >
+              Collages will appear automatically as you add more photos and tag close ones.
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+                gap: "16px",
+              }}
+            >
+              {collages.map((c) => {
+                const isSaved = c.is_already_saved;
+                const isSaving = savingCollageId === c.id;
+                const layoutLabel = c.layout === "mosaic" ? "4K Mosaic" : c.layout === "hero_grid" ? "4K Hero Grid" : "4K Treemap";
+
+                return (
+                  <div
+                    key={c.id}
+                    onClick={() => handleOpenCollagePreview(c)}
+                    className="clickable glass-panel"
+                    style={{
+                      borderRadius: "var(--radius-md)",
+                      overflow: "hidden",
+                      border: "1px solid var(--border-subtle)",
+                      backgroundColor: "var(--bg-surface)",
+                      display: "flex",
+                      flexDirection: "column",
+                      boxShadow: "var(--shadow-sm)",
+                      cursor: "pointer",
+                      transition: "transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = "var(--accent-primary)";
+                      e.currentTarget.style.transform = "translateY(-2px)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = "var(--border-subtle)";
+                      e.currentTarget.style.transform = "none";
+                    }}
+                  >
+                    {/* 16:9 Composite Canvas Preview */}
+                    <div
+                      style={{
+                        width: "100%",
+                        aspectRatio: "16 / 9",
+                        position: "relative",
+                        backgroundColor: "rgba(15, 23, 42, 0.7)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {renderCollageCanvas(
+                        c.photo_ids,
+                        c.layout,
+                        isSaved,
+                        c.saved_photo_id,
+                        isSaved && c.saved_photo_id ? () => handleOpenLightbox(c.saved_photo_id!) : undefined
+                      )}
+
+                      {/* Top Left Layout & Cluster Badges */}
+                      <div style={{ position: "absolute", top: "8px", left: "8px", display: "flex", gap: "6px", alignItems: "center", zIndex: 2 }}>
                         <span
                           style={{
                             fontSize: "10px",
                             fontWeight: 700,
-                            backgroundColor: "rgba(16, 185, 129, 0.85)",
+                            backgroundColor: "rgba(15, 23, 42, 0.75)",
                             color: "#ffffff",
+                            border: "1px solid rgba(255, 255, 255, 0.2)",
                             backdropFilter: "blur(8px)",
-                            padding: "2px 7px",
+                            padding: "2px 8px",
                             borderRadius: "var(--radius-full)",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "3px",
+                            letterSpacing: "0.02em",
                           }}
                         >
-                          <Check size={9} strokeWidth={3} />
-                          Saved
+                          {layoutLabel}
                         </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Card Info & Action Footer */}
-                  <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: "10px" }}>
-                    <div>
-                      <div style={{ fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text-primary)" }}>
-                        {c.title}
-                      </div>
-                      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
-                        {c.subtitle}
-                      </div>
-                    </div>
-
-                    {/* Action Bar */}
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", paddingTop: "4px" }}>
-                      {isSaved ? (
-                        <>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onNavigate("albums");
+                        {isSaved && (
+                          <span
+                            style={{
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              backgroundColor: "rgba(16, 185, 129, 0.85)",
+                              color: "#ffffff",
+                              backdropFilter: "blur(8px)",
+                              padding: "2px 7px",
+                              borderRadius: "var(--radius-full)",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "3px",
                             }}
+                          >
+                            <Check size={9} strokeWidth={3} />
+                            Saved
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Card Info & Action Footer */}
+                    <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                      <div>
+                        <div style={{ fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text-primary)" }}>
+                          {c.title}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
+                          {c.subtitle}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "var(--accent-primary)", display: "flex", alignItems: "center", gap: "4px", marginTop: "4px" }}>
+                          <Maximize2 size={11} />
+                          <span>Click to open in 4K studio</span>
+                        </div>
+                      </div>
+
+                      {/* Action Bar */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", paddingTop: "4px" }}>
+                        {isSaved ? (
+                          <>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onNavigate("albums");
+                              }}
+                              className="clickable"
+                              style={{
+                                flex: 1,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "6px",
+                                padding: "6px 12px",
+                                borderRadius: "var(--radius-full)",
+                                backgroundColor: "var(--glass-pill-bg)",
+                                border: "1px solid var(--glass-border)",
+                                color: "var(--text-primary)",
+                                fontSize: "11px",
+                                fontWeight: 600,
+                                cursor: "pointer",
+                              }}
+                            >
+                              <Layers size={12} style={{ color: "var(--accent-primary)" }} />
+                              <span>View in Collages</span>
+                            </button>
+
+                            {c.saved_photo_id && (
+                              <button
+                                onClick={(e) => handleDownloadCollage(e, c.saved_photo_id)}
+                                className="clickable"
+                                title="Download 4K Collage"
+                                style={{
+                                  width: "30px",
+                                  height: "30px",
+                                  borderRadius: "50%",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  backgroundColor: "var(--glass-pill-bg)",
+                                  border: "1px solid var(--glass-border)",
+                                  color: "var(--text-secondary)",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <Download size={13} />
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          <button
+                            onClick={(e) => handleSaveCollage(e, c)}
+                            disabled={isSaving}
                             className="clickable"
                             style={{
                               flex: 1,
@@ -1031,85 +1313,452 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
                               alignItems: "center",
                               justifyContent: "center",
                               gap: "6px",
-                              padding: "6px 12px",
+                              padding: "7px 14px",
                               borderRadius: "var(--radius-full)",
-                              backgroundColor: "var(--glass-pill-bg)",
-                              border: "1px solid var(--glass-border)",
-                              color: "var(--text-primary)",
+                              backgroundColor: isSaving ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+                              border: isSaving ? "1px solid var(--accent-primary)" : "1px solid var(--glass-border)",
+                              color: isSaving ? "#ffffff" : "var(--accent-primary)",
                               fontSize: "11px",
-                              fontWeight: 600,
-                              cursor: "pointer",
+                              fontWeight: 700,
+                              cursor: isSaving ? "not-allowed" : "pointer",
+                              transition: "all 0.15s ease",
                             }}
                           >
-                            <Layers size={12} style={{ color: "var(--accent-primary)" }} />
-                            <span>View in Collages</span>
+                            {isSaving ? (
+                              <>
+                                <RefreshCw size={12} className="spin-animation" />
+                                <span>Saving 4K...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Bookmark size={12} />
+                                <span>Save to Collages</span>
+                              </>
+                            )}
                           </button>
-
-                          {c.saved_photo_id && (
-                            <button
-                              onClick={(e) => handleDownloadCollage(e, c.saved_photo_id)}
-                              className="clickable"
-                              title="Download 4K Collage"
-                              style={{
-                                width: "30px",
-                                height: "30px",
-                                borderRadius: "50%",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                backgroundColor: "var(--glass-pill-bg)",
-                                border: "1px solid var(--glass-border)",
-                                color: "var(--text-secondary)",
-                                cursor: "pointer",
-                              }}
-                            >
-                              <Download size={13} />
-                            </button>
-                          )}
-                        </>
-                      ) : (
-                        <button
-                          onClick={(e) => handleSaveCollage(e, c)}
-                          disabled={isSaving}
-                          className="clickable"
-                          style={{
-                            flex: 1,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: "6px",
-                            padding: "7px 14px",
-                            borderRadius: "var(--radius-full)",
-                            backgroundColor: isSaving ? "var(--accent-primary)" : "var(--glass-pill-bg)",
-                            border: isSaving ? "1px solid var(--accent-primary)" : "1px solid var(--glass-border)",
-                            color: isSaving ? "#ffffff" : "var(--accent-primary)",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            cursor: isSaving ? "not-allowed" : "pointer",
-                            transition: "all 0.15s ease",
-                          }}
-                        >
-                          {isSaving ? (
-                            <>
-                              <RefreshCw size={12} className="spin-animation" />
-                              <span>Saving 4K...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Bookmark size={12} />
-                              <span>Save to Collages</span>
-                            </>
-                          )}
-                        </button>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── 4K COLLAGE STUDIO & INSPECTION MODAL ──────────────── */}
+      {previewCollage && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.78)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            zIndex: 4000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPreviewCollage(null);
+          }}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              width: "100%",
+              maxWidth: "940px",
+              maxHeight: "92vh",
+              display: "flex",
+              flexDirection: "column",
+              borderRadius: "var(--radius-lg)",
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--glass-border)",
+              boxShadow: "0 24px 60px rgba(0, 0, 0, 0.6)",
+              overflow: "hidden",
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "16px 22px",
+                borderBottom: "1px solid var(--border-subtle)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "50%",
+                    backgroundColor: "rgba(59, 130, 246, 0.15)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--accent-primary)",
+                  }}
+                >
+                  <Sparkles size={18} />
                 </div>
-              );
-            })}
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <h3 style={{ fontSize: "16px", fontWeight: 800, margin: 0, color: "var(--text-primary)" }}>
+                      {previewCollage.title}
+                    </h3>
+                    {previewCollage.is_already_saved && (
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          backgroundColor: "rgba(16, 185, 129, 0.85)",
+                          color: "#ffffff",
+                          padding: "2px 7px",
+                          borderRadius: "var(--radius-full)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "3px",
+                        }}
+                      >
+                        <Check size={9} strokeWidth={3} />
+                        Saved in Collages
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
+                    {previewCollage.subtitle} • {previewCollage.photo_ids.length} constituent photos
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <button
+                  onClick={() => setPreviewCollage(null)}
+                  className="clickable"
+                  title="Close preview"
+                  style={{
+                    width: "32px",
+                    height: "32px",
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "var(--glass-pill-bg)",
+                    border: "1px solid var(--glass-border)",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body: Scrollable Canvas Container */}
+            <div
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                padding: "20px 22px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "16px",
+              }}
+            >
+              {/* If not saved: Layout Selection Pills Toolbar */}
+              {!previewCollage.is_already_saved && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
+                  <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <LayoutGrid size={14} style={{ color: "var(--accent-primary)" }} />
+                    <span>Choose Composition Layout:</span>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <button
+                      onClick={() => setPreviewLayout("mosaic")}
+                      className="clickable"
+                      style={{
+                        padding: "5px 12px",
+                        borderRadius: "var(--radius-full)",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        border: previewLayout === "mosaic" ? "1px solid var(--accent-primary)" : "1px solid var(--glass-border)",
+                        backgroundColor: previewLayout === "mosaic" ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+                        color: previewLayout === "mosaic" ? "#ffffff" : "var(--text-secondary)",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      3-Column Mosaic (Portrait-Optimized)
+                    </button>
+
+                    {previewCollage.photo_ids.length >= 3 && (
+                      <button
+                        onClick={() => setPreviewLayout("hero_grid")}
+                        className="clickable"
+                        style={{
+                          padding: "5px 12px",
+                          borderRadius: "var(--radius-full)",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          border: previewLayout === "hero_grid" ? "1px solid var(--accent-primary)" : "1px solid var(--glass-border)",
+                          backgroundColor: previewLayout === "hero_grid" ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+                          color: previewLayout === "hero_grid" ? "#ffffff" : "var(--text-secondary)",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        Hero Grid (1 Hero + 2 Stacked)
+                      </button>
+                    )}
+
+                    {previewCollage.photo_ids.length >= 4 && (
+                      <button
+                        onClick={() => setPreviewLayout("mosaic")}
+                        className="clickable"
+                        style={{
+                          padding: "5px 12px",
+                          borderRadius: "var(--radius-full)",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          border: previewLayout === "mosaic" ? "1px solid var(--accent-primary)" : "1px solid var(--glass-border)",
+                          backgroundColor: previewLayout === "mosaic" ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+                          color: previewLayout === "mosaic" ? "#ffffff" : "var(--text-secondary)",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        2x2 Grid (Balanced)
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 16:9 Large Preview Canvas */}
+              <div
+                style={{
+                  width: "100%",
+                  aspectRatio: "16 / 9",
+                  maxHeight: "56vh",
+                  backgroundColor: "rgba(10, 15, 30, 0.95)",
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--glass-border)",
+                  overflow: "hidden",
+                  boxShadow: "inset 0 0 20px rgba(0,0,0,0.5)",
+                  position: "relative",
+                }}
+              >
+                {renderCollageCanvas(
+                  previewCollage.photo_ids,
+                  previewLayout,
+                  previewCollage.is_already_saved,
+                  previewCollage.saved_photo_id,
+                  previewCollage.is_already_saved && previewCollage.saved_photo_id
+                    ? () => handleOpenLightbox(previewCollage.saved_photo_id!)
+                    : undefined
+                )}
+              </div>
+
+              {/* Constituent Photo Thumbnails Strip */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 600 }}>
+                  Constituent Media ({previewCollage.photo_ids.length} items):
+                </div>
+                <div style={{ display: "flex", gap: "8px", overflowX: "auto", paddingBottom: "4px" }}>
+                  {previewCollage.photo_ids.map((pid, idx) => (
+                    <div
+                      key={pid}
+                      onClick={() => onPhotoClick && handleOpenLightbox(pid)}
+                      className="clickable"
+                      title={`Constituent photo ${idx + 1} - click to view in Lightbox`}
+                      style={{
+                        width: "60px",
+                        height: "60px",
+                        borderRadius: "var(--radius-sm)",
+                        overflow: "hidden",
+                        border: "1px solid var(--border-subtle)",
+                        flexShrink: 0,
+                        position: "relative",
+                        cursor: onPhotoClick ? "pointer" : "default",
+                      }}
+                    >
+                      <img
+                        src={`${API_BASE}/photos/${pid}/thumbnail`}
+                        alt=""
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                      <span
+                        style={{
+                          position: "absolute",
+                          bottom: "2px",
+                          right: "2px",
+                          fontSize: "9px",
+                          fontWeight: 700,
+                          backgroundColor: "rgba(0,0,0,0.6)",
+                          color: "#ffffff",
+                          padding: "1px 4px",
+                          borderRadius: "4px",
+                        }}
+                      >
+                        #{idx + 1}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Action Footer */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "14px 22px",
+                borderTop: "1px solid var(--border-subtle)",
+                backgroundColor: "var(--glass-surface)",
+              }}
+            >
+              <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                Rendered at 4K UHD (3840×2160) with Lanczos high-acutance resampling
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                {previewCollage.is_already_saved ? (
+                  <>
+                    <button
+                      onClick={() => {
+                        setPreviewCollage(null);
+                        onNavigate("albums");
+                      }}
+                      className="clickable"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "8px 16px",
+                        borderRadius: "var(--radius-full)",
+                        backgroundColor: "var(--glass-pill-bg)",
+                        border: "1px solid var(--glass-border)",
+                        color: "var(--text-primary)",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Layers size={13} style={{ color: "var(--accent-primary)" }} />
+                      <span>View in Collages Album</span>
+                    </button>
+
+                    {previewCollage.saved_photo_id && (
+                      <>
+                        <button
+                          onClick={() => handleOpenLightbox(previewCollage.saved_photo_id!)}
+                          className="clickable"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            padding: "8px 16px",
+                            borderRadius: "var(--radius-full)",
+                            backgroundColor: "var(--accent-primary)",
+                            border: "1px solid var(--accent-primary)",
+                            color: "#ffffff",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <Maximize2 size={13} />
+                          <span>Inspect in Lightbox</span>
+                        </button>
+
+                        <button
+                          onClick={(e) => handleDownloadCollage(e, previewCollage.saved_photo_id)}
+                          className="clickable"
+                          title="Download 4K Collage"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            padding: "8px 14px",
+                            borderRadius: "var(--radius-full)",
+                            backgroundColor: "var(--glass-pill-bg)",
+                            border: "1px solid var(--glass-border)",
+                            color: "var(--text-secondary)",
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <Download size={13} />
+                          <span>Download 4K</span>
+                        </button>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setPreviewCollage(null)}
+                      className="clickable"
+                      style={{
+                        padding: "8px 16px",
+                        borderRadius: "var(--radius-full)",
+                        backgroundColor: "transparent",
+                        border: "1px solid var(--glass-border)",
+                        color: "var(--text-muted)",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      onClick={() => handleSaveCollage(null, previewCollage, previewLayout)}
+                      disabled={savingCollageId === previewCollage.id}
+                      className="clickable"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "8px 20px",
+                        borderRadius: "var(--radius-full)",
+                        backgroundColor: "var(--accent-primary)",
+                        border: "1px solid var(--accent-primary)",
+                        color: "#ffffff",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: savingCollageId === previewCollage.id ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {savingCollageId === previewCollage.id ? (
+                        <>
+                          <RefreshCw size={13} className="spin-animation" />
+                          <span>Rendering & Saving 4K...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Bookmark size={13} />
+                          <span>Save to Collages Folder</span>
+                        </>
+                      )}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ── SOUNDTRACK STUDIO MODAL (Upload & Auto-Tagging) ──────────────── */}
       {showMusicModal && (

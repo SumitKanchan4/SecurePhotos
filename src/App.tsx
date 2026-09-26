@@ -727,6 +727,10 @@ export const App: React.FC = () => {
             <StoriesView 
               onPlayStory={(id) => setActiveStoryId(id)}
               onNavigate={(tab) => setActiveTab(tab)}
+              onPhotoClick={(idx, photoList) => {
+                setLightboxPhotos(photoList);
+                setLightboxIndex(idx);
+              }}
             />
           ) : (
 
