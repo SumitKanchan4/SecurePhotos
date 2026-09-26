@@ -197,7 +197,12 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
   if (!isOpen || photos.length === 0) return null;
 
   const currentPhoto = photos[currentIndex];
+  const isVideo = Boolean(
+    currentPhoto?.mime_type?.startsWith("video/") ||
+    currentPhoto?.filename?.match(/\.(mp4|mov|webm|avi|mkv)$/i)
+  );
   const imageUrl = `http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/preview`;
+  const videoUrl = `http://127.0.0.1:8000/api/videos/${currentPhoto?.id}/stream`;
 
   return (
     <div
@@ -234,32 +239,61 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
         }
       `}</style>
 
-      {/* Main Animated Photo Container */}
-      <div
-        key={animationKey}
-        style={{
-          position: "absolute",
-          inset: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          animation: isPlaying ? "kenBurnsEffect 5.2s ease-out forwards" : "none",
-          transformOrigin: "center center",
-          willChange: "transform, opacity",
-        }}
-      >
-        <img
-          src={imageUrl}
-          alt={currentPhoto?.filename}
+      {/* Main Animated Photo or Video Container */}
+      {isVideo ? (
+        <div
+          key={`video-${currentPhoto?.id}`}
           style={{
-            maxWidth: "100vw",
-            maxHeight: "100vh",
-            width: "100%",
-            height: "100%",
-            objectFit: "contain",
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
-        />
-      </div>
+        >
+          <video
+            src={videoUrl}
+            poster={`http://127.0.0.1:8000/api/photos/${currentPhoto?.id}/thumbnail`}
+            autoPlay
+            playsInline
+            muted={isMuted}
+            onEnded={handleNext}
+            style={{
+              maxWidth: "100vw",
+              maxHeight: "100vh",
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+            }}
+          />
+        </div>
+      ) : (
+        <div
+          key={animationKey}
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            animation: isPlaying ? "kenBurnsEffect 5.2s ease-out forwards" : "none",
+            transformOrigin: "center center",
+            willChange: "transform, opacity",
+          }}
+        >
+          <img
+            src={imageUrl}
+            alt={currentPhoto?.filename}
+            style={{
+              maxWidth: "100vw",
+              maxHeight: "100vh",
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+            }}
+          />
+        </div>
+      )}
 
       {/* Top Floating Bar */}
       <div

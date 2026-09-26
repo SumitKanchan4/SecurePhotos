@@ -3841,3 +3841,64 @@ This comprehensive update addresses seven user observations across library usabi
 - 6 user documents successfully categorized with extracted OCR text.
 - Full parity between dashboard metrics and library grid counts.
 
+---
+
+## 77. Stories Video Playback Streaming, Native Video Audio Priority & Ken Burns Photo Motion
+
+### Functionality Overview
+This update resolves video playback and audio conflicts in the Stories feature and introduces cinematic motion animations:
+
+1. **Stories Native Video Streaming (`StoryPlayerModal.tsx`)**:
+   - Resolved video playback failures in the Stories viewer where video slides failed to buffer or render.
+   - Replaced static photo endpoint (`/api/photos/{id}/original`) with the dedicated video streaming endpoint (`${API_BASE}/videos/${currentSlide.photo_id}/stream`), which supports HTTP 206 Partial Content byte-range negotiation, cached transcode delivery, and faststart atom headers.
+   - Added thumbnail poster fallback (`/api/photos/${currentSlide.photo_id}/thumbnail?v=3`) during video loading to avoid black flashes between transitions.
+   - Handled browser autoplay policies with automatic unmuted-to-muted fallback when audio autoplay permissions are restricted by the browser.
+   - Wired video time tracking (`onTimeUpdate`) to dynamically drive the slide progress capsule bar (`width: ${Math.round(videoProgress * 100)}%`).
+   - Wired `onEnded` and `onError` handlers to gracefully advance to the next slide automatically.
+
+2. **Native Video Audio Priority & Background Music Ducking**:
+   - When a story slide is a video (`isCurrentSlideVideo === true`), the background ambient soundtrack automatically pauses (`musicAudioRef.current.pause()`), allowing the video's native audio (voices, sounds, ambience) to play clearly with zero audio clash.
+   - When the story transitions back to a photo slide, background music automatically resumes seamlessly (`musicAudioRef.current.play()`).
+   - The modal's mute control (`isMuted`) centrally mutes or unmutes both the video player and background music synchronously.
+
+3. **Ken Burns Motion Effect on Story Photos**:
+   - Injected `@keyframes storyKenBurns` with subtle translation (`translate(0, 0)` to `translate(-1.5%, -1.2%)`) and smooth scaling (`scale(1.0)` to `scale(1.08)`).
+   - Applied dynamically to photo slides with duration matching the slide timer (`animation: storyKenBurns ${timerDuration}ms cubic-bezier(0.25, 1, 0.5, 1) forwards`).
+   - Connected `animationPlayState` to `isPlaying` so pausing story playback freezes the motion in place without resetting keyframe positions.
+   - Transform origin dynamically centers on face/focal point if detected (`focal_x`, `focal_y`).
+
+4. **Album Slideshow Video Streaming Parity (`AlbumSlideshowModal.tsx`)**:
+   - Added video media detection (`currentPhoto.mime_type?.startsWith("video/")` or extension) in the Album Slideshow.
+   - Streams native video using `${API_BASE}/videos/${currentPhoto.id}/stream`, ensuring consistent multimedia playback across both Stories and Album Slideshows.
+
+### Functional Decision Points & Rationale
+- **Dedicated Streaming Route vs Static Original Endpoint**:
+  - *Problem*: Video containers require byte-range requests (`HTTP 206 Partial Content`) for seeking and smooth playback. The static file response at `/api/photos/{id}/original` does not negotiate byte ranges or ensure MP4 faststart atom placement, causing video elements in Chromium/WebView2 to hang or fail.
+  - *Decision*: Route all story video slides to `/api/videos/{id}/stream`.
+  - *Rationale*: Reuses the battle-tested, hardware-accelerated streaming endpoint that handles byte ranges, WebM/MP4 transcodes, and faststart optimization.
+- **Exclusive Video Audio vs Dual Playback / Volume Ducking**:
+  - *Decision*: Fully pause story background music while video slides play, and resume music when photo slides appear.
+  - *Rationale*: Playing background music over video dialogue or home video audio results in unpleasant sonic clutter. Pausing the ambient track allows the authentic video audio to be heard with full clarity.
+- **Dynamic Ken Burns Keyframes vs Static Displays**:
+  - *Decision*: Bring the kinetic Ken Burns animation from Album Slideshow to Stories.
+  - *Rationale*: Subtle pan-and-zoom adds depth and emotional resonance to memories, making stories feel vibrant, polished, and premium.
+
+### Technical Touchpoints
+- `src/components/StoryPlayerModal.tsx`:
+  - Connected `<video>` to `/api/videos/${currentSlide.photo_id}/stream` with thumbnail poster.
+  - Added `videoRef`, `videoProgress`, and `isCurrentSlideVideo` tracking.
+  - Implemented background music pause/resume synchronization.
+  - Added `@keyframes storyKenBurns` with pause/play state and focal-point transform origin.
+  - Synchronized progress bar with video duration.
+- `src/components/AlbumSlideshowModal.tsx`:
+  - Added `isVideo` detection and native `<video>` streaming from `/api/videos/${currentPhoto.id}/stream`.
+- `docs/features_and_functional_decisions.md`:
+  - Documented Section 77.
+
+### State & Lifecycle Impact
+- Zero regressions; TypeScript verification clean (`npx tsc --noEmit` exits code 0).
+- Videos in stories play smoothly with clear native audio.
+- Background music pauses during video playback and resumes on photo slides.
+- Photos display cinematic Ken Burns zoom and pan.
+
+

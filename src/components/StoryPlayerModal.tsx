@@ -219,6 +219,19 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Video element state & refs
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [videoProgress, setVideoProgress] = useState(0);
+
+  const slides = story?.slides || [];
+  const currentSlide = slides[currentSlideIndex];
+  const isCurrentSlideVideo = Boolean(
+    currentSlide && (
+      currentSlide.mime_type?.startsWith("video/") ||
+      currentSlide.filename.match(/\.(mp4|mov|webm|avi|mkv)$/i)
+    )
+  );
+
   // Dynamic chromatic ambient color [r, g, b]
   const [ambientColor, setAmbientColor] = useState<[number, number, number]>([15, 23, 42]);
 
@@ -395,9 +408,22 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
     }
   };
 
+  // Background soundtrack controller: auto-pauses during video slides so video plays its own native audio
   useEffect(() => {
     if (!isOpen) {
       stopAllAudio();
+      return;
+    }
+
+    // Video slide priority: pause background soundtrack so video audio plays exclusively
+    if (isCurrentSlideVideo) {
+      if (audioElementRef.current) {
+        audioElementRef.current.pause();
+      }
+      if (soundscapeRef.current) {
+        soundscapeRef.current.stop();
+        soundscapeRef.current = null;
+      }
       return;
     }
 
@@ -422,7 +448,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         audioElementRef.current = audio;
       }
 
-      if (isPlaying) {
+      if (isPlaying && !isMuted) {
         audioElementRef.current.play().catch((e) => {
           console.warn("HTML5 audio playback blocked, falling back to procedural synthesizer:", e);
           soundscapeRef.current = new StorySoundscapeGenerator();
@@ -439,7 +465,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         audioElementRef.current = null;
       }
 
-      if (isPlaying) {
+      if (isPlaying && !isMuted) {
         if (!soundscapeRef.current) {
           soundscapeRef.current = new StorySoundscapeGenerator();
           soundscapeRef.current.start();
@@ -450,7 +476,26 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         soundscapeRef.current = null;
       }
     }
-  }, [isOpen, activeAudioUrl, isPlaying]);
+  }, [isOpen, activeAudioUrl, isPlaying, isMuted, isCurrentSlideVideo]);
+
+  // Video play/pause and mute synchronization
+  useEffect(() => {
+    if (!videoRef.current) return;
+    if (isCurrentSlideVideo) {
+      videoRef.current.muted = isMuted;
+      if (isPlaying) {
+        videoRef.current.play().catch((err) => {
+          console.warn("Unmuted video autoplay blocked by browser policy, falling back to muted:", err);
+          if (videoRef.current) {
+            videoRef.current.muted = true;
+            videoRef.current.play().catch(() => {});
+          }
+        });
+      } else {
+        videoRef.current.pause();
+      }
+    }
+  }, [isCurrentSlideVideo, isPlaying, isMuted, currentSlideIndex]);
 
   // Handle Mute toggle
   const toggleMute = () => {
@@ -460,6 +505,9 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
       audioElementRef.current.muted = nextMuted;
     }
     soundscapeRef.current?.setMute(nextMuted);
+    if (videoRef.current) {
+      videoRef.current.muted = nextMuted;
+    }
   };
 
   // Adaptive slide pacing
@@ -469,28 +517,20 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
   useEffect(() => {
     if (!isOpen || !isPlaying || !story || story.slides.length === 0) return;
 
-    const cur = story.slides[currentSlideIndex];
-    const isVideo = Boolean(
-      cur && (
-        cur.mime_type?.startsWith("video/") ||
-        cur.filename.match(/\.(mp4|mov|webm|avi|mkv)$/i)
-      )
-    );
-
-    // For video slides, onEnded handles transition; use 60s safety ceiling
-    const duration = isVideo ? 60000 : pacingMs;
+    if (isCurrentSlideVideo) {
+      // For video slides, onEnded handles transition. Safety fallback ceiling of 45s
+      const safetyTimer = setTimeout(() => {
+        setCurrentSlideIndex((prev) => (prev + 1) % story.slides.length);
+      }, 45000);
+      return () => clearTimeout(safetyTimer);
+    }
 
     const timer = setTimeout(() => {
-      if (currentSlideIndex < story.slides.length - 1) {
-        setCurrentSlideIndex((prev) => prev + 1);
-      } else {
-        // Loop back to start
-        setCurrentSlideIndex(0);
-      }
-    }, duration);
+      setCurrentSlideIndex((prev) => (prev + 1) % story.slides.length);
+    }, pacingMs);
 
     return () => clearTimeout(timer);
-  }, [isOpen, isPlaying, currentSlideIndex, story, pacingMs]);
+  }, [isOpen, isPlaying, currentSlideIndex, story, pacingMs, isCurrentSlideVideo]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -517,8 +557,6 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
 
   if (!isOpen || storyId === null) return null;
 
-  const slides = story?.slides || [];
-  const currentSlide = slides[currentSlideIndex];
   const archetype = getArchetypeDetails(story?.story_type, story?.title);
 
   return (
@@ -533,6 +571,26 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         userSelect: "none",
       }}
     >
+      {/* Dynamic Keyframes for Cinematic Ken Burns Pan & Zoom in Stories */}
+      <style>{`
+        @keyframes storyKenBurns {
+          0% {
+            transform: scale(1.0) translate(0%, 0%);
+            opacity: 0.88;
+          }
+          15% {
+            opacity: 1;
+          }
+          85% {
+            opacity: 1;
+          }
+          100% {
+            transform: scale(1.08) translate(1.2%, -0.8%);
+            opacity: 0.96;
+          }
+        }
+      `}</style>
+
       {/* Top Segmented Progress Bar with Dynamic Pacing */}
       <div 
         style={{
@@ -565,9 +623,13 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
               <div 
                 style={{
                   height: "100%",
-                  width: isPassed ? "100%" : isCurrent ? "100%" : "0%",
+                  width: isPassed
+                    ? "100%"
+                    : isCurrent
+                      ? (isCurrentSlideVideo ? `${Math.min(100, Math.round(videoProgress * 100))}%` : "100%")
+                      : "0%",
                   backgroundColor: "#ffffff",
-                  transition: isCurrent && isPlaying ? `width ${pacingMs}ms linear` : "none",
+                  transition: isCurrent && isPlaying && !isCurrentSlideVideo ? `width ${pacingMs}ms linear` : "none",
                 }}
               />
             </div>
@@ -902,39 +964,66 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
             }}
           >
             {/* Real Photo or Video with Subject-Focused Motion */}
-            {(() => {
-              const isVideo = Boolean(
-                currentSlide.mime_type?.startsWith("video/") ||
-                currentSlide.filename.match(/\.(mp4|mov|webm|avi|mkv)$/i)
-              );
-
-              if (isVideo) {
-                return (
-                  <video
-                    key={currentSlide.photo_id}
-                    src={`${API_BASE}/photos/${currentSlide.photo_id}/original`}
-                    poster={`${API_BASE}/photos/${currentSlide.photo_id}/preview`}
-                    autoPlay
-                    muted={isMuted}
-                    playsInline
-                    onEnded={() => {
-                      if (slides.length > 0) {
-                        setCurrentSlideIndex((prev) => (prev + 1) % slides.length);
+            {isCurrentSlideVideo ? (
+              <video
+                ref={videoRef}
+                key={`video-${currentSlide.photo_id}`}
+                src={`${API_BASE}/videos/${currentSlide.photo_id}/stream`}
+                poster={`${API_BASE}/photos/${currentSlide.photo_id}/thumbnail`}
+                autoPlay
+                playsInline
+                muted={isMuted}
+                onLoadedMetadata={() => {
+                  setVideoProgress(0);
+                  if (videoRef.current && isPlaying) {
+                    videoRef.current.play().catch((err) => {
+                      console.warn("Unmuted video autoplay restricted, playing muted:", err);
+                      if (videoRef.current) {
+                        videoRef.current.muted = true;
+                        videoRef.current.play().catch(() => {});
                       }
-                    }}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "contain",
-                      transform: "none",
-                    }}
-                  />
-                );
-              }
-
-              return (
+                    });
+                  }
+                }}
+                onTimeUpdate={() => {
+                  if (videoRef.current && videoRef.current.duration) {
+                    setVideoProgress(videoRef.current.currentTime / videoRef.current.duration);
+                  }
+                }}
+                onEnded={() => {
+                  if (slides.length > 0) {
+                    setCurrentSlideIndex((prev) => (prev + 1) % slides.length);
+                  }
+                }}
+                onError={(e) => {
+                  console.warn("Video playback error in story, skipping to next slide:", e);
+                  if (slides.length > 0) {
+                    setCurrentSlideIndex((prev) => (prev + 1) % slides.length);
+                  }
+                }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  transform: "none",
+                }}
+              />
+            ) : (
+              <div
+                key={`slide-${currentSlide.photo_id}-${currentSlideIndex}`}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  animation: `storyKenBurns ${pacingMs + 400}ms ease-out forwards`,
+                  animationPlayState: isPlaying ? "running" : "paused",
+                  transformOrigin: `${((currentSlide.focal_x ?? 0.5) * 100).toFixed(1)}% ${((currentSlide.focal_y ?? 0.5) * 100).toFixed(1)}%`,
+                  willChange: "transform, opacity",
+                }}
+              >
                 <img
-                  key={currentSlide.photo_id}
                   src={`${API_BASE}/photos/${currentSlide.photo_id}/preview`}
                   onError={(e) => {
                     // Fallback to original image if 8K preview proxy is not yet generated
@@ -942,16 +1031,15 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                   }}
                   alt={currentSlide.filename}
                   style={{
+                    maxWidth: "100vw",
+                    maxHeight: "100vh",
                     width: "100%",
                     height: "100%",
                     objectFit: "contain",
-                    transformOrigin: `${((currentSlide.focal_x ?? 0.5) * 100).toFixed(1)}% ${((currentSlide.focal_y ?? 0.5) * 100).toFixed(1)}%`,
-                    transform: isPlaying ? "scale(1.14)" : "scale(1.0)",
-                    transition: `transform ${pacingMs}ms cubic-bezier(0.25, 1, 0.5, 1)`,
                   }}
                 />
-              );
-            })()}
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ color: "var(--text-secondary)", textAlign: "center" }}>
