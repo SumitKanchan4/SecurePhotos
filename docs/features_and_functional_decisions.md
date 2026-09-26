@@ -4245,6 +4245,62 @@ This update elevates the overall visual polish, branding, ergonomics, and thumbn
 - Non-destructive presentation layer improvement fixing thumbnail framing for 100% of existing and new portrait photos.
 - 11/11 vault backend tests pass; TypeScript 0 errors; Vite bundle built cleanly in 7.02s.
 
+---
+
+## 83. Windows Taskbar 3D Embedded Icon Integration & VLC-Style 200% Audio Pre-Amp Booster
+
+### Functionality Overview
+1. **Windows Taskbar 3D Embedded Icon Packaging**:
+   - Resolved the issue where the running application on the Windows taskbar continued displaying the old legacy blue square icon.
+   - Identified that while `src-tauri/icons/icon.png` had been updated, the Windows taskbar and Explorer shell read directly from `src-tauri/icons/icon.ico` (a multi-resolution Windows ICO resource baked into the compiled `.exe` PE header) as well as `32x32.png`, `128x128.png`, and `128x128@2x.png`.
+   - Generated multi-resolution `icon.ico` containing 16x16, 24x24, 32x32, 48x48, 64x64, 128x128, and 256x256 pixel layers directly from the approved high-fidelity 3D Concept 1 ("The Glass Shield & Gold Lens") using Pillow with Lanczos resampling, alongside the respective PNG resolution tiers.
+2. **VLC-Style Audio Pre-Amp Booster (0% to 200%)**:
+   - Solved the common desktop problem where phone videos and user recordings have low microphone gain, making them quiet even at 100% system volume.
+   - Designed a hardware-safe, software-based audio gain booster inspired by VLC Media Player, allowing users to amplify video audio up to 200% (2.0x gain multiplier) without altering the global Windows system master volume.
+   - Integrated the Web Audio API (`AudioContext` + `GainNode`) wired to the `<video>` element with `crossOrigin="anonymous"` and idempotent connection guards.
+3. **Floating Audio Booster Island & Presets**:
+   - Rendered an ergonomic, floating liquid-glass capsule island directly below the video player.
+   - Features an interactive mute/unmute toggle, an ultra-smooth 0%–200% range slider with dynamic amber/gold accent lighting above 100%, and quick one-tap preset pills (`100%`, `150%`, `200% ⚡`).
+4. **Keyboard Audio Controls & Temporary HUD Overlay**:
+   - Added full keyboard shortcuts when viewing videos in the Lightbox:
+     - `ArrowUp`: Increments audio gain by +10% (up to 200%).
+     - `ArrowDown`: Decrements audio gain by -10% (down to 0%).
+     - `M` / `m`: Toggles mute.
+   - Surfaces a discreet, floating frosted HUD pill overlay (`🔊 Volume: 150% [⚡ Boost Active]`) at the top of the video for 1.8 seconds upon any volume adjustment.
+   - Automatically saves volume and mute preferences to `localStorage` (`securephotos_video_volume`, `securephotos_video_muted`).
+
+### Functional Decision Points & Rationale
+- **In-App Pre-Amp Booster (Option A) vs. Modifying OS Master Volume**:
+  - *Problem*: The user observed that increasing volume in the web player did not change the Windows system volume.
+  - *Analysis*: Modern desktop media applications (Spotify, YouTube, Netflix, VLC) deliberately decouple in-app audio gain from the OS master volume. Modifying the global Windows volume leads to deafening system notifications, unexpected volume jumps in Discord/Zoom, and accidental PC-wide mutes.
+  - *Decision*: Implement VLC's proven pre-amp architecture: provide 0%–200% software gain boost while keeping OS volume untouched.
+  - *Rationale*: Solves the real root cause—quiet phone video audio—while providing users the exact headroom they need without disruptive system-wide side effects.
+- **Dynamic Visual Warning for >100% Boost**:
+  - *Decision*: Transition the slider, icon, and HUD to warm amber/gold (`#fbbf24` / `#f59e0b`) with a `⚡ Boost Active` micro-badge when volume exceeds 100%.
+  - *Rationale*: Clearly communicates to the user that audio is being actively amplified past standard hardware levels.
+- **Idempotent Web Audio MediaElement Connection**:
+  - *Decision*: Guard `createMediaElementSource(videoEl)` with `__securephotos_preamp_connected` property.
+  - *Rationale*: The Web Audio API throws a fatal `InvalidStateError` if `createMediaElementSource` is invoked more than once on the same `HTMLMediaElement`. The guard guarantees single attachment even across re-renders.
+
+### Technical Touchpoints
+- `src-tauri/icons/`:
+  - `icon.ico`: Re-generated 148 KB multi-layer Windows icon (16, 24, 32, 48, 64, 128, 256 px).
+  - `32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.png`: Updated with 3D Glass Shield asset.
+- `src/components/Lightbox.tsx`:
+  - Added imports: `Volume2`, `Volume1`, `VolumeX`, `Zap`.
+  - Added Web Audio API `AudioContext` and `GainNode` state, refs, and connection pipeline.
+  - Added `volumeBoost` (0–200) and `isMuted` states initialized from `localStorage`.
+  - Added `ArrowUp`, `ArrowDown`, and `M` keyboard shortcuts with temporary volume HUD pill overlay.
+  - Added Floating Audio Pre-Amp Booster Island below the video player with 0–200% slider and preset buttons (`100%`, `150%`, `200% ⚡`).
+- `docs/features_and_functional_decisions.md`:
+  - Documented Section 83.
+
+### State & Lifecycle Impact
+- Zero database changes or migrations required.
+- Video volume level and mute state persist seamlessly across app restarts via `localStorage`.
+- TypeScript type-check passed with 0 errors; Vite bundle built cleanly in 11.87s; backend vault test suite 11/11 passed.
+
+
 
 
 

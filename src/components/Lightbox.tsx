@@ -23,6 +23,10 @@ import {
   Lock,
   Unlock,
   Pin,
+  Volume2,
+  Volume1,
+  VolumeX,
+  Zap,
 } from "lucide-react";
 import { PhotoItem, OptimizationProgress } from "../types";
 import { useAppStore } from "../store/useAppStore";
@@ -75,6 +79,124 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
   const currentPhoto = photos[currentIndex];
   const isVideo = Boolean(currentPhoto?.mime_type?.startsWith("video/"));
+
+  // ─── VLC-Style Audio Pre-Amp Booster (0% - 200%) ──────────────────────────────
+  const [volumeBoost, setVolumeBoost] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("securephotos_video_volume");
+      return saved !== null ? Math.max(0, Math.min(200, parseInt(saved, 10))) : 100;
+    } catch {
+      return 100;
+    }
+  });
+  const [isMuted, setIsMuted] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("securephotos_video_muted") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [showVolumeHud, setShowVolumeHud] = useState(false);
+  const volumeHudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const volumeBoostRef = useRef(volumeBoost);
+  const isMutedRef = useRef(isMuted);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const videoElementRef = useRef<HTMLVideoElement | null>(null);
+
+  // Synchronize refs to avoid stale closures in window event listeners
+  useEffect(() => {
+    volumeBoostRef.current = volumeBoost;
+  }, [volumeBoost]);
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
+
+  const ensureAudioContext = () => {
+    try {
+      if (!audioContextRef.current) {
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        if (AudioCtx) {
+          const ctx = new AudioCtx();
+          const gain = ctx.createGain();
+          const initialGain = isMutedRef.current ? 0 : volumeBoostRef.current / 100;
+          gain.gain.setValueAtTime(initialGain, ctx.currentTime);
+          gain.connect(ctx.destination);
+          audioContextRef.current = ctx;
+          gainNodeRef.current = gain;
+        }
+      }
+      if (audioContextRef.current && audioContextRef.current.state === "suspended") {
+        audioContextRef.current.resume().catch(() => {});
+      }
+    } catch (err) {
+      console.warn("AudioContext initialization warning:", err);
+    }
+  };
+
+  const connectVideoToPreamp = (videoEl: HTMLVideoElement) => {
+    try {
+      ensureAudioContext();
+      if (!audioContextRef.current || !gainNodeRef.current) return;
+      const elWithFlag = videoEl as HTMLVideoElement & { __securephotos_preamp_connected?: boolean };
+      if (!elWithFlag.__securephotos_preamp_connected) {
+        const source = audioContextRef.current.createMediaElementSource(videoEl);
+        source.connect(gainNodeRef.current);
+        elWithFlag.__securephotos_preamp_connected = true;
+      }
+    } catch (err) {
+      console.warn("Could not attach Web Audio pre-amp node to video:", err);
+    }
+  };
+
+  const triggerVolumeHud = () => {
+    setShowVolumeHud(true);
+    if (volumeHudTimerRef.current) {
+      clearTimeout(volumeHudTimerRef.current);
+    }
+    volumeHudTimerRef.current = setTimeout(() => {
+      setShowVolumeHud(false);
+    }, 1800);
+  };
+
+  const applyVolume = (newVol: number, newMuted?: boolean) => {
+    const clamped = Math.max(0, Math.min(200, Math.round(newVol)));
+    const targetMuted = newMuted !== undefined ? newMuted : (clamped === 0 ? true : isMutedRef.current);
+
+    setVolumeBoost(clamped);
+    volumeBoostRef.current = clamped;
+    setIsMuted(targetMuted);
+    isMutedRef.current = targetMuted;
+
+    try {
+      localStorage.setItem("securephotos_video_volume", String(clamped));
+      localStorage.setItem("securephotos_video_muted", String(targetMuted));
+    } catch {
+      // Local storage unavailable or restricted
+    }
+
+    ensureAudioContext();
+    if (gainNodeRef.current && audioContextRef.current) {
+      const targetGain = targetMuted ? 0 : clamped / 100;
+      gainNodeRef.current.gain.setValueAtTime(targetGain, audioContextRef.current.currentTime);
+    }
+
+    triggerVolumeHud();
+  };
+
+  const toggleMute = () => {
+    const nextMuted = !isMutedRef.current;
+    applyVolume(volumeBoostRef.current, nextMuted);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (volumeHudTimerRef.current) {
+        clearTimeout(volumeHudTimerRef.current);
+      }
+    };
+  }, []);
 
   const isCompleted = Boolean(currentPhoto?.is_optimized || currentPhoto?.is_enhanced);
   const isOptimizingThis = Boolean(!isVideo && optimizationProgress?.is_active && optimizationProgress.active_photo_id === currentPhoto?.id);
@@ -139,12 +261,20 @@ export const Lightbox: React.FC<LightboxProps> = ({
       } else if (e.key === "i" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         setShowInfo((prev) => !prev);
+      } else if (isVideo && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        const delta = e.key === "ArrowUp" ? 10 : -10;
+        const current = isMutedRef.current ? 0 : volumeBoostRef.current;
+        applyVolume(current + delta, false);
+      } else if (isVideo && (e.key === "m" || e.key === "M")) {
+        e.preventDefault();
+        toggleMute();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, currentIndex, photos.length, onClose, onNavigate, currentPhoto, isDocumentView, onTogglePin, onToggleFavorite]);
+  }, [isOpen, currentIndex, photos.length, onClose, onNavigate, currentPhoto, isDocumentView, onTogglePin, onToggleFavorite, isVideo]);
 
   // Window drag/pan listener when zoomed into photos
   useEffect(() => {
@@ -898,18 +1028,89 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   width: "100%",
                   height: "100%",
                   display: "flex",
+                  flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
+                  gap: "10px",
                 }}
               >
+                {/* Temporary Volume HUD Pill Overlay */}
+                {showVolumeHud && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "16px",
+                      zIndex: 30,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "7px 16px",
+                      borderRadius: "var(--radius-full)",
+                      backgroundColor: "var(--glass-surface)",
+                      border: "1px solid var(--glass-border)",
+                      backdropFilter: "blur(20px)",
+                      WebkitBackdropFilter: "blur(20px)",
+                      boxShadow: "var(--glass-shadow)",
+                      color: "var(--text-primary)",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      pointerEvents: "none",
+                      animation: "fadeIn 0.15s ease",
+                    }}
+                  >
+                    {isMuted || volumeBoost === 0 ? (
+                      <VolumeX size={16} style={{ color: "var(--text-muted)" }} />
+                    ) : volumeBoost > 100 ? (
+                      <Zap size={16} style={{ color: "#fbbf24" }} />
+                    ) : volumeBoost > 50 ? (
+                      <Volume2 size={16} style={{ color: "var(--accent-primary)" }} />
+                    ) : (
+                      <Volume1 size={16} style={{ color: "var(--accent-primary)" }} />
+                    )}
+                    <span>
+                      {isMuted ? "Audio Muted" : `Volume: ${volumeBoost}%`}
+                    </span>
+                    {volumeBoost > 100 && !isMuted && (
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          fontWeight: 800,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                          color: "#fbbf24",
+                          backgroundColor: "rgba(251, 191, 36, 0.15)",
+                          padding: "2px 6px",
+                          borderRadius: "var(--radius-full)",
+                          border: "1px solid rgba(251, 191, 36, 0.3)",
+                        }}
+                      >
+                        ⚡ Boost Active
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 <video
                   key={`${currentPhoto.id}_${videoVersion}`}
+                  ref={(el) => {
+                    videoElementRef.current = el;
+                    if (el) {
+                      connectVideoToPreamp(el);
+                    }
+                  }}
                   src={videoStreamUrl}
                   poster={thumbnailUrl}
+                  crossOrigin="anonymous"
                   controls
                   playsInline
                   preload="auto"
                   autoPlay={false}
+                  onPlay={() => {
+                    ensureAudioContext();
+                    if (videoElementRef.current) {
+                      connectVideoToPreamp(videoElementRef.current);
+                    }
+                  }}
                   onLoadedMetadata={() => setIsPreviewLoaded(true)}
                   onLoadedData={() => setIsPreviewLoaded(true)}
                   onCanPlay={() => setIsPreviewLoaded(true)}
@@ -921,13 +1122,135 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   }}
                   style={{
                     maxWidth: "100%",
-                    maxHeight: "84vh",
+                    maxHeight: "calc(84vh - 60px)",
                     borderRadius: "var(--radius-md)",
                     boxShadow: "var(--shadow-lightbox)",
                     backgroundColor: "#000000",
                     outline: "none",
                   }}
                 />
+
+                {/* Floating VLC-Style Audio Pre-Amp Booster Island */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                    padding: "6px 14px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "var(--glass-surface)",
+                    border: "1px solid var(--glass-border)",
+                    backdropFilter: "blur(24px)",
+                    WebkitBackdropFilter: "blur(24px)",
+                    boxShadow: "var(--glass-shadow)",
+                    width: "100%",
+                    maxWidth: "500px",
+                    zIndex: 10,
+                  }}
+                >
+                  {/* Mute / Unmute Button */}
+                  <button
+                    type="button"
+                    onClick={toggleMute}
+                    className="clickable"
+                    title={isMuted ? "Unmute (M)" : "Mute (M)"}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: isMuted ? "var(--text-muted)" : volumeBoost > 100 ? "#fbbf24" : "var(--accent-primary)",
+                      display: "flex",
+                      alignItems: "center",
+                      cursor: "pointer",
+                      padding: "4px",
+                      borderRadius: "var(--radius-full)",
+                      transition: "color 0.15s ease",
+                    }}
+                  >
+                    {isMuted || volumeBoost === 0 ? (
+                      <VolumeX size={17} />
+                    ) : volumeBoost > 100 ? (
+                      <Zap size={17} />
+                    ) : volumeBoost > 50 ? (
+                      <Volume2 size={17} />
+                    ) : (
+                      <Volume1 size={17} />
+                    )}
+                  </button>
+
+                  {/* Range Slider (0 to 200%) */}
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "8px" }}>
+                    <input
+                      type="range"
+                      min={0}
+                      max={200}
+                      step={1}
+                      value={isMuted ? 0 : volumeBoost}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        applyVolume(val, false);
+                      }}
+                      style={{
+                        flex: 1,
+                        cursor: "pointer",
+                        accentColor: volumeBoost > 100 ? "#f59e0b" : "var(--accent-primary)",
+                        height: "5px",
+                      }}
+                      title={`Audio Pre-Amp Gain: ${volumeBoost}% (Up to 200% VLC-style boost)`}
+                    />
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        fontFamily: "var(--font-mono, monospace)",
+                        minWidth: "38px",
+                        textAlign: "right",
+                        color: isMuted ? "var(--text-muted)" : volumeBoost > 100 ? "#fbbf24" : "var(--text-primary)",
+                      }}
+                    >
+                      {isMuted ? "0%" : `${volumeBoost}%`}
+                    </span>
+                  </div>
+
+                  {/* Preset Pills */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                    {[
+                      { label: "100%", value: 100 },
+                      { label: "150%", value: 150 },
+                      { label: "200% ⚡", value: 200 },
+                    ].map((preset) => {
+                      const isActive = !isMuted && volumeBoost === preset.value;
+                      return (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          onClick={() => applyVolume(preset.value, false)}
+                          className="clickable"
+                          title={`Set audio gain to ${preset.value}%`}
+                          style={{
+                            padding: "3px 8px",
+                            borderRadius: "var(--radius-full)",
+                            backgroundColor: isActive
+                              ? (preset.value > 100 ? "rgba(251, 191, 36, 0.2)" : "rgba(59, 130, 246, 0.2)")
+                              : "var(--glass-pill-bg)",
+                            border: isActive
+                              ? (preset.value > 100 ? "1px solid rgba(251, 191, 36, 0.5)" : "1px solid rgba(59, 130, 246, 0.5)")
+                              : "1px solid var(--glass-border)",
+                            color: isActive
+                              ? (preset.value > 100 ? "#fbbf24" : "var(--accent-primary)")
+                              : "var(--text-secondary)",
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             ) : (
               <div
