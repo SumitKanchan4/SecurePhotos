@@ -107,6 +107,17 @@ Navigate your entire collection without taking your hands off the keyboard:
 
 ---
 
-## 📄 License
+## 📄 License, User Ownership & Liability Disclaimer
 
-Proprietary and Confidential. Built with pride for privacy, performance, and complete data ownership.
+### 1. 100% User Media Ownership
+**You own your photos and videos.** SecurePhotos, its developers, and contributors claim **zero** ownership, title, copyright, license, or control over any photos, videos, or documents imported into or managed by the app. Your personal content belongs entirely to you.
+
+### 2. Software License (MIT)
+SecurePhotos is released as free software under the **[MIT License](LICENSE)**.
+
+### 3. Limitation of Liability & Zero Liability for Data or Quality Loss
+The software is provided **"AS IS"**, without warranty of any kind. 
+- Under no circumstances shall the authors, developers, or contributors be liable for any direct, indirect, incidental, or consequential damages resulting from the use of this software.
+- This includes, but is not limited to: **any loss of original photos/videos, alteration or loss of visual quality, compression artifacts, accidental deletions, external drive corruption, hardware failures, or unrecoverable media due to forgotten vault passwords or lost recovery phrases.**
+- **User Backup Obligation**: Users are solely responsible for maintaining independent, regular backups of all original media files on separate storage devices before using this application.
+

@@ -4433,6 +4433,37 @@ Decoupled project documentation into two tailored, purposeful documents: a warm,
 - Eliminates cognitive overload for end users and non-technical stakeholders.
 - Provides developers with a single, clear, authoritative onboarding guide.
 
+---
+
+## 87. Open-Source Licensing, User Data Ownership Covenant & Comprehensive Limitation of Liability
+
+### Overview
+Formally established the legal licensing, data ownership covenant, and protective liability framework across the project repository, user documentation, and Windows desktop installer EULA.
+
+### Key Functional Decision Points
+1. **100% User Media Ownership Covenant**:
+   - Explicitly guarantees that users retain full, exclusive ownership, copyright, and control over all photos, videos, and documents managed by or stored in SecurePhotos.
+   - The authors, developers, and contributors claim zero ownership, rights, or license over any user media.
+2. **Comprehensive Limitation of Liability & "AS IS" Warranty Disclaimer**:
+   - Protects developers and contributors against any legal claims or disputes regarding data loss, accidental file deletion, or quality alteration.
+   - Explicitly disclaims liability for:
+     - Loss of original image/video files (including during ingestion, free-up-space operations, or trash purges).
+     - Alteration, reduction, or unintended compression artifacts in visual quality or resolution.
+     - Unrecoverable encrypted media resulting from forgotten passwords, PINs, or lost 24-word recovery phrases.
+     - Hardware failure, external drive corruption, or unexpected drive disconnections.
+3. **Mandatory User Backup Obligation**:
+   - Formally establishes that users bear the sole responsibility of maintaining independent, verified external backups of their media.
+
+### Technical Touchpoints
+- **Root**: `LICENSE`, `README.md`
+- **Installer**: `src-tauri/EULA.txt`
+- **Docs**: `docs/features_and_functional_decisions.md`
+
+### State & Lifecycle Impact
+- Zero code regressions.
+- Complete legal and liability protection for authors and contributors under the MIT License and protective covenant.
+
+
 
 
 
