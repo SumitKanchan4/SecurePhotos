@@ -15,7 +15,7 @@ trigger: always_on
   - **CRITICAL**: **NEVER merge any branch into `master` (or `main`) without explicit, upfront permission and confirmation from the user.**
   - Work remains safely isolated on its dedicated task branch until the user explicitly directs that it is complete, tested, and ready to merge.
   - This guarantees that no half-cooked, partially tested, or in-flight code is ever merged into the production `master` baseline.
-  - Immediately after any user-approved merge into `master`, switch back to a dedicated topic branch so no further work ever takes place on `master`.
+  - Between active tasks and discussions, remain on `master` (or `main`) in a clean state. As soon as discussion or planning for a new task begins, create the dedicated topic branch (`feature/*`, `fix/*`, `chore/*`) and switch to it before modifying any code.
 - **Mandatory Push to Origin on Commit**: Whenever code is committed (`git commit`), **ALWAYS immediately push to origin** (`git push origin <branch>`). Never leave local commits sitting unpushed, as unpushed commits lead to drift, stale checkins, and merge conflicts.
 
 ## 1. Approval Gate, Mandatory Planning & Autonomous Execution
