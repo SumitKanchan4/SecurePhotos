@@ -83,6 +83,7 @@ jobs:
           mkdir -p bin data/models
           cp "$(which ffmpeg)" bin/ffmpeg.exe
           cp "$(which ffprobe)" bin/ffprobe.exe
+          echo "SecurePhotos AI Models" > data/models/placeholder.txt
           bin/ffmpeg.exe -version
           bin/ffprobe.exe -version
 
@@ -177,6 +178,7 @@ jobs:
           mkdir -p bin data/models
           cp "$(which ffmpeg)" bin/ffmpeg.exe
           cp "$(which ffprobe)" bin/ffprobe.exe
+          echo "SecurePhotos AI Models" > data/models/placeholder.txt
           bin/ffmpeg.exe -version
           bin/ffprobe.exe -version
 

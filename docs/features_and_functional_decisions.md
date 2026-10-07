@@ -4568,6 +4568,9 @@ Hardened the CI pipeline against Chocolatey shim pointer crashes by switching to
 2. **SQLite Foreign Key Scoping in Watchdog Unit Tests**:
    - *Problem*: In `test_video_queue_self_healing_on_photo_deletion_and_trash`, inserting an orphaned synthetic job with non-existent `photo_id = 999999` failed because SQLite strictly enforces `PRAGMA foreign_keys = ON;`.
    - *Resolution*: Scoped `PRAGMA foreign_keys = OFF;` exclusively within the test connection prior to inserting the synthetic orphaned job, simulating the unreferenced legacy row the watchdog is designed to self-heal and purge.
+3. **Tauri Glob Resource Staging (`../data/models/*`)**:
+   - *Problem*: `tauri-build` threw a custom build command error (`glob pattern ../data/models/* path not found or didn't match any files`) because `data/` is gitignored and `mkdir -p data/models` created an empty directory.
+   - *Resolution*: Staged `data/models/placeholder.txt` so `../data/models/*` successfully matches without requiring multi-gigabyte ONNX models committed to source control.
 
 ### Technical Touchpoints
 - **CI/CD Workflow**: `.github/workflows/pipeline.yml`
