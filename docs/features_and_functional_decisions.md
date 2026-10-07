@@ -4532,6 +4532,29 @@ Hardened the continuous integration test environment and Tauri bundling pipeline
 - 100% test reliability on clean CI runners.
 - Seamless Tauri desktop installer bundling without missing resource errors.
 
+---
+
+## 90. Engine Runtime Dependency Baseline: Explicit Specification of Scientific & AI Libraries
+
+### Overview
+Synchronized `engine/requirements.txt` with all third-party modules imported across the backend codebase (`numpy`, `onnxruntime`, `python-multipart`, and `winocr`), eliminating test collection failures on clean CI/CD runner instances.
+
+### Key Functional Decision Points
+1. **Direct Scientific & AI Library Declarations**:
+   - *Problem*: Although present in developer virtual environments, `numpy` and `onnxruntime` were omitted from `engine/requirements.txt`. In clean CI runner environments, importing `engine.main` (and its dependent services such as `music_service` and `face_clustering_service`) triggered fatal `ModuleNotFoundError: No module named 'numpy'` errors during pytest collection.
+   - *Resolution*: Explicitly declared `numpy>=1.26.0`, `onnxruntime>=1.19.0`, `python-multipart>=0.0.12`, and `winocr>=0.0.15; sys_platform == 'win32'`.
+2. **Platform-Specific Markers**:
+   - Pinned `winocr` with environment marker `sys_platform == 'win32'` to ensure cross-platform compatibility across non-Windows developer workstations or Linux container tests.
+
+### Technical Touchpoints
+- **Requirements**: `engine/requirements.txt`
+- **Documentation**: `docs/features_and_functional_decisions.md`
+
+### State & Lifecycle Impact
+- Clean GitHub Actions runners install 100% of required runtime dependencies automatically.
+- All 125 backend unit and integration tests collect and execute without missing dependency errors.
+
+
 
 
 
