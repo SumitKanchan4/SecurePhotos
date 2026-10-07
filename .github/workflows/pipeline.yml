@@ -1,6 +1,6 @@
 name: SecurePhotos CI/CD Pipeline
 
-on:
+'on':
   workflow_dispatch:
     inputs:
       release_type:
