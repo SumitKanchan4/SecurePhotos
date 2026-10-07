@@ -147,6 +147,34 @@ Output artifacts are located in:
 
 ---
 
+## 🚀 CI/CD & Automated Release Pipeline
+
+SecurePhotos uses a **manual-trigger only** GitHub Actions workflow (`.github/workflows/pipeline.yml`) to eliminate unwanted CI runs and prevent unverified releases from being published.
+
+### Triggering via GitHub Actions Web UI
+1. Navigate to **Actions** &rarr; **SecurePhotos CI/CD Pipeline**.
+2. Click **Run workflow**.
+3. Choose the branch to build from.
+4. Select the **Version Bump Type**:
+   - `patch`: Increments patch component (e.g. `0.1.0` &rarr; `0.1.1`).
+   - `minor`: Increments minor component (e.g. `0.1.0` &rarr; `0.2.0`).
+   - `major`: Increments major component (e.g. `0.1.0` &rarr; `1.0.0`).
+5. Select the **Distribution Mode**:
+   - `test_build` *(Default)*: Compiles the full installer and uploads it to **GitHub Actions Run Artifacts**. **Nothing is published to GitHub Releases**, keeping public feeds clean while allowing developers to download and test the full installation lifecycle.
+   - `public_release`: Packages the installer, tags the repository with `v<version>`, and publishes an official release on GitHub with release notes.
+
+### Local Version Detection & Sync CLI
+You can test SemVer calculation or update manifests locally using:
+```bash
+# Preview next version calculation
+python scripts/release_version.py detect --bump patch
+
+# Synchronize version across all configuration files
+python scripts/release_version.py sync --version 0.1.1
+```
+
+---
+
 ## 📁 Directory Structure Reference
 
 ```

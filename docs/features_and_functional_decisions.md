@@ -4463,6 +4463,48 @@ Formally established the legal licensing, data ownership covenant, and protectiv
 - Zero code regressions.
 - Complete legal and liability protection for authors and contributors under the MIT License and protective covenant.
 
+---
+
+## 88. Manual-Trigger CI/CD Pipeline, Automated SemVer Resolution & Isolated Test Artifact Distribution
+
+### Overview
+Refactored the GitHub Actions release workflow from automatic branch/tag pushes to an exclusively manual, on-demand dispatch model (`workflow_dispatch`). Integrated automated semantic version detection based on existing repository git tags and manifest baselines, coupled with isolated test build distribution via GitHub Actions Run Artifacts to verify full installation lifecycles without polluting public releases.
+
+### Key Functional Decision Points
+1. **Exclusively Manual Workflow Trigger (`workflow_dispatch`)**:
+   - *Rationale*: Eliminates unwanted CI runs and wasted runner minutes on routine feature/fix branch pushes, PR creation, or intermediate commits.
+   - *Control*: Developers trigger the pipeline strictly on demand directly from the GitHub Actions web UI or GitHub CLI.
+2. **Automated Semantic Version Detection (`scripts/release_version.py`)**:
+   - *Discovery Mechanism*: Queries git tags matching `v*` (e.g., `v0.0.1`..`v0.1.0`), extracts numeric `(major, minor, patch)` tuples, and takes the maximum value alongside `package.json` to determine the true active baseline.
+   - *Mathematical Bumping*: Supports standard SemVer options:
+     - `patch`: Increments patch component (e.g. `0.1.0` &rarr; `0.1.1`).
+     - `minor`: Increments minor component and resets patch (e.g. `0.1.0` &rarr; `0.2.0`).
+     - `major`: Increments major component and resets minor/patch (e.g. `0.1.0` &rarr; `1.0.0`).
+   - *In-Place Manifest Synchronization*: Prior to Tauri compilation, updates `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and `engine/config.py` on the CI runner, ensuring generated NSIS setup executables (`SecurePhotos_<version>_x64-setup.exe`) and Windows PE metadata accurately reflect the target version.
+3. **Isolated Test Build Distribution vs. Official Public Release**:
+   - *`test_build` Mode (Default)*:
+     - Executes the full quality gate (pytest, typecheck, sidecar compilation, cargo check) and builds the production NSIS installer.
+     - Uploads installer assets (`.exe`, `.zip`, `.sig`, `latest.json`) exclusively to **GitHub Actions Run Artifacts** (`actions/upload-artifact@v4`).
+     - Bypasses GitHub Releases and git tag creation entirely. Public users see 0 changes in the Releases tab.
+     - Developers can download the zip package directly from the Actions Run Summary, install it on Windows, and verify in-place upgrades, engine sidecar bundling, and 0ms launch.
+   - *`public_release` Mode*:
+     - Executes full verification and builds installers.
+     - Publishes official release to GitHub Releases with annotated git tags and release notes.
+4. **Comprehensive Quality Gate**:
+   - Upgraded from single-file execution to the full project test suite (`pytest engine/tests`, 125 tests) to prevent broken sidecars from entering installer packaging.
+
+### Technical Touchpoints
+- **CI/CD Workflow**: `.github/workflows/pipeline.yml`
+- **Automation Utilities**: `scripts/release_version.py`
+- **Automated Tests**: `engine/tests/test_release_version.py`
+- **Documentation**: `docs/features_and_functional_decisions.md`
+
+### State & Lifecycle Impact
+- Zero automated CI noise on routine pushes.
+- Fully automated, typo-free version management across desktop manifests.
+- Safe, zero-risk developer test installations prior to public distribution.
+
+
 
 
 

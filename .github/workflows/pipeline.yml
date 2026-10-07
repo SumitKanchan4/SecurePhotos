@@ -1,25 +1,25 @@
 name: SecurePhotos CI/CD Pipeline
 
 on:
-  push:
-    branches:
-      - master
-      - main
-      - 'feature/**'
-      - 'fix/**'
-      - 'chore/**'
-    tags:
-      - 'v*'
-  pull_request:
-    branches:
-      - master
-      - main
   workflow_dispatch:
     inputs:
-      tag_name:
-        description: 'Release Tag Name (e.g. v0.1.0)'
-        required: false
-        default: 'v0.1.0'
+      release_type:
+        description: 'Version Bump Type'
+        required: true
+        type: choice
+        default: 'patch'
+        options:
+          - 'patch'
+          - 'minor'
+          - 'major'
+      distribution_mode:
+        description: 'Distribution Mode'
+        required: true
+        type: choice
+        default: 'test_build'
+        options:
+          - 'test_build'
+          - 'public_release'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -28,18 +28,18 @@ concurrency:
 jobs:
   # ─────────────────────────────────────────────────────────────
   # JOB 1: Quality Gate (MANDATORY PREREQUISITE)
-  # Runs on every push and pull request. If this fails, release
-  # is strictly prevented from executing.
+  # Runs on manual invocation. If this fails, packaging and
+  # distribution are strictly prevented from executing.
   # ─────────────────────────────────────────────────────────────
   validate:
-    name: Quality Gate (Typecheck, Lint, Tests & Cargo Check)
+    name: Quality Gate (Typecheck, Lint, Full Test Suite & Cargo Check)
     runs-on: windows-latest
-    # Skip branch push if it is a release commit, but ALWAYS run when a release tag is pushed
-    if: "!contains(github.event.head_commit.message, '[skip branch-ci]') || startsWith(github.ref, 'refs/tags/v')"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -63,12 +63,12 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Run Python Unit Tests
+      - name: Run Python Unit & Integration Tests
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          pip install -r engine/requirements.txt
-          python -m unittest engine/tests/test_prerequisites_check.py
+          pip install -r engine/requirements.txt pytest pyinstaller
+          pytest engine/tests
 
       - name: Install Frontend Dependencies
         run: npm install
@@ -79,21 +79,19 @@ jobs:
       - name: Compile Backend Engine Sidecar
         shell: bash
         run: |
-          pip install pyinstaller
           python scripts/build-engine.py
 
       - name: Rust Backend Type & Dependency Check
         run: cargo check --manifest-path src-tauri/Cargo.toml
 
   # ─────────────────────────────────────────────────────────────
-  # JOB 2: Build Desktop Installers & Publish Release
-  # ONLY executes if 'validate' passes 100% AND it's a version tag
-  # or manual workflow dispatch.
+  # JOB 2: Build Desktop Installers & Distribute
+  # ONLY executes if 'validate' passes 100%.
+  # Handles isolated test artifacts or public releases cleanly.
   # ─────────────────────────────────────────────────────────────
-  release:
-    name: Build Desktop Installers & Release
+  package_and_release:
+    name: Package Desktop Installer & Distribute
     needs: [validate]
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     permissions:
       contents: write
@@ -101,15 +99,22 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Extract Version Metadata
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Detect SemVer & Auto-Bump Manifests
         id: version_meta
         shell: bash
         run: |
-          TAG="${{ inputs.tag_name || github.ref_name }}"
-          CLEAN_VER="${TAG#v}"
-          echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
-          echo "clean_version=${CLEAN_VER}" >> $GITHUB_OUTPUT
+          git fetch --tags
+          python -m pip install --upgrade pip
+          python scripts/release_version.py auto-bump --bump "${{ inputs.release_type }}"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -127,19 +132,12 @@ jobs:
         with:
           workspaces: 'src-tauri -> target'
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
       - name: Install Frontend Dependencies
         run: npm install
 
       - name: Compile Backend Engine Sidecar
         shell: bash
         run: |
-          python -m pip install --upgrade pip
           pip install -r engine/requirements.txt pyinstaller
           python scripts/build-engine.py
 
@@ -149,16 +147,33 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      - name: Publish Installers to GitHub Release
+      # ── Artifact Upload (Always available in Actions run summary) ──
+      - name: Upload Installer to Run Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SecurePhotos-${{ steps.version_meta.outputs.tag_name }}-Setup
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/*.zip
+            src-tauri/target/release/bundle/nsis/*.sig
+            src-tauri/target/release/bundle/**/latest.json
+          if-no-files-found: error
+          retention-days: 14
+
+      # ── Public GitHub Release (Only if distribution_mode == 'public_release') ──
+      - name: Publish Official GitHub Release
+        if: inputs.distribution_mode == 'public_release'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version_meta.outputs.tag_name }}
           name: 'SecurePhotos ${{ steps.version_meta.outputs.tag_name }}'
+          draft: false
+          prerelease: false
           body: |
             ## 🔒 SecurePhotos ${{ steps.version_meta.outputs.tag_name }} — Desktop Release
             
             Download the installer for your Windows PC below:
-            - **`SecurePhotos_${{ steps.version_meta.outputs.clean_version }}_x64-setup.exe`**: 1-Click Windows Setup Installer (Recommended, in-place upgrades)
+            - **`SecurePhotos_${{ steps.version_meta.outputs.next_version }}_x64-setup.exe`**: 1-Click Windows Setup Installer (Recommended, in-place upgrades)
             
             ### 🛡️ SmartScreen / First-Time Installation Notice
             - If Windows Defender SmartScreen displays *"Windows protected your PC"*, click **"More info"** &rarr; **"Run anyway"**.
@@ -182,3 +197,25 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # ── Workflow Execution Summary ──
+      - name: Generate Pipeline Run Summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## 🚀 SecurePhotos CI/CD Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Target Version** | \`${{ steps.version_meta.outputs.tag_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Previous Version** | \`v${{ steps.version_meta.outputs.previous_version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Bump Type** | \`${{ inputs.release_type }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Distribution Mode** | \`${{ inputs.distribution_mode }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.distribution_mode }}" = "test_build" ]; then
+            echo "> [!NOTE]" >> $GITHUB_STEP_SUMMARY
+            echo "> **Test Build Complete**: The setup installer has been uploaded directly as a workflow run artifact and is **NOT** published to the public GitHub Releases page." >> $GITHUB_STEP_SUMMARY
+            echo "> You can download the zip from the **Artifacts** section at the top of this run to test the installer locally." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "> [!SUCCESS]" >> $GITHUB_STEP_SUMMARY
+            echo "> **Official Release Published**: \`${{ steps.version_meta.outputs.tag_name }}\` is now live on GitHub Releases." >> $GITHUB_STEP_SUMMARY
+          fi
