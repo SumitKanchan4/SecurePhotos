@@ -170,4 +170,46 @@ Provide an intelligent, post-import storage optimization tool that enables users
    - Displays a live progress dialog showing reclaimed megabytes/gigabytes.
    - Retains `photos.original_path` and `photos.volume_uuid` in SQLite as historical provenance for search and auditing.
 
+---
+
+## 8. User Accounts, Secure Authentication & Multi-Device Access Architecture
+
+### Overview
+Enable user account management (login/logout, multi-user profiles) and expose the SecurePhotos library for secure, authorized access across multiple devices (secondary PCs, laptops, tablets, mobile browsers) while maintaining strict zero-trust cryptographic boundaries.
+
+### User Problem & Motivation
+* As a user with photos stored on an external SSD or primary computer, having to physically connect the drive to every device just to view photos is restrictive.
+* Users want to log into their SecurePhotos library from other laptops, tablets, or phones on their home network or remotely.
+* Multi-person households want individual user logins (e.g. personal private libraries vs. shared family albums) with access control.
+
+### Architectural Blueprint & Core Capabilities
+
+1. **User Authentication & Zero-Knowledge Credential Engine**:
+   - **Local Master & Family Profiles**: Support for an Admin master account plus optional secondary family user profiles.
+   - **Argon2id Key Derivation**: Passwords and PINs are hashed using salt + Argon2id. Keys for encrypted vaults are derived client-side so passwords are never stored in plaintext.
+   - **Session & Token Management**:
+     - Issues short-lived, cryptographically signed session tokens (JWT with Ed25519 or opaque bearer tokens).
+     - Secure, HttpOnly, SameSite cookies for media streaming.
+     - Configurable idle auto-lock (e.g., 15 minutes of inactivity).
+   - **Active Session Dashboard & 1-Click Revocation**:
+     - Settings view showing all currently connected devices (Device Name, IP address, OS, Last Active).
+     - Global "Log out all other devices" kill-switch.
+
+2. **Multi-Device Access Modalities**:
+   - **Modal A: Local Network (LAN) Browser Hub**:
+     - When enabled by the user in Settings ("Allow Local Network Access"), SecurePhotos' engine binds to the local LAN IP (`0.0.0.0` or specific LAN interface) with TLS.
+     - Other devices on the same Wi-Fi (laptops, iPads, smartphones) simply navigate to `https://<host-pc-name>.local:<port>` and log in via the web client.
+     - The web client reuses the exact same responsive React/Tailwind/CSS frontend bundle.
+   - **Modal B: Zero-Config Peer-to-Peer Encrypted Mesh**:
+     - Integration with WireGuard / Tailscale / WebRTC peer-to-peer protocols.
+     - Allows secure out-of-home access without opening vulnerable router ports or requiring public static IPs.
+   - **Modal C: Cross-Device Library Sync**:
+     - Encrypted differential sync between multiple desktop installations sharing an external drive or network share.
+
+3. **Privacy & Security Boundaries**:
+   - **Strict Zero-Cloud Reliance**: All authentication and streaming remain 100% self-hosted on the user's hardware.
+   - **Per-User Vault Isolation**: Each user's private vault remains encrypted with their unique password; other household users on the same network hub cannot decrypt or view vault assets.
+   - **Brute-Force & Rate Limiting Guard**: Progressive exponential backoff (delaying responses after repeated failed login attempts) to block automated network attacks.
+
+
 
