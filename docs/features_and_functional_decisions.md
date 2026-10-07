@@ -4410,6 +4410,30 @@ Replaced the hardcoded, static `8000` port with OS-assigned ephemeral dynamic po
 - All 117 backend pytest tests pass.
 - Frontend builds with 0 TypeScript errors.
 
+---
+
+## 86. Documentation Architecture: User-Centric Showcase (`README.md`) & Dedicated Technical Hub (`docs/DEVELOPMENT.md`)
+
+### Overview
+Decoupled project documentation into two tailored, purposeful documents: a warm, benefit-driven product showcase and user guide in `README.md`, and a rigorous technical engineering reference in `docs/DEVELOPMENT.md`.
+
+### Key Functional Decision Points
+1. **Audience-Specific Tailoring**:
+   - **`README.md`**: Dedicated strictly to the end-user mental model. Highlights privacy, 60fps speed, external drive portability, smart face recognition, encrypted vault security, duplicate cleaning, and keyboard shortcuts. Stripped of internal compiler commands, Python versions, and technical jargon.
+   - **`docs/DEVELOPMENT.md`**: Centralized technical repository for developers covering architecture (Tauri Rust host, Python FastAPI sidecar, React frontend), prerequisites, 1-click startup scripts (`run-desktop-app.ps1`, etc.), automated testing with Pytest, standalone release packaging, and directory mappings.
+2. **Prominent Cross-Referencing**:
+   - `README.md` features prominent callout badges directing engineers to `docs/DEVELOPMENT.md`.
+   - `docs/DEVELOPMENT.md` links back to `README.md` for end-user context.
+
+### Technical Touchpoints
+- **Root**: `README.md`
+- **Docs**: `docs/DEVELOPMENT.md`, `docs/features_and_functional_decisions.md`
+
+### State & Lifecycle Impact
+- Eliminates cognitive overload for end users and non-technical stakeholders.
+- Provides developers with a single, clear, authoritative onboarding guide.
+
+
 
 
 

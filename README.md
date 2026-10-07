@@ -1,104 +1,112 @@
-# 🔒 SecurePhotos 2.0
+# 📸 SecurePhotos
 
-> **Privacy-first, zero-cloud desktop photo library, 8K ULTRA AI Super-Resolution engine, hands-free Google Photos-style face unblur, and encrypted digital vault with native external drive resilience.**
+> **The 100% Private, Zero-Cloud Photo & Video Vault for Your Desktop and External Drives.**
 
----
-
-## 🌟 Overview
-
-**SecurePhotos 2.0** is an offline, local-first desktop media library and digital vault designed for users who demand absolute privacy, instantaneous 60fps browsing across 100,000+ assets, 8K ULTRA Super-Resolution AI upscaling, hands-free face unblur, and military-grade encryption for intimate and sensitive media.
-
-- **Zero Cloud Reliance**: 100% offline. Zero remote telemetry, zero tracking.
-- **Hands-Free 8K ULTRA Pipeline**: Background automated face unblur (YOLOv8-Face + CodeFormer $w=0.85$) and multi-pass Lanczos acutance enhancement up to $7680 \times 4320$ (CRF 19) saving ~70% disk space with zero manual buttons.
-- **Interactive Before / After Split Slider**: Instant side-by-side visual comparison between original source photos and 8K ULTRA enhanced proxies.
-- **30-Day Soft-Delete Trash**: Safe single-photo and batch trashing with automatic recovery window.
-- **External Drive Portability & Resilience**: Hardware volume UUID tracking, atomic 2-phase commits (`.tmp` + `fsync` + `os.replace`), and portable models (`.securephotos_library/models/`).
-- **Hierarchical Date Sharding**: Date-sharded directory structure (`originals/YYYY/MM/DD/`) (< 500 files/folder) preventing OS/filesystem hangs.
-- **Zero-Trust Hardened Vault**: Multi-slot Master Key wrapping (Argon2id password, Windows Hello biometrics, 24-word emergency recovery key), RFC 6238 TOTP 2FA, encrypted thumbnails (`.enc`), and ephemeral RAM streaming.
-- **Intelligent People & Stories**: Representative Medoid clustering ("Name Once, Tag 1,000 Photos"), Social Affinity Graph for Close Ones, and beat-matched Ken-Burns video montages.
+*SecurePhotos is a lightning-fast, beautifully designed personal media library that keeps your family photos, videos, and private documents completely on your own hardware — with zero cloud uploads, zero subscriptions, and zero tracking.*
 
 ---
 
-## 🚀 Quickstart: How to Run the Application
-
-### 1. 📋 Prerequisites
-
-* **Node.js**: v20.x or v22.x LTS (`node -v` & `npm -v`)
-* **Python**: v3.11+ or v3.12+ (`python --version` or `uv python`)
-* **OS**: Windows 10/11 (DirectML supported), macOS, or Linux
+> 👨‍💻 **Are you a developer or contributor?**
+> Looking for system architecture, build instructions, or local development setup? Please see the [**Developer & Engineering Guide**](docs/DEVELOPMENT.md).
 
 ---
 
-### 2. ⚡ Starting the Application (1-Click Scripts)
+## 🌟 Why SecurePhotos?
 
-#### 🖥️ Launch the Native Desktop App Window (Tauri 2.0)
-```powershell
-.\scripts\run-desktop-app.ps1
-```
+Most modern photo apps want your photos in their cloud, require ongoing monthly subscriptions, and scan your personal life for ad tracking. **SecurePhotos takes the opposite approach: complete privacy and total ownership.**
 
-#### 🌐 Launch the Frontend UI (Port 1420)
-```powershell
-.\scripts\run-frontend.ps1
-```
-> 📍 **Interactive UI**: Open **[http://localhost:1420](http://localhost:1420)** in your browser.
-
-#### 🐍 Launch the Python Engine Sidecar (Port 8000)
-```powershell
-.\scripts\run-backend.ps1
-```
-> 📍 **API Documentation**: Open **[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)** for interactive Swagger UI.
+| Feature | SecurePhotos | Cloud Services (Google, Apple, OneDrive) |
+| :--- | :--- | :--- |
+| **Privacy** | 🔒 **100% On-Device & Offline** | ☁️ Uploaded to corporate cloud servers |
+| **Storage Location** | 💾 **Your PC or External SSD** | 🏢 Remote third-party data centers |
+| **Cost** | 💸 **Free & Lifetime Ownership** | 💳 Recurring monthly storage fees |
+| **Speed** | ⚡ **Instant 60fps Native Performance** | ⏳ Buffering, network lag & upload delays |
+| **Private Vault** | 🛡️ **Military-Grade Encryption (AES-256)** | 🔓 Plainly readable by cloud admins/AI |
+| **AI Processing** | 🧠 **100% On-Device Offline AI** | 🤖 Remote server-side AI training |
 
 ---
 
-### 3. 🧪 Running Automated Tests
+## ✨ Key Capabilities
 
-Run the full backend test suite covering SQLite WAL pragmas, volume tracking, high-speed ingestion, zero-trust cryptography, and stories:
+### 🛡️ 100% Private & Truly Offline
+Every photo, video, face recognition scan, and document search runs strictly on your computer's local hardware. SecurePhotos never connects to any external cloud, has zero telemetry, and never phones home.
 
-```powershell
-.venv\Scripts\python.exe -m pytest engine/tests -v
-```
+### 💾 Portable External Drive Vault
+You can install and store your entire library directly on an external hard drive or high-speed portable SSD. When you unplug the drive and connect it to another PC, your entire library, albums, face tags, and encrypted vault are ready to use immediately.
 
----
+### ⚡ Silky-Smooth Browsing (100,000+ Photos)
+Engineered for massive collections. Scroll through decades of memories at a locked 60 frames per second without stuttering, loading spinners, or freezing.
 
-### 4. 📦 Building for Production
+### 👥 Smart People & Family Recognition
+Group photos by the people you love without sending your biometric data to the cloud.
+- **"Name Once, Tag 1,000 Photos"**: Name a face once, and SecurePhotos automatically identifies that person across your entire collection.
+- **VIP "Close Ones"**: Pin your closest family and friends to the top for quick access.
+- **Offline & Safe**: All face detection runs 100% locally on your machine.
 
-Compile the optimized frontend bundle:
+### 🔒 Encrypted Private Vault
+Protect sensitive paperwork, financial records, medical documents, and intimate photos behind a dedicated master password or PIN. Vault photos are stored with bank-grade encryption (AES-256) and are decrypted strictly in memory while you view them — never left exposed on the disk.
 
-```powershell
-npm run build
-```
+### 🧹 Duplicate Cleaner & Disk Space Saver
+Free up valuable gigabytes on your computer:
+- **Intelligent Duplicate Finder**: Automatically spots exact copies and burst shots, suggesting the best photo to keep while safely moving redundancies to the trash.
+- **Video Optimizer**: Compresses oversized phone videos to modern formats with zero perceptible loss in visual quality.
+- **30-Day Safety Net**: Trashed items are held safely for 30 days before permanent deletion, so you never have to worry about accidental loss.
 
----
+### 🎞️ Cinematic Stories & 4K Collages
+- **Beat-Matched Stories**: Turn any vacation or album into a cinematic video slideshow with smooth Ken-Burns pan/zoom effects and offline musical soundtracks.
+- **Instant Collages**: Generate stunning 2K/4K photo grids with customized spacing and aspect ratios in seconds.
 
-## ⌨️ Desktop Keyboard Shortcuts
-
-| Shortcut | Action | Scope |
-|---|---|---|
-| `T` | Toggle Theme (Dark Obsidian 🌙 / Light Titanium ☀️) | Global |
-| `Ctrl + K` / `Cmd + K` | Focus Global Hybrid Search Box | Global |
-| `J` / `ArrowRight` | Next Photo / Next Story Slide | Grid / Lightbox / Stories |
-| `K` / `ArrowLeft` | Previous Photo / Previous Story Slide | Grid / Lightbox / Stories |
-| `Space` | Quick Look / Play & Pause Story | Grid / Stories |
-| `E` | Toggle 8K ULTRA Before/After Comparison Split Slider | Lightbox |
-| `Ctrl + I` | Toggle EXIF Metadata Info Drawer | Lightbox |
-| `F` | Toggle Favorite Star | Grid / Lightbox |
-| `L` | Lock Selected Photo/Album to Encrypted Vault | Grid / Lightbox / Albums |
-| `Delete` / `Backspace` | Move Photo to 30-Day Trash | Lightbox |
-| `Escape` | Close Lightbox / Clear Selection / Close Modal | Global |
+### 📄 Documents & Receipts Hub
+Automatically separates receipts, tickets, diplomas, and official documents from your personal memories. Extracts searchable text offline so you can search for a receipt or document by the words printed inside it.
 
 ---
 
-## 📑 Architecture & Specifications
+## 🚀 Getting Started in 3 Simple Steps
 
-All detailed design documents and specifications are located in the **[`docs/`](file:///c:/Sumit%20Code/SecurePhotos/docs)** directory:
-* **[docs/8k_ultra_automated_enhancement_and_trash_architecture.md](file:///c:/Sumit/Code/SecurePhotos/docs/8k_ultra_automated_enhancement_and_trash_architecture.md)**: Exhaustive specification, flowcharts, and sequence diagrams for hands-free 8K ULTRA enhancement and 30-day soft-delete trash.
-* **[docs/architecture.md](file:///c:/Sumit/Code/SecurePhotos/docs/architecture.md)**: Core system flowcharts, lifecycle diagrams, and SQLite WAL database structure.
-* **[docs/end_to_end_implementation_plan.md](file:///c:/Sumit/Code/SecurePhotos/docs/end_to_end_implementation_plan.md)**: Roadmap, 8K pipeline, external drive resilience, and zero-trust vault.
-* **[docs/database_schema_and_indexing.md](file:///c:/Sumit/Code/SecurePhotos/docs/database_schema_and_indexing.md)**: SQLite schema, FTS5 triggers, and covering indexes.
-* **[docs/ui_ux_design_specification.md](file:///c:/Sumit/Code/SecurePhotos/docs/ui_ux_design_specification.md)**: Design token system, 60fps virtualization, and UX flows.
-* **[docs/greenfield_enterprise_blueprint.md](file:///c:/Sumit/Code/SecurePhotos/docs/greenfield_enterprise_blueprint.md)**: Enterprise architectural blueprint.
+1. **Install SecurePhotos**:
+   Run the desktop installer (`SecurePhotos_0.1.0_x64-setup.exe`). You can choose your main computer drive or select an external SSD.
+2. **Import Your Photos**:
+   Click **Import Photos** on the top toolbar. Select any folder, memory card, or drive. SecurePhotos will automatically organize them by date.
+3. **Enjoy & Organize**:
+   Explore your timeline, create custom albums, name faces in the **People** tab, or lock sensitive items into your **Private Vault**.
+
+---
+
+## ⌨️ Effortless Keyboard Shortcuts
+
+Navigate your entire collection without taking your hands off the keyboard:
+
+| Shortcut | Action | Where It Works |
+| :---: | :--- | :--- |
+| `J` / `→` | **Next Photo** | Photo Grid & Fullscreen Lightbox |
+| `K` / `←` | **Previous Photo** | Photo Grid & Fullscreen Lightbox |
+| `Space` | **Quick Preview / Play Video** | Anywhere |
+| `F` | **Toggle Favorite Star** | Anywhere |
+| `L` | **Lock to Private Vault** | Fullscreen Lightbox & Photo Grid |
+| `Delete` | **Move to 30-Day Trash** | Anywhere |
+| `T` | **Switch Dark 🌙 / Light ☀️ Theme** | Anywhere |
+| `Ctrl + K` | **Open Instant Search** | Anywhere |
+| `Ctrl + I` | **View Camera & EXIF Details** | Fullscreen Lightbox |
+| `Escape` | **Close View / Clear Selection** | Anywhere |
+
+---
+
+## 🛡️ The SecurePhotos Privacy Promise
+
+1. **Your Photos Are Yours**: Your pictures are stored in standard formats on your own drive. You are never locked in.
+2. **Zero Internet Dependency**: The application functions 100% identically whether you are connected to the internet or in airplane mode in the middle of nowhere.
+3. **Zero Data Harvesting**: We do not collect analytics, email addresses, error logs, or usage metrics.
+
+---
+
+## 📚 Documentation & Technical Links
+
+- 🛠️ [**Developer & Engineering Guide**](docs/DEVELOPMENT.md): Technical architecture, local development, prerequisites, testing, and production packaging.
+- 📋 [**Functional Registry & Decision Points Log**](docs/features_and_functional_decisions.md): Detailed functional specifications and design rationale.
+- 🚀 [**Architectural Roadmap & Future Enhancements**](docs/future_enhancements.md): Upcoming capabilities, including multi-device sync and mobile companion apps.
 
 ---
 
 ## 📄 License
-Proprietary and Confidential. All rights reserved.
+
+Proprietary and Confidential. Built with pride for privacy, performance, and complete data ownership.
