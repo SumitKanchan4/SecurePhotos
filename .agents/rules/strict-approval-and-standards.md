@@ -4,10 +4,18 @@ trigger: always_on
 
 # 🛡️ Enterprise Workflow & Approval Rules
 
-## 0. Mandatory Branch Protection & Git Push Protocol
+## 0. Mandatory Branch Protection, Task-Specific Branches & Git Push Protocol
 - **CRITICAL**: **NEVER work, edit, or commit directly on the `master` (or `main`) branch.**
-- All development, fixes, refactoring, and documentation work must occur on dedicated `feature/*`, `fix/*`, `chore/*`, or related branch.
-- Always check the current branch before starting any task, and switch to or create the appropriate topic branch.
+- **Dedicated Task-Specific Branching**:
+  - A dedicated topic branch MUST be created for every distinct feature, bug fix, chore, or refactor matching the specific task being implemented (e.g. `feature/<specific-feature-name>`, `fix/<specific-bug-name>`, `chore/<specific-task-name>`).
+  - Do NOT lump multiple unrelated tasks or ongoing experiments into a single generic branch.
+  - The **active working branch MUST ALWAYS be that dedicated task branch** — never `master` or `main`.
+  - Always verify `git branch --show-current` before starting any task, creating or switching to the specific topic branch.
+- **Mandatory User Approval Gate Before Merging to Master/Main**:
+  - **CRITICAL**: **NEVER merge any branch into `master` (or `main`) without explicit, upfront permission and confirmation from the user.**
+  - Work remains safely isolated on its dedicated task branch until the user explicitly directs that it is complete, tested, and ready to merge.
+  - This guarantees that no half-cooked, partially tested, or in-flight code is ever merged into the production `master` baseline.
+  - Immediately after any user-approved merge into `master`, switch back to a dedicated topic branch so no further work ever takes place on `master`.
 - **Mandatory Push to Origin on Commit**: Whenever code is committed (`git commit`), **ALWAYS immediately push to origin** (`git push origin <branch>`). Never leave local commits sitting unpushed, as unpushed commits lead to drift, stale checkins, and merge conflicts.
 
 ## 1. Approval Gate, Mandatory Planning & Autonomous Execution
@@ -23,6 +31,7 @@ trigger: always_on
     1. Plan approval before implementation begins.
     2. High-level architecture forks or ambiguous product requirements with multiple viable designs.
     3. Irreversible or destructive operations (e.g. `git reset --hard`, deleting user data, dropping database tables).
+    4. Merging any task branch into `master` (or `main`).
 
 ## 2. Intellectual Rigor, Candid Pushback & Confidence Calibration
 - **Anti-Sycophancy & Technical Scrutiny**:
