@@ -72,12 +72,30 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
+      - name: Setup FFmpeg & Resource Directories
+        shell: bash
+        run: |
+          choco install ffmpeg --no-progress -y
+          mkdir -p bin data/models
+          if command -v ffmpeg >/dev/null 2>&1; then
+            cp "$(which ffmpeg)" bin/ffmpeg.exe
+            cp "$(which ffprobe)" bin/ffprobe.exe
+          elif [ -f "/c/ProgramData/chocolatey/bin/ffmpeg.exe" ]; then
+            cp /c/ProgramData/chocolatey/bin/ffmpeg.exe bin/ffmpeg.exe
+            cp /c/ProgramData/chocolatey/bin/ffprobe.exe bin/ffprobe.exe
+          elif [ -f "/c/ProgramData/chocolatey/lib/ffmpeg/tools/ffmpeg/bin/ffmpeg.exe" ]; then
+            cp /c/ProgramData/chocolatey/lib/ffmpeg/tools/ffmpeg/bin/ffmpeg.exe bin/ffmpeg.exe
+            cp /c/ProgramData/chocolatey/lib/ffmpeg/tools/ffmpeg/bin/ffprobe.exe bin/ffprobe.exe
+          fi
+
       - name: Run Python Unit & Integration Tests
         shell: bash
+        env:
+          PYTHONPATH: .
         run: |
           python -m pip install --upgrade pip
           pip install -r engine/requirements.txt pytest pyinstaller
-          pytest engine/tests
+          python -m pytest engine/tests
 
       - name: Install Frontend Dependencies
         run: npm install
@@ -149,6 +167,22 @@ jobs:
         run: |
           pip install -r engine/requirements.txt pyinstaller
           python scripts/build-engine.py
+
+      - name: Setup FFmpeg & Resource Directories
+        shell: bash
+        run: |
+          choco install ffmpeg --no-progress -y
+          mkdir -p bin data/models
+          if command -v ffmpeg >/dev/null 2>&1; then
+            cp "$(which ffmpeg)" bin/ffmpeg.exe
+            cp "$(which ffprobe)" bin/ffprobe.exe
+          elif [ -f "/c/ProgramData/chocolatey/bin/ffmpeg.exe" ]; then
+            cp /c/ProgramData/chocolatey/bin/ffmpeg.exe bin/ffmpeg.exe
+            cp /c/ProgramData/chocolatey/bin/ffprobe.exe bin/ffprobe.exe
+          elif [ -f "/c/ProgramData/chocolatey/lib/ffmpeg/tools/ffmpeg/bin/ffmpeg.exe" ]; then
+            cp /c/ProgramData/chocolatey/lib/ffmpeg/tools/ffmpeg/bin/ffmpeg.exe bin/ffmpeg.exe
+            cp /c/ProgramData/chocolatey/lib/ffmpeg/tools/ffmpeg/bin/ffprobe.exe bin/ffprobe.exe
+          fi
 
       - name: Build Desktop Installer (NSIS)
         run: npm run tauri build
