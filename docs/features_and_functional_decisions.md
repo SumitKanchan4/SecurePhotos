@@ -4554,6 +4554,31 @@ Synchronized `engine/requirements.txt` with all third-party modules imported acr
 - Clean GitHub Actions runners install 100% of required runtime dependencies automatically.
 - All 125 backend unit and integration tests collect and execute without missing dependency errors.
 
+---
+
+## 91. Native FFmpeg Binary Staging & SQLite Foreign Key Isolation in Watchdog Tests
+
+### Overview
+Hardened the CI pipeline against Chocolatey shim pointer crashes by switching to direct standalone binary provisioning via `FedericoCarboni/setup-ffmpeg@v3`, and updated video queue watchdog self-healing tests to scope SQLite foreign key constraints safely during synthetic test data creation.
+
+### Key Functional Decision Points
+1. **Unshimmed Native FFmpeg Binaries (`FedericoCarboni/setup-ffmpeg@v3`)**:
+   - *Problem*: `choco install ffmpeg` created Windows wrapper shims at `/c/ProgramData/chocolatey/bin/ffmpeg.exe`. When copied to `bin/ffmpeg.exe`, executing the shim outside Chocolatey's runtime folder failed with exit code `4294967295` ("This usually indicates a missing or moved file").
+   - *Resolution*: Replaced Chocolatey with `FedericoCarboni/setup-ffmpeg@v3`, which downloads genuine Gyan/BtbN release binaries without wrapper shims. Staged directly to `bin/ffmpeg.exe` and `bin/ffprobe.exe` with pre-flight `--version` verification.
+2. **SQLite Foreign Key Scoping in Watchdog Unit Tests**:
+   - *Problem*: In `test_video_queue_self_healing_on_photo_deletion_and_trash`, inserting an orphaned synthetic job with non-existent `photo_id = 999999` failed because SQLite strictly enforces `PRAGMA foreign_keys = ON;`.
+   - *Resolution*: Scoped `PRAGMA foreign_keys = OFF;` exclusively within the test connection prior to inserting the synthetic orphaned job, simulating the unreferenced legacy row the watchdog is designed to self-heal and purge.
+
+### Technical Touchpoints
+- **CI/CD Workflow**: `.github/workflows/pipeline.yml`
+- **Engine Tests**: `engine/tests/test_video_queue.py`
+- **Documentation**: `docs/features_and_functional_decisions.md`
+
+### State & Lifecycle Impact
+- 100% video tests and acoustic analysis tests execute natively in CI.
+- Watchdog self-healing tests pass with 0 relational constraint violations.
+
+
 
 
 

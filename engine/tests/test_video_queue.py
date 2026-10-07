@@ -237,9 +237,10 @@ async def test_video_queue_self_healing_on_photo_deletion_and_trash():
             await conn.close()
 
         # Self-Healing Test 3: Watchdog in GET /api/videos/optimization-progress
-        # Insert a synthetic stalled job with a non-existent photo
+        # Insert a synthetic stalled job with a non-existent photo (temporarily disable FK enforcement for synthetic test)
         conn = await get_db_connection()
         try:
+            await conn.execute("PRAGMA foreign_keys = OFF;")
             await conn.execute(
                 "INSERT INTO video_processing_queue (photo_id, action, status, updated_at) VALUES (999999, 'enhance', 'processing', datetime('now', '-5 minutes'));"
             )
