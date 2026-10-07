@@ -4489,6 +4489,7 @@ Refactored the GitHub Actions release workflow from automatic branch/tag pushes 
      - Developers can download the zip package directly from the Actions Run Summary, install it on Windows, and verify in-place upgrades, engine sidecar bundling, and 0ms launch.
    - *`public_release` Mode*:
      - Executes full verification and builds installers.
+     - *Default Branch Guard*: Strictly enforced at the pipeline gateway. Can **only** be executed when the workflow is dispatched from the default branch (`master`). If invoked on any topic branch, the run aborts immediately with an actionable error directing the developer to choose `test_build`.
      - Publishes official release to GitHub Releases with annotated git tags and release notes.
 4. **Comprehensive Quality Gate**:
    - Upgraded from single-file execution to the full project test suite (`pytest engine/tests`, 125 tests) to prevent broken sidecars from entering installer packaging.

@@ -161,7 +161,7 @@ SecurePhotos uses a **manual-trigger only** GitHub Actions workflow (`.github/wo
    - `major`: Increments major component (e.g. `0.1.0` &rarr; `1.0.0`).
 5. Select the **Distribution Mode**:
    - `test_build` *(Default)*: Compiles the full installer and uploads it to **GitHub Actions Run Artifacts**. **Nothing is published to GitHub Releases**, keeping public feeds clean while allowing developers to download and test the full installation lifecycle.
-   - `public_release`: Packages the installer, tags the repository with `v<version>`, and publishes an official release on GitHub with release notes.
+   - `public_release`: Packages the installer, tags the repository with `v<version>`, and publishes an official release on GitHub with release notes. *(Enforced Guard: Can **only** be triggered from the repository's default branch `master`. Triggering on any topic branch will immediately abort the run).*
 
 ### Local Version Detection & Sync CLI
 You can test SemVer calculation or update manifests locally using:
