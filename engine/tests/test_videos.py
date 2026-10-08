@@ -26,7 +26,7 @@ from engine.services.video_service import (
     compress_video,
     enhance_old_video,
 )
-from engine.services.video_queue_service import pause_video_queue, resume_video_queue
+from engine.services.video_queue_service import pause_video_queue
 from engine.services.ingestion_service import ingest_single_photo
 
 
@@ -221,7 +221,6 @@ async def test_video_ingestion_and_api_workflow(sample_video_clip, tmp_path):
             finally:
                 await conn2.close()
     finally:
-        resume_video_queue()
         if photo_id:
             conn_clean = await get_db_connection()
             try:

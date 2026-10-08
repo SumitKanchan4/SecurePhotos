@@ -4581,6 +4581,42 @@ Hardened the CI pipeline against Chocolatey shim pointer crashes by switching to
 - 100% video tests and acoustic analysis tests execute natively in CI.
 - Watchdog self-healing tests pass with 0 relational constraint violations.
 
+---
+
+## 92. Async Video Queue Worker Lifecycle Management, Test Loop Isolation & HTTPX Cookie Jar Standards
+
+### Overview
+Hardened the asynchronous background video queue worker against lifecycle leaks across event loops, added graceful shutdown cleanup to the FastAPI engine sidecar, guarded automated test suites against unsolicited background processing threads, and modernized integration tests to adhere to HTTPX cookie persistence standards.
+
+### Key Functional Decision Points
+1. **Graceful Worker Task Termination (`stop_video_queue_worker`)**:
+   - *Problem*: `video_queue_service.py` had no mechanism to stop or cancel its infinite `while True:` loop. During application teardown and test execution, `_worker_task` remained alive in the background. When the event loop closed, SQLite worker threads (`aiosqlite`) attempted threadsafe callbacks to the closed loop, triggering `RuntimeError: Event loop is closed` and `PytestUnhandledThreadExceptionWarning`.
+   - *Resolution*: Implemented `async def stop_video_queue_worker()` that safely cancels `_worker_task` and awaits its cancellation, ensuring all SQLite queries and thread-pool resources are drained before loop destruction.
+2. **Automated Test Loop Isolation in `start_video_queue_worker`**:
+   - *Problem*: Ingestion services (`ingest_single_photo`) and API resume endpoints called `start_video_queue_worker()` directly without checking whether the process was running in a test suite. This spawned background worker tasks on transient pytest-asyncio event loops that conflicted with subsequent test database states.
+   - *Resolution*: Guarded `start_video_queue_worker(force: bool = False)` to immediately return when `os.environ.get("PYTEST_CURRENT_TEST")` is present unless `force=True` is explicitly specified.
+3. **Engine Sidecar Lifespan Teardown Wiring**:
+   - *Problem*: In `engine/main.py`, FastAPI's `lifespan` manager spawned background workers on startup but did not cleanly terminate them on sidecar shutdown after `yield`.
+   - *Resolution*: Added `await stop_video_queue_worker()` to the post-yield lifespan shutdown block.
+4. **Test Fixture State Sanitation**:
+   - *Problem*: `isolate_video_queue_during_tests` in `conftest.py` called `resume_video_queue()` during test teardown, inadvertently unpausing queue processing between tests.
+   - *Resolution*: Retained the queue in its isolated, paused state during test teardown so background threads do not wake up concurrently during teardown.
+5. **Modern HTTPX Client Cookie Authentication Standards**:
+   - *Problem*: `test_handshake_flow_and_cookie_auth` used the deprecated per-request `cookies=<...>` parameter in `await client.get(...)`, triggering HTTPX deprecation warnings.
+   - *Resolution*: Tested session cookie authentication using the client instance's cookie jar (populated by the handshake response) and a dedicated `AsyncClient(..., cookies=...)` instance, eliminating deprecation warnings while verifying cookie-based IPC authorization.
+
+### Technical Touchpoints
+- **Video Queue Service**: `engine/services/video_queue_service.py`
+- **Sidecar Lifecycle**: `engine/main.py`
+- **Pytest Configuration & Fixtures**: `engine/tests/conftest.py`
+- **Integration Tests**: `engine/tests/test_videos.py`, `engine/tests/test_ipc_auth.py`
+- **Documentation**: `docs/features_and_functional_decisions.md`
+
+### State & Lifecycle Impact
+- Zero warnings and zero thread exception warnings across all 125 backend tests (`pytest -W error`).
+- Clean, leak-free sidecar shutdown on desktop application exit.
+- GitHub Actions pipeline runs without false-alarm `##[error] raise RuntimeError('Event loop is closed')` annotations.
+
 
 
 

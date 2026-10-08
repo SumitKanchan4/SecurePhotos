@@ -96,14 +96,21 @@ async def test_handshake_flow_and_cookie_auth():
         assert handshake_res.status_code == 200
         assert "securephotos_ipc" in handshake_res.cookies
 
-        # 2. Subsequent request using the received cookie without headers
-        cookie_val = handshake_res.cookies["securephotos_ipc"]
-        verify_res = await client.get(
-            "/api/auth/verify",
-            cookies={"securephotos_ipc": cookie_val},
-        )
+        # 2. Subsequent request using the session cookie persisted in client's cookie jar
+        verify_res = await client.get("/api/auth/verify")
         assert verify_res.status_code == 200
         assert verify_res.json()["authenticated"] is True
+
+    # 3. Subsequent request from a fresh client instance configured with the session cookie directly
+    cookie_val = handshake_res.cookies["securephotos_ipc"]
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        cookies={"securephotos_ipc": cookie_val},
+    ) as cookie_client:
+        verify_res2 = await cookie_client.get("/api/auth/verify")
+        assert verify_res2.status_code == 200
+        assert verify_res2.json()["authenticated"] is True
 
 
 @pytest.mark.asyncio

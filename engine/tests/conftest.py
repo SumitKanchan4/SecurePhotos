@@ -13,7 +13,7 @@ def isolate_video_queue_during_tests():
     1. Pauses the worker to prevent concurrency races while creating test items.
     2. Runs the test.
     3. Cleans up any leftover orphaned or test-generated queue items.
-    4. Resumes the queue worker safely.
+    4. Keeps background queue processing paused to prevent race conditions during loop teardown.
     """
     pause_video_queue()
     try:
@@ -28,7 +28,6 @@ def isolate_video_queue_during_tests():
             conn.close()
         except Exception:
             pass
-        resume_video_queue()
 
 
 @pytest.fixture(autouse=True)

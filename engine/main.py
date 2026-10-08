@@ -56,6 +56,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     logger.info("Shutting down SecurePhotos Engine sidecar...")
+    from engine.services.video_queue_service import stop_video_queue_worker
+    await stop_video_queue_worker()
 
 
 def create_app() -> FastAPI:

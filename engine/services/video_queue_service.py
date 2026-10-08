@@ -394,9 +394,18 @@ async def video_queue_worker_loop() -> None:
         logger.info("Video queue background worker loop stopped.")
 
 
-def start_video_queue_worker() -> None:
-    """Starts the background video queue worker task if not already running."""
+def start_video_queue_worker(force: bool = False) -> None:
+    """Starts the background video queue worker task if not already running.
+    
+    Args:
+        force: If True, starts worker even when running in automated test suites.
+               By default, automated tests (PYTEST_CURRENT_TEST) isolate background
+               workers to avoid dangling tasks across test-scoped event loops.
+    """
     global _worker_task
+    if os.environ.get("PYTEST_CURRENT_TEST") and not force:
+        return
+
     if _worker_task is None or _worker_task.done():
         try:
             loop = asyncio.get_running_loop()
@@ -404,3 +413,25 @@ def start_video_queue_worker() -> None:
             logger.info("Background video worker task initialized.")
         except RuntimeError:
             logger.warning("No active event loop found to start video queue worker.")
+
+
+async def stop_video_queue_worker() -> None:
+    """Stops and cancels the background video queue worker task cleanly.
+    
+    Awaits the cancelled task to ensure all SQLite queries and thread-pool
+    operations are drained before event loop teardown.
+    """
+    global _worker_task
+    if _worker_task is not None and not _worker_task.done():
+        _worker_task.cancel()
+        try:
+            await _worker_task
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.debug("Exception while awaiting cancelled video worker task: %s", e)
+        finally:
+            _worker_task = None
+            logger.info("Background video queue worker task cleanly stopped.")
+    else:
+        _worker_task = None
