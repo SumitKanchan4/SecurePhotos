@@ -208,5 +208,24 @@ Enable user account management (login/logout, multi-user profiles) and expose th
    - **Per-User Vault Isolation**: Each user's private vault remains encrypted with their unique password; other household users on the same network hub cannot decrypt or view vault assets.
    - **Brute-Force & Rate Limiting Guard**: Progressive exponential backoff (delaying responses after repeated failed login attempts) to block automated network attacks.
 
+---
+
+## 6. Windows Hello & Hardware Biometrics Integration (TPM Key Wrapping)
+
+### Overview
+Integrate native Windows Hello authentication (fingerprint sensors and IR facial recognition cameras) to unlock the Private Vault seamlessly without manually typing master passwords or 4-digit PINs, while preserving zero-trust cryptographic guarantees.
+
+### Architecture & Key Capabilities
+1. **Native WinRT UserConsentVerifier via Tauri**:
+   - Call native Windows WinRT APIs (`windows::Security::Credentials::UI::UserConsentVerifier`) directly from the Tauri Rust layer via the `windows-rs` crate.
+   - Triggers the official Windows system biometric dialog, verifying hardware presence and user consent with zero third-party drivers.
+2. **Hardware TPM Master Vault Key (MVK) Wrapping**:
+   - Master Vault Key (MVK) wrapping slot: When the user opts into Windows Hello, an ephemeral symmetric wrapping key is derived and protected inside the hardware Trusted Platform Module (TPM 2.0).
+   - Biometric challenge verification unseals the key in volatile memory only for the duration of the active unlocked session.
+   - When the inactivity timer expires, the unsealed key is securely zeroized from RAM.
+3. **Multi-Tier Fallback Hierarchy**:
+   - Windows Hello Biometrics (Instant Primary) &rarr; 4-Digit Quick PIN (Fast Secondary) &rarr; Master Password (Authoritative Tertiary) &rarr; 24-Word Recovery Phrase (Emergency Air-Gapped Key).
+
+
 
 

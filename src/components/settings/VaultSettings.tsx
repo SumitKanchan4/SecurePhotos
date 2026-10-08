@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Shield, Clock, KeyRound, Fingerprint, EyeOff } from "lucide-react";
+import { Shield, Clock, KeyRound, EyeOff } from "lucide-react";
 import { AppSettings } from "../../hooks/useAppSettings";
 import { VaultPasswordResetModal } from "../VaultPasswordResetModal";
 import { useAppStore } from "../../store/useAppStore";
@@ -113,7 +113,6 @@ export const VaultSettings: React.FC<VaultSettingsProps> = ({
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              borderBottom: "1px solid var(--glass-border)",
               gap: "16px",
             }}
           >
@@ -164,57 +163,6 @@ export const VaultSettings: React.FC<VaultSettingsProps> = ({
               <KeyRound size={13} />
               <span>Change Password</span>
             </button>
-          </div>
-
-          {/* Row 3: Biometric / Windows Hello Support */}
-          <div
-            style={{
-              padding: "16px 20px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "16px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <div
-                style={{
-                  width: "36px",
-                  height: "36px",
-                  borderRadius: "var(--radius-full)",
-                  backgroundColor: "rgba(16, 185, 129, 0.12)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--accent-success)",
-                  flexShrink: 0,
-                }}
-              >
-                <Fingerprint size={18} />
-              </div>
-              <div>
-                <p style={{ fontSize: "13px", fontWeight: 600, margin: "0 0 2px 0", color: "var(--text-primary)" }}>
-                  Windows Hello & Biometrics
-                </p>
-                <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0 }}>
-                  Unlock your Private Vault with your fingerprint reader or PIN when configured on your PC.
-                </p>
-              </div>
-            </div>
-
-            <span
-              style={{
-                fontSize: "11px",
-                fontWeight: 700,
-                color: "var(--accent-success)",
-                backgroundColor: "rgba(16, 185, 129, 0.12)",
-                padding: "3px 10px",
-                borderRadius: "var(--radius-full)",
-                border: "1px solid rgba(16, 185, 129, 0.25)",
-              }}
-            >
-              Ready
-            </span>
           </div>
         </div>
       </div>

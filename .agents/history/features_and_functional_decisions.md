@@ -21,6 +21,7 @@ This document serves as the **central, living source of truth** for all function
 ...
 93. [Apple-Style Desktop Settings Redesign & SQLite Portable Preference Persistence](#93-apple-style-desktop-settings-redesign--sqlite-portable-preference-persistence)
 94. [Unified Single-Click Theme Switching & Boot Synchronization](#94-unified-single-click-theme-switching--boot-synchronization)
+95. [Removal of Unimplemented Biometrics Mock & Windows Hello Roadmap Migration](#95-removal-of-unimplemented-biometrics-mock--windows-hello-roadmap-migration)
 
 ---
 
@@ -4696,6 +4697,33 @@ Eliminates a state desynchronization bug where toggling between Dark Obsidian an
 ### State & Lifecycle Impact
 - Clicking Dark Obsidian, Light Titanium, the SettingsView header pill, TitleBar theme button, or pressing shortcut `T` reacts instantaneously on the first single click.
 - Preferences survive browser refreshes, drive unmounts, and machine migrations.
+
+---
+
+## 95. Removal of Unimplemented Biometrics Mock & Windows Hello Roadmap Migration
+
+### Overview
+Audited the "Windows Hello & Biometrics" feature card previously present in `VaultSettings.tsx`. Verified across frontend, Tauri Rust sidecar, and Python engine that Windows Hello biometrics was never implemented and only existed as a static visual mock with a hardcoded "Ready" badge. Removed the misleading mock from the active UI and formally migrated the biometric architecture into `docs/roadmap.md`.
+
+### Key Functional Decision Points
+1. **Zero Fake UI / Anti-Sycophancy Compliance**:
+   - *Problem*: Displaying an interactive-looking card with a green "Ready" badge when no biometric verification exists violates honest user communication and creates deceptive security expectations.
+   - *Resolution*: Completely removed the row from `VaultSettings.tsx`. The Private Vault settings panel now strictly reflects active, verified functionality:
+     - Inactivity Auto-Lock duration (1m, 5m, 15m, 30m, Never).
+     - Master Credentials & Recovery Key modal (Password, 4-digit PIN, BIP-39 recovery card).
+     - Informational Privacy Safeguards card.
+2. **Roadmap Architecture Documentation**:
+   - Added Section 6 to `docs/roadmap.md` detailing the future native WinRT `UserConsentVerifier` API integration via Tauri Rust (`windows-rs`) and TPM 2.0 Master Vault Key wrapping.
+
+### Technical Touchpoints
+- **Frontend Component**: `src/components/settings/VaultSettings.tsx`
+- **Product Documentation**: `docs/roadmap.md`
+- **Functional Registry**: `.agents/history/features_and_functional_decisions.md`
+
+### State & Lifecycle Impact
+- Eliminates user confusion regarding biometric availability.
+- No impact on existing 3-tier vault unlocking (PIN, Master Password, Recovery Phrase).
+
 
 
 
