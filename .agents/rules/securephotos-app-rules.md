@@ -2,7 +2,7 @@
 trigger: always_on
 ---
 
-# 💾 Portable External Vault & Multi-Device Architecture Rules
+# 🛡️ SecurePhotos Application & Portable Vault Architecture Rules
 
 ## 1. Primary Target: 100% Self-Contained External Disk Vault
 - **Primary Deployment Target**:

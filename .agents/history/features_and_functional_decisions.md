@@ -4765,7 +4765,7 @@ Resolves startup hang where SecurePhotos remained frozen on `"Initializing Engin
 ## 97. Portable External Vault & Multi-Device Architecture Standard
 
 ### Functionality Overview
-Formally establishes the enterprise engineering rule and architectural standard (`portable-external-vault-architecture.md`) governing the deployment, execution, and data storage of SecurePhotos as a 100% self-contained portable application on external SSDs, hard drives, and USB media across multiple Windows hosts.
+Formally establishes the enterprise engineering rule and architectural standard (`securephotos-app-rules.md`) governing the deployment, execution, and data storage of SecurePhotos as a 100% self-contained portable application on external SSDs, hard drives, and USB media across multiple Windows hosts.
 
 ### Key Functional Decision Points
 1. **100% Self-Contained External Disk Vault**:
@@ -4802,7 +4802,7 @@ Formally establishes the enterprise engineering rule and architectural standard 
     - Graceful retry and non-blocking loading skeletons during HDD platter spin-up latency.
 
 ### Technical Touchpoints
-- **Agent Rules**: `.agents/rules/portable-external-vault-architecture.md`
+- **Agent Rules**: `.agents/rules/securephotos-app-rules.md`
 - **Functional Decisions Registry**: `.agents/history/features_and_functional_decisions.md`
 
 ### State & Lifecycle Impact
