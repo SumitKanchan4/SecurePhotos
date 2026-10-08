@@ -17,8 +17,9 @@ This document serves as the **central, living source of truth** for all function
 9. [Architectural State Isolation (Album vs. Library Gallery)](#9-architectural-state-isolation-album-vs-library-gallery)
 10. [Concise 'Scan Faces' Action, Force Rescan & Optimistic Feedback](#10-concise-scan-faces-action-force-rescan--optimistic-progress-feedback)
 11. [Fixed 4-Slot Anchor Thumbnail Grid with Transparent Placeholders](#11-fixed-4-slot-anchor-thumbnail-grid-with-transparent-placeholders)
-12. [Non-Destructive Library Scanning, Cover Self-Healing & Test Isolation](#12-non-destructive-library-scanning-cover-self-healing--test-isolation)
 13. [Media Library Dashboard & Storage Visualizer with Integrated Stories](#13-media-library-dashboard--storage-visualizer-with-integrated-stories)
+...
+93. [Apple-Style Desktop Settings Redesign & SQLite Portable Preference Persistence](#93-apple-style-desktop-settings-redesign--sqlite-portable-preference-persistence)
 
 ---
 
@@ -4616,6 +4617,52 @@ Hardened the asynchronous background video queue worker against lifecycle leaks 
 - Zero warnings and zero thread exception warnings across all 125 backend tests (`pytest -W error`).
 - Clean, leak-free sidecar shutdown on desktop application exit.
 - GitHub Actions pipeline runs without false-alarm `##[error] raise RuntimeError('Event loop is closed')` annotations.
+
+---
+
+## 93. Apple-Style Desktop Settings Redesign & SQLite Portable Preference Persistence
+
+### Overview
+Completely redesigned the Settings screen following the Apple Photos macOS preferences paradigm, introducing segmented top category tabs, grouped inset cards with smooth iOS-style toggle switches, and cross-machine preference persistence powered by the SQLite `app_settings` table.
+
+### Key Functional Decision Points
+1. **Segmented Category Navigation (Apple Photos Desktop Inspiration)**:
+   - *Problem*: The previous Settings view was a monolithic vertical list of 5 long cards, requiring excessive scrolling to find settings.
+   - *Resolution*: Implemented a clean, centered segmented top tab toolbar:
+     - 🎨 **Appearance**: Theme selection (Dark Obsidian vs Light Titanium with live swatch cards), photo grid density (Compact, Comfortable, Spacious), and reduced interface motion.
+     - 🔒 **Private Vault**: Inactivity auto-lock timeout presets (1m, 5m, 15m, 30m, Never), master password / PIN update modal, and privacy shields.
+     - 🧠 **AI & 8K**: 8K ULTRA Space-Saver toggle, interactive CRF quality slider with human fidelity tier badges, battery/thermal guard, and offline face recognition.
+     - 🎞️ **Memories**: Ambient story soundtracks, Ken-Burns cinematic camera motion, and automatic milestone highlights.
+     - ℹ️ **About**: Installed version, GitHub release check, and local engine health status.
+2. **Clean Display Header (Zero Redundant Badges)**:
+   - *Decision*: Removed the redundant `v0.1.0` badge and `100% Private` marketing copy from the Settings header. The version already resides in the permanent top title bar, and privacy is intrinsic to the application's offline architecture. The header now features a clean, confident centered display title (`Settings`).
+3. **Elimination of Redundant Storage Charts**:
+   - *Decision*: Excluded duplicate storage meters and drive health graphs from Settings, keeping storage analysis exclusively within the dedicated Dashboard tab (`DashboardView.tsx`).
+4. **Cross-Machine SQLite Persistence for External Drives**:
+   - *Problem*: Browser `localStorage` is tied to a single machine's local WebView2 profile. If a user runs SecurePhotos on an external SSD and connects it to a second computer, all preferences are lost and reset to defaults.
+   - *Resolution*: Implemented `GET /api/system/settings` and `PATCH /api/system/settings` in the FastAPI engine, storing preferences inside the SQLite `app_settings` table. Because `securephotos.db` resides directly on the external drive in `data/database/`, user preferences seamlessly travel with the physical drive across any machine.
+5. **Modern Fluid UI Controls (`ToggleSwitch` & `SegmentedPill`)**:
+   - Replaced native browser checkboxes (`<input type="checkbox">`) with polished, fluid iOS/macOS-style animated pill toggle switches (`ToggleSwitch.tsx`) and liquid-glass segmented pickers (`SegmentedPill.tsx`).
+
+### Technical Touchpoints
+- **Backend Endpoints**: `engine/api/system.py` (`GET /api/system/settings`, `PATCH /api/system/settings`)
+- **Backend Tests**: `engine/tests/test_dashboard_api.py` (`test_app_settings_get_and_patch`)
+- **Frontend Hook**: `src/hooks/useAppSettings.ts`
+- **Frontend Components**:
+  - `src/components/SettingsView.tsx`
+  - `src/components/ui/ToggleSwitch.tsx`
+  - `src/components/ui/SegmentedPill.tsx`
+  - `src/components/settings/AppearanceSettings.tsx`
+  - `src/components/settings/VaultSettings.tsx`
+  - `src/components/settings/AISettings.tsx`
+  - `src/components/settings/MemoriesSettings.tsx`
+  - `src/components/settings/AboutSettings.tsx`
+- **Documentation**: `.agents/history/features_and_functional_decisions.md`
+
+### State & Lifecycle Impact
+- User preferences persist indefinitely across system reboots, drive unmounts, and computer switches.
+- Theme changes apply instantaneously with zero layout shifts or page reloads.
+- Full pytest test suite and frontend build pass with zero warnings or errors.
 
 
 

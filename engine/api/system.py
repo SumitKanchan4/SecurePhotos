@@ -6,6 +6,7 @@ hardware capacity inspection, and library dashboard metrics for the Tauri deskto
 
 import asyncio
 import ctypes
+import json
 import logging
 import os
 import platform
@@ -538,5 +539,95 @@ async def prune_orphaned_originals() -> Dict[str, Any]:
             "reclaimed_bytes": reclaimed_bytes,
             "reclaimed_formatted": f"{reclaimed_bytes / (1024 * 1024):.1f} MB",
         }
+    finally:
+        await conn.close()
+
+
+# ── Persistent App Settings (Stored in SQLite for Portable Drives) ───────────
+
+DEFAULT_APP_SETTINGS: Dict[str, Any] = {
+    "theme": "dark",
+    "grid_density": "comfortable",
+    "reduce_motion": False,
+    "auto_lock_duration": 300,
+    "enable_space_saver": True,
+    "quality_crf": 18,
+    "pause_on_battery": True,
+    "face_clustering": True,
+    "ambient_music": True,
+    "ken_burns_motion": True,
+}
+
+
+class SettingsUpdatePayload(BaseModel):
+    """Payload model for updating user and application settings."""
+    settings: Dict[str, Any]
+
+
+@router.get("/settings", status_code=status.HTTP_200_OK)
+async def get_app_settings() -> Dict[str, Any]:
+    """Retrieves all application and user preferences from SQLite app_settings.
+
+    Merges stored preferences with standard defaults, ensuring portability
+    across multiple machines when operating on an external drive.
+
+    Returns:
+        Dict with 'settings' containing all user preferences.
+    """
+    conn = await get_db_connection()
+    try:
+        merged = dict(DEFAULT_APP_SETTINGS)
+        async with conn.execute("SELECT key, value FROM app_settings;") as cursor:
+            rows = await cursor.fetchall()
+            for key, raw_val in rows:
+                try:
+                    merged[key] = json.loads(raw_val)
+                except Exception:
+                    merged[key] = raw_val
+        return {"settings": merged}
+    finally:
+        await conn.close()
+
+
+@router.patch("/settings", status_code=status.HTTP_200_OK)
+async def update_app_settings(payload: SettingsUpdatePayload) -> Dict[str, Any]:
+    """Updates one or more application preferences in SQLite app_settings table.
+
+    Performs an atomic upsert so user preferences survive machine switches
+    and drive unmounts.
+
+    Args:
+        payload: SettingsUpdatePayload containing key-value pairs to update.
+
+    Returns:
+        Dict with status and updated settings.
+    """
+    conn = await get_db_connection()
+    try:
+        for key, val in payload.settings.items():
+            encoded = json.dumps(val)
+            await conn.execute(
+                """
+                INSERT INTO app_settings (key, value, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = CURRENT_TIMESTAMP;
+                """,
+                (key, encoded),
+            )
+        await conn.commit()
+
+        # Re-fetch full updated dictionary
+        merged = dict(DEFAULT_APP_SETTINGS)
+        async with conn.execute("SELECT key, value FROM app_settings;") as cursor:
+            rows = await cursor.fetchall()
+            for key, raw_val in rows:
+                try:
+                    merged[key] = json.loads(raw_val)
+                except Exception:
+                    merged[key] = raw_val
+
+        return {"status": "saved", "settings": merged}
     finally:
         await conn.close()

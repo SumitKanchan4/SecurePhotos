@@ -157,3 +157,60 @@ async def test_optimization_status_and_controls():
         assert r_res.status_code == 200
         assert r_res.json()["status"] == "running"
 
+
+@pytest.mark.asyncio
+async def test_app_settings_get_and_patch():
+    """Verifies that GET /api/system/settings and PATCH /api/system/settings persist in SQLite."""
+    await run_migrations()
+    
+    # Ensure clean state for test run
+    conn = await get_db_connection()
+    try:
+        await conn.execute("DELETE FROM app_settings;")
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Fetch defaults
+        res = await client.get("/api/system/settings")
+        assert res.status_code == 200
+        data = res.json()
+        assert "settings" in data
+        settings = data["settings"]
+        assert settings["theme"] in ("dark", "light")
+        assert settings["grid_density"] in ("compact", "comfortable", "spacious")
+        assert settings["quality_crf"] == 18
+
+        # 2. Update settings via PATCH
+        patch_payload = {
+            "settings": {
+                "theme": "light",
+                "grid_density": "spacious",
+                "quality_crf": 22,
+                "auto_lock_duration": 900,
+                "reduce_motion": True,
+            }
+        }
+        patch_res = await client.patch("/api/system/settings", json=patch_payload)
+        assert patch_res.status_code == 200
+        patch_data = patch_res.json()
+        assert patch_data["status"] == "saved"
+        assert patch_data["settings"]["theme"] == "light"
+        assert patch_data["settings"]["grid_density"] == "spacious"
+        assert patch_data["settings"]["quality_crf"] == 22
+        assert patch_data["settings"]["auto_lock_duration"] == 900
+        assert patch_data["settings"]["reduce_motion"] is True
+
+        # 3. Verify persistence on new GET
+        verify_res = await client.get("/api/system/settings")
+        assert verify_res.status_code == 200
+        verified = verify_res.json()["settings"]
+        assert verified["theme"] == "light"
+        assert verified["grid_density"] == "spacious"
+        assert verified["quality_crf"] == 22
+        assert verified["auto_lock_duration"] == 900
+        assert verified["reduce_motion"] is True
+
+
