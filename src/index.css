@@ -287,3 +287,14 @@ html, body, #root {
   animation: statusPing 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
 
+/* ♿ Reduced Motion Accessibility Override */
+[data-reduce-motion="true"] *,
+[data-reduce-motion="true"] *::before,
+[data-reduce-motion="true"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+

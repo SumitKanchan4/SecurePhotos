@@ -33,7 +33,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
  * Storing settings in SQLite ensures they persist across external drives and different machines.
  */
 export function useAppSettings() {
-  const { theme, setTheme, showToast } = useAppStore();
+  const { theme, setTheme, setGridDensity, showToast } = useAppStore();
   const [settings, setSettings] = useState<AppSettings>(() => ({
     ...DEFAULT_SETTINGS,
     theme: theme || "dark",
@@ -55,6 +55,12 @@ export function useAppSettings() {
           if (merged.theme && merged.theme !== theme) {
             setTheme(merged.theme);
           }
+          if (merged.grid_density) {
+            setGridDensity(merged.grid_density);
+          }
+          if (merged.reduce_motion !== undefined) {
+            document.documentElement.setAttribute("data-reduce-motion", String(merged.reduce_motion));
+          }
         }
       }
     } catch (err) {
@@ -62,7 +68,7 @@ export function useAppSettings() {
     } finally {
       setIsLoading(false);
     }
-  }, [setTheme, theme]);
+  }, [setTheme, setGridDensity, theme]);
 
   useEffect(() => {
     fetchSettings();
@@ -83,9 +89,15 @@ export function useAppSettings() {
         return next;
       });
 
-      // Special handling for theme
+      // Special handling for theme, grid density, and motion
       if (key === "theme") {
         setTheme(value as "dark" | "light");
+      }
+      if (key === "grid_density") {
+        setGridDensity(value as "compact" | "comfortable" | "spacious");
+      }
+      if (key === "reduce_motion") {
+        document.documentElement.setAttribute("data-reduce-motion", String(value));
       }
 
       // 2. Persist to SQLite in background (debounced for sliders)

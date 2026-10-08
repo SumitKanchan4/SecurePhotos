@@ -509,7 +509,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   onToggleFavorite,
 }) => {
   const parentRef = useRef<HTMLDivElement>(null);
-  const { selectedPhotoIds, togglePhotoSelection } = useAppStore();
+  const { selectedPhotoIds, togglePhotoSelection, gridDensity } = useAppStore();
   
   const allPhotos = photos ?? [];
 
@@ -523,7 +523,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
       const width = parentRef.current.clientWidth - 32; // 16px padding on each side
       if (width <= 0) return;
       const gap = 10;
-      const targetSize = 185;
+      const targetSize = gridDensity === "compact" ? 130 : gridDensity === "spacious" ? 260 : 185;
       const cols = Math.max(2, Math.floor((width + gap) / (targetSize + gap)));
       const itemWidth = (width - (cols - 1) * gap) / cols;
       const cardAspectRatio = 1; // 1:1 Square (strictly matching Albums & People tabs)
@@ -537,7 +537,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
     const observer = new ResizeObserver(updateGrid);
     observer.observe(parentRef.current);
     return () => observer.disconnect();
-  }, []);
+  }, [gridDensity]);
 
   const rowCount = Math.ceil(allPhotos.length / columns);
 

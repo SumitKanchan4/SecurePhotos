@@ -15,6 +15,7 @@ export type NavTab =
 
 interface AppState {
   theme: "dark" | "light";
+  gridDensity: "compact" | "comfortable" | "spacious";
   activeTab: NavTab;
   searchQuery: string;
   selectedPhotoIds: Set<number>;
@@ -37,6 +38,7 @@ interface AppState {
   // Actions
   setTheme: (theme: "dark" | "light") => void;
   toggleTheme: () => void;
+  setGridDensity: (density: "compact" | "comfortable" | "spacious") => void;
   setActiveTab: (tab: NavTab) => void;
   setSearchQuery: (query: string) => void;
   togglePhotoSelection: (id: number) => void;
@@ -61,6 +63,7 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set) => ({
   theme: "dark",
+  gridDensity: "comfortable",
   activeTab: "photos",
   searchQuery: "",
   selectedPhotoIds: new Set<number>(),
@@ -94,6 +97,8 @@ export const useAppStore = create<AppState>((set) => ({
       document.documentElement.setAttribute("data-theme", nextTheme);
       return { theme: nextTheme };
     }),
+
+  setGridDensity: (gridDensity) => set({ gridDensity }),
 
   setActiveTab: (activeTab) => set({ activeTab }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
