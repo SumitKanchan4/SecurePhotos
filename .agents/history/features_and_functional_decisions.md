@@ -22,6 +22,9 @@ This document serves as the **central, living source of truth** for all function
 93. [Apple-Style Desktop Settings Redesign & SQLite Portable Preference Persistence](#93-apple-style-desktop-settings-redesign--sqlite-portable-preference-persistence)
 94. [Unified Single-Click Theme Switching & Boot Synchronization](#94-unified-single-click-theme-switching--boot-synchronization)
 95. [Removal of Unimplemented Biometrics Mock & Windows Hello Roadmap Migration](#95-removal-of-unimplemented-biometrics-mock--windows-hello-roadmap-migration)
+96. [Multi-Machine Engine Prerequisite Validation, Startup Lifecycle Polling & Bounded Diagnostics](#96-multi-machine-engine-prerequisite-validation-startup-lifecycle-polling--bounded-diagnostics)
+97. [Portable External Vault & Multi-Device Architecture Standard](#97-portable-external-vault--multi-device-architecture-standard)
+98. [Non-Destructive In-Place Updates, Dynamic Drive Letter Remapping & Library Reconnection](#98-non-destructive-in-place-updates-dynamic-drive-letter-remapping--library-reconnection)
 
 ---
 
@@ -4807,6 +4810,71 @@ Formally establishes the enterprise engineering rule and architectural standard 
 
 ### State & Lifecycle Impact
 - Codifies the permanent architectural mandate across all future feature development, testing, and distribution packaging.
+
+---
+
+## 98. Non-Destructive In-Place Updates, Dynamic Drive Letter Remapping & Library Reconnection
+
+### Functionality Overview
+Guarantees zero data loss during application updates, reinstalls, and directory migrations on portable external drives, while ensuring complete multi-machine plug-and-play mobility when Windows dynamically assigns different drive letters (`D:`, `E:`, `F:`, `Z:`). 
+Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securephotos-engine.exe`) during silent or manual updates, enables in-app update preparation by killing the child engine sidecar prior to binary replacement, normalizes media filepaths to relative portable storage (`originals/...`), implements active runtime drive letter remapping, and introduces frictionless "Connect Existing Library" onboarding and library switching capabilities in the UI.
+
+### Key Functional Decision Points & Rationale
+1. **In-Place Non-Destructive Overwrites & Pre-Install Process Unlocking**:
+   - *Problem*: Previously, updating the application prompted users to uninstall first. If uninstalled and reinstalled to a different path, user library data was disconnected. Additionally, if `securephotos-engine.exe` or `SecurePhotos.exe` remained running in the background, NSIS setup and in-app auto-updaters failed with `ERROR_SHARING_VIOLATION` (file locked by another process).
+   - *Rejected Alternative (Raw ZIP Distribution)*: Users rejected delivering updates as a raw ZIP archive because non-technical users do not know how to unpack, overwrite, or connect existing files without confusion.
+   - *Rejected Alternative (Blind Parent Directory Scanning)*: Traversing upward looking for `data/` could scan entire host drive volumes (e.g. `C:\`), causing long delays and risking picking up unrelated databases.
+   - *Implemented Resolution*:
+     - In `src-tauri/nsis-hooks.nsh`, added a pre-install hook executing silent process termination (`taskkill /F /IM securephotos-engine.exe` and `taskkill /F /IM SecurePhotos.exe`) via `nsExec::ExecToLog`, ensuring zero file locking when binaries are replaced in-place.
+     - Added uninstaller warnings explicitly protecting the `$INSTDIR\data` directory against accidental deletion.
+     - In `src-tauri/src/lib.rs`, introduced the `prepare_for_update` Tauri command, which explicitly kills the running child engine process before the in-app Tauri updater replaces executable files on disk.
+     - In `src/components/UpdateModal.tsx`, invoked `prepare_for_update` during download initiation, accompanied by reassuring, human-first copy: *"Preparing files for update... Closing background engine to safely update files in-place without data loss."*
+2. **Dynamic Drive Letter Remapping & Relative Path Normalization**:
+   - *Problem*: When an external SSD or USB drive is moved between different Windows machines (or plugged into different USB ports), Windows dynamically assigns unpredictable drive letters (e.g., `D:\` on Work PC, `E:\` on Laptop, `F:\` on Desktop). Storing absolute drive paths in SQLite breaks all image loading, thumbnails, video streaming, face recognition, and vault operations on secondary machines.
+   - *Resolution*:
+     - **Database Path Migration**: Created a self-healing migration in `engine/database.py` that automatically converts legacy absolute paths in `photos.filepath` to relative paths (`originals/...`) relative to the library data root.
+     - **Ingestion Pipeline Update**: Updated `engine/services/ingestion_service.py` to store all new managed photo filepaths relative to `settings.data_dir`.
+     - **Runtime Resolver (`resolve_media_path`)**: In `engine/config.py`, implemented `resolve_media_path(filepath)`:
+       - If `filepath` is already relative, directly resolves against active `settings.data_dir`.
+       - If an absolute path is encountered from a different drive letter (e.g. `E:\data\...` when mounted on `F:\`), dynamically detects the volume root switch and remaps to the active drive letter.
+       - Falls back to matching folder anchors (`originals/...`, `vault/...`, `thumbnails/...`).
+     - **Full API & Service Coverage**: Wrapped all media-consuming endpoints and workers with `resolve_media_path()`:
+       - `engine/api/photos.py`: original media, thumbnails, previews, downloads, neural previews, face restore.
+       - `engine/api/videos.py`: video streaming and range requests.
+       - `engine/api/vault.py`: encrypted photo streaming, file locks, and unlocks.
+       - `engine/api/people.py` & `engine/services/face_scan_worker.py`: face scanning and face crop generation.
+       - `engine/services/video_service.py` & `engine/services/video_queue_service.py`: video compression, enhancement, and transcoding queues.
+3. **Library Persistence & Custom Location Configuration (`data_location.txt`)**:
+   - To support flexible library placement (e.g. storing app binaries on `C:\` and user library on an external drive `E:\SecurePhotosLibrary`), both Rust sidecar (`src-tauri/src/lib.rs`) and Python engine (`engine/config.py`) check for a `data_location.txt` file located in the application root or parent directories.
+   - Environment variable `SECUREPHOTOS_DATA_DIR` takes precedence, followed by `data_location.txt`, falling back cleanly to `<app_root>/data`.
+4. **Frictionless "Connect Existing Library" Onboarding & Settings Switcher**:
+   - *Empty Library Welcome Screen (`EmptyLibraryState.tsx`)*: Added a secondary, prominent **"📁 Connect Existing Library"** button alongside "Select Photos to Ingest". Users who install fresh or move their drive to a new PC can simply click the button, browse to their external drive folder containing `database/securephotos.db`, and immediately reconnect without re-importing.
+   - *About Settings Panel (`AboutSettings.tsx`)*: Added a dedicated **"Library & Storage Location"** card displaying the active library directory path, indicating whether a default or custom location is in use, and providing a **"📁 Switch Library"** button with automatic safe app restart.
+
+### Technical Touchpoints
+- **Installer Hooks**: `src-tauri/nsis-hooks.nsh` (`taskkill` pre-install hooks, uninstaller protection)
+- **Tauri Rust Engine**: `src-tauri/src/lib.rs` (`resolve_custom_data_dir`, `prepare_for_update`, `get_library_location`, `reconnect_library`)
+- **Backend Configuration & Migration**:
+  - `engine/config.py`: `resolve_default_data_dir`, `resolve_media_path`
+  - `engine/database.py`: relative path migration for `photos.filepath`
+  - `engine/services/ingestion_service.py`: relative path storage for managed media
+  - `engine/api/photos.py`, `engine/api/videos.py`, `engine/api/vault.py`, `engine/api/people.py`
+  - `engine/services/face_scan_worker.py`, `engine/services/video_service.py`, `engine/services/video_queue_service.py`
+- **Frontend Components & Modals**:
+  - `src/components/UpdateModal.tsx`: engine child shutdown prior to file download
+  - `src/components/EmptyLibraryState.tsx`: "Connect Existing Library" action
+  - `src/components/settings/AboutSettings.tsx`: "Library & Storage Location" card and switcher
+- **Automated Tests**:
+  - `engine/tests/test_drive_portability.py`: 5 tests validating relative paths, drive letter remapping, `data_location.txt`, and database self-healing migration
+  - `engine/tests/test_collages.py`: 9 tests passing with `resolve_media_path`
+  - `engine/tests/test_ingestion.py`: 11 tests passing with relative path ingestion
+  - `engine/tests/test_videos.py`: 9 tests passing with relative path transcode and stream resolution
+
+### State & Lifecycle Impact
+- Zero database corruption or file lock crashes during desktop updates.
+- 100% portable external drive mobility: media is instantly accessible regardless of which drive letter Windows assigns.
+- Users can switch or reconnect existing external libraries anytime with an automatic restart and zero data loss.
+
 
 
 

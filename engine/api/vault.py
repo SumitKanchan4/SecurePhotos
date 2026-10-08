@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from engine.database import get_db_connection
-from engine.config import settings
+from engine.config import settings, resolve_media_path
 from engine.services.crypto_vault import (
     derive_key_from_password,
     derive_key_from_pin,
@@ -587,8 +587,7 @@ async def stream_vault_photo(photo_id: int):
     if not row:
         raise HTTPException(status_code=404, detail="Encrypted photo not found.")
 
-    raw_path = Path(row["filepath"])
-    enc_path = raw_path if raw_path.is_absolute() else (settings.data_dir / raw_path)
+    enc_path = resolve_media_path(row["filepath"])
     if not enc_path.exists():
         raise HTTPException(status_code=404, detail="Encrypted file missing from disk.")
 
@@ -622,8 +621,7 @@ async def lock_album_to_vault(album_id: int) -> dict:
         photo_ids = []
         for row in rows:
             photo_id = row["id"]
-            raw_orig = Path(row["filepath"])
-            orig_file = raw_orig if raw_orig.is_absolute() else (settings.data_dir / raw_orig)
+            orig_file = resolve_media_path(row["filepath"])
             if orig_file.exists():
                 enc_file = orig_file.with_suffix(orig_file.suffix + ".enc")
                 encrypt_file_chunked(orig_file, enc_file, mvk)
@@ -696,8 +694,7 @@ async def unlock_album_from_vault(album_id: int) -> dict:
         unlocked_count = 0
         for row in rows:
             photo_id = row["id"]
-            raw_enc = Path(row["filepath"])
-            enc_file = raw_enc if raw_enc.is_absolute() else (settings.data_dir / raw_enc)
+            enc_file = resolve_media_path(row["filepath"])
             if enc_file.exists():
                 orig_file = enc_file.with_suffix("") if enc_file.suffix == ".enc" else enc_file.with_name("restored_" + enc_file.name)
                 with open(orig_file, "wb") as fout:
@@ -963,8 +960,7 @@ async def get_vault_thumbnail(photo_id: int):
             logger.warning("Failed to decrypt or read thumbnail %s: %s", active_enc_thumb, e)
 
     # Fallback: decrypt original in-memory and generate thumbnail on the fly
-    orig_raw = Path(row["filepath"])
-    orig_path = orig_raw if orig_raw.is_absolute() else (settings.data_dir / orig_raw)
+    orig_path = resolve_media_path(row["filepath"])
     if not orig_path.exists():
         raise HTTPException(status_code=404, detail="Encrypted file not found on disk.")
 
@@ -1016,8 +1012,7 @@ async def lock_photos_to_vault(payload: VaultPhotosLockRequest) -> dict:
 
         for row in rows:
             photo_id = row["id"]
-            orig_raw = Path(row["filepath"])
-            orig_file = orig_raw if orig_raw.is_absolute() else (settings.data_dir / orig_raw)
+            orig_file = resolve_media_path(row["filepath"])
             if orig_file.exists():
                 enc_file = orig_file.with_suffix(orig_file.suffix + ".enc")
                 encrypt_file_chunked(orig_file, enc_file, mvk)
@@ -1087,8 +1082,7 @@ async def restore_photos_from_vault(payload: VaultPhotosUnlockRequest) -> dict:
 
         for row in rows:
             photo_id = row["id"]
-            enc_raw = Path(row["filepath"])
-            enc_file = enc_raw if enc_raw.is_absolute() else (settings.data_dir / enc_raw)
+            enc_file = resolve_media_path(row["filepath"])
             if enc_file.exists():
                 orig_file = enc_file.with_suffix("") if enc_file.suffix == ".enc" else enc_file.with_name("restored_" + enc_file.name)
                 with open(orig_file, "wb") as fout:

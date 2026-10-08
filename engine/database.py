@@ -631,6 +631,24 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
                 elif cand2.exists():
                     await conn.execute("UPDATE photos SET thumbnail_path = ? WHERE id = ?;", (str(cand2), p_id))
 
+        # Dynamic Drive Portability: Normalize legacy absolute paths to relative paths
+        # Ensures that moving the library or changing drive letters (D: -> E: -> F:) never breaks media
+        for anchor in ("originals", "vault"):
+            await conn.execute(
+                f"""
+                UPDATE photos 
+                SET filepath = SUBSTR(filepath, INSTR(filepath, '/{anchor}/') + 1)
+                WHERE filepath LIKE '%/{anchor}/%';
+                """
+            )
+            await conn.execute(
+                f"""
+                UPDATE photos 
+                SET filepath = REPLACE(SUBSTR(filepath, INSTR(filepath, '\\{anchor}\\') + 1), '\\', '/')
+                WHERE filepath LIKE '%\\{anchor}\\%';
+                """
+            )
+
         await conn.commit()
         logger.info("Database schema migrations executed successfully.")
     except Exception as e:

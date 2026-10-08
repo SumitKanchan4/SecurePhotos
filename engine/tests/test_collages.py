@@ -5,7 +5,7 @@ from PIL import Image
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from engine.config import settings
+from engine.config import settings, resolve_media_path
 from engine.database import get_db_connection, run_migrations
 from engine.main import app
 from engine.services.collage_service import (
@@ -167,7 +167,7 @@ async def test_create_collage_endpoint_and_album():
                 ) as cur:
                     photo_row = await cur.fetchone()
                 assert photo_row is not None
-                collage_file_path = Path(photo_row["filepath"])
+                collage_file_path = resolve_media_path(photo_row["filepath"])
                 assert collage_file_path.exists()
                 assert photo_row["width"] == 3840
                 assert photo_row["height"] == 2160
@@ -207,7 +207,7 @@ async def test_create_collage_endpoint_and_album():
                 ) as cur:
                     multi_row = await cur.fetchone()
                 assert multi_row["taken_at"] is not None
-                collage_multi_path = Path(multi_row["filepath"])
+                collage_multi_path = resolve_media_path(multi_row["filepath"])
                 assert collage_multi_path.exists()
 
                 await conn.close()
@@ -455,7 +455,7 @@ async def test_collage_suggestions_api_and_save_endpoint():
                 async with conn.execute("SELECT filepath, caption FROM photos WHERE id = ?;", (saved_collage_id,)) as cur:
                     c_row = await cur.fetchone()
                 assert c_row is not None
-                saved_file_path = Path(c_row["filepath"])
+                saved_file_path = resolve_media_path(c_row["filepath"])
                 assert saved_file_path.exists()
                 assert saved_file_path.parent.resolve() == settings.collages_dir.resolve()
                 assert "Summer Adventure Burst" in c_row["caption"]

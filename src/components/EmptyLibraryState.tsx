@@ -1,11 +1,13 @@
-import React from "react";
+import React, { useState } from "react";
 import { 
   FolderPlus, 
   ShieldCheck, 
   Sparkles, 
   UploadCloud, 
-  Lock
+  Lock,
+  HardDrive
 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 
 interface EmptyLibraryStateProps {
   onSelectFolder: () => void;
@@ -24,9 +26,29 @@ export const EmptyLibraryState: React.FC<EmptyLibraryStateProps> = ({
   onImportMedia,
   onDropFiles,
 }) => {
-  const [isDragOver, setIsDragOver] = React.useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   const handleAction = onImportMedia || onSelectFolder;
+
+  const handleConnectExisting = async () => {
+    setConnectError(null);
+    setIsConnecting(true);
+    try {
+      const selected = await invoke<string | null>("select_import_folder");
+      if (!selected) {
+        setIsConnecting(false);
+        return;
+      }
+      await invoke("reconnect_library", { newPath: selected });
+      window.location.reload();
+    } catch (err: any) {
+      console.error("Connect library error:", err);
+      setConnectError(typeof err === "string" ? err : err?.message || "Failed to connect to the specified library.");
+      setIsConnecting(false);
+    }
+  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -119,28 +141,69 @@ export const EmptyLibraryState: React.FC<EmptyLibraryStateProps> = ({
 
       {/* Action Buttons & Drag Hint */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: "36px" }}>
-        <button
-          onClick={handleAction}
-          className="clickable"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "11px 24px",
-            borderRadius: "var(--radius-full, 9999px)",
-            backgroundColor: "var(--accent-primary, #3b82f6)",
-            color: "#ffffff",
-            fontWeight: 600,
-            fontSize: "13px",
-            border: "none",
-            boxShadow: "0 4px 16px rgba(59, 130, 246, 0.35)",
-            cursor: "pointer",
-            transition: "transform 0.15s ease, box-shadow 0.15s ease",
-          }}
-        >
-          <FolderPlus size={16} />
-          <span>Import Photos &amp; Videos</span>
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", justifyContent: "center" }}>
+          <button
+            onClick={handleAction}
+            className="clickable"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "11px 24px",
+              borderRadius: "var(--radius-full, 9999px)",
+              backgroundColor: "var(--accent-primary, #3b82f6)",
+              color: "#ffffff",
+              fontWeight: 600,
+              fontSize: "13px",
+              border: "none",
+              boxShadow: "0 4px 16px rgba(59, 130, 246, 0.35)",
+              cursor: "pointer",
+              transition: "transform 0.15s ease, box-shadow 0.15s ease",
+            }}
+          >
+            <FolderPlus size={16} />
+            <span>Import Photos &amp; Videos</span>
+          </button>
+
+          <button
+            onClick={handleConnectExisting}
+            disabled={isConnecting}
+            className="clickable"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "11px 22px",
+              borderRadius: "var(--radius-full, 9999px)",
+              backgroundColor: "var(--glass-surface, rgba(255, 255, 255, 0.05))",
+              backdropFilter: "blur(16px)",
+              WebkitBackdropFilter: "blur(16px)",
+              color: "var(--text-primary, #f8fafc)",
+              fontWeight: 600,
+              fontSize: "13px",
+              border: "1px solid var(--glass-border, rgba(255, 255, 255, 0.15))",
+              cursor: isConnecting ? "wait" : "pointer",
+              transition: "transform 0.15s ease, background-color 0.15s ease",
+            }}
+          >
+            <HardDrive size={16} style={{ color: "var(--accent-primary, #3b82f6)" }} />
+            <span>{isConnecting ? "Connecting..." : "Connect Existing Library"}</span>
+          </button>
+        </div>
+
+        {connectError && (
+          <p 
+            style={{ 
+              fontSize: "12px", 
+              color: "var(--color-danger, #ef4444)", 
+              margin: "10px 0 0 0",
+              maxWidth: "480px",
+              lineHeight: "1.4"
+            }}
+          >
+            {connectError}
+          </p>
+        )}
 
         <p 
           style={{ 

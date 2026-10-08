@@ -19,7 +19,7 @@ from typing import Any, Dict, Optional
 
 from PIL import Image
 
-from engine.config import settings
+from engine.config import settings, resolve_media_path
 from engine.database import get_db_connection
 from engine.services.face_clustering_service import recluster_all_faces
 from engine.services.face_recognition_service import (
@@ -104,7 +104,7 @@ async def run_background_face_scan(force: bool = False) -> Dict[str, Any]:
                 thumb_str = row["thumbnail_path"]
                 face_scan_state["current_photo"] = filename
 
-                photo_path = Path(filepath_str)
+                photo_path = resolve_media_path(filepath_str)
                 if row["is_encrypted"] or photo_path.suffix.lower() == ".enc":
                     face_scan_state["scanned_photos"] += 1
                     continue

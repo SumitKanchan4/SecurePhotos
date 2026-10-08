@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from engine.database import get_db_connection
-from engine.config import settings
+from engine.config import settings, resolve_media_path
 from engine.services.ingestion_service import ingest_single_photo
 
 logger = logging.getLogger("securephotos.api.photos")
@@ -481,7 +481,7 @@ async def get_photo_thumbnail(photo_id: int):
 
     # Auto-upgrade or regenerate if missing or 0 bytes on disk
     if (not thumb_path.exists() or thumb_path.stat().st_size == 0) and row["filepath"]:
-        src_path = Path(row["filepath"])
+        src_path = resolve_media_path(row["filepath"])
         if src_path.exists():
             if is_video:
                 from engine.services.video_service import generate_video_thumbnail
@@ -529,7 +529,7 @@ async def get_photo_preview(photo_id: int):
             preview_file = p_prev
 
     if not preview_file:
-        preview_file = Path(row["filepath"])
+        preview_file = resolve_media_path(row["filepath"])
 
     if not preview_file.exists():
         raise HTTPException(status_code=404, detail="Photo file missing on disk")
@@ -567,7 +567,7 @@ async def get_photo_original(photo_id: int):
     if row["is_encrypted"]:
         raise HTTPException(status_code=403, detail="Encrypted photo requires vault authentication")
 
-    src_file = Path(row["filepath"])
+    src_file = resolve_media_path(row["filepath"])
     if not src_file.exists():
         raise HTTPException(status_code=404, detail="Original photo file missing on disk")
 
@@ -603,7 +603,7 @@ async def download_photo(photo_id: int, mode: str = Query("original", pattern="^
     if row["is_encrypted"]:
         raise HTTPException(status_code=403, detail="Encrypted photo requires vault authentication")
 
-    src_file = Path(row["filepath"])
+    src_file = resolve_media_path(row["filepath"])
     if not src_file.exists():
         raise HTTPException(status_code=404, detail="Photo file missing on disk")
 
@@ -682,7 +682,7 @@ async def trigger_neural_enhancement(photo_id: int):
     if row["is_encrypted"]:
         raise HTTPException(status_code=403, detail="Encrypted photo requires vault authentication")
 
-    src_file = Path(row["filepath"])
+    src_file = resolve_media_path(row["filepath"])
     if not src_file.exists():
         raise HTTPException(status_code=404, detail="Original photo file missing")
 
@@ -744,7 +744,7 @@ async def trigger_face_restore(photo_id: int):
     if row["is_encrypted"]:
         raise HTTPException(status_code=403, detail="Encrypted photo requires vault authentication")
 
-    src_file = Path(row["filepath"])
+    src_file = resolve_media_path(row["filepath"])
     if not src_file.exists():
         raise HTTPException(status_code=404, detail="Original photo file missing")
 

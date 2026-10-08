@@ -529,10 +529,15 @@ async def ingest_single_photo(
                     pass
             raise
 
-        final_filepath = str(dest_path.resolve())
+        physical_filepath = str(dest_path.resolve())
+        db_filepath = str(dest_path.relative_to(settings.data_dir)).replace("\\", "/")
     else:
         # In-Place monitored scan mode
-        final_filepath = str(source_path.resolve())
+        physical_filepath = str(source_path.resolve())
+        try:
+            db_filepath = str(source_path.relative_to(settings.data_dir)).replace("\\", "/")
+        except ValueError:
+            db_filepath = str(source_path.resolve())
 
     # Branch media processing by type (Video vs Photo)
     video_exts = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
@@ -541,7 +546,7 @@ async def ingest_single_photo(
     if is_video:
         thumb_dest = get_sharded_thumbnail_path(file_hash)
         preview_dest = get_sharded_preview_path(file_hash)
-        generate_video_thumbnail(final_filepath, str(thumb_dest), str(preview_dest))
+        generate_video_thumbnail(physical_filepath, str(thumb_dest), str(preview_dest))
         thumb_path = str(thumb_dest.relative_to(settings.data_dir)).replace("\\", "/")
         preview_path = str(preview_dest.relative_to(settings.data_dir)).replace("\\", "/")
 
@@ -562,7 +567,7 @@ async def ingest_single_photo(
         preview_path = None
         try:
             thumb_dest = get_sharded_thumbnail_path(file_hash)
-            with Image.open(final_filepath) as img:
+            with Image.open(physical_filepath) as img:
                 img.thumbnail((1024, 1024))
                 img.save(thumb_dest, "WEBP")
                 thumb_path = str(thumb_dest.relative_to(settings.data_dir)).replace("\\", "/")
@@ -570,7 +575,7 @@ async def ingest_single_photo(
             thumb_path = None
     else:
         # Generate 1024px Retina micro-thumbnail for fast grid rendering
-        thumb_path, tw, th = generate_micro_thumbnail(final_filepath, file_hash=file_hash, size=1024)
+        thumb_path, tw, th = generate_micro_thumbnail(physical_filepath, file_hash=file_hash, size=1024)
         preview_path = None
         mime_type = f"image/{source_path.suffix.lstrip('.').lower()}"
 
@@ -593,7 +598,7 @@ async def ingest_single_photo(
         """,
         (
             source_path.name,
-            final_filepath,
+            db_filepath,
             volume_uuid,
             file_size,
             file_size,

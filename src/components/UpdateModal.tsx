@@ -34,6 +34,13 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ update, isOpen, onClos
       let downloadedBytes = 0;
       let totalBytes = 0;
 
+      // Gracefully terminate the background engine process to release file locks on Windows
+      try {
+        await invoke("prepare_for_update");
+      } catch (prepErr) {
+        console.warn("Notice during engine pre-update shutdown:", prepErr);
+      }
+
       await update.downloadAndInstall((event) => {
         switch (event.event) {
           case "Started":
@@ -52,7 +59,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ update, isOpen, onClos
             break;
           case "Finished":
             setDownloadProgress(100);
-            setDownloadStatusText("Verifying cryptographic signature and installing...");
+            setDownloadStatusText("Installing in-place update (your library is safely preserved)...");
             break;
         }
       });

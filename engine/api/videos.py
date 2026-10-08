@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import aiosqlite
 
-from engine.config import settings
+from engine.config import settings, resolve_media_path
 from engine.database import get_db_connection
 from engine.services.video_runtime import (
     is_video_runtime_available,
@@ -443,7 +443,7 @@ async def stream_video_endpoint(photo_id: int):
     if row["is_encrypted"]:
         raise HTTPException(status_code=403, detail="Encrypted video requires vault authentication")
 
-    src_file = Path(row["filepath"])
+    src_file = resolve_media_path(row["filepath"])
     if not src_file.exists():
         raise HTTPException(status_code=404, detail="Video file missing on disk")
 

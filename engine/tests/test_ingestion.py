@@ -8,6 +8,7 @@ from PIL import Image
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from engine.config import resolve_media_path
 from engine.database import get_db_connection, run_migrations
 from engine.main import app
 from engine.services.ingestion_service import (
@@ -135,7 +136,7 @@ async def test_managed_ingestion_and_deduplication():
                 assert row["height"] == 720
                 assert row["file_size"] == img_path.stat().st_size
                 assert row["original_file_size"] == row["file_size"]
-                managed_filepath = Path(row["filepath"])
+                managed_filepath = resolve_media_path(row["filepath"])
         finally:
             await conn.close()
             if managed_filepath and managed_filepath.exists():
@@ -181,7 +182,7 @@ async def test_whatsapp_extraction_and_undated_api_filter():
                 wa_row = await cursor.fetchone()
                 assert wa_row["taken_at"] is not None
                 assert "2022-08-15" in wa_row["taken_at"]
-                paths_to_clean.append(Path(wa_row["filepath"]))
+                paths_to_clean.append(resolve_media_path(wa_row["filepath"]))
 
             # 2. Completely undated image with distinct bitwise content
             undated_path = Path(tmpdir) / "undated_graphic.jpg"
@@ -193,7 +194,7 @@ async def test_whatsapp_extraction_and_undated_api_filter():
                 undated_row = await cursor.fetchone()
                 assert undated_row["taken_at"] is None
                 assert "undated" in undated_row["filepath"]
-                paths_to_clean.append(Path(undated_row["filepath"]))
+                paths_to_clean.append(resolve_media_path(undated_row["filepath"]))
         finally:
             await conn.close()
             for p in paths_to_clean:
@@ -288,7 +289,7 @@ async def test_ingest_readonly_file_windows():
             async with conn.execute("SELECT filepath FROM photos WHERE id = ?;", (photo_id,)) as cur:
                 row = await cur.fetchone()
                 assert row is not None
-                dest_file = Path(row["filepath"])
+                dest_file = resolve_media_path(row["filepath"])
                 assert dest_file.exists()
                 assert os.access(dest_file, os.W_OK)
 
@@ -299,7 +300,7 @@ async def test_ingest_readonly_file_windows():
                     row = await cur.fetchone()
                     if row:
                         try:
-                            p = Path(row["filepath"])
+                            p = resolve_media_path(row["filepath"])
                             os.chmod(p, stat.S_IWRITE)
                             p.unlink()
                         except OSError:
@@ -369,7 +370,7 @@ async def test_import_endpoint_album_linking_and_failed_tracking():
             row = await cur.fetchone()
             if row:
                 try:
-                    p = Path(row["filepath"])
+                    p = resolve_media_path(row["filepath"])
                     os.chmod(p, stat.S_IWRITE)
                     p.unlink()
                 except OSError:

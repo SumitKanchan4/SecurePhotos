@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Any
 
 import aiosqlite
 
+from engine.config import resolve_media_path
 from engine.database import get_db_connection
 from engine.services.video_service import compress_video, enhance_old_video
 
@@ -270,7 +271,8 @@ async def _process_next_video_job() -> bool:
         queue_status = job["queue_status"]
 
         # Disconnection Safety Check 1: Check if source file exists
-        if not filepath or not os.path.exists(filepath):
+        resolved_p = resolve_media_path(filepath)
+        if not filepath or not resolved_p.exists():
             new_retries = retry_count + 1
             if new_retries >= 5:
                 logger.warning(

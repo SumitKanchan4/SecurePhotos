@@ -2,6 +2,10 @@
 ; Ensures desktop icon idempotency and cleans up legacy MSI/public shortcuts across updates.
 
 !macro NSIS_HOOK_PREINSTALL
+  ; Terminate any running SecurePhotos or backend engine processes to prevent file locking during in-place upgrade
+  nsExec::Exec 'taskkill /F /IM securephotos-engine.exe'
+  nsExec::Exec 'taskkill /F /IM SecurePhotos.exe'
+
   ; Remove any legacy shortcut left behind in Public Desktop by older MSI installations
   Delete "$COMMONDESKTOP\SecurePhotos.lnk"
   ; Clean up any existing user desktop shortcut before writing the new one to prevent duplication
@@ -35,9 +39,9 @@
 !macro NSIS_HOOK_PREUNINSTALL
   MessageBox MB_ICONINFORMATION|MB_OKCANCEL \
     "SecurePhotos Uninstallation Notice:$\r$\n$\r$\n\
-1. Your photo library, database, and encrypted Vault are NOT deleted.$\r$\n\
-   They remain safely preserved in:$\r$\n\
-   $INSTDIR\data (and $PROFILE\.securephotos_data)$\r$\n$\r$\n\
+1. Your photo library, SQLite database, and encrypted Vault are NOT deleted.$\r$\n\
+   They remain safely preserved in your data folder:$\r$\n\
+   $INSTDIR\data$\r$\n$\r$\n\
 2. If you have locked photos in your Vault that you want restored to regular unencrypted files, \
 please click CANCEL, open SecurePhotos, and unlock your vault first.$\r$\n$\r$\n\
 Click OK to proceed with removing the SecurePhotos application files." \

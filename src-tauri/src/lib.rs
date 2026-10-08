@@ -75,8 +75,37 @@ fn check_vcredist_installed() -> bool {
     true
 }
 
+fn resolve_custom_data_dir() -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(curr) = std::env::current_exe() {
+        if let Some(parent) = curr.parent() {
+            candidates.push(parent.join("data_location.txt"));
+        }
+    }
+    candidates.push(PathBuf::from("data_location.txt"));
+    candidates.push(PathBuf::from("../data_location.txt"));
+
+    for loc_file in candidates {
+        if loc_file.exists() {
+            if let Ok(content) = std::fs::read_to_string(&loc_file) {
+                for line in content.lines() {
+                    let trimmed = line.trim();
+                    if trimmed.starts_with("path=") {
+                        let path_str = trimmed.trim_start_matches("path=").trim();
+                        let custom = PathBuf::from(path_str);
+                        if custom.exists() {
+                            return Some(custom);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 fn get_or_prepare_log_file() -> Option<std::fs::File> {
-    let mut dir = PathBuf::from("data");
+    let mut dir = resolve_custom_data_dir().unwrap_or_else(|| PathBuf::from("data"));
     if !dir.exists() {
         if let Ok(curr) = std::env::current_exe() {
             if let Some(parent) = curr.parent() {
@@ -405,6 +434,9 @@ fn start_backend_engine(state: tauri::State<AppEngineState>) -> serde_json::Valu
                     cmd.current_dir(root);
                     cmd.env("PYTHONPATH", root);
                 }
+                if let Some(ref c_dir) = resolve_custom_data_dir() {
+                    cmd.env("SECUREPHOTOS_DATA_DIR", c_dir.to_string_lossy().to_string());
+                }
                 cmd.env("SECUREPHOTOS_IPC_SECRET", &token);
                 cmd.args(["-m", "uvicorn", "engine.main:app", "--port", &chosen_port.to_string(), "--reload"]);
                 if let Some(ref file) = log_file {
@@ -437,7 +469,10 @@ fn start_backend_engine(state: tauri::State<AppEngineState>) -> serde_json::Valu
     // Priority 1: Launch compiled standalone sidecar binary
     if let Some(sidecar_path) = find_sidecar_executable() {
         let mut cmd = Command::new(&sidecar_path);
-        let data_dir = sidecar_path.parent().map(|p| p.join("data")).unwrap_or_else(|| std::path::PathBuf::from("data"));
+        let custom_dir = resolve_custom_data_dir();
+        let data_dir = custom_dir.unwrap_or_else(|| {
+            sidecar_path.parent().map(|p| p.join("data")).unwrap_or_else(|| std::path::PathBuf::from("data"))
+        });
         cmd.env("SECUREPHOTOS_IPC_SECRET", &token);
         cmd.args(["--port", &chosen_port.to_string(), "--data-dir", data_dir.to_str().unwrap_or("data")]);
         if let Some(ref file) = log_file {
@@ -601,6 +636,78 @@ fn get_system_drives() -> Vec<SystemVolumeInfo> {
     ]
 }
 
+#[tauri::command]
+fn prepare_for_update(state: tauri::State<AppEngineState>) -> bool {
+    if let Ok(mut lock) = state.process.lock() {
+        if let Some(mut child) = lock.take() {
+            let _ = child.kill();
+        }
+    }
+    true
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct LibraryLocationDto {
+    pub path: String,
+    pub is_custom: bool,
+    pub has_database: bool,
+}
+
+#[tauri::command]
+fn get_library_location() -> LibraryLocationDto {
+    if let Some(custom) = resolve_custom_data_dir() {
+        let has_db = custom.join("database").join("securephotos.db").exists();
+        return LibraryLocationDto {
+            path: custom.to_string_lossy().to_string(),
+            is_custom: true,
+            has_database: has_db,
+        };
+    }
+    let mut default_dir = PathBuf::from("data");
+    if let Ok(curr) = std::env::current_exe() {
+        if let Some(parent) = curr.parent() {
+            default_dir = parent.join("data");
+        }
+    }
+    let has_db = default_dir.join("database").join("securephotos.db").exists();
+    LibraryLocationDto {
+        path: default_dir.to_string_lossy().to_string(),
+        is_custom: false,
+        has_database: has_db,
+    }
+}
+
+#[tauri::command]
+fn reconnect_library(app: AppHandle, new_path: String) -> Result<bool, String> {
+    let target = PathBuf::from(&new_path);
+    if !target.exists() {
+        return Err(format!("The specified directory does not exist: {}", new_path));
+    }
+    let db_path = target.join("database").join("securephotos.db");
+    if !db_path.exists() {
+        return Err("No SecurePhotos database (database/securephotos.db) was found in the selected folder. Please choose a valid SecurePhotos data directory.".to_string());
+    }
+
+    let mut loc_file = PathBuf::from("data_location.txt");
+    if let Ok(curr) = std::env::current_exe() {
+        if let Some(parent) = curr.parent() {
+            loc_file = parent.join("data_location.txt");
+        }
+    }
+    if let Err(e) = std::fs::write(&loc_file, format!("path={}\n", target.to_string_lossy())) {
+        return Err(format!("Failed to record library location: {}", e));
+    }
+
+    // Kill existing engine process so restart cleanly binds to the new library
+    let state = app.state::<AppEngineState>();
+    if let Ok(mut lock) = state.process.lock() {
+        if let Some(mut child) = lock.take() {
+            let _ = child.kill();
+        }
+    }
+    app.restart();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let engine_state = AppEngineState {
@@ -619,6 +726,9 @@ pub fn run() {
             get_engine_logs,
             check_system_prerequisites,
             relaunch_app,
+            prepare_for_update,
+            get_library_location,
+            reconnect_library,
             start_backend_engine,
             stop_backend_engine,
             select_import_folder,

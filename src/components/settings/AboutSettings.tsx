@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Cpu, RefreshCw, CheckCircle2, Download, Sparkles, Heart } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Cpu, RefreshCw, CheckCircle2, Download, Sparkles, Heart, HardDrive, FolderSearch } from "lucide-react";
 import { check, Update } from "@tauri-apps/plugin-updater";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../store/useAppStore";
@@ -20,6 +20,32 @@ export const AboutSettings: React.FC = () => {
   const [activeUpdate, setActiveUpdate] = useState<Update | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [isRecheckingPrereqs, setIsRecheckingPrereqs] = useState(false);
+  const [libraryLocation, setLibraryLocation] = useState<{ path: string; is_custom: boolean; has_database: boolean } | null>(null);
+  const [isSwitchingLibrary, setIsSwitchingLibrary] = useState(false);
+
+  useEffect(() => {
+    invoke<{ path: string; is_custom: boolean; has_database: boolean }>("get_library_location")
+      .then(setLibraryLocation)
+      .catch(console.error);
+  }, []);
+
+  const handleSwitchLibrary = async () => {
+    setIsSwitchingLibrary(true);
+    try {
+      const selected = await invoke<string | null>("select_import_folder");
+      if (!selected) {
+        setIsSwitchingLibrary(false);
+        return;
+      }
+      await invoke("reconnect_library", { newPath: selected });
+      showToast?.("Library reconnected successfully! Restarting...", "success");
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (err: any) {
+      console.error("Switch library error:", err);
+      showToast?.(typeof err === "string" ? err : err?.message || "Failed to switch library", "warning");
+      setIsSwitchingLibrary(false);
+    }
+  };
 
   const handleCheckForUpdates = async () => {
     setIsCheckingUpdate(true);
@@ -258,6 +284,111 @@ export const AboutSettings: React.FC = () => {
             >
               MIT License
             </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Section: Active Library & Portable Storage (Grouped Inset Card) ── */}
+      <div>
+        <div style={{ marginBottom: "10px" }}>
+          <h2 style={{ fontSize: "14px", fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
+            Library & Storage Location
+          </h2>
+          <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: "2px 0 0 0" }}>
+            Active SQLite database, media originals, and encrypted vault storage directory.
+          </p>
+        </div>
+
+        <div
+          style={{
+            backgroundColor: "var(--glass-surface)",
+            backdropFilter: "blur(24px)",
+            WebkitBackdropFilter: "blur(24px)",
+            border: "1px solid var(--glass-border)",
+            borderRadius: "var(--radius-xl)",
+            boxShadow: "var(--glass-shadow)",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: "16px 20px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "16px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div
+                style={{
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "rgba(59, 130, 246, 0.12)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "var(--accent-primary)",
+                  flexShrink: 0,
+                }}
+              >
+                <HardDrive size={18} />
+              </div>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <p style={{ fontSize: "13px", fontWeight: 600, margin: 0, color: "var(--text-primary)" }}>
+                    {libraryLocation?.is_custom ? "External / Custom Vault" : "Default Portable Vault"}
+                  </p>
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      color: libraryLocation?.has_database ? "#10b981" : "#fbbf24",
+                      backgroundColor: libraryLocation?.has_database ? "rgba(16, 185, 129, 0.15)" : "rgba(251, 191, 36, 0.15)",
+                      padding: "1px 6px",
+                      borderRadius: "var(--radius-full)",
+                    }}
+                  >
+                    {libraryLocation?.has_database ? "Connected" : "No Database Found"}
+                  </span>
+                </div>
+                <p 
+                  style={{ 
+                    fontSize: "12px", 
+                    color: "var(--text-muted)", 
+                    margin: "2px 0 0 0", 
+                    fontFamily: "var(--font-mono)",
+                    wordBreak: "break-all"
+                  }}
+                >
+                  {libraryLocation?.path || "Resolving library path..."}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleSwitchLibrary}
+              disabled={isSwitchingLibrary}
+              className="clickable"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "6px 14px",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "var(--glass-pill-bg)",
+                border: "1px solid var(--glass-border)",
+                color: "var(--text-primary)",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: isSwitchingLibrary ? "wait" : "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <FolderSearch size={13} />
+              <span>{isSwitchingLibrary ? "Selecting..." : "Switch Library"}</span>
+            </button>
           </div>
         </div>
       </div>

@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from engine.database import get_db_connection
+from engine.config import resolve_media_path
 from engine.services.face_recognition_service import get_face_thumbnails_dir
 from engine.services.face_scan_worker import (
     get_scan_status,
@@ -277,7 +278,7 @@ async def get_face_crop(face_id: int):
         if not row:
             raise HTTPException(status_code=404, detail="Face record not found")
 
-        photo_path = Path(row["filepath"])
+        photo_path = resolve_media_path(row["filepath"])
         if not photo_path.exists():
             raise HTTPException(status_code=404, detail="Source photo missing on disk")
 

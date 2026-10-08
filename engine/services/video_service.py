@@ -22,7 +22,7 @@ from typing import Dict, List, Optional, Tuple, Any
 
 import aiosqlite
 
-from engine.config import settings
+from engine.config import settings, resolve_media_path
 from engine.database import get_db_connection
 from engine.services.video_runtime import (
     get_ffmpeg_path,
@@ -454,11 +454,12 @@ async def compress_video(
     if not photo:
         return {"success": False, "error": f"Photo with ID {photo_id} not found."}
 
-    orig_path = photo["filepath"]
-    if not os.path.exists(orig_path):
-        return {"success": False, "error": f"Source video file not found at {orig_path}"}
+    orig_p = resolve_media_path(photo["filepath"])
+    if not orig_p.exists():
+        return {"success": False, "error": f"Source video file not found at {orig_p}"}
 
-    orig_size = os.path.getsize(orig_path)
+    orig_path = str(orig_p)
+    orig_size = orig_p.stat().st_size
     enc_info = probe_hardware_encoder()
 
     actual_crf = crf if crf is not None else enc_info["default_crf"]
@@ -553,6 +554,11 @@ async def compress_video(
             saved_bytes = orig_size - compressed_size
 
             # Atomic Step 1: Update database record FIRST
+            try:
+                db_filepath = str(target_path.relative_to(settings.data_dir)).replace("\\", "/")
+            except ValueError:
+                db_filepath = str(target_path)
+
             await conn.execute(
                 """
                 UPDATE photos 
@@ -567,7 +573,7 @@ async def compress_video(
                 WHERE id = ?;
                 """,
                 (
-                    str(target_path),
+                    db_filepath,
                     target_path.name,
                     compressed_size,
                     orig_size,
@@ -657,11 +663,12 @@ async def enhance_old_video(
             "message": f"Video is already at or above {target_height}p resolution.",
         }
 
-    orig_path = photo["filepath"]
-    if not os.path.exists(orig_path):
-        return {"success": False, "error": f"Source video file not found at {orig_path}"}
+    orig_p = resolve_media_path(photo["filepath"])
+    if not orig_p.exists():
+        return {"success": False, "error": f"Source video file not found at {orig_p}"}
 
-    orig_size = os.path.getsize(orig_path)
+    orig_path = str(orig_p)
+    orig_size = orig_p.stat().st_size
     orig_p = Path(orig_path)
     clean_stem = orig_p.stem
     for sfx in ["_enhanced", "_4k", "_opt"]:
@@ -752,6 +759,11 @@ async def enhance_old_video(
             new_size = target_path.stat().st_size
 
             # Atomic Step 1: Update database record FIRST before touching source file
+            try:
+                db_filepath = str(target_path.relative_to(settings.data_dir)).replace("\\", "/")
+            except ValueError:
+                db_filepath = str(target_path)
+
             await conn.execute(
                 """
                 UPDATE photos 
@@ -767,7 +779,7 @@ async def enhance_old_video(
                 WHERE id = ?;
                 """,
                 (
-                    str(target_path),
+                    db_filepath,
                     target_path.name,
                     new_size,
                     orig_size,
