@@ -1,14 +1,14 @@
-# 📐 SecurePhotos — System Architecture & Design Specification
+# 📐 SecurePhotos: System Architecture & Technical Design
 
 ---
 
 ## 1. Architectural Philosophy & Core Principles
 
 SecurePhotos is designed as an **offline-first, zero-cloud personal media vault**. The system prioritizes:
-1. **Data Sovereignty & Zero Trust**: No telemetry, no cloud dependencies, zero external network traffic during runtime.
-2. **High Scale & Low Latency**: Fast access across libraries containing 100,000+ high-resolution images and videos.
+1. **Data Sovereignty & Zero Trust**: No telemetry, no cloud dependencies, and zero external network calls.
+2. **High Scale & Low Latency**: Lightning-fast access across libraries containing 100,000+ high-resolution photos and videos.
 3. **Defense-in-Depth Cryptography**: Strong at-rest encryption (AES-256-GCM with PBKDF2/Argon2id key derivation) and ephemeral in-memory decryption.
-4. **Portability**: Database, caches, and thumbnails live within a self-contained directory tree that can travel with external drives.
+4. **Drive Portability**: Database, caches, and thumbnails live within a self-contained directory tree that can travel with external hard drives and SSDs.
 
 ---
 
@@ -18,7 +18,7 @@ SecurePhotos is designed as an **offline-first, zero-cloud personal media vault*
 graph TB
     subgraph UI_Layer ["Presentation Tier (Tauri 2.0 / React 18)"]
         ReactUI["React 18 SPA (Vite)<br/>• Pure CSS Design Tokens<br/>• Virtualized Grids (@tanstack/react-virtual)<br/>• Fluid Lightbox & Keyboard Shortcuts"]
-        TauriShell["Tauri 2.0 Native Shell (Rust)<br/>• OS WebView2 (30–40 MB RAM)<br/>• Native Window Controls & Menus<br/>• IPC Bridge & File Confinement"]
+        TauriShell["Tauri 2.0 Native Shell (Rust)<br/>• OS WebView2 (30-40 MB RAM)<br/>• Native Window Controls & Menus<br/>• IPC Bridge & File Confinement"]
         
         TauriShell --> ReactUI
     end
@@ -167,8 +167,6 @@ sequenceDiagram
 ---
 
 ### 3.3 8K ULTRA Automated AI Enhancement & Face Unblur Pipeline
-
-*(Detailed architectural design: see [8k_ultra_automated_enhancement_and_trash_architecture.md](file:///c:/Sumit/Code/SecurePhotos/docs/8k_ultra_automated_enhancement_and_trash_architecture.md))*
 
 ```mermaid
 flowchart LR

@@ -1,4 +1,4 @@
-# 🗄️ SecurePhotos 2.0 — Database Schema & Indexing Architecture
+# 🗄️ SecurePhotos: Database Schema & Indexing Architecture
 
 > **High-scale SQLite relational engine, composite covering indexes, full-text FTS5 search, `sqlite-vec` vector index, multi-slot zero-trust vault, social affinity graph, and creative montage asset specifications for 100,000+ media records.**
 

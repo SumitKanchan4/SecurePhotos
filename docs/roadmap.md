@@ -1,9 +1,6 @@
-# 🚀 SecurePhotos — Future Enhancements & Architectural Roadmap
+# 🚀 SecurePhotos - Product Roadmap
 
-This document captures high-value architectural improvements, user experience features, and cryptographic safeguards planned for future iterations of SecurePhotos.
-
-> [!IMPORTANT]
-> **Active Implementation Queue**: For immediate next-session items (Cinema Audio preview fix, Saved Stories album, title generator, long album name overflow fix, and direct import to album), see [docs/next_session_agenda.md](file:///c:/Sumit/Code/SecurePhotos/docs/next_session_agenda.md).
+Here is what we are planning and exploring for future versions of SecurePhotos.
 
 ---
 
@@ -79,7 +76,7 @@ A companion mobile application (iOS & Android) that enables users to securely br
 1. **Local LAN Auto-Discovery**:
    - Automatically detects when the phone is on the same home Wi-Fi via mDNS, bypassing internet relays for maximum gigabit LAN transfer speeds.
 2. **Adaptive Bandwidth & Cellular Data Guard**:
-   - On cellular networks, streams lightweight on-the-fly WebP/AVIF proxies (100–300 KB). Full-resolution 4K/RAW originals stream only on explicit demand or over Wi-Fi.
+   - On cellular networks, streams lightweight on-the-fly WebP/AVIF proxies (100-300 KB). Full-resolution 4K/RAW originals stream only on explicit demand or over Wi-Fi.
 3. **Screen Capture & Recording Shield**:
    - Mobile client enables OS-level privacy protections (`FLAG_SECURE` on Android, `isCaptured` shielding on iOS) to prevent other malicious mobile apps from taking screenshots of unlocked vault photos.
 4. **Technology Stack**:
@@ -95,11 +92,11 @@ Expand SecurePhotos' on-device facial recognition and semantic indexing to video
 ### Architectural Blueprint & Feasibility Analysis
 1. **Adaptive Temporal Keyframe Sampling (Zero CPU Melt)**:
    - *Problem*: A 1080p 60fps 5-minute home video contains 18,000 frames. Decoding and running neural face embeddings on every individual frame would freeze the machine and drain massive power.
-   - *Solution*: Extract lightweight candidate frames using FFmpeg scene cut detection combined with a 2–3 second interval cap:
+   - *Solution*: Extract lightweight candidate frames using FFmpeg scene cut detection combined with a 2-3 second interval cap:
      ```bash
      ffmpeg -i input.mp4 -vf "select='gt(scene,0.3)+not(mod(n,75))',scale=1280:-1" -vsync vfr -q:v 2 temp_frame_%04d.jpg
      ```
-   - For a 1-minute clip, this yields approximately 15–25 highly representative frames, completing face detection in under 1.5 seconds on background CPU/DirectML.
+   - For a 1-minute clip, this yields approximately 15-25 highly representative frames, completing face detection in under 1.5 seconds on background CPU/DirectML.
 2. **Temporal Face Tagging & Database Relational Model**:
    - Enhance the `faces` table with an optional `video_timestamp_secs REAL` field indicating the exact second of appearance.
    - When a face is recognized, associate it with the parent video (`photo_id`) and assign it to the matching `person_id`.

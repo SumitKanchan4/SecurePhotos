@@ -2,12 +2,12 @@
 
 > **The 100% Private, Zero-Cloud Photo & Video Vault for Your Desktop and External Drives.**
 
-*SecurePhotos is a lightning-fast, beautifully designed personal media library that keeps your family photos, videos, and private documents completely on your own hardware — with zero cloud uploads, zero subscriptions, and zero tracking.*
+*SecurePhotos is a lightning-fast, beautifully designed personal media library that keeps your family photos, videos, and private documents completely on your own hardware, with zero cloud uploads, zero subscriptions, and zero tracking.*
 
 ---
 
 > 👨‍💻 **Are you a developer or contributor?**
-> Looking for system architecture, build instructions, or local development setup? Please see the [**Developer & Engineering Guide**](docs/DEVELOPMENT.md).
+> Looking for system architecture, build instructions, or local development setup? Please see the [**Developer Guide**](docs/development.md).
 
 ---
 
@@ -44,7 +44,7 @@ Group photos by the people you love without sending your biometric data to the c
 - **Offline & Safe**: All face detection runs 100% locally on your machine.
 
 ### 🔒 Encrypted Private Vault
-Protect sensitive paperwork, financial records, medical documents, and intimate photos behind a dedicated master password or PIN. Vault photos are stored with bank-grade encryption (AES-256) and are decrypted strictly in memory while you view them — never left exposed on the disk.
+Protect sensitive paperwork, financial records, medical documents, and intimate photos behind a dedicated master password or PIN. Vault photos are stored with bank-grade encryption (AES-256) and are decrypted strictly in memory while you view them, never left exposed on the disk.
 
 ### 🧹 Duplicate Cleaner & Disk Space Saver
 Free up valuable gigabytes on your computer:
@@ -99,11 +99,16 @@ Navigate your entire collection without taking your hands off the keyboard:
 
 ---
 
-## 📚 Documentation & Technical Links
+## 📚 Documentation & Guides
 
-- 🛠️ [**Developer & Engineering Guide**](docs/DEVELOPMENT.md): Technical architecture, local development, prerequisites, testing, and production packaging.
-- 📋 [**Functional Registry & Decision Points Log**](docs/features_and_functional_decisions.md): Detailed functional specifications and design rationale.
-- 🚀 [**Architectural Roadmap & Future Enhancements**](docs/future_enhancements.md): Upcoming capabilities, including multi-device sync and mobile companion apps.
+- 🛠️ [**Developer Guide**](docs/development.md): Environment setup, running locally, and build commands.
+- 📐 [**System Architecture**](docs/architecture.md): High-level system design, FastAPI sidecar, and offline AI inference.
+- 🗄️ [**Database Schema**](docs/database_schema.md): SQLite WAL setup, indexes, and search architecture.
+- 🎨 [**Design System**](docs/design_system.md): Visual design tokens, dark/light themes, and 60fps virtualization.
+- 🚀 [**Product Roadmap**](docs/roadmap.md): Planned features, multi-vault capabilities, and future companion apps.
+- 🔒 [**Security Policy**](SECURITY.md): Cryptography design, threat model, and vulnerability reporting.
+- 🤝 [**Contributing Guide**](CONTRIBUTING.md): How to contribute, report issues, and propose improvements.
+- 📜 [**Changelog**](CHANGELOG.md): Version history and release notes.
 
 ---
 

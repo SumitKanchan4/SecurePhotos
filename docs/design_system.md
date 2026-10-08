@@ -1,4 +1,4 @@
-# 🎨 SecurePhotos 2.0 — UI/UX Design System & Performance Specification
+# 🎨 SecurePhotos: UI/UX Design System & Performance Specification
 
 > **Enterprise-grade, crisp, and high-performance design system supporting dual Dark & Light themes, fluid lightboxes with 4K AI split-sliders, Stories & Ken-Burns beat-synced player, 4K Collage Maker, Multi-Slot Zero-Trust Vault unlock, Full Album Vault migration, Frosted Privacy Shields, external drive status indicators, and 60fps virtualized scrolling across 100,000+ media assets.**
 
@@ -27,7 +27,7 @@ The design system uses CSS custom properties (`var(--token)`), ensuring instant,
 
 ```css
 /* ═════════════════════════════════════════════════════════════════════════
-   🌙 DARK THEME (Default) — Deep Obsidian & Electric Blue Accents
+   🌙 DARK THEME (Default): Deep Obsidian & Electric Blue Accents
    ═════════════════════════════════════════════════════════════════════════ */
 [data-theme="dark"], :root {
   /* Backgrounds */
@@ -66,7 +66,7 @@ The design system uses CSS custom properties (`var(--token)`), ensuring instant,
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
-   ☀️ LIGHT THEME — Crisp Titanium, Frosted Glass & Saturated Accents
+   ☀️ LIGHT THEME: Crisp Titanium, Frosted Glass & Saturated Accents
    ═════════════════════════════════════════════════════════════════════════ */
 [data-theme="light"] {
   /* Backgrounds */
@@ -129,7 +129,7 @@ The design system uses CSS custom properties (`var(--token)`), ensuring instant,
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ [TitleBar] 🔒 SecurePhotos  |  🔍 Search photos, docs, tags... (Ctrl+K)   |  [—] [□] [✕] │
+│ [TitleBar] 🔒 SecurePhotos  |  🔍 Search photos, docs, tags... (Ctrl+K)   |  [_] [□] [✕] │
 ├──────────────┬─────────────────────────────────────────────────────────────────────────┤
 │ [Sidebar]    │ [Page Header] Photos  •  12,482 items  •  💾 External Drive (E:) [Online]│
 │              ├─────────────────────────────────────────────────────────────────────────┤
@@ -206,7 +206,7 @@ To ensure rendering **100,000+ photos** never degrades frame rates:
 
 ### 6.1 Stories Hub Carousel (Home / Insights)
 - Displays top curated stories filtered to **Close Ones (Affinity Score > 65)**:
-  * *🌟 Alice: Through the Years (2012 — 2026)*
+  * *🌟 Alice: Through the Years (2012 - 2026)*
   * *🎂 On This Day: 5 Years Ago*
   * *✈️ Paris Summer Trip with Alice & Bob*
 
@@ -224,7 +224,7 @@ To ensure rendering **100,000+ photos** never degrades frame rates:
 ## 7. People & Face Management (Representative Medoid System)
 
 ### 7.1 "Name Once, Tag 1,000 Photos" Representative Medoid Card
-In the **👥 People** view, unsupervised clusters are surfaced using 3–4 diverse anchor medoids (portrait, side-profile, outdoor, sunglasses):
+In the **👥 People** view, unsupervised clusters are surfaced using 3-4 diverse anchor medoids (portrait, side-profile, outdoor, sunglasses):
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -256,7 +256,7 @@ In the **👥 People** view, unsupervised clusters are surfaced using 3–4 dive
 │ Target Path: E:\.securephotos_library\originals\YYYY\MM\DD\           │
 │                                                                        │
 │ 🧹 Source File Cleanup Option:                                         │
-│ ( ) Keep Source Files (Copy only — originals remain untouched)        │
+│ ( ) Keep Source Files (Copy only: originals remain untouched)         │
 │ (●) Move & Free Source (Deletes from SD Card/Phone after SHA-256 verify)│
 │                                                                        │
 │ ⚙️ Optimization & Deduplication:                                       │

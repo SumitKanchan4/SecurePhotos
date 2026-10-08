@@ -8,7 +8,7 @@ trigger: always_on
 - **Branch Protection**: **NEVER work, edit, or commit directly on `master` (or `main`).**
 - **Dedicated Task-Specific Branching**:
   - A dedicated topic branch MUST be created for every distinct task (`feature/<name>`, `fix/<name>`, `chore/<name>`). Never lump unrelated tasks into a generic branch.
-  - The **active working branch MUST ALWAYS be that dedicated task branch** — never `master` or `main`. Verify `git branch --show-current` before starting.
+  - The **active working branch MUST ALWAYS be that dedicated task branch** - never `master` or `main`. Verify `git branch --show-current` before starting.
 - **Mandatory User Approval Gate Before Merging to Master/Main**:
   - **CRITICAL**: **NEVER merge any branch into `master` (or `main`) without explicit, upfront user confirmation.**
   - Work remains safely isolated on its topic branch until the user explicitly directs that it is complete, tested, and ready to merge.
@@ -59,7 +59,7 @@ trigger: always_on
 - Adhere strictly to project skills (`modern-web-ui`, `local-slm-engineering`, `sqlite-vector-search`, `zero-trust-crypto`, `enterprise-standards-and-docs`).
 - **CRITICAL UI/UX STANDARD (View Headers & Toolbars)**: Must comply strictly with Section 4 of `modern-web-ui`:
   1. Balanced 3-Column flex layout (`flex: 1` Left / `flex: 0 1 auto` Center / `flex: 1` Right).
-  2. Centered modern display title (`22px`–`24px` Plus Jakarta Sans, `fontWeight: 800`, `letterSpacing: -0.03em`).
+  2. Centered modern display title (`22px` to `24px` Plus Jakarta Sans, `fontWeight: 800`, `letterSpacing: -0.03em`).
   3. Inline frosted capsule count badge (`[ N photos ]`) on the exact same horizontal baseline (no stacked subtitles).
   4. Dual-theme frosted liquid glass floating container (`backgroundColor: "var(--glass-surface)"`, `backdropFilter: "blur(24px)"`, `WebkitBackdropFilter: "blur(24px)"`, `border: "1px solid var(--glass-border)"`, `borderRadius: "var(--radius-lg)"`, `boxShadow: "var(--glass-shadow)"`, `color: "var(--text-primary)"`). STRICTLY FORBIDDEN to hardcode dark `rgba(23, 23, 23, ...)` or static dark backgrounds.
   5. Pill geometry (`var(--radius-full)`) on navigation, action, and filter buttons (`backgroundColor: "var(--glass-pill-bg)"`, `border: "1px solid var(--glass-border)"`).
@@ -70,7 +70,7 @@ trigger: always_on
 - Ensure all logic has corresponding automated test coverage.
 
 ## 5. Mandatory Functionality & Decision Point Documentation
-- **CRITICAL**: Every newly added feature, capability, workflow, or functional decision MUST be documented in `docs/features_and_functional_decisions.md`:
+- **CRITICAL**: Every newly added feature, capability, workflow, or functional decision MUST be documented in `.agents/history/features_and_functional_decisions.md`:
   1. **Functionality Overview**: Purpose, UX behavior, and system flow.
   2. **Functional Decision Points & Rationale**: Design choices, rejected alternatives, constraints, tradeoffs.
   3. **Technical Touchpoints**: API endpoints, database schema/queries, and UI components.
@@ -95,4 +95,4 @@ trigger: always_on
   - REQUIRED: Direct, warm, reassuring language focusing on user benefits: safety, simplicity, disk space, and privacy (100% private, on-device, never uploaded to any cloud).
 - **Concise, Calibrated & Scannable**:
   - Concise copy without redundant statements. Avoid filler checkboxes, bullet points, and marketing-style feature badges in modals.
-  - Maintain clean layouts with generous whitespace (`24px`–`32px` padding) for effortless decision-making.
+  - Maintain clean layouts with generous whitespace (`24px` to `32px` padding) for effortless decision-making.

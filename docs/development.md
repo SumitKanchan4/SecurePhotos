@@ -1,4 +1,4 @@
-# 🛠️ SecurePhotos — Developer & Engineering Guide
+# 🛠️ SecurePhotos: Developer & Engineering Guide
 
 > **Comprehensive architectural blueprint, environment setup, local development workflows, testing guidelines, and packaging procedures for the SecurePhotos engineering team.**
 
@@ -199,10 +199,12 @@ SecurePhotos/
 │   ├── src/lib.rs                # Host Engine State, Port Allocation & Window Setup
 │   ├── tauri.conf.json           # Tauri Desktop Configuration & Resource Mappings
 │   └── Cargo.toml                # Rust Dependencies & Build Configuration
-├── docs/                         # Technical Documentation & Architectural Logs
-│   ├── features_and_functional_decisions.md # Living Functional Registry
-│   ├── future_enhancements.md    # Architectural Roadmap
-│   └── DEVELOPMENT.md            # This Developer Guide
+├── docs/                         # Technical Documentation & Specifications
+│   ├── architecture.md           # System Architecture & Pipelines
+│   ├── database_schema.md        # SQLite WAL Schema & Indexing Model
+│   ├── design_system.md          # UI Tokens & Glassmorphism Design System
+│   ├── development.md            # This Developer & Engineering Guide
+│   └── roadmap.md                # Community Product Roadmap
 ├── scripts/                      # Developer Helper & Build Scripts
 └── README.md                     # End-User Product Showcase & Guide
 ```
@@ -216,4 +218,4 @@ When contributing to SecurePhotos, strictly adhere to the project standards defi
 2. **Approval Gate**: Propose concrete implementation plans with problem breakdown, root cause, and verification steps before modifying code.
 3. **UI/UX Header Standard**: All view headers must use the frosted liquid-glass floating container with balanced 3-column flex layout and inline capsule badges.
 4. **Code Quality**: Google-style Python docstrings and comprehensive TypeScript JSDoc comments are mandatory on all public symbols.
-5. **Living Registry**: Every functional addition or decision point must be registered in [docs/features_and_functional_decisions.md](features_and_functional_decisions.md).
+5. **Living Registry**: Every functional addition or decision point must be registered in `.agents/history/features_and_functional_decisions.md`.
