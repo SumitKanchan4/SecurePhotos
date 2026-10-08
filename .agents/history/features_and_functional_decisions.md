@@ -4760,6 +4760,54 @@ Resolves startup hang where SecurePhotos remained frozen on `"Initializing Engin
 - Ensures all API calls wait until dynamic port binding and session cookie handshake have successfully finished.
 - Gives end users instant 1-click visibility into missing dependencies and startup crash reasons.
 
+---
+
+## 97. Portable External Vault & Multi-Device Architecture Standard
+
+### Functionality Overview
+Formally establishes the enterprise engineering rule and architectural standard (`portable-external-vault-architecture.md`) governing the deployment, execution, and data storage of SecurePhotos as a 100% self-contained portable application on external SSDs, hard drives, and USB media across multiple Windows hosts.
+
+### Key Functional Decision Points
+1. **100% Self-Contained External Disk Vault**:
+   - The entire app, runtime binaries, engine sidecar, SQLite database, sharded thumbnail trees, display previews, AI model weights, and encrypted zero-trust vaults reside on the portable drive.
+   - Zero host machine footprint: nothing is written to `%APPDATA%`, `%LOCALAPPDATA%`, or host home directories. Disconnecting the drive leaves zero trace on the host.
+2. **Universal Multi-Device Plug-and-Play & Dynamic Drive Letter Independence**:
+   - Host PCs assign dynamic drive letters (`D:`, `E:`, `F:`, `Z:`).
+   - Mandatory rule: All paths stored in SQLite (`photos.filepath`, `thumbnail_path`, `preview_path`) must be relative to the portable drive root (`data/originals/...`), or dynamically resolved relative to the active volume on startup. Absolute hardcoded drive letters in the database are strictly forbidden.
+3. **Fully Bundled Prerequisites (Zero Host Setup)**:
+   - Zero installation required on the host PC (no Python, Node, Git, or C++ build tools).
+   - Visual C++ 2015-2022 runtime DLLs (`vcruntime140.dll`, `msvcp140.dll`, `vcruntime140_1.dll`) bundled directly alongside the executable, leveraging Windows DLL search order to launch out-of-the-box on clean Windows images (e.g., Azure VMs).
+   - Bundled FFmpeg/FFprobe binaries in `bin/` and local AI models in `data/models/`.
+4. **Universal Media Availability & Offline-First Design**:
+   - 100% offline availability wherever plugged in. Zero internet required.
+   - Master ingestion copies media directly to the external drive (`data/originals/`).
+5. **Zero-Trust Local IPC API Authorization**:
+   - Backend binds strictly to loopback `127.0.0.1` on an ephemeral port.
+   - Protected via dynamic 256-bit token (`X-SecurePhotos-Token`) and mutual handshake cookies.
+   - Unauthorized external network probes, LAN machines, or rogue browser tabs are blocked with HTTP 401/403.
+   - Zero telemetry.
+6. **Hot-Unplug Resilience & Durability**:
+   - SQLite WAL mode (`PRAGMA journal_mode=WAL`) and `PRAGMA synchronous=NORMAL`.
+   - Small atomic transactions to prevent corruption from abrupt disconnects.
+7. **In-Place Upgrades & Non-Destructive Update Guarantee**:
+   - Strict decoupling of binaries vs. user vault data (`data/`).
+   - Upgrades overwrite binaries in-place and never wipe user directories. Existing databases are automatically attached on launch.
+8. **Clean Process Termination & Eject Lock Release**:
+   - Windows Job Object termination (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) and parent-PID death watch ensure sidecars exit immediately upon window close, preventing "Device in use" ejection locks.
+9. **Zero Windows Registry Dependency**:
+   - All state, preferences, and configurations reside in `<drive>/data/config.json` and `securephotos.db`.
+10. **Cross-Platform Filesystem Compatibility (exFAT / NTFS)**:
+    - Path length management (`MAX_PATH` protection) and case insensitivity.
+11. **Drive Sleep & Spin-Down Latency Tolerance**:
+    - Graceful retry and non-blocking loading skeletons during HDD platter spin-up latency.
+
+### Technical Touchpoints
+- **Agent Rules**: `.agents/rules/portable-external-vault-architecture.md`
+- **Functional Decisions Registry**: `.agents/history/features_and_functional_decisions.md`
+
+### State & Lifecycle Impact
+- Codifies the permanent architectural mandate across all future feature development, testing, and distribution packaging.
+
 
 
 
