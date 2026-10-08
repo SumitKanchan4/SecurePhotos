@@ -120,10 +120,17 @@ export interface BackendPrerequisite {
   url: string;
 }
 
+export interface VcRedistPrerequisite {
+  installed: boolean;
+  download_url: string;
+}
+
 export interface SystemPrerequisites {
   python: PythonPrerequisite;
   backend: BackendPrerequisite;
+  vcredist: VcRedistPrerequisite;
   all_ready: boolean;
+  error_message?: string | null;
 }
 
 export interface OptimizationProgress {

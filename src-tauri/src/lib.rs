@@ -1,6 +1,6 @@
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
@@ -48,11 +48,82 @@ pub struct BackendPrerequisite {
     pub url: String,
 }
 
+#[derive(serde::Serialize, Clone)]
+pub struct VcRedistPrerequisite {
+    pub installed: bool,
+    pub download_url: String,
+}
+
 #[derive(serde::Serialize)]
 pub struct SystemPrerequisites {
     pub python: PythonPrerequisite,
     pub backend: BackendPrerequisite,
+    pub vcredist: VcRedistPrerequisite,
     pub all_ready: bool,
+    pub error_message: Option<String>,
+}
+
+#[cfg(target_os = "windows")]
+fn check_vcredist_installed() -> bool {
+    let win_dir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string());
+    let sys32 = std::path::Path::new(&win_dir).join("System32");
+    sys32.join("vcruntime140.dll").exists() && sys32.join("msvcp140.dll").exists()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn check_vcredist_installed() -> bool {
+    true
+}
+
+fn get_or_prepare_log_file() -> Option<std::fs::File> {
+    let mut dir = PathBuf::from("data");
+    if !dir.exists() {
+        if let Ok(curr) = std::env::current_exe() {
+            if let Some(parent) = curr.parent() {
+                dir = parent.join("data");
+            }
+        }
+    }
+    let _ = std::fs::create_dir_all(&dir);
+    let log_path = dir.join("engine_startup.log");
+
+    // Strictly enforce log bounds: truncate if larger than 1MB so it stays small
+    if let Ok(meta) = std::fs::metadata(&log_path) {
+        if meta.len() > 1024 * 1024 {
+            let _ = std::fs::remove_file(&log_path);
+        }
+    }
+
+    std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(true)
+        .open(&log_path)
+        .ok()
+}
+
+#[tauri::command]
+fn get_engine_logs() -> String {
+    let mut candidates = vec![
+        PathBuf::from("data/engine_startup.log"),
+        PathBuf::from("../data/engine_startup.log"),
+    ];
+    if let Ok(curr) = std::env::current_exe() {
+        if let Some(parent) = curr.parent() {
+            candidates.push(parent.join("data").join("engine_startup.log"));
+        }
+    }
+    for path in candidates {
+        if path.exists() {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                let lines: Vec<&str> = content.lines().collect();
+                let count = lines.len();
+                let start = if count > 80 { count - 80 } else { 0 };
+                return lines[start..].join("\n");
+            }
+        }
+    }
+    "No engine startup logs recorded yet.".to_string()
 }
 
 fn find_available_port() -> u16 {
@@ -174,6 +245,7 @@ fn check_system_prerequisites(state: tauri::State<AppEngineState>) -> SystemPrer
         .map(|addr| TcpStream::connect_timeout(&addr, Duration::from_millis(400)).is_ok())
         .unwrap_or(false);
 
+    let vcredist_installed = check_vcredist_installed();
     let sidecar_exists = find_sidecar_executable().is_some();
 
     let mut python_installed = sidecar_exists || backend_running;
@@ -216,7 +288,21 @@ fn check_system_prerequisites(state: tauri::State<AppEngineState>) -> SystemPrer
         }
     }
 
-    let all_ready = backend_running;
+    let mut error_message: Option<String> = None;
+    if !vcredist_installed {
+        error_message = Some("Microsoft Visual C++ 2015-2022 Redistributable (x64) is not installed. This is required on Windows for local AI super-resolution and face recognition.".to_string());
+    } else if !backend_running {
+        // Inspect if child process has exited prematurely
+        if let Ok(mut lock) = state.process.lock() {
+            if let Some(ref mut child) = *lock {
+                if let Ok(Some(exit_status)) = child.try_wait() {
+                    error_message = Some(format!("AI Engine process exited prematurely ({exit_status}). Check startup logs for details."));
+                }
+            }
+        }
+    }
+
+    let all_ready = backend_running && vcredist_installed;
 
     SystemPrerequisites {
         python: PythonPrerequisite {
@@ -231,7 +317,12 @@ fn check_system_prerequisites(state: tauri::State<AppEngineState>) -> SystemPrer
             port: target_port,
             url: format!("http://127.0.0.1:{}", target_port),
         },
+        vcredist: VcRedistPrerequisite {
+            installed: vcredist_installed,
+            download_url: "https://aka.ms/vs/17/release/vc_redist.x64.exe".to_string(),
+        },
         all_ready,
+        error_message,
     }
 }
 
@@ -292,6 +383,7 @@ fn start_backend_engine(state: tauri::State<AppEngineState>) -> serde_json::Valu
     }
 
     let project_root = find_project_root();
+    let log_file = get_or_prepare_log_file();
 
     // In development mode (debug builds), prefer running directly from local .venv
     #[cfg(debug_assertions)]
@@ -315,6 +407,14 @@ fn start_backend_engine(state: tauri::State<AppEngineState>) -> serde_json::Valu
                 }
                 cmd.env("SECUREPHOTOS_IPC_SECRET", &token);
                 cmd.args(["-m", "uvicorn", "engine.main:app", "--port", &chosen_port.to_string(), "--reload"]);
+                if let Some(ref file) = log_file {
+                    if let Ok(f1) = file.try_clone() {
+                        cmd.stdout(Stdio::from(f1));
+                    }
+                    if let Ok(f2) = file.try_clone() {
+                        cmd.stderr(Stdio::from(f2));
+                    }
+                }
                 #[cfg(target_os = "windows")]
                 {
                     use std::os::windows::process::CommandExt;
@@ -340,6 +440,14 @@ fn start_backend_engine(state: tauri::State<AppEngineState>) -> serde_json::Valu
         let data_dir = sidecar_path.parent().map(|p| p.join("data")).unwrap_or_else(|| std::path::PathBuf::from("data"));
         cmd.env("SECUREPHOTOS_IPC_SECRET", &token);
         cmd.args(["--port", &chosen_port.to_string(), "--data-dir", data_dir.to_str().unwrap_or("data")]);
+        if let Some(ref file) = log_file {
+            if let Ok(f1) = file.try_clone() {
+                cmd.stdout(Stdio::from(f1));
+            }
+            if let Ok(f2) = file.try_clone() {
+                cmd.stderr(Stdio::from(f2));
+            }
+        }
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
@@ -397,6 +505,14 @@ fn start_backend_engine(state: tauri::State<AppEngineState>) -> serde_json::Valu
     }
     cmd.env("SECUREPHOTOS_IPC_SECRET", &token);
     cmd.args(["-m", "uvicorn", "engine.main:app", "--port", &chosen_port.to_string()]);
+    if let Some(ref file) = log_file {
+        if let Ok(f1) = file.try_clone() {
+            cmd.stdout(Stdio::from(f1));
+        }
+        if let Ok(f2) = file.try_clone() {
+            cmd.stderr(Stdio::from(f2));
+        }
+    }
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
@@ -500,6 +616,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_engine_status,
             get_engine_config,
+            get_engine_logs,
             check_system_prerequisites,
             relaunch_app,
             start_backend_engine,

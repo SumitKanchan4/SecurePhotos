@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
+import { PrerequisitesBanner } from "./components/PrerequisitesBanner";
 import { PhotoGrid } from "./components/PhotoGrid";
 import { DriveStatusBanner } from "./components/DriveStatusBanner";
 import { ImportModal } from "./components/ImportModal";
@@ -57,6 +58,7 @@ export const App: React.FC = () => {
     isVaultUnlocked,
     setIsVaultUnlocked,
     isVaultConfigured,
+    prerequisites,
     setPrerequisites,
     setTotalPhotosCount,
     showToast,
@@ -64,45 +66,6 @@ export const App: React.FC = () => {
     setEngineConfig,
     setIsEngineReady,
   } = useAppStore();
-
-  useEffect(() => {
-    async function initEngine() {
-      try {
-        const config = await invoke<{ port: number; token: string; base_url: string }>("get_engine_config");
-        if (config && config.base_url) {
-          setEngineConfig(config.base_url, config.token || null);
-          if (config.token) {
-            await performHandshake(config.base_url, config.token);
-          }
-        }
-      } catch (err) {
-        console.info("Tauri engine config not available, running in standard mode:", err);
-      } finally {
-        setIsEngineReady(true);
-        checkVaultStatus();
-
-        // Hydrate persistent settings (theme, grid density, reduce-motion) from SQLite
-        apiFetch("/api/system/settings")
-          .then((res) => (res.ok ? res.json() : null))
-          .then((data) => {
-            if (data?.settings) {
-              if (data.settings.theme) {
-                setTheme(data.settings.theme);
-              }
-              if (data.settings.grid_density) {
-                setGridDensity(data.settings.grid_density);
-              }
-              if (data.settings.reduce_motion !== undefined) {
-                document.documentElement.setAttribute("data-reduce-motion", String(data.settings.reduce_motion));
-              }
-            }
-          })
-          .catch(() => {});
-      }
-    }
-    initEngine();
-  }, [setEngineConfig, setIsEngineReady, checkVaultStatus, setTheme, setGridDensity]);
-
 
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [activeYear, setActiveYear] = useState<string>("All Years");
@@ -325,27 +288,147 @@ export const App: React.FC = () => {
   // Updater and diagnostics state
   const [activeUpdate, setActiveUpdate] = useState<Update | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [isRecheckingPrereqs, setIsRecheckingPrereqs] = useState(false);
 
-  // Fetch prerequisites helper with silent background engine auto-start
-  const fetchPrerequisites = async () => {
+  // Manual engine launch helper
+  const handleStartEngine = async () => {
     try {
-      const prereqs = await invoke<SystemPrerequisites>("check_system_prerequisites");
-      setPrerequisites(prereqs);
-      
-      // If Python is available and engine not yet running, auto-trigger background start
-      if (prereqs && prereqs.python.installed && !prereqs.backend.running) {
-        invoke("start_backend_engine").catch(() => {});
-      }
+      await invoke("start_backend_engine");
+      showToast?.("Engine start initiated", "info");
+      await handleRecheckPrerequisites();
     } catch (err) {
-      console.warn("System prerequisites check warning:", err);
+      console.error("Failed to start engine:", err);
+      showToast?.("Failed to launch background engine", "warning");
     }
   };
 
-  // Run diagnostics and check for updates on application mount
-  useEffect(() => {
-    fetchPrerequisites();
+  // Manual / button-triggered prerequisites re-check
+  const handleRecheckPrerequisites = async () => {
+    setIsRecheckingPrereqs(true);
+    try {
+      const prereqs = await invoke<SystemPrerequisites>("check_system_prerequisites");
+      setPrerequisites(prereqs);
+      if (prereqs.backend.running) {
+        const config = await invoke<{ port: number; token: string; base_url: string }>("get_engine_config");
+        if (config && config.port > 0) {
+          setEngineConfig(config.base_url, config.token || null);
+          if (config.token) {
+            await performHandshake(config.base_url, config.token);
+          }
+          setIsEngineReady(true);
+          checkVaultStatus();
+          loadPhotos(activeYear);
+          loadTimelineYears();
+        }
+      }
+    } catch (err) {
+      console.warn("Prerequisites check warning:", err);
+    } finally {
+      setIsRecheckingPrereqs(false);
+    }
+  };
 
-    // Check for updates in background with safe fallback
+  // Resilient engine startup orchestration with polling, handshake retry, and passive heartbeat
+  useEffect(() => {
+    let isCancelled = false;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    let attempts = 0;
+    const MAX_BOOT_ATTEMPTS = 20; // 20 attempts * 1500ms = 30 seconds
+
+    const pollEngineLifecycle = async () => {
+      try {
+        const prereqs = await invoke<SystemPrerequisites>("check_system_prerequisites");
+        if (isCancelled) return;
+        setPrerequisites(prereqs);
+
+        // 1. If backend is running, retrieve engine config and perform handshake
+        if (prereqs.backend.running) {
+          const config = await invoke<{ port: number; token: string; base_url: string }>("get_engine_config");
+          if (isCancelled) return;
+
+          if (config && config.port > 0) {
+            setEngineConfig(config.base_url, config.token || null);
+            let handshakeOk = true;
+            if (config.token) {
+              handshakeOk = await performHandshake(config.base_url, config.token);
+            }
+
+            if (!handshakeOk && attempts < MAX_BOOT_ATTEMPTS) {
+              // Engine bound port but Uvicorn handshake endpoint is still initializing
+              attempts++;
+              return;
+            }
+
+            // Connection established successfully!
+            if (pollInterval) clearInterval(pollInterval);
+            setIsEngineReady(true);
+
+            // Hydrate persistent settings and initial photos
+            checkVaultStatus();
+            loadPhotos(activeYear);
+            loadTimelineYears();
+
+            apiFetch("/api/system/settings")
+              .then((res) => (res.ok ? res.json() : null))
+              .then((data) => {
+                if (data?.settings) {
+                  if (data.settings.theme) setTheme(data.settings.theme);
+                  if (data.settings.grid_density) setGridDensity(data.settings.grid_density);
+                  if (data.settings.reduce_motion !== undefined) {
+                    document.documentElement.setAttribute("data-reduce-motion", String(data.settings.reduce_motion));
+                  }
+                }
+              })
+              .catch(() => {});
+
+            // Switch to lightweight passive heartbeat (every 15s)
+            pollInterval = setInterval(async () => {
+              try {
+                const health = await invoke<SystemPrerequisites>("check_system_prerequisites");
+                if (!isCancelled) setPrerequisites(health);
+              } catch {}
+            }, 15000);
+
+            return;
+          }
+        }
+
+        // 2. If engine not yet running on first check, ensure background auto-start was kicked off
+        if (prereqs.python.installed && !prereqs.backend.running && attempts === 0) {
+          invoke("start_backend_engine").catch(() => {});
+        }
+
+        // 3. Early halt on fatal blocker (missing VC++ runtime or premature child exit)
+        if (!prereqs.vcredist.installed || prereqs.error_message) {
+          if (pollInterval) clearInterval(pollInterval);
+          return;
+        }
+
+        attempts++;
+        if (attempts >= MAX_BOOT_ATTEMPTS) {
+          if (pollInterval) clearInterval(pollInterval);
+          console.warn("Engine connection polling timed out after 30 seconds.");
+        }
+      } catch (err) {
+        // Fallback for standard non-Tauri / browser dev environments
+        console.info("Running in standard non-Tauri mode:", err);
+        setIsEngineReady(true);
+        if (pollInterval) clearInterval(pollInterval);
+        loadPhotos(activeYear);
+      }
+    };
+
+    pollEngineLifecycle();
+    pollInterval = setInterval(pollEngineLifecycle, 1500);
+
+    return () => {
+      isCancelled = true;
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, []);
+
+  // Check for desktop updates in background on mount
+  useEffect(() => {
     const checkUpdates = async () => {
       try {
         const update = await check();
@@ -359,7 +442,7 @@ export const App: React.FC = () => {
     };
 
     checkUpdates();
-  }, [setPrerequisites]);
+  }, []);
 
   // Initialize and register global desktop keyboard shortcuts
   useEffect(() => {
@@ -673,6 +756,14 @@ export const App: React.FC = () => {
           const targetIdx = allPhotos.findIndex((p) => p.id === photo.id);
           setLightboxIndex(targetIdx >= 0 ? targetIdx : 0);
         }}
+      />
+
+      {/* System Prerequisites Diagnostics Banner (visible when prerequisites missing or engine offline) */}
+      <PrerequisitesBanner
+        prerequisites={prerequisites}
+        isLoading={isRecheckingPrereqs}
+        onRecheck={handleRecheckPrerequisites}
+        onStartEngine={handleStartEngine}
       />
 
       {/* Main Content Layout */}

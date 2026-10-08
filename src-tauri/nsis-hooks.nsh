@@ -6,6 +6,25 @@
   Delete "$COMMONDESKTOP\SecurePhotos.lnk"
   ; Clean up any existing user desktop shortcut before writing the new one to prevent duplication
   Delete "$DESKTOP\SecurePhotos.lnk"
+
+  ; Pre-flight validation: Check for Microsoft Visual C++ 2015-2022 Redistributable (x64)
+  ClearErrors
+  ReadRegDWORD $0 HKLM "SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64" "Installed"
+  ${If} ${Errors}
+    ClearErrors
+    ReadRegDWORD $0 HKLM "SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\X64" "Installed"
+  ${EndIf}
+  ${If} $0 != 1
+    ${If} ${FileExists} "$SYSDIR\vcruntime140.dll"
+      StrCpy $0 1
+    ${EndIf}
+  ${EndIf}
+  ${If} $0 != 1
+    MessageBox MB_ICONEXCLAMATION|MB_YESNO \
+      "Microsoft Visual C++ 2015-2022 Redistributable (x64) is required for SecurePhotos local AI processing and face recognition.$\r$\n$\r$\nIt is not currently detected on this machine.$\r$\n$\r$\nWould you like to open the official Microsoft installer download page now?" \
+      IDNO +2
+    ExecShell "open" "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+  ${EndIf}
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL

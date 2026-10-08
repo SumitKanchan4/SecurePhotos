@@ -4720,9 +4720,46 @@ Audited the "Windows Hello & Biometrics" feature card previously present in `Vau
 - **Product Documentation**: `docs/roadmap.md`
 - **Functional Registry**: `.agents/history/features_and_functional_decisions.md`
 
+---
+
+## 96. Multi-Machine Engine Prerequisite Validation, Startup Lifecycle Polling & Bounded Diagnostics
+
+### Overview
+Resolves startup hang where SecurePhotos remained frozen on `"Initializing Engine..."` indefinitely when launched on fresh virtual machines (such as Azure VMs) or clean client installations. Adds pre-flight Microsoft Visual C++ 2015–2022 (x64) detection in both NSIS installer hooks and native Tauri commands, implements active frontend startup lifecycle polling with exponential retries and token handshake resilience, bounds engine startup logging to under 1MB, and introduces an interactive user diagnostics and log inspection modal.
+
+### Key Functional Decision Points
+1. **NSIS Installer Pre-Flight Prerequisite Validation**:
+   - *Problem*: Windows Server Azure VMs and minimal Windows installations lack the Microsoft Visual C++ 2015–2022 x64 runtime (`vcruntime140.dll` / `msvcp140.dll`), causing PyInstaller and ONNXRuntime sidecars to terminate instantly upon launch with zero UI notification.
+   - *Resolution*: Added pre-flight registry validation (`HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64` and `WOW6432Node` fallback) and `$SYSDIR\vcruntime140.dll` inspection in `src-tauri/nsis-hooks.nsh`. Prompts users during installation with a direct 1-click prompt to download the official Microsoft installer.
+2. **Native Runtime Diagnostics & Crash Detection (`check_system_prerequisites`)**:
+   - In `src-tauri/src/lib.rs`, added `check_vcredist_installed() -> bool` probing `System32\vcruntime140.dll` and `System32\msvcp140.dll`.
+   - Enhanced `check_system_prerequisites` payload to return `vcredist: { installed, download_url }` and `error_message`.
+   - Added premature exit detection using `child.try_wait()`, immediately reporting if the engine sidecar crashed with an exit code rather than leaving the frontend waiting indefinitely.
+3. **Bounded Engine Startup Logging (< 1MB)**:
+   - In `start_backend_engine`, redirected `stdout` and `stderr` to `data/engine_startup.log`.
+   - Strictly enforces a 1MB size threshold: if the startup log exceeds 1MB, it is automatically rotated/truncated to prevent unbounded disk growth across long usage sessions.
+   - Added Tauri command `get_engine_logs()` returning the last 80 lines for immediate in-app diagnostic viewing.
+4. **Active Frontend Startup Polling & Handshake Resilience**:
+   - *Problem*: Previously, `App.tsx` fired a single-shot `check_system_prerequisites` and `get_engine_config` on mount ($t=0$). Because engine initialization takes 2–15 seconds, the probe always returned `backend.running = false` and was never queried again, freezing the UI state in `"Initializing Engine..."`.
+   - *Resolution*: Replaced with `pollEngineLifecycle` running every 1.5s (up to 30s timeout). Upon engine port readiness, dynamically retrieves the port, executes `performHandshake()`, sets `isEngineReady: true`, hydrates settings, triggers initial photo loading, and transitions to a lightweight 15s passive heartbeat.
+5. **Interactive Diagnostics Banner & Log Inspection Modal**:
+   - Mounted `PrerequisitesBanner` below `TitleBar` in `App.tsx`.
+   - Offers 1-click **"Install Visual C++ (Microsoft)"** and **"Install Python"** actions.
+   - Features a **"View Logs"** button opening a terminal modal displaying the live `data/engine_startup.log` output.
+   - Enhanced `Sidebar.tsx` status indicator to clearly differentiate `8K AI Engine Active` (green beacon), `Initializing Engine...` (pulsing indicator), and `Engine Offline — Issues Found` (red/amber status).
+
+### Technical Touchpoints
+- **Installer Hooks**: `src-tauri/nsis-hooks.nsh`
+- **Native Rust Sidecar**: `src-tauri/src/lib.rs` (`check_vcredist_installed`, `get_or_prepare_log_file`, `get_engine_logs`, `check_system_prerequisites`, `start_backend_engine`)
+- **Frontend Types**: `src/types/index.ts` (`VcRedistPrerequisite`, `SystemPrerequisites`)
+- **Frontend UI & Views**: `src/App.tsx`, `src/components/PrerequisitesBanner.tsx`, `src/components/Sidebar.tsx`
+- **Test Suite**: `engine/tests/test_prerequisites_check.py`
+
 ### State & Lifecycle Impact
-- Eliminates user confusion regarding biometric availability.
-- No impact on existing 3-tier vault unlocking (PIN, Master Password, Recovery Phrase).
+- Eliminates permanent startup hangs on Azure VMs, remote servers, and fresh PCs.
+- Ensures all API calls wait until dynamic port binding and session cookie handshake have successfully finished.
+- Gives end users instant 1-click visibility into missing dependencies and startup crash reasons.
+
 
 
 

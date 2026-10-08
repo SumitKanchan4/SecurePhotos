@@ -76,13 +76,21 @@ class TestPrerequisitesVerification(unittest.TestCase):
                 "port": 8000,
                 "url": "http://127.0.0.1:8000",
             },
+            "vcredist": {
+                "installed": True,
+                "download_url": "https://aka.ms/vs/17/release/vc_redist.x64.exe",
+            },
             "all_ready": True,
+            "error_message": None,
         }
 
         self.assertIn("python", contract)
         self.assertIn("backend", contract)
+        self.assertIn("vcredist", contract)
         self.assertTrue(contract["python"]["meets_minimum_version"])
         self.assertEqual(contract["backend"]["port"], 8000)
+        self.assertTrue(contract["vcredist"]["installed"])
+        self.assertIn("vc_redist.x64.exe", contract["vcredist"]["download_url"])
 
 
 if __name__ == "__main__":

@@ -188,46 +188,68 @@ export const Sidebar: React.FC = () => {
               </span>
             </div>
             
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "11px", color: prerequisites?.backend.running ? "var(--text-secondary)" : "var(--text-muted)" }}>
-              {prerequisites?.backend.running ? (
-                <span style={{ position: "relative", display: "inline-flex", width: "8px", height: "8px", flexShrink: 0, marginLeft: "2px" }}>
-                  <span 
-                    className="status-ping-beacon"
-                    style={{ 
-                      position: "absolute", 
-                      inset: 0, 
-                      borderRadius: "var(--radius-full)", 
-                      backgroundColor: "var(--accent-success)",
-                    }} 
-                  />
-                  <span 
-                    style={{ 
-                      position: "relative", 
-                      display: "inline-flex", 
-                      borderRadius: "var(--radius-full)", 
-                      width: "8px", 
-                      height: "8px", 
-                      backgroundColor: "var(--accent-success)",
-                      boxShadow: "0 0 8px rgba(16, 185, 129, 0.6)",
-                    }} 
-                  />
-                </span>
-              ) : (
-                <span 
-                  style={{ 
-                    width: "8px", 
-                    height: "8px", 
-                    borderRadius: "var(--radius-full)", 
-                    backgroundColor: "var(--text-muted)",
-                    flexShrink: 0,
-                    marginLeft: "2px",
-                  }} 
-                />
-              )}
-              <span style={{ fontWeight: 450 }}>
-                {prerequisites?.backend.running ? "8K AI Engine Active" : "Initializing Engine..."}
-              </span>
-            </div>
+            {(() => {
+              const isRunning = prerequisites?.backend.running;
+              const hasIssue = prerequisites && (!prerequisites.vcredist?.installed || !prerequisites.python?.installed || !!prerequisites.error_message);
+              const label = isRunning 
+                ? "8K AI Engine Active" 
+                : hasIssue 
+                  ? "Engine Offline — Issues Found" 
+                  : "Initializing Engine...";
+              const dotColor = isRunning 
+                ? "var(--accent-success)" 
+                : hasIssue 
+                  ? "var(--accent-danger, #ef4444)" 
+                  : "var(--accent-primary, #3b82f6)";
+              const textColor = isRunning 
+                ? "var(--text-secondary)" 
+                : hasIssue 
+                  ? "var(--accent-danger, #f87171)" 
+                  : "var(--text-muted)";
+              
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "11px", color: textColor }}>
+                  {isRunning ? (
+                    <span style={{ position: "relative", display: "inline-flex", width: "8px", height: "8px", flexShrink: 0, marginLeft: "2px" }}>
+                      <span 
+                        className="status-ping-beacon"
+                        style={{ 
+                          position: "absolute", 
+                          inset: 0, 
+                          borderRadius: "var(--radius-full)", 
+                          backgroundColor: "var(--accent-success)",
+                        }} 
+                      />
+                      <span 
+                        style={{ 
+                          position: "relative", 
+                          display: "inline-flex", 
+                          borderRadius: "var(--radius-full)", 
+                          width: "8px", 
+                          height: "8px", 
+                          backgroundColor: "var(--accent-success)",
+                          boxShadow: "0 0 8px rgba(16, 185, 129, 0.6)",
+                        }} 
+                      />
+                    </span>
+                  ) : (
+                    <span 
+                      style={{ 
+                        width: "8px", 
+                        height: "8px", 
+                        borderRadius: "var(--radius-full)", 
+                        backgroundColor: dotColor,
+                        flexShrink: 0,
+                        marginLeft: "2px",
+                      }} 
+                    />
+                  )}
+                  <span style={{ fontWeight: 450 }}>
+                    {label}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
         );
       })()}
