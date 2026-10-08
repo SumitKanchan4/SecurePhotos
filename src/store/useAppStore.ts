@@ -61,8 +61,45 @@ interface AppState {
   setIsEngineReady: (ready: boolean) => void;
 }
 
+// Read initial theme with localStorage bootstrap to prevent flash of wrong theme
+const getInitialTheme = (): "dark" | "light" => {
+  try {
+    const saved = localStorage.getItem("securephotos_theme");
+    if (saved === "light" || saved === "dark") {
+      return saved;
+    }
+  } catch {
+    // LocalStorage fallback
+  }
+  return "dark";
+};
+
+const initialTheme = getInitialTheme();
+if (typeof document !== "undefined") {
+  document.documentElement.setAttribute("data-theme", initialTheme);
+}
+
+// Background fire-and-forget sync to SQLite
+const persistThemeToBackend = (theme: "dark" | "light") => {
+  try {
+    const { apiBaseUrl, apiToken } = useAppStore.getState();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (apiToken) {
+      headers["X-SecurePhotos-Token"] = apiToken;
+    }
+    fetch(`${apiBaseUrl}/api/system/settings`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ settings: { theme } }),
+      credentials: "include",
+    }).catch(() => {});
+  } catch {
+    // Graceful silent fallback
+  }
+};
+
 export const useAppStore = create<AppState>((set) => ({
-  theme: "dark",
+  theme: initialTheme,
   gridDensity: "comfortable",
   activeTab: "photos",
   searchQuery: "",
@@ -87,14 +124,22 @@ export const useAppStore = create<AppState>((set) => ({
   setIsEngineReady: (isEngineReady) => set({ isEngineReady }),
 
   setTheme: (theme) => {
+    try {
+      localStorage.setItem("securephotos_theme", theme);
+    } catch {}
     document.documentElement.setAttribute("data-theme", theme);
     set({ theme });
+    persistThemeToBackend(theme);
   },
 
   toggleTheme: () =>
     set((state) => {
       const nextTheme = state.theme === "dark" ? "light" : "dark";
+      try {
+        localStorage.setItem("securephotos_theme", nextTheme);
+      } catch {}
       document.documentElement.setAttribute("data-theme", nextTheme);
+      persistThemeToBackend(nextTheme);
       return { theme: nextTheme };
     }),
 

@@ -576,6 +576,16 @@ async def get_app_settings() -> Dict[str, Any]:
     """
     conn = await get_db_connection()
     try:
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT NOT NULL UNIQUE,
+                value TEXT NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
         merged = dict(DEFAULT_APP_SETTINGS)
         async with conn.execute("SELECT key, value FROM app_settings;") as cursor:
             rows = await cursor.fetchall()
@@ -604,6 +614,16 @@ async def update_app_settings(payload: SettingsUpdatePayload) -> Dict[str, Any]:
     """
     conn = await get_db_connection()
     try:
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT NOT NULL UNIQUE,
+                value TEXT NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
         for key, val in payload.settings.items():
             encoded = json.dumps(val)
             await conn.execute(

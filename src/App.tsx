@@ -47,6 +47,8 @@ export const App: React.FC = () => {
     activeTab, 
     setActiveTab,
     toggleTheme, 
+    setTheme,
+    setGridDensity,
     searchQuery,
     setSearchQuery,
     selectedPhotoIds, 
@@ -78,10 +80,28 @@ export const App: React.FC = () => {
       } finally {
         setIsEngineReady(true);
         checkVaultStatus();
+
+        // Hydrate persistent settings (theme, grid density, reduce-motion) from SQLite
+        apiFetch("/api/system/settings")
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data) => {
+            if (data?.settings) {
+              if (data.settings.theme) {
+                setTheme(data.settings.theme);
+              }
+              if (data.settings.grid_density) {
+                setGridDensity(data.settings.grid_density);
+              }
+              if (data.settings.reduce_motion !== undefined) {
+                document.documentElement.setAttribute("data-reduce-motion", String(data.settings.reduce_motion));
+              }
+            }
+          })
+          .catch(() => {});
       }
     }
     initEngine();
-  }, [setEngineConfig, setIsEngineReady, checkVaultStatus]);
+  }, [setEngineConfig, setIsEngineReady, checkVaultStatus, setTheme, setGridDensity]);
 
 
   const [photos, setPhotos] = useState<PhotoItem[]>([]);

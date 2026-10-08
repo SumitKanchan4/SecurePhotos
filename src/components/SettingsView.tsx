@@ -9,7 +9,6 @@ import {
   Sun,
   Moon
 } from "lucide-react";
-import { useAppStore } from "../store/useAppStore";
 import { useAppSettings } from "../hooks/useAppSettings";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
 import { VaultSettings } from "./settings/VaultSettings";
@@ -33,7 +32,6 @@ interface TabItem {
  * Apple-style grouped inset cards, and persistent storage in SQLite.
  */
 export const SettingsView: React.FC = () => {
-  const { theme, toggleTheme } = useAppStore();
   const { settings, updateSetting } = useAppSettings();
   const [activeTab, setActiveTab] = useState<SettingsCategory>("appearance");
 
@@ -127,7 +125,7 @@ export const SettingsView: React.FC = () => {
         {/* Right Column (flex: 1): Direct Quick Action Pills */}
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px", minWidth: "120px" }}>
           <button
-            onClick={toggleTheme}
+            onClick={() => updateSetting("theme", settings.theme === "dark" ? "light" : "dark")}
             className="clickable"
             title="Switch theme (Shortcut: T)"
             style={{
@@ -145,8 +143,8 @@ export const SettingsView: React.FC = () => {
               transition: "all 0.15s ease",
             }}
           >
-            {theme === "dark" ? <Sun size={14} style={{ color: "#fbbf24" }} /> : <Moon size={14} style={{ color: "#818cf8" }} />}
-            <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>
+            {settings.theme === "dark" ? <Sun size={14} style={{ color: "#fbbf24" }} /> : <Moon size={14} style={{ color: "#818cf8" }} />}
+            <span>{settings.theme === "dark" ? "Light Mode" : "Dark Mode"}</span>
           </button>
         </div>
       </div>

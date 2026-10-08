@@ -20,6 +20,7 @@ This document serves as the **central, living source of truth** for all function
 13. [Media Library Dashboard & Storage Visualizer with Integrated Stories](#13-media-library-dashboard--storage-visualizer-with-integrated-stories)
 ...
 93. [Apple-Style Desktop Settings Redesign & SQLite Portable Preference Persistence](#93-apple-style-desktop-settings-redesign--sqlite-portable-preference-persistence)
+94. [Unified Single-Click Theme Switching & Boot Synchronization](#94-unified-single-click-theme-switching--boot-synchronization)
 
 ---
 
@@ -4663,6 +4664,39 @@ Completely redesigned the Settings screen following the Apple Photos macOS prefe
 - User preferences persist indefinitely across system reboots, drive unmounts, and computer switches.
 - Theme changes apply instantaneously with zero layout shifts or page reloads.
 - Full pytest test suite and frontend build pass with zero warnings or errors.
+
+---
+
+## 94. Unified Single-Click Theme Switching & Boot Synchronization
+
+### Overview
+Eliminates a state desynchronization bug where toggling between Dark Obsidian and Light Titanium required two clicks instead of reacting instantaneously on the first click. Unifies theme state across the global Zustand store, local settings hook, DOM `data-theme` attribute, `localStorage` fallback cache, and SQLite `app_settings` table.
+
+### Key Functional Decision Points
+1. **Elimination of the Re-fetch Race Condition**:
+   - *Problem*: In `useAppSettings.ts`, `fetchSettings` included `theme` in its `useCallback` dependency array. When a user clicked to change the theme, `theme` mutated, causing `fetchSettings` to re-execute immediately. Because the background `PATCH` request was debounced or in flight, `fetchSettings` received the previous theme from SQLite and immediately reverted `data-theme` back to the old value. On the second click, SQLite had finally received the first click's `PATCH`, allowing the change to stick.
+   - *Resolution*: Removed `theme` from `fetchSettings` dependency array so database fetching runs strictly once on component mount. Discrete user actions (`theme`, `grid_density`, `reduce_motion`) persist immediately without artificial debounce delays.
+2. **Instant Theme Boot Bootstrap (Zero Visual Flash)**:
+   - *Problem*: The app initialized in memory to `theme: "dark"` on cold boot, regardless of user preferences, until the Settings panel was mounted.
+   - *Resolution*: `useAppStore.ts` checks `localStorage.getItem("securephotos_theme")` on startup and sets `document.documentElement.setAttribute("data-theme", initialTheme)` immediately at module load time.
+3. **Application Boot Preferences Hydration**:
+   - In `App.tsx`, upon engine initialization (`initEngine`), the app executes a background `GET /api/system/settings` call to hydrate `theme`, `grid_density`, and `reduce_motion` directly from the external drive SQLite database. Preferences persist across system boots even before the user opens Settings.
+4. **Header Quick Action Pill Synchronization**:
+   - In `SettingsView.tsx`, the top-right header theme toggle button was bound to `updateSetting("theme", ...)`. This guarantees that clicking the header quick action pill and clicking the visual theme cards in `AppearanceSettings.tsx` trigger identical optimistic updates and background SQLite persistence.
+5. **Backend Database Resilience**:
+   - In `engine/api/system.py`, both `get_app_settings` and `update_app_settings` execute `CREATE TABLE IF NOT EXISTS app_settings` before querying or updating, ensuring graceful self-healing in development or fresh installations.
+
+### Technical Touchpoints
+- **Frontend Store**: `src/store/useAppStore.ts`
+- **Frontend Hooks**: `src/hooks/useAppSettings.ts`
+- **Frontend Views**: `src/components/SettingsView.tsx`, `src/components/settings/AppearanceSettings.tsx`, `src/App.tsx`
+- **Backend API**: `engine/api/system.py`
+- **Documentation**: `.agents/history/features_and_functional_decisions.md`
+
+### State & Lifecycle Impact
+- Clicking Dark Obsidian, Light Titanium, the SettingsView header pill, TitleBar theme button, or pressing shortcut `T` reacts instantaneously on the first single click.
+- Preferences survive browser refreshes, drive unmounts, and machine migrations.
+
 
 
 

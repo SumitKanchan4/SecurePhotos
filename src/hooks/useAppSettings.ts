@@ -52,7 +52,7 @@ export function useAppSettings() {
             ...data.settings,
           };
           setSettings(merged);
-          if (merged.theme && merged.theme !== theme) {
+          if (merged.theme) {
             setTheme(merged.theme);
           }
           if (merged.grid_density) {
@@ -68,13 +68,13 @@ export function useAppSettings() {
     } finally {
       setIsLoading(false);
     }
-  }, [setTheme, setGridDensity, theme]);
+  }, [setTheme, setGridDensity]);
 
   useEffect(() => {
     fetchSettings();
   }, [fetchSettings]);
 
-  // Keep local settings in sync if store theme toggles externally (e.g. shortcut 'T')
+  // Keep local settings in sync if store theme toggles externally (e.g. shortcut 'T', TitleBar)
   useEffect(() => {
     if (theme && theme !== settings.theme) {
       setSettings((prev) => ({ ...prev, theme }));
@@ -84,10 +84,7 @@ export function useAppSettings() {
   const updateSetting = useCallback(
     <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
       // 1. Optimistic UI update
-      setSettings((prev) => {
-        const next = { ...prev, [key]: value };
-        return next;
-      });
+      setSettings((prev) => ({ ...prev, [key]: value }));
 
       // Special handling for theme, grid density, and motion
       if (key === "theme") {
@@ -100,12 +97,12 @@ export function useAppSettings() {
         document.documentElement.setAttribute("data-reduce-motion", String(value));
       }
 
-      // 2. Persist to SQLite in background (debounced for sliders)
+      // 2. Persist to SQLite in background (debounced only for continuous sliders)
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
 
-      debounceTimerRef.current = setTimeout(async () => {
+      const savePayload = async () => {
         try {
           const res = await apiFetch("/api/system/settings", {
             method: "PATCH",
@@ -119,9 +116,16 @@ export function useAppSettings() {
           console.error(`Error saving setting ${String(key)}:`, err);
           showToast?.(`Could not save setting to drive`, "warning");
         }
-      }, key === "quality_crf" ? 350 : 50);
+      };
+
+      if (key === "quality_crf") {
+        debounceTimerRef.current = setTimeout(savePayload, 300);
+      } else {
+        // Immediate persistence for discrete clicks (theme, toggles, pills)
+        savePayload();
+      }
     },
-    [setTheme, showToast]
+    [setTheme, setGridDensity, showToast]
   );
 
   return {
