@@ -16,6 +16,23 @@ trigger: always_on
   - Work remains safely isolated on its dedicated task branch until the user explicitly directs that it is complete, tested, and ready to merge.
   - This guarantees that no half-cooked, partially tested, or in-flight code is ever merged into the production `master` baseline.
   - Between active tasks and discussions, remain on `master` (or `main`) in a clean state. As soon as discussion or planning for a new task begins, create the dedicated topic branch (`feature/*`, `fix/*`, `chore/*`) and switch to it before modifying any code.
+- **Immediate Post-Merge Branch Deletion & Return to Master/Main**:
+  - Once any topic branch is confirmed merged into `master` (or `main`) and pushed to `origin`, **immediately delete that branch** both locally and on the remote (`origin`):
+    ```powershell
+    git branch -d <branch-name>
+    git push origin --delete <branch-name>
+    ```
+  - Always follow the rule to **remain on `master` (or `main`) in a clean state** with zero uncommitted changes between completed tasks.
+- **Branch Context Evaluation on New Task**:
+  - Whenever a new prompt, task, or bug fix is received while currently on an active branch:
+    1. **Analyze Relatedness**: Rigorously analyze whether the incoming task directly belongs to or extends the scope of the current topic branch.
+    2. **If Related**: Proceed within the current active branch.
+    3. **If Unrelated**:
+       - **Case 1: Current Branch is Complete & Verified**: Ask the user for explicit permission to merge the current branch into `master` (or `main`). Once approved, merge it, push to origin, delete the merged branch, and create a fresh topic branch from updated `master`.
+       - **Case 2: Current Branch is Unverified, In-Flight, or Not Permitted to Merge**:
+         - Apply technical intelligence to select the base:
+           - **Coupled/Dependent**: If the new task relies on or shares dependencies with the in-flight work, branch off the current active branch (`git checkout -b <new-branch> <current-branch>`) and clearly document the upstream branch dependency.
+           - **Independent**: If the new task is unrelated and independent of the in-flight work, safely switch back to `master` (stashing any uncommitted changes if present) and create the new task branch from clean `master` (`git checkout -b <new-branch> master`).
 - **Mandatory Push to Origin on Commit**: Whenever code is committed (`git commit`), **ALWAYS immediately push to origin** (`git push origin <branch>`). Never leave local commits sitting unpushed, as unpushed commits lead to drift, stale checkins, and merge conflicts.
 
 ## 1. Approval Gate, Mandatory Planning & Autonomous Execution
