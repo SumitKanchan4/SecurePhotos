@@ -34,7 +34,12 @@ import aiosqlite
 from engine.config import settings
 from engine.services.media_paths import ENC_SUFFIX, resolve_stored_path, to_db_path
 from engine.services.media_paths import unique_path as _unique_path
-from engine.services.crypto_vault import decrypt_file_chunked_stream, encrypt_file_chunked
+from engine.services.crypto_vault import (
+    decrypt_file_chunked_stream,
+    decrypt_photo_metadata,
+    encrypt_file_chunked,
+    encrypt_photo_metadata,
+)
 
 logger = logging.getLogger("securephotos.vault_storage")
 
@@ -153,12 +158,73 @@ def _pairs_from_json(raw: str) -> List[Tuple[str, str]]:
     return [(plain, enc) for plain, enc in json.loads(raw)]
 
 
-async def _journal_start(conn: aiosqlite.Connection, photo_id: int, op: str, pairs: Sequence[FilePair]) -> None:
+async def _journal_start(
+    conn: aiosqlite.Connection,
+    photo_id: int,
+    op: str,
+    pairs: Sequence[FilePair],
+    cleanup_paths: Sequence[Path] = (),
+) -> None:
+    """Records the planned files before anything changes.
+
+    ``cleanup_paths`` are extra files (face crops) to delete once a *lock* has
+    committed; recovery deletes them only if the row ended up encrypted.
+    """
     await conn.execute(
-        "INSERT OR REPLACE INTO vault_pending_ops (photo_id, operation, file_pairs) VALUES (?, ?, ?);",
-        (photo_id, op, _pairs_to_json(pairs)),
+        "INSERT OR REPLACE INTO vault_pending_ops (photo_id, operation, file_pairs, cleanup_paths) VALUES (?, ?, ?, ?);",
+        (photo_id, op, _pairs_to_json(pairs), json.dumps([to_db_path(p) for p in cleanup_paths])),
     )
     await conn.commit()
+
+
+# ── Sensitive details of vault photos (C4) ────────────────────────────────────
+
+_SENSITIVE_FIELDS = ("ocr_text", "latitude", "longitude")
+
+
+async def _read_sensitive_details(conn: aiosqlite.Connection, photo_id: int) -> Tuple[dict, List[int]]:
+    """Returns (document text + GPS, ids of this photo's detected faces)."""
+    async with conn.execute(
+        f"SELECT {', '.join(_SENSITIVE_FIELDS)} FROM photos WHERE id = ?;", (photo_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    async with conn.execute("SELECT id FROM faces WHERE photo_id = ?;", (photo_id,)) as cur:
+        face_ids = [r["id"] for r in await cur.fetchall()]
+    return {k: row[k] for k in _SENSITIVE_FIELDS}, face_ids
+
+
+def _face_crop_paths(face_ids: Sequence[int]) -> List[Path]:
+    from engine.services.face_recognition_service import get_face_thumbnails_dir
+
+    faces_dir = get_face_thumbnails_dir()
+    return [faces_dir / f"{face_id}.webp" for face_id in face_ids]
+
+
+def decrypt_vault_details(row: aiosqlite.Row, mvk: bytes) -> dict:
+    """Document text and GPS of a vault photo for display while the vault is open.
+
+    Returns empty values if the photo has no sealed details (or they can't be read).
+    """
+    blob = row["vault_meta_enc"] if "vault_meta_enc" in row.keys() else None
+    if not blob:
+        return {k: None for k in _SENSITIVE_FIELDS}
+    try:
+        return decrypt_photo_metadata(blob, mvk, row["id"])
+    except Exception as err:
+        logger.warning("Could not read sealed details of vault photo %s: %s", row["id"], err)
+        return {k: None for k in _SENSITIVE_FIELDS}
+
+
+async def flush_deleted_data(conn: aiosqlite.Connection) -> None:
+    """Moves committed changes out of the write-ahead log so old values don't linger there.
+
+    With ``secure_delete`` on, freed pages are zeroed when the WAL is checkpointed.
+    Best effort: a busy reader can postpone it until the next checkpoint.
+    """
+    try:
+        await conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+    except Exception as err:
+        logger.debug("WAL checkpoint postponed: %s", err)
 
 
 async def _journal_end(conn: aiosqlite.Connection, photo_id: int) -> None:
@@ -197,7 +263,13 @@ async def lock_photo(conn: aiosqlite.Connection, row: aiosqlite.Row, mvk: bytes)
     preview = plan(resolve_stored_path(row["preview_path"]))
     pairs = [p for p in (main, thumb, preview) if p is not None]
 
-    await _journal_start(conn, photo_id, "lock", pairs)
+    # C4: document text + GPS are sealed with the vault key; this photo's face
+    # records are dropped (only this photo's; library faces are untouched).
+    details, face_ids = await _read_sensitive_details(conn, photo_id)
+    sealed_details = encrypt_photo_metadata(details, mvk, photo_id)
+    face_crops = _face_crop_paths(face_ids)
+
+    await _journal_start(conn, photo_id, "lock", pairs, face_crops)
     done: List[FilePair] = []
     try:
         for pair in pairs:
@@ -216,20 +288,26 @@ async def lock_photo(conn: aiosqlite.Connection, row: aiosqlite.Row, mvk: bytes)
             filepath = ?,
             thumbnail_path = COALESCE(?, thumbnail_path),
             preview_path = COALESCE(?, preview_path),
-            vault_type = 'private'
+            vault_type = 'private',
+            vault_meta_enc = ?,
+            ocr_text = NULL, latitude = NULL, longitude = NULL
         WHERE id = ?;
         """,
         (
             to_db_path(main.enc),
             to_db_path(thumb.enc) if thumb else None,
             to_db_path(preview.enc) if preview else None,
+            sealed_details,
             photo_id,
         ),
     )
+    await conn.execute("DELETE FROM faces WHERE photo_id = ?;", (photo_id,))
     await conn.commit()
 
     for pair in pairs:
         _safe_unlink(pair.plain)
+    for crop in face_crops:
+        _safe_unlink(crop)
     await _journal_end(conn, photo_id)
     return True
 
@@ -265,6 +343,16 @@ async def unlock_photo(conn: aiosqlite.Connection, row: aiosqlite.Row, mvk: byte
     preview = plan(resolve_stored_path(row["preview_path"]))
     pairs = [p for p in (main, thumb, preview) if p is not None]
 
+    # C4: open the sealed document text + GPS first; if that fails, nothing changes.
+    async with conn.execute("SELECT vault_meta_enc FROM photos WHERE id = ?;", (photo_id,)) as cur:
+        sealed = (await cur.fetchone())["vault_meta_enc"]
+    details = {k: None for k in _SENSITIVE_FIELDS}
+    if sealed:
+        try:
+            details = decrypt_photo_metadata(sealed, mvk, photo_id)
+        except Exception as err:
+            raise VaultAssetError(f"Could not read the sealed details of photo {photo_id}: {err}") from err
+
     await _journal_start(conn, photo_id, "unlock", pairs)
     done: List[FilePair] = []
     try:
@@ -284,13 +372,19 @@ async def unlock_photo(conn: aiosqlite.Connection, row: aiosqlite.Row, mvk: byte
             filepath = ?,
             thumbnail_path = COALESCE(?, thumbnail_path),
             preview_path = COALESCE(?, preview_path),
-            vault_type = NULL
+            vault_type = NULL,
+            vault_meta_enc = NULL,
+            ocr_text = ?, latitude = ?, longitude = ?,
+            faces_scanned = 0
         WHERE id = ?;
         """,
         (
             to_db_path(main.plain),
             to_db_path(thumb.plain) if thumb else None,
             to_db_path(preview.plain) if preview else None,
+            details.get("ocr_text"),
+            details.get("latitude"),
+            details.get("longitude"),
             photo_id,
         ),
     )
@@ -316,6 +410,8 @@ async def lock_photos(conn: aiosqlite.Connection, rows: Iterable[aiosqlite.Row],
         except VaultAssetError as err:
             logger.error("Vault lock failed for photo %s: %s", row["id"], err)
             failed.append(row["id"])
+    if locked:
+        await flush_deleted_data(conn)
     return locked, failed
 
 
@@ -333,6 +429,8 @@ async def unlock_photos(conn: aiosqlite.Connection, rows: Iterable[aiosqlite.Row
         except VaultAssetError as err:
             logger.error("Vault unlock failed for photo %s: %s", row["id"], err)
             failed.append(row["id"])
+    if unlocked:
+        await flush_deleted_data(conn)
     return unlocked, failed
 
 
@@ -449,7 +547,7 @@ async def reconcile_pending_vault_ops(conn: Optional[aiosqlite.Connection] = Non
         conn = await get_db_connection()
     processed = 0
     try:
-        async with conn.execute("SELECT photo_id, operation, file_pairs FROM vault_pending_ops;") as cursor:
+        async with conn.execute("SELECT photo_id, operation, file_pairs, cleanup_paths FROM vault_pending_ops;") as cursor:
             entries = await cursor.fetchall()
 
         for entry in entries:
@@ -473,6 +571,14 @@ async def reconcile_pending_vault_ops(conn: Optional[aiosqlite.Connection] = Non
                 if keep.is_file() and drop.is_file() and not await _is_referenced_elsewhere(conn, photo_id, drop):
                     logger.info("Vault recovery: removing leftover %s (photo %s)", drop, photo_id)
                     _safe_unlink(drop)
+
+            # Face crops of a lock that committed must not survive (C4).
+            if photo is not None and photo["is_encrypted"] and entry["cleanup_paths"]:
+                try:
+                    for stored in json.loads(entry["cleanup_paths"]):
+                        _safe_unlink(_path_from_journal(stored))
+                except (ValueError, TypeError):
+                    logger.error("Unreadable cleanup list for photo %s.", photo_id)
 
             await conn.execute("DELETE FROM vault_pending_ops WHERE photo_id = ?;", (photo_id,))
             await conn.commit()
