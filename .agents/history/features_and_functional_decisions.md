@@ -26,6 +26,7 @@ This document serves as the **central, living source of truth** for all function
 97. [Portable External Vault & Multi-Device Architecture Standard](#97-portable-external-vault--multi-device-architecture-standard)
 98. [Non-Destructive In-Place Updates, Dynamic Drive Letter Remapping & Library Reconnection](#98-non-destructive-in-place-updates-dynamic-drive-letter-remapping--library-reconnection)
 99. [Crash-Safe Vault Lock & Unlock with Startup Recovery](#99-crash-safe-vault-lock--unlock-with-startup-recovery)
+100. [Isolated Throwaway Library for Automated Tests](#100-isolated-throwaway-library-for-automated-tests)
 
 ---
 
@@ -4904,3 +4905,25 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - At most one journal row exists per photo, and only while that photo is being moved; the startup sweep is O(interrupted operations), not O(library size).
 - The sweep needs no vault key and never decrypts anything.
 - Existing vault rows with absolute paths keep working; they are converted to relative paths the next time they are locked or unlocked (the rest is backlog item M2).
+
+---
+
+## 100. Isolated Throwaway Library for Automated Tests
+
+### Functionality Overview
+- Every backend test run now uses its own temporary data folder and home folder, created before the engine loads and deleted when the run ends. Tests can no longer read, change or erase a developer's real `data/` library.
+- Before this, all tests ran against the live development library (inserting and deleting rows and files); the vault-key backup/restore fixture existed only to undo one side effect.
+
+### Functional Decision Points & Rationale
+- **Environment variable before import** (chosen) vs. monkeypatching `settings.data_dir` per test (rejected): `engine.config.settings` resolves paths at import time and many modules capture them, so only setting `SECUREPHOTOS_DATA_DIR` before the first `engine` import is reliable.
+- **Home folder redirected too**: `AppConfig.ensure_directories()` copies and then deletes `~/.securephotos_data` (legacy migration), which a test run must never trigger on a real machine.
+- **Hard guard**: if the data folder is not the throwaway one (e.g. something imported `engine` first), the run aborts with a clear error instead of silently using the real library.
+- **Required now** because the vault reset (C6) permanently erases vault photos.
+
+### Technical Touchpoints
+- `engine/tests/conftest.py`: isolation setup, guard, one-time `run_migrations()`, `pytest_sessionfinish` cleanup; removed `isolate_vault_configs_during_tests`.
+
+### State & Lifecycle Impact
+- Tests start from an empty library each run, so results no longer depend on what is in a developer's library.
+- Verified: the real library's counts and database files were unchanged after a full run.
+
