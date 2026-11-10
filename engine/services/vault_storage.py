@@ -31,12 +31,13 @@ from typing import Iterable, List, Optional, Sequence, Tuple
 
 import aiosqlite
 
-from engine.config import resolve_media_path, settings
+from engine.config import settings
+from engine.services.media_paths import ENC_SUFFIX, resolve_stored_path, to_db_path
+from engine.services.media_paths import unique_path as _unique_path
 from engine.services.crypto_vault import decrypt_file_chunked_stream, encrypt_file_chunked
 
 logger = logging.getLogger("securephotos.vault_storage")
 
-ENC_SUFFIX = ".enc"
 _HASH_BLOCK = 1024 * 1024
 
 
@@ -61,73 +62,7 @@ class FilePair:
     enc: Path
 
 
-# ── Path helpers ──────────────────────────────────────────────────────────────
-
-def to_db_path(path: Path) -> str:
-    """Converts a filesystem path to the form stored in SQLite.
-
-    Paths inside the data directory are stored relative to it with forward
-    slashes (portable across drive letters, rule §2). Paths outside it are
-    stored as-is.
-
-    Args:
-        path: Absolute filesystem path.
-
-    Returns:
-        Portable relative path string, or the absolute path string.
-    """
-    try:
-        return path.resolve().relative_to(settings.data_dir.resolve()).as_posix()
-    except ValueError:
-        return str(path)
-
-
-def resolve_stored_path(stored: Optional[str]) -> Optional[Path]:
-    """Resolves a path stored in SQLite to an existing file on disk.
-
-    Unlike :func:`engine.config.resolve_media_path`, this never falls back to
-    "any file with the same name in the data directory", because acting on a
-    different file with the same name would destroy the wrong data.
-
-    Args:
-        stored: Path string from the database (relative or absolute).
-
-    Returns:
-        The existing file path, or None if it cannot be located safely.
-    """
-    if not stored:
-        return None
-    raw = Path(stored)
-    if not raw.is_absolute():
-        candidate = settings.data_dir / raw
-        return candidate if candidate.is_file() else None
-    if raw.is_file():
-        return raw
-    remapped = resolve_media_path(stored)
-    if remapped == settings.data_dir / raw.name:
-        return None  # Reject the name-only fallback.
-    return remapped if remapped.is_file() else None
-
-
-def _unique_path(path: Path) -> Path:
-    """Returns ``path`` if it is free, otherwise ``stem (n)suffix`` that is free.
-
-    Prevents a lock or unlock from overwriting an unrelated file that happens
-    to sit at the target name.
-    """
-    if not path.exists():
-        return path
-    name, tail = path.name, ""
-    if name.endswith(ENC_SUFFIX):
-        name, tail = name[: -len(ENC_SUFFIX)], ENC_SUFFIX
-    stem, ext = os.path.splitext(name)
-    n = 1
-    while True:
-        candidate = path.with_name(f"{stem} ({n}){ext}{tail}")
-        if not candidate.exists():
-            return candidate
-        n += 1
-
+# ── Path helpers (shared implementations live in media_paths) ─────────────────
 
 def _enc_temp(enc: Path) -> Path:
     """Temp path used by :func:`encrypt_file_chunked` while writing ``enc``."""
