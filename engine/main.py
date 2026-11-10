@@ -45,6 +45,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.critical(f"Database migration failed: {e}", exc_info=True)
         sys.exit(1)
 
+    # Finish or roll back any vault lock/unlock interrupted by a crash or unplug.
+    # Runs before background workers so nothing else touches those files first.
+    try:
+        from engine.services.vault_storage import reconcile_pending_vault_ops
+        await reconcile_pending_vault_ops()
+    except Exception as e:
+        logger.error(f"Vault recovery sweep failed; leftovers kept for next start: {e}", exc_info=True)
+
     # Automatically trigger background 4K optimization pass if any unoptimized photos exist
     if not os.environ.get("PYTEST_CURRENT_TEST"):
         asyncio.create_task(photos.run_background_optimization())

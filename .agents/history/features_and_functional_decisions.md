@@ -25,6 +25,7 @@ This document serves as the **central, living source of truth** for all function
 96. [Multi-Machine Engine Prerequisite Validation, Startup Lifecycle Polling & Bounded Diagnostics](#96-multi-machine-engine-prerequisite-validation-startup-lifecycle-polling--bounded-diagnostics)
 97. [Portable External Vault & Multi-Device Architecture Standard](#97-portable-external-vault--multi-device-architecture-standard)
 98. [Non-Destructive In-Place Updates, Dynamic Drive Letter Remapping & Library Reconnection](#98-non-destructive-in-place-updates-dynamic-drive-letter-remapping--library-reconnection)
+99. [Crash-Safe Vault Lock & Unlock with Startup Recovery](#99-crash-safe-vault-lock--unlock-with-startup-recovery)
 
 ---
 
@@ -4875,21 +4876,31 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - 100% portable external drive mobility: media is instantly accessible regardless of which drive letter Windows assigns.
 - Users can switch or reconnect existing external libraries anytime with an automatic restart and zero data loss.
 
+---
 
+## 99. Crash-Safe Vault Lock & Unlock with Startup Recovery
 
+### Functionality Overview
+- Moving photos into or out of the private vault now happens one photo at a time. Each photo is fully finished (files written, verified, database saved) before the next starts.
+- If the app crashes, loses power or the drive is unplugged mid-way, the next start automatically finishes or rolls back the interrupted photo. No photo is lost, and no unencrypted leftover stays on disk.
+- Users see no new UI. Lock/unlock responses gain an additive `failed_ids` list for photos that could not be moved (those photos are left exactly as they were).
 
+### Functional Decision Points & Rationale
+- **Journal + database as the source of truth** (chosen) vs. inferring leftovers from file names (rejected): inferring could delete a same-named file that belongs to another photo. The journal records the exact file pairs; recovery keeps whichever side the committed row points at, and deletes the other side only if the kept side exists and no other row references it.
+- **Delete source files only after the row is committed**: before this change the plaintext was deleted immediately and the database committed once at the end of the batch, so a crash mid-batch left rows pointing at deleted files.
+- **Verify before deleting** (lock): the new `.enc` file is decrypted and its SHA-256 compared with the original before the original can be deleted. Cost: one extra read of each file.
+- **Continue past individual failures**: previously one bad file aborted the whole request with a 500 error after earlier photos had already lost their plaintext. Now the failure is reported in `failed_ids` and the rest continue.
+- **Never overwrite**: if a file already exists at the target name, a unique name (`name (1).jpg.enc`) is used instead.
+- **Relative paths**: rows written by lock/unlock store paths relative to the data folder (rule §2). Path lookup never falls back to "any file with the same name".
 
+### Technical Touchpoints
+- `engine/services/vault_storage.py` (new): `lock_photo` / `unlock_photo`, batch wrappers, `encrypt_and_verify`, `decrypt_to_file` (temp + fsync + atomic replace), `to_db_path`, `resolve_stored_path`, `reconcile_pending_vault_ops`.
+- `engine/api/vault.py`: `POST /api/vault/photos/lock`, `/photos/unlock`, `/albums/{id}/lock`, `/albums/{id}/unlock` now delegate to the service (four copies of the logic removed). Album unlock leaves the vault only when no photo failed.
+- `engine/database.py`: new table `vault_pending_ops (photo_id PK, operation, file_pairs JSON, started_at)`.
+- `engine/main.py`: recovery sweep runs at startup after migrations, before background workers.
+- `engine/tests/test_vault_crash_safety.py` (new): simulated crashes during encryption, after commit, and during decryption; verification failure; no-overwrite; never deleting a file another photo uses.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+### State & Lifecycle Impact
+- At most one journal row exists per photo, and only while that photo is being moved; the startup sweep is O(interrupted operations), not O(library size).
+- The sweep needs no vault key and never decrypts anything.
+- Existing vault rows with absolute paths keep working; they are converted to relative paths the next time they are locked or unlocked (the rest is backlog item M2).

@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from engine.database import get_db_connection
 from engine.config import settings, resolve_media_path
+from engine.services import vault_storage
 from engine.services.crypto_vault import (
     derive_key_from_password,
     derive_key_from_pin,
@@ -20,7 +21,6 @@ from engine.services.crypto_vault import (
     derive_key_from_grid_token,
     generate_grid_card,
     verify_grid_challenge_cells,
-    encrypt_file_chunked,
     decrypt_file_chunked_stream,
     decrypt_file_to_bytes,
     wrap_master_key,
@@ -600,12 +600,13 @@ async def stream_vault_photo(photo_id: int):
 
 @router.post("/albums/{album_id}/lock", status_code=status.HTTP_200_OK)
 async def lock_album_to_vault(album_id: int) -> dict:
-    """Encrypts all photos in an album and migrates them into the private vault."""
+    """Moves every photo in an album into the private vault, one crash-safe step at a time.
+
+    Photos that fail are left unchanged and reported in ``failed_ids``.
+    """
     mvk = get_active_mvk(ACTIVE_VAULT_SESSION["session_token"])
     conn = await get_db_connection()
-
     try:
-        # Query all photos in the album
         async with conn.execute(
             """
             SELECT p.id, p.filepath, p.thumbnail_path, p.preview_path
@@ -617,69 +618,30 @@ async def lock_album_to_vault(album_id: int) -> dict:
         ) as cursor:
             rows = await cursor.fetchall()
 
-        encrypted_count = 0
-        photo_ids = []
-        for row in rows:
-            photo_id = row["id"]
-            orig_file = resolve_media_path(row["filepath"])
-            if orig_file.exists():
-                enc_file = orig_file.with_suffix(orig_file.suffix + ".enc")
-                encrypt_file_chunked(orig_file, enc_file, mvk)
-                orig_file.unlink()  # Clean unencrypted original
-
-                # Encrypt thumbnail
-                enc_thumb_str = None
-                if row["thumbnail_path"]:
-                    raw_t = Path(row["thumbnail_path"])
-                    t_orig = raw_t if raw_t.is_absolute() else (settings.data_dir / raw_t)
-                    if t_orig.exists():
-                        t_enc = t_orig.with_suffix(t_orig.suffix + ".enc")
-                        encrypt_file_chunked(t_orig, t_enc, mvk)
-                        t_orig.unlink()
-                        enc_thumb_str = str(t_enc.resolve())
-
-                # Encrypt preview
-                enc_prev_str = None
-                if row["preview_path"]:
-                    raw_p = Path(row["preview_path"])
-                    p_orig = raw_p if raw_p.is_absolute() else (settings.data_dir / raw_p)
-                    if p_orig.exists():
-                        p_enc = p_orig.with_suffix(p_orig.suffix + ".enc")
-                        encrypt_file_chunked(p_orig, p_enc, mvk)
-                        p_orig.unlink()
-                        enc_prev_str = str(p_enc.resolve())
-
-                await conn.execute(
-                    """
-                    UPDATE photos
-                    SET is_encrypted = 1,
-                        filepath = ?,
-                        thumbnail_path = COALESCE(?, thumbnail_path),
-                        preview_path = COALESCE(?, preview_path),
-                        vault_type = 'private'
-                    WHERE id = ?;
-                    """,
-                    (str(enc_file.resolve()), enc_thumb_str, enc_prev_str, photo_id),
-                )
-                encrypted_count += 1
-                photo_ids.append(photo_id)
+        locked_ids, failed_ids = await vault_storage.lock_photos(conn, rows, mvk)
 
         await conn.execute("UPDATE albums SET is_vault = 1, vault_type = 'private' WHERE id = ?;", (album_id,))
         await conn.commit()
     finally:
         await conn.close()
 
-    return {"status": "album_locked", "photos_encrypted": encrypted_count, "photo_ids": photo_ids}
+    return {
+        "status": "album_locked",
+        "photos_encrypted": len(locked_ids),
+        "photo_ids": locked_ids,
+        "failed_ids": failed_ids,
+    }
 
 
 @router.post("/albums/{album_id}/unlock", status_code=status.HTTP_200_OK)
 async def unlock_album_from_vault(album_id: int) -> dict:
-    """Decrypts all photos in an album and restores the album to the public library."""
+    """Moves every photo in a vault album back to the library, one crash-safe step at a time.
+
+    The album leaves the vault only when none of its photos remain encrypted.
+    """
     mvk = get_active_mvk()
     conn = await get_db_connection()
-
     try:
-        # Query all encrypted photos in the album
         async with conn.execute(
             """
             SELECT p.id, p.filepath, p.thumbnail_path, p.preview_path
@@ -691,66 +653,15 @@ async def unlock_album_from_vault(album_id: int) -> dict:
         ) as cursor:
             rows = await cursor.fetchall()
 
-        unlocked_count = 0
-        for row in rows:
-            photo_id = row["id"]
-            enc_file = resolve_media_path(row["filepath"])
-            if enc_file.exists():
-                orig_file = enc_file.with_suffix("") if enc_file.suffix == ".enc" else enc_file.with_name("restored_" + enc_file.name)
-                with open(orig_file, "wb") as fout:
-                    for chunk in decrypt_file_chunked_stream(enc_file, mvk):
-                        fout.write(chunk)
-                enc_file.unlink()
+        unlocked_ids, failed_ids = await vault_storage.unlock_photos(conn, rows, mvk)
 
-                restored_thumb_str = None
-                if row["thumbnail_path"]:
-                    raw_t = Path(row["thumbnail_path"])
-                    t_cand = raw_t if raw_t.is_absolute() else (settings.data_dir / raw_t)
-                    candidates = [t_cand, t_cand.with_suffix(".enc"), Path(str(t_cand) + ".enc"), t_cand.with_suffix(t_cand.suffix + ".enc")]
-                    t_enc = next((p for p in candidates if p.exists()), None)
-                    if t_enc:
-                        t_orig = t_enc.with_suffix("") if t_enc.suffix == ".enc" else t_enc.with_name("restored_" + t_enc.name)
-                        with open(t_orig, "wb") as fout:
-                            for chunk in decrypt_file_chunked_stream(t_enc, mvk):
-                                fout.write(chunk)
-                        t_enc.unlink()
-                        restored_thumb_str = str(t_orig.resolve())
-
-                restored_prev_str = None
-                if row["preview_path"]:
-                    raw_p = Path(row["preview_path"])
-                    p_cand = raw_p if raw_p.is_absolute() else (settings.data_dir / raw_p)
-                    candidates = [p_cand, p_cand.with_suffix(".enc"), Path(str(p_cand) + ".enc"), p_cand.with_suffix(p_cand.suffix + ".enc")]
-                    p_enc = next((p for p in candidates if p.exists()), None)
-                    if p_enc:
-                        p_orig = p_enc.with_suffix("") if p_enc.suffix == ".enc" else p_enc.with_name("restored_" + p_enc.name)
-                        with open(p_orig, "wb") as fout:
-                            for chunk in decrypt_file_chunked_stream(p_enc, mvk):
-                                fout.write(chunk)
-                        p_enc.unlink()
-                        restored_prev_str = str(p_orig.resolve())
-
-                await conn.execute(
-                    """
-                    UPDATE photos
-                    SET is_encrypted = 0,
-                        filepath = ?,
-                        thumbnail_path = COALESCE(?, thumbnail_path),
-                        preview_path = COALESCE(?, preview_path),
-                        vault_type = NULL
-                    WHERE id = ?;
-                    """,
-                    (str(orig_file.resolve()), restored_thumb_str, restored_prev_str, photo_id),
-                )
-                unlocked_count += 1
-
-        await conn.execute("UPDATE albums SET is_vault = 0, vault_type = NULL WHERE id = ?;", (album_id,))
-        await conn.commit()
+        if not failed_ids:
+            await conn.execute("UPDATE albums SET is_vault = 0, vault_type = NULL WHERE id = ?;", (album_id,))
+            await conn.commit()
     finally:
         await conn.close()
 
-    return {"status": "album_unlocked", "photos_decrypted": unlocked_count}
-
+    return {"status": "album_unlocked", "photos_decrypted": len(unlocked_ids), "failed_ids": failed_ids}
 
 
 @router.get("/albums", status_code=status.HTTP_200_OK)
@@ -991,13 +902,15 @@ async def get_vault_thumbnail(photo_id: int):
 
 @router.post("/photos/lock", status_code=status.HTTP_200_OK)
 async def lock_photos_to_vault(payload: VaultPhotosLockRequest) -> dict:
-    """Encrypts individual photos/videos chunked and migrates them into the private vault."""
+    """Moves individual photos/videos into the private vault, one crash-safe step at a time.
+
+    Photos that fail are left unchanged and reported in ``failed_ids``.
+    """
     mvk = get_active_mvk()
     if not payload.photo_ids:
-        return {"status": "ok", "locked_count": 0}
+        return {"status": "ok", "locked_count": 0, "failed_ids": []}
 
     conn = await get_db_connection()
-    locked_count = 0
     try:
         placeholders = ",".join("?" for _ in payload.photo_ids)
         async with conn.execute(
@@ -1010,64 +923,21 @@ async def lock_photos_to_vault(payload: VaultPhotosLockRequest) -> dict:
         ) as cursor:
             rows = await cursor.fetchall()
 
-        for row in rows:
-            photo_id = row["id"]
-            orig_file = resolve_media_path(row["filepath"])
-            if orig_file.exists():
-                enc_file = orig_file.with_suffix(orig_file.suffix + ".enc")
-                encrypt_file_chunked(orig_file, enc_file, mvk)
-                orig_file.unlink()
-
-                enc_thumb_str = None
-                if row["thumbnail_path"]:
-                    t_raw = Path(row["thumbnail_path"])
-                    t_orig = t_raw if t_raw.is_absolute() else (settings.data_dir / t_raw)
-                    if t_orig.exists():
-                        t_enc = t_orig.with_suffix(t_orig.suffix + ".enc")
-                        encrypt_file_chunked(t_orig, t_enc, mvk)
-                        t_orig.unlink()
-                        enc_thumb_str = str(t_enc.resolve())
-
-                enc_prev_str = None
-                if row["preview_path"]:
-                    p_raw = Path(row["preview_path"])
-                    p_orig = p_raw if p_raw.is_absolute() else (settings.data_dir / p_raw)
-                    if p_orig.exists():
-                        p_enc = p_orig.with_suffix(p_orig.suffix + ".enc")
-                        encrypt_file_chunked(p_orig, p_enc, mvk)
-                        p_orig.unlink()
-                        enc_prev_str = str(p_enc.resolve())
-
-                await conn.execute(
-                    """
-                    UPDATE photos
-                    SET is_encrypted = 1,
-                        filepath = ?,
-                        thumbnail_path = COALESCE(?, thumbnail_path),
-                        preview_path = COALESCE(?, preview_path),
-                        vault_type = 'private'
-                    WHERE id = ?;
-                    """,
-                    (str(enc_file.resolve()), enc_thumb_str, enc_prev_str, photo_id),
-                )
-                locked_count += 1
-
-        await conn.commit()
+        locked_ids, failed_ids = await vault_storage.lock_photos(conn, rows, mvk)
     finally:
         await conn.close()
 
-    return {"status": "photos_locked", "locked_count": locked_count}
+    return {"status": "photos_locked", "locked_count": len(locked_ids), "failed_ids": failed_ids}
 
 
 @router.post("/photos/unlock", status_code=status.HTTP_200_OK)
 async def restore_photos_from_vault(payload: VaultPhotosUnlockRequest) -> dict:
-    """Decrypts photos/videos from the private vault and restores them to the public library."""
+    """Moves photos/videos out of the private vault, one crash-safe step at a time."""
     mvk = get_active_mvk()
     if not payload.photo_ids:
-        return {"status": "ok", "unlocked_count": 0}
+        return {"status": "ok", "unlocked_count": 0, "failed_ids": []}
 
     conn = await get_db_connection()
-    unlocked_count = 0
     try:
         placeholders = ",".join("?" for _ in payload.photo_ids)
         async with conn.execute(
@@ -1080,59 +950,9 @@ async def restore_photos_from_vault(payload: VaultPhotosUnlockRequest) -> dict:
         ) as cursor:
             rows = await cursor.fetchall()
 
-        for row in rows:
-            photo_id = row["id"]
-            enc_file = resolve_media_path(row["filepath"])
-            if enc_file.exists():
-                orig_file = enc_file.with_suffix("") if enc_file.suffix == ".enc" else enc_file.with_name("restored_" + enc_file.name)
-                with open(orig_file, "wb") as fout:
-                    for chunk in decrypt_file_chunked_stream(enc_file, mvk):
-                        fout.write(chunk)
-                enc_file.unlink()
+        unlocked_ids, failed_ids = await vault_storage.unlock_photos(conn, rows, mvk)
 
-                restored_thumb_str = None
-                if row["thumbnail_path"]:
-                    t_raw = Path(row["thumbnail_path"])
-                    t_cand = t_raw if t_raw.is_absolute() else (settings.data_dir / t_raw)
-                    candidates = [t_cand, t_cand.with_suffix(".enc"), Path(str(t_cand) + ".enc"), t_cand.with_suffix(t_cand.suffix + ".enc")]
-                    t_enc = next((p for p in candidates if p.exists()), None)
-                    if t_enc:
-                        t_orig = t_enc.with_suffix("") if t_enc.suffix == ".enc" else t_enc.with_name("restored_" + t_enc.name)
-                        with open(t_orig, "wb") as fout:
-                            for chunk in decrypt_file_chunked_stream(t_enc, mvk):
-                                fout.write(chunk)
-                        t_enc.unlink()
-                        restored_thumb_str = str(t_orig.resolve())
-
-                restored_prev_str = None
-                if row["preview_path"]:
-                    p_raw = Path(row["preview_path"])
-                    p_cand = p_raw if p_raw.is_absolute() else (settings.data_dir / p_raw)
-                    candidates = [p_cand, p_cand.with_suffix(".enc"), Path(str(p_cand) + ".enc"), p_cand.with_suffix(p_cand.suffix + ".enc")]
-                    p_enc = next((p for p in candidates if p.exists()), None)
-                    if p_enc:
-                        p_orig = p_enc.with_suffix("") if p_enc.suffix == ".enc" else p_enc.with_name("restored_" + p_enc.name)
-                        with open(p_orig, "wb") as fout:
-                            for chunk in decrypt_file_chunked_stream(p_enc, mvk):
-                                fout.write(chunk)
-                        p_enc.unlink()
-                        restored_prev_str = str(p_orig.resolve())
-
-                await conn.execute(
-                    """
-                    UPDATE photos
-                    SET is_encrypted = 0,
-                        filepath = ?,
-                        thumbnail_path = COALESCE(?, thumbnail_path),
-                        preview_path = COALESCE(?, preview_path),
-                        vault_type = NULL
-                    WHERE id = ?;
-                    """,
-                    (str(orig_file.resolve()), restored_thumb_str, restored_prev_str, photo_id),
-                )
-                unlocked_count += 1
-
-        # Self-healing: if any locked album now has 0 encrypted photos, restore is_vault = 0
+        # Self-healing: a vault album with no encrypted photos left returns to the library.
         await conn.execute(
             """
             UPDATE albums
@@ -1145,12 +965,11 @@ async def restore_photos_from_vault(payload: VaultPhotosUnlockRequest) -> dict:
             );
             """
         )
-
         await conn.commit()
     finally:
         await conn.close()
 
-    return {"status": "photos_unlocked", "unlocked_count": unlocked_count}
+    return {"status": "photos_unlocked", "unlocked_count": len(unlocked_ids), "failed_ids": failed_ids}
 
 
 @router.delete("/photos/{photo_id}", status_code=status.HTTP_200_OK)
