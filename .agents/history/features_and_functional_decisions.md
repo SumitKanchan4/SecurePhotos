@@ -27,6 +27,7 @@ This document serves as the **central, living source of truth** for all function
 98. [Non-Destructive In-Place Updates, Dynamic Drive Letter Remapping & Library Reconnection](#98-non-destructive-in-place-updates-dynamic-drive-letter-remapping--library-reconnection)
 99. [Crash-Safe Vault Lock & Unlock with Startup Recovery](#99-crash-safe-vault-lock--unlock-with-startup-recovery)
 100. [Isolated Throwaway Library for Automated Tests](#100-isolated-throwaway-library-for-automated-tests)
+101. [Vault Reset Permanently Erases Vault Contents](#101-vault-reset-permanently-erases-vault-contents)
 
 ---
 
@@ -4926,4 +4927,30 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 ### State & Lifecycle Impact
 - Tests start from an empty library each run, so results no longer depend on what is in a developer's library.
 - Verified: the real library's counts and database files were unchanged after a full run.
+
+---
+
+## 101. Vault Reset Permanently Erases Vault Contents
+
+### Functionality Overview
+- "Erase Private Vault" (formerly "Factory Reset Encrypted Vault") now permanently deletes every vault photo (original, thumbnail and preview files), its face crops, its database rows and every vault album, then the vault's password, PIN and recovery keys.
+- Before confirming, the screen shows exactly what will be erased ("This permanently erases 12 photos and 2 albums from your vault…"). The user must still type ERASE ALL DATA.
+- Library (non-vault) photos are never affected, even if they were in a vault album.
+
+### Functional Decision Points & Rationale
+- **Erase everything** (owner decision, 2026-11-10) vs. blocking reset while the vault is non-empty (rejected: a user who forgot both password and card could never start over). Previously only the keys were deleted, leaving encrypted photos that could never be opened again but still used disk space and appeared in the database.
+- **Vault albums are deleted too** (owner decision): album names can themselves be private.
+- **Phrase enforced by the engine**: the API used to accept a reset with no body. It now rejects missing or wrong phrases, and the UI sends what the user typed instead of a hard-coded string.
+- **Count via a separate endpoint** (`/reset-preview`), not `/status`, so the vault's size isn't sent with every status poll.
+- **Files first, keys last, safe to repeat**: if a reset is interrupted, running it again finishes the job; keys are deleted in the same commit as the last rows.
+
+### Technical Touchpoints
+- `engine/services/vault_storage.py`: `count_vault_contents`, `erase_vault_contents`.
+- `engine/api/vault.py`: `POST /api/vault/reset` (phrase mandatory; returns `erased_photos`, `erased_albums`), new `GET /api/vault/reset-preview`.
+- `src/components/VaultView.tsx`: reset screen fetches and shows the count, sends the typed phrase, new user-facing wording.
+- `engine/tests/test_vault_reset.py` (new); `engine/tests/test_vault.py` reset calls now send the phrase.
+
+### State & Lifecycle Impact
+- Faces, album links and duplicate-group entries are removed through existing `ON DELETE CASCADE` foreign keys; people whose cover face disappears self-heal to another face (existing behaviour).
+- Any interrupted vault lock/unlock journal entries for erased photos are removed.
 

@@ -119,7 +119,7 @@ async def test_vault_setup_and_unlock_api():
         assert lock_res.status_code == 200
 
         # Clean up test vault state so dev DB is not polluted
-        await client.post("/api/vault/reset")
+        await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
 
 
 @pytest.mark.asyncio
@@ -217,7 +217,7 @@ async def test_vault_photos_crud_and_streaming_api():
             assert unauth_res.status_code == 401
 
             # Clean up test vault and test photo row
-            await client.post("/api/vault/reset")
+            await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
             conn = await get_db_connection()
             await conn.execute("DELETE FROM photos WHERE id = ?;", (photo_id,))
             await conn.commit()
@@ -302,7 +302,7 @@ async def test_vault_pin_workflow_and_rate_limiting():
         assert pin_ok.status_code == 200
 
         # Clean up test vault
-        await client.post("/api/vault/reset")
+        await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
 
 
 @pytest.mark.asyncio
@@ -312,7 +312,7 @@ async def test_album_lock_and_unlock_workflow():
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # Reset and setup vault
-        await client.post("/api/vault/reset")
+        await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
         await client.post(
             "/api/vault/setup",
             json={"password": "AlbumVaultPassword123!", "recovery_phrase": "test words phrase"},
@@ -448,14 +448,14 @@ async def test_album_lock_and_unlock_workflow():
                 shutil.rmtree(test_dir, ignore_errors=True)
 
             # Reset vault
-            await client.post("/api/vault/reset")
+            await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
 
 
 @pytest.mark.asyncio
 async def test_vault_documents_and_self_healing_workflow():
     """Verifies document categorization (is_document, ocr_text) and automated album self-healing."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        await client.post("/api/vault/reset")
+        await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
 
         setup_res = await client.post(
             "/api/vault/setup",
@@ -553,7 +553,7 @@ async def test_vault_documents_and_self_healing_workflow():
                 import shutil
                 shutil.rmtree(test_dir, ignore_errors=True)
 
-            await client.post("/api/vault/reset")
+            await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
 
 
 @pytest.mark.asyncio
@@ -565,7 +565,7 @@ async def test_vault_thumbnail_exif_rotation_preservation():
     import io
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        await client.post("/api/vault/reset")
+        await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
         await client.post(
             "/api/vault/setup",
             json={"password": "ExifVaultPass123!", "recovery_phrase": "exif test phrase"},
@@ -626,7 +626,7 @@ async def test_vault_thumbnail_exif_rotation_preservation():
                 import shutil
                 shutil.rmtree(test_dir, ignore_errors=True)
 
-            await client.post("/api/vault/reset")
+            await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
 
 
 @pytest.mark.asyncio
@@ -639,7 +639,7 @@ async def test_vault_relative_thumbnail_and_video_handling():
     from engine.main import app
     from PIL import Image
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        await client.post("/api/vault/reset")
+        await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
         setup_res = await client.post(
             "/api/vault/setup",
             json={
@@ -694,7 +694,7 @@ async def test_vault_relative_thumbnail_and_video_handling():
 
             import shutil
             shutil.rmtree(test_dir, ignore_errors=True)
-            await client.post("/api/vault/reset")
+            await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
 
 
 @pytest.mark.asyncio
@@ -710,7 +710,7 @@ async def test_grid_card_generation_setup_and_password_reset():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # Step 0: Ensure fresh vault state
-        await client.post("/api/vault/reset")
+        await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
 
         # Step 1: Generate Grid Card
         gen_res = await client.get("/api/vault/grid-card/generate")
@@ -842,7 +842,7 @@ async def test_grid_card_generation_setup_and_password_reset():
         assert short_pass_res.status_code == 400
 
         # Step 7: Teardown
-        await client.post("/api/vault/reset")
+        await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
 
 
 
