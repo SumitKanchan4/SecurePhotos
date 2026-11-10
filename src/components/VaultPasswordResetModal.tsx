@@ -8,21 +8,26 @@ import {
   Loader2, 
   CreditCard, 
   Upload, 
-  Hash, 
   ArrowLeft, 
   X,
   FileCheck
 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { extractGridCardFromPng } from "../utils/gridCardRenderer";
-import { VaultRecoveryChallenge } from "../types";
 import { apiFetch } from "../services/api";
+
+/** How the user proves they own the vault before choosing a new password. */
+type ResetTab = "upload" | "numbers" | "current";
+
+const CARD_LETTERS = "ABCDEFGHIJKLMNOP".split("");
+const emptyCardNumbers = (): Record<string, string> =>
+  Object.fromEntries(CARD_LETTERS.map((l) => [l, ""]));
 
 interface VaultPasswordResetModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  initialMode?: "upload" | "challenge" | "pin";
+  initialMode?: ResetTab;
 }
 
 export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = ({
@@ -33,17 +38,15 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
 }) => {
   const { showToast } = useAppStore();
 
-  const [activeTab, setActiveTab] = useState<"upload" | "challenge" | "pin">(initialMode);
+  const [activeTab, setActiveTab] = useState<ResetTab>(initialMode);
   const [stage, setStage] = useState<"verify" | "new-password">("verify");
 
   // Verification state
   const [cardToken, setCardToken] = useState("");
   const [verifiedCardId, setVerifiedCardId] = useState<string | null>(null);
-  const [challengeData, setChallengeData] = useState<VaultRecoveryChallenge | null>(null);
-  const [isLoadingChallenge, setIsLoadingChallenge] = useState(false);
-  const [challengeInputs, setChallengeInputs] = useState<Record<string, string>>({});
-  const [pin, setPin] = useState(["", "", "", ""]);
-  const pinInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [cardNumbers, setCardNumbers] = useState<Record<string, string>>(emptyCardNumbers);
+  const cardInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [currentPassword, setCurrentPassword] = useState("");
 
   // New Password state
   const [newPassword, setNewPassword] = useState("");
@@ -55,33 +58,10 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch ICICI Challenge on open or tab switch
+  // Start each opening on the requested tab.
   useEffect(() => {
-    if (isOpen && activeTab === "challenge") {
-      fetchChallenge();
-    }
-  }, [isOpen, activeTab]);
-
-  const fetchChallenge = async () => {
-    setIsLoadingChallenge(true);
-    setErrorMessage("");
-    try {
-      const res = await apiFetch("/api/vault/recovery/challenge");
-      if (res.ok) {
-        const data = await res.json();
-        setChallengeData(data);
-        const initialInputs: Record<string, string> = {};
-        data.required_cells.forEach((letter: string) => {
-          initialInputs[letter] = "";
-        });
-        setChallengeInputs(initialInputs);
-      }
-    } catch {
-      setErrorMessage("Could not load grid card challenge.");
-    } finally {
-      setIsLoadingChallenge(false);
-    }
-  };
+    if (isOpen) setActiveTab(initialMode);
+  }, [isOpen, initialMode]);
 
   if (!isOpen) return null;
 
@@ -116,22 +96,15 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
     }
   };
 
-  // PIN Input handlers
-  const handlePinChange = (index: number, val: string) => {
-    const digit = val.replace(/\D/g, "").slice(-1);
-    const newPin = [...pin];
-    newPin[index] = digit;
-    setPin(newPin);
-    if (digit && index < 3) {
-      pinInputRefs.current[index + 1]?.focus();
+  // Card number inputs: two digits each, jump to the next box when full.
+  const handleCardNumberChange = (index: number, val: string) => {
+    const digits = val.replace(/\D/g, "").slice(0, 2);
+    setCardNumbers((prev) => ({ ...prev, [CARD_LETTERS[index]]: digits }));
+    if (digits.length === 2 && index < CARD_LETTERS.length - 1) {
+      cardInputRefs.current[index + 1]?.focus();
     }
   };
-
-  const handlePinKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Backspace" && !pin[index] && index > 0) {
-      pinInputRefs.current[index - 1]?.focus();
-    }
-  };
+  const allCardNumbersFilled = CARD_LETTERS.every((l) => /^\d{2}$/.test(cardNumbers[l]));
 
   // Proceed from verification to new password
   const handleProceedFromVerification = (e: React.FormEvent) => {
@@ -144,22 +117,15 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
         return;
       }
       setStage("new-password");
-    } else if (activeTab === "challenge") {
-      const pinStr = pin.join("");
-      if (pinStr.length !== 4) {
-        setErrorMessage("Please enter your complete 4-digit PIN.");
-        return;
-      }
-      const missingCell = Object.values(challengeInputs).some((v) => !v.trim());
-      if (missingCell) {
-        setErrorMessage("Please enter all 3 requested box numbers.");
+    } else if (activeTab === "numbers") {
+      if (!allCardNumbersFilled) {
+        setErrorMessage("Please enter all 16 two-digit numbers from your Emergency Card.");
         return;
       }
       setStage("new-password");
-    } else if (activeTab === "pin") {
-      const pinStr = pin.join("");
-      if (pinStr.length !== 4) {
-        setErrorMessage("Please enter your 4-digit PIN.");
+    } else if (activeTab === "current") {
+      if (!currentPassword) {
+        setErrorMessage("Please enter your current master password.");
         return;
       }
       setStage("new-password");
@@ -197,8 +163,6 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
     }
 
     setIsSubmitting(true);
-    const pinStr = pin.join("");
-
     const payload: Record<string, any> = {
       new_password: newPassword,
       new_password_hint: newPasswordHint.trim() || undefined,
@@ -206,11 +170,10 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
 
     if (activeTab === "upload") {
       payload.card_token = cardToken.trim();
-    } else if (activeTab === "challenge") {
-      payload.challenge_cells = challengeInputs;
-      payload.pin = pinStr;
-    } else if (activeTab === "pin") {
-      payload.pin = pinStr;
+    } else if (activeTab === "numbers") {
+      payload.card_cells = cardNumbers;
+    } else if (activeTab === "current") {
+      payload.current_password = currentPassword;
     }
 
     try {
@@ -291,7 +254,7 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
               </h3>
               <p style={{ margin: 0, fontSize: "12px", color: "var(--text-secondary)" }}>
                 {stage === "verify" 
-                  ? "Verify identity with your Emergency Grid Card or PIN" 
+                  ? "Use your Emergency Card or your current password" 
                   : "Choose a new strong password for your Private Vault"}
               </p>
             </div>
@@ -369,21 +332,21 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
                 }}
               >
                 <Upload size={12} />
-                <span>Upload Card</span>
+                <span>Card file</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => { setActiveTab("challenge"); setErrorMessage(""); }}
+                onClick={() => { setActiveTab("numbers"); setErrorMessage(""); }}
                 style={{
                   flex: 1,
                   padding: "6px 10px",
                   borderRadius: "var(--radius-full)",
                   border: "none",
-                  backgroundColor: activeTab === "challenge" ? "var(--glass-pill-bg)" : "transparent",
-                  color: activeTab === "challenge" ? "var(--text-primary)" : "var(--text-muted)",
+                  backgroundColor: activeTab === "numbers" ? "var(--glass-pill-bg)" : "transparent",
+                  color: activeTab === "numbers" ? "var(--text-primary)" : "var(--text-muted)",
                   fontSize: "11px",
-                  fontWeight: activeTab === "challenge" ? 700 : 500,
+                  fontWeight: activeTab === "numbers" ? 700 : 500,
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
@@ -392,21 +355,21 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
                 }}
               >
                 <CreditCard size={12} />
-                <span>Box Challenge</span>
+                <span>Card numbers</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => { setActiveTab("pin"); setErrorMessage(""); }}
+                onClick={() => { setActiveTab("current"); setErrorMessage(""); }}
                 style={{
                   flex: 1,
                   padding: "6px 10px",
                   borderRadius: "var(--radius-full)",
                   border: "none",
-                  backgroundColor: activeTab === "pin" ? "var(--glass-pill-bg)" : "transparent",
-                  color: activeTab === "pin" ? "var(--text-primary)" : "var(--text-muted)",
+                  backgroundColor: activeTab === "current" ? "var(--glass-pill-bg)" : "transparent",
+                  color: activeTab === "current" ? "var(--text-primary)" : "var(--text-muted)",
                   fontSize: "11px",
-                  fontWeight: activeTab === "pin" ? 700 : 500,
+                  fontWeight: activeTab === "current" ? 700 : 500,
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
@@ -414,8 +377,8 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
                   gap: "4px",
                 }}
               >
-                <Hash size={12} />
-                <span>Quick PIN</span>
+                <KeyRound size={12} />
+                <span>Current password</span>
               </button>
             </div>
 
@@ -524,162 +487,55 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
               </form>
             )}
 
-            {/* TAB 2: ICICI BOX CHALLENGE */}
-            {activeTab === "challenge" && (
+            {/* TAB 2: ALL 16 NUMBERS FROM THE PRINTED CARD */}
+            {activeTab === "numbers" && (
               <form onSubmit={handleProceedFromVerification} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                {isLoadingChallenge ? (
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "120px" }}>
-                    <Loader2 size={24} className="spin-animation" style={{ color: "var(--accent-primary)" }} />
-                  </div>
-                ) : challengeData ? (
-                  <>
-                    <p style={{ margin: 0, fontSize: "12px", color: "var(--text-secondary)", lineHeight: "1.4" }}>
-                      Check your Emergency Grid Card {challengeData.card_id && `(Card ID: ${challengeData.card_id})`} on your phone or in your wallet, and enter the numbers for these 3 boxes:
-                    </p>
-
-                    {/* 3 Box Inputs */}
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px" }}>
-                      {challengeData.required_cells.map((letter) => (
-                        <div
-                          key={letter}
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: "4px",
-                            backgroundColor: "rgba(15, 23, 42, 0.7)",
-                            padding: "10px",
-                            borderRadius: "var(--radius-md)",
-                            border: "1px solid rgba(56, 189, 248, 0.3)",
-                            alignItems: "center",
-                          }}
-                        >
-                          <span style={{ fontSize: "12px", fontWeight: 800, color: "#38bdf8" }}>
-                            Box [{letter}]
-                          </span>
-                          <input
-                            type="text"
-                            maxLength={2}
-                            placeholder="00"
-                            value={challengeInputs[letter] || ""}
-                            onChange={(e) => {
-                              const val = e.target.value.replace(/\D/g, "").slice(0, 2);
-                              setChallengeInputs({ ...challengeInputs, [letter]: val });
-                            }}
-                            style={{
-                              width: "60px",
-                              textAlign: "center",
-                              fontSize: "20px",
-                              fontWeight: 800,
-                              fontFamily: "var(--font-mono)",
-                              backgroundColor: "var(--glass-pill-bg)",
-                              border: "1px solid var(--glass-border)",
-                              borderRadius: "var(--radius-sm)",
-                              color: "#f8fafc",
-                              padding: "4px",
-                              outline: "none",
-                            }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* 4-Digit PIN */}
-                    <div>
-                      <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "6px", display: "block" }}>
-                        Enter your 4-Digit Quick PIN:
-                      </label>
-                      <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
-                        {[0, 1, 2, 3].map((idx) => (
-                          <input
-                            key={idx}
-                            ref={(el) => { pinInputRefs.current[idx] = el; }}
-                            type="password"
-                            maxLength={1}
-                            value={pin[idx]}
-                            onChange={(e) => handlePinChange(idx, e.target.value)}
-                            onKeyDown={(e) => handlePinKeyDown(idx, e)}
-                            style={{
-                              width: "44px",
-                              height: "44px",
-                              textAlign: "center",
-                              fontSize: "20px",
-                              fontWeight: 700,
-                              fontFamily: "var(--font-mono)",
-                              borderRadius: "var(--radius-md)",
-                              backgroundColor: "var(--glass-pill-bg)",
-                              border: "1px solid var(--glass-border)",
-                              color: "var(--text-primary)",
-                              outline: "none",
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="clickable"
+                <p style={{ margin: 0, fontSize: "12px", color: "var(--text-secondary)", lineHeight: "1.4" }}>
+                  Type all 16 numbers from your printed Emergency Card, box by box.
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" }}>
+                  {CARD_LETTERS.map((letter, idx) => (
+                    <label
+                      key={letter}
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
                         gap: "6px",
-                        padding: "10px 18px",
-                        borderRadius: "var(--radius-full)",
-                        backgroundColor: "var(--accent-primary)",
-                        border: "none",
-                        color: "#ffffff",
-                        fontSize: "13px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        boxShadow: "0 4px 14px var(--accent-glow)",
-                      }}
-                    >
-                      <span>Verify & Continue</span>
-                    </button>
-                  </>
-                ) : null}
-              </form>
-            )}
-
-            {/* TAB 3: 4-DIGIT PIN */}
-            {activeTab === "pin" && (
-              <form onSubmit={handleProceedFromVerification} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                <p style={{ margin: 0, fontSize: "12px", color: "var(--text-secondary)", lineHeight: "1.4" }}>
-                  If you remember your daily 4-digit PIN, you can reset your Master Password directly without needing your Grid Card:
-                </p>
-
-                <div style={{ display: "flex", gap: "8px", justifyContent: "center", margin: "10px 0" }}>
-                  {[0, 1, 2, 3].map((idx) => (
-                    <input
-                      key={idx}
-                      ref={(el) => { pinInputRefs.current[idx] = el; }}
-                      type="password"
-                      maxLength={1}
-                      value={pin[idx]}
-                      onChange={(e) => handlePinChange(idx, e.target.value)}
-                      onKeyDown={(e) => handlePinKeyDown(idx, e)}
-                      autoFocus={idx === 0}
-                      style={{
-                        width: "48px",
-                        height: "48px",
-                        textAlign: "center",
-                        fontSize: "22px",
-                        fontWeight: 700,
-                        fontFamily: "var(--font-mono)",
+                        padding: "6px 8px",
                         borderRadius: "var(--radius-md)",
                         backgroundColor: "var(--glass-pill-bg)",
                         border: "1px solid var(--glass-border)",
-                        color: "var(--text-primary)",
-                        outline: "none",
                       }}
-                    />
+                    >
+                      <span style={{ fontSize: "12px", fontWeight: 800, color: "var(--accent-primary)", width: "12px" }}>{letter}</span>
+                      <input
+                        ref={(el) => { cardInputRefs.current[idx] = el; }}
+                        aria-label={`Card box ${letter}`}
+                        inputMode="numeric"
+                        maxLength={2}
+                        placeholder="00"
+                        autoFocus={idx === 0}
+                        value={cardNumbers[letter]}
+                        onChange={(e) => handleCardNumberChange(idx, e.target.value)}
+                        style={{
+                          width: "100%",
+                          minWidth: 0,
+                          textAlign: "center",
+                          fontSize: "16px",
+                          fontWeight: 700,
+                          fontFamily: "var(--font-mono)",
+                          background: "transparent",
+                          border: "none",
+                          color: "var(--text-primary)",
+                          outline: "none",
+                        }}
+                      />
+                    </label>
                   ))}
                 </div>
-
                 <button
                   type="submit"
-                  disabled={pin.join("").length !== 4}
+                  disabled={!allCardNumbersFilled}
                   className="clickable"
                   style={{
                     display: "flex",
@@ -693,12 +549,63 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
                     color: "#ffffff",
                     fontSize: "13px",
                     fontWeight: 700,
-                    cursor: pin.join("").length === 4 ? "pointer" : "default",
-                    opacity: pin.join("").length === 4 ? 1 : 0.6,
+                    cursor: allCardNumbersFilled ? "pointer" : "default",
+                    opacity: allCardNumbersFilled ? 1 : 0.6,
                     boxShadow: "0 4px 14px var(--accent-glow)",
                   }}
                 >
-                  <span>Authorize & Continue</span>
+                  <span>Continue to New Password</span>
+                </button>
+              </form>
+            )}
+
+            {/* TAB 3: CURRENT PASSWORD (changing it from Settings) */}
+            {activeTab === "current" && (
+              <form onSubmit={handleProceedFromVerification} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                <p style={{ margin: 0, fontSize: "12px", color: "var(--text-secondary)", lineHeight: "1.4" }}>
+                  Enter your current master password to choose a new one.
+                </p>
+                <input
+                  type="password"
+                  aria-label="Current master password"
+                  placeholder="Current master password"
+                  autoFocus
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "10px 12px",
+                    borderRadius: "var(--radius-sm)",
+                    backgroundColor: "var(--glass-pill-bg)",
+                    border: "1px solid var(--glass-border)",
+                    color: "var(--text-primary)",
+                    fontSize: "13px",
+                    outline: "none",
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={!!!currentPassword}
+                  className="clickable"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    padding: "10px 18px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "var(--accent-primary)",
+                    border: "none",
+                    color: "#ffffff",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    cursor: !!currentPassword ? "pointer" : "default",
+                    opacity: !!currentPassword ? 1 : 0.6,
+                    boxShadow: "0 4px 14px var(--accent-glow)",
+                  }}
+                >
+                  <span>Continue to New Password</span>
                 </button>
               </form>
             )}

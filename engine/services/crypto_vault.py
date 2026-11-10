@@ -20,6 +20,8 @@ import struct
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, Generator, List, Optional, Tuple
 
+import argon2
+import argon2.exceptions
 import argon2.low_level
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import pyotp
@@ -63,26 +65,36 @@ def derive_key_from_password(password: str, salt: bytes) -> bytes:
     )
 
 
-def derive_key_from_pin(pin: str, salt: bytes) -> bytes:
-    """Derives a 256-bit AES key from a 4-digit numeric PIN using Argon2id.
+_PIN_HASHER = argon2.PasswordHasher(
+    time_cost=ARGON2_TIME_COST,
+    memory_cost=ARGON2_MEMORY_COST,
+    parallelism=ARGON2_PARALLELISM,
+    type=argon2.low_level.Type.ID,
+)
+
+
+def hash_pin(pin: str) -> str:
+    """Returns an Argon2id hash used only to check the quick-unlock PIN.
+
+    The PIN never wraps or derives the vault key (backlog C2): cracking this hash
+    from a copied drive reveals the PIN but cannot decrypt anything, because the
+    PIN only releases a key that is already in the running app's memory.
 
     Args:
-        pin: User 4-digit PIN string.
-        salt: Randomized 16-byte cryptographic salt.
+        pin: Exactly 4 digits.
 
     Returns:
-        32-byte derived key.
+        Encoded Argon2id hash string (includes its own random salt).
     """
-    clean_pin = pin.strip()
-    return argon2.low_level.hash_secret_raw(
-        secret=clean_pin.encode("utf-8"),
-        salt=salt,
-        time_cost=ARGON2_TIME_COST,
-        memory_cost=ARGON2_MEMORY_COST,
-        parallelism=ARGON2_PARALLELISM,
-        hash_len=ARGON2_HASH_LEN,
-        type=argon2.low_level.Type.ID,
-    )
+    return _PIN_HASHER.hash(pin.strip())
+
+
+def verify_pin(pin_hash: str, pin: str) -> bool:
+    """Checks a PIN against :func:`hash_pin` output in constant time."""
+    try:
+        return _PIN_HASHER.verify(pin_hash, pin.strip())
+    except (argon2.exceptions.VerifyMismatchError, argon2.exceptions.InvalidHashError):
+        return False
 
 
 def derive_key_from_recovery_phrase(mnemonic: str, salt: bytes) -> bytes:
@@ -113,8 +125,7 @@ def generate_grid_card() -> Dict[str, Any]:
             - card_id: Formatted card serial (e.g. SP-8492-7104).
             - cells: Dict mapping 'A' through 'P' to 2-digit numeric codes.
             - card_token: 32-byte (64-char hex) raw recovery token.
-            - grid_salt: 16-byte hex salt for challenge hashing.
-            - challenge_hashes: Dict mapping each letter to its SHA-256 hash.
+            - grid_salt: 16-byte hex salt for the card-file key slot.
     """
     letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"]
     
@@ -130,17 +141,11 @@ def generate_grid_card() -> Dict[str, Any]:
     grid_salt = secrets.token_bytes(16)
     grid_salt_hex = grid_salt.hex()
     
-    challenge_hashes = {}
-    for letter, code in cells.items():
-        cell_sig = f"{letter}:{code}:{grid_salt_hex}".encode("utf-8")
-        challenge_hashes[letter] = hashlib.sha256(cell_sig).hexdigest()
-        
     return {
         "card_id": card_id,
         "cells": cells,
         "card_token": card_token,
         "grid_salt": grid_salt_hex,
-        "challenge_hashes": challenge_hashes,
     }
 
 
@@ -164,37 +169,45 @@ def derive_key_from_grid_token(token: str, salt: bytes) -> bytes:
     )
 
 
-def verify_grid_challenge_cells(
-    provided_cells: Dict[str, str], 
-    stored_hashes: Dict[str, str], 
-    grid_salt_hex: str
-) -> bool:
-    """Verifies that provided cell codes match their stored SHA-256 hashes.
+CARD_LETTERS = tuple("ABCDEFGHIJKLMNOP")
+
+
+def normalize_card_cells(cells: Dict[str, str]) -> str:
+    """Validates and canonicalises all 16 Emergency Card numbers.
 
     Args:
-        provided_cells: Dict of cell letter -> code (e.g. {'C': '19', 'H': '42', 'N': '87'}).
-        stored_hashes: Dict of cell letter -> SHA-256 hash.
-        grid_salt_hex: 16-byte hex salt used when generating challenge hashes.
+        cells: Mapping of letters A-P to their 2-digit numbers (any case/spacing).
 
     Returns:
-        True if all provided cells match and at least 3 distinct cells are provided.
+        Canonical string ``"A=12;B=47;...;P=90"``.
+
+    Raises:
+        ValueError: If any letter is missing or duplicated, or a number isn't 10-99.
     """
-    if not provided_cells or len(provided_cells) < 3:
-        return False
-        
-    for letter, raw_code in provided_cells.items():
-        clean_letter = letter.strip().upper()
-        clean_code = str(raw_code).strip()
-        expected_hash = stored_hashes.get(clean_letter)
-        if not expected_hash:
-            return False
-            
-        cell_sig = f"{clean_letter}:{clean_code}:{grid_salt_hex}".encode("utf-8")
-        computed_hash = hashlib.sha256(cell_sig).hexdigest()
-        if not secrets.compare_digest(expected_hash, computed_hash):
-            return False
-            
-    return True
+    clean: Dict[str, str] = {}
+    for letter, code in cells.items():
+        key = str(letter).strip().upper()
+        value = str(code).strip()
+        if key not in CARD_LETTERS or key in clean:
+            raise ValueError("Each card letter A to P must appear exactly once.")
+        if not (value.isdigit() and len(value) == 2 and 10 <= int(value) <= 99):
+            raise ValueError("Each card number must be two digits between 10 and 99.")
+        clean[key] = value
+    if len(clean) != len(CARD_LETTERS):
+        raise ValueError("All 16 card numbers (A to P) are required.")
+    return ";".join(f"{k}={clean[k]}" for k in CARD_LETTERS)
+
+
+def derive_key_from_card_cells(cells: Dict[str, str], salt: bytes) -> bytes:
+    """Derives a 256-bit key from all 16 Emergency Card numbers using Argon2id.
+
+    16 distinct numbers from 10-99 in a fixed order give about 103 bits of
+    entropy, so a printed card alone is strong enough to recover the vault.
+
+    Raises:
+        ValueError: If the cells are incomplete or malformed.
+    """
+    return derive_key_from_password(normalize_card_cells(cells), salt)
 
 
 def wrap_master_key(master_key: bytes, kek: bytes) -> str:
