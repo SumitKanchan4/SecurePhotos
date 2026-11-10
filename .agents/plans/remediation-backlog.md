@@ -22,7 +22,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 
 ## Critical
 
-### C1 · Make the single-version enhancement pipeline safe and honour its settings — `review` (branch `fix/c1-enhancement`, history §102)
+### C1 · Make the single-version enhancement pipeline safe and honour its settings — `done` (merged 2026-11-11, history §102)
 - **Follow-ups:** (1) blurry-face restoration is built but OFF (`AUTO_FACE_RESTORE_ENABLED`) until H9 clears CodeFormer or replaces it; (2) `BLURRY_FACE_SHARPNESS_THRESHOLD = 100` must be calibrated on real photos before enabling; (3) owner kept default quality 80, which measured only ~9% smaller than a 12 MP phone JPEG (quality 70 ≈ 23%, 60 ≈ 38%).
 - **Decisions:**
   - Every import is always enhanced; there is no option to keep the original. Remove the misleading `enable_space_saver` toggle.
@@ -43,7 +43,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
   - It uses `Path(filepath)` instead of `resolve_media_path`, so it breaks when the drive letter changes.
 - **Decisions needed:** default on/off; whether to upscale at all; face restoration policy (off / opt-in / per photo); whether to keep a time-limited undo (e.g. the pre-enhancement file held in app trash for 30 days, then hard-deleted, which matches the trash model); which output format and quality actually saves space.
 
-### C2 · The 4-digit PIN slot can be brute-forced offline — `todo` (decided 2026-11-10: option A)
+### C2 · The 4-digit PIN slot can be brute-forced offline — `review` (branch `fix/c2-c3-pin-recovery`, history §103) (decided: option A; PIN undoes any lock until the app closes; no old-format migration since nobody uses the vault yet)
 - **Decision:** the PIN is a quick re-unlock only, for the current app session after a master-password unlock. Nothing PIN-derived is stored on disk. On upgrade, delete the existing `mvk_wrapped_pin`/`pin_salt` and tell the user the PIN now works after the first password unlock.
 - **Current:** `vault.py:198-209` wraps the master vault key with Argon2id(PIN). The wrapped key, salt and attempt counter are all in `securephotos.db`.
 - **Impact:** anyone with a copy of the drive can try all 10,000 PINs offline (minutes to hours) and decrypt the whole vault. The 5-attempt lock only applies through the API.
@@ -53,7 +53,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
   - (C) A longer PIN. Still weak offline; not recommended.
 - **Affects:** C3 (the reset path uses the PIN slot) and P12.
 
-### C3 · PIN lockout can be bypassed through password reset — `todo` (decided 2026-11-10)
+### C3 · PIN lockout can be bypassed through password reset — `review` (branch `fix/c2-c3-pin-recovery`, history §103)
 - **Decision:** recovery is by **Emergency Card file upload OR typing all 16 card numbers**; a key slot is derived from all 16 cells with a strong KDF. Remove the 3-cell challenge, the "cells + PIN" path and the "PIN-only" reset path (`vault.py:527`, reset modal tabs `challenge` and `pin`). Migration for existing vaults: on the next password unlock, recover the cells from the stored hashes (90 candidates each), create the 16-cell slot, and delete `grid_cells_hash`. Do together with or after C2.
 - **Current:** `vault.py:490-515` (reset path B: grid cells + PIN) and `crypto_vault.py:182-197`:
   - Wrong PINs on this path never increment `pin_failed_attempts` or check the lockout.
@@ -81,7 +81,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - **Impact:** a crash, power loss or hot-unplug mid-batch (which rule §6 expects) leaves rows pointing at deleted files, and `.enc` files that no row references. Photos look lost.
 - **Proposed fix:** one shared helper that handles one file at a time: write `.enc` (temp file, fsync, replace), verify, update the row, commit, then delete the plaintext. Unlock does the reverse. Add a reconciliation sweep at startup for leftovers. Store relative paths for the rows it writes (rule §2).
 
-### C6 · Vault reset orphans encrypted files — `review` (branch `fix/c6-vault-reset-erase`, history §101) (decided 2026-11-10: erase everything, vault albums too)
+### C6 · Vault reset orphans encrypted files — `done` (merged 2026-11-11, history §101)
 - **Decision:** reset permanently deletes all vault items (files plus rows) with the keys. The user types the confirmation phrase themselves and sees the item count first. The API requires the phrase (no optional body).
 - **Current:** `vault.py:395-408` deletes `vault_configs` only. `.enc` files and their `photos` rows remain and can never be decrypted again. The confirmation phrase is optional in the API and hard-coded in the UI (`VaultView.tsx:399`), so it guards nothing.
 - **Decision:** on reset, either (a) permanently delete all vault items and files too, or (b) refuse to reset while vault items exist. Make the confirmation phrase required and typed by the user.
@@ -106,6 +106,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - `tauri.conf.json` has `"csp": null`, and `capabilities/default.json` grants `shell:default` on window `"*"`. Add a strict CSP (self + `http://127.0.0.1:*` for the engine, media from blob/engine), check whether the shell plugin is used at all, and limit capabilities to the `main` window.
 
 ### H6 · Harden IPC token handling — `todo`
+- **Check while here (found in UI testing, confidence low):** the login cookie is `SameSite=Lax` and set by `127.0.0.1` for a page on another site (`tauri.localhost` in the app). In a browser on `localhost` it was rejected and every thumbnail got 403. Verify how WebView2 behaves; the redesign should not depend on cross-site cookies.
 - `auth_middleware.py`: remove the `?token=` fallback; with no secret set, refuse requests in a frozen build. `auth.py`: the cookie holds the raw secret for 30 days, so issue a separate random session value instead. Covers M6.
 
 ### H7 · Move CPU-heavy work off the event loop — `todo`
@@ -138,6 +139,9 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - `lib.rs` `fallback_token()` uses time + PID. Use the `getrandom` crate and abort engine start if it fails.
 
 ### M6 · Disable `/docs` and `/openapi.json` in frozen builds — `todo` (do with H6)
+
+### M8 · Auto-lock time setting is ignored — `todo` (found during C2)
+- Settings offers 1/5/15/30 min/never (`auto_lock_duration`), but the engine (`vault.py` `AUTO_LOCK_SECONDS = 300`) and `VaultView.tsx` (`AUTO_LOCK_SECONDS = 300`) hard-code 5 minutes. Either wire it up (engine is the authority) or remove the option.
 
 ### M7 · Trash purge cannot find files with relative paths — `todo` (found during C5)
 - `trash.py:120` `_unlink_photo_files` uses `Path(path_str)` directly. Managed imports store relative paths, so after 30 days the row is deleted but the original, thumbnail and preview probably **stay on disk forever** (wasted space, and "deleted" photos remain). Resolve paths against the data folder using `vault_storage.resolve_stored_path`. Also add a one-off cleanup for files already orphaned this way.

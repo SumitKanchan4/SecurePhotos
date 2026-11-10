@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { Shield, Clock, KeyRound, EyeOff } from "lucide-react";
+import { Shield, Clock, KeyRound, EyeOff, Hash } from "lucide-react";
 import { AppSettings } from "../../hooks/useAppSettings";
 import { VaultPasswordResetModal } from "../VaultPasswordResetModal";
 import { useAppStore } from "../../store/useAppStore";
+import { apiFetch } from "../../services/api";
 
 interface VaultSettingsProps {
   settings: AppSettings;
@@ -19,8 +20,32 @@ export const VaultSettings: React.FC<VaultSettingsProps> = ({
   settings,
   updateSetting,
 }) => {
-  const { showToast } = useAppStore();
+  const { showToast, isVaultUnlocked, hasVaultPin, checkVaultStatus } = useAppStore();
   const [showResetModal, setShowResetModal] = useState(false);
+  const [pinDraft, setPinDraft] = useState("");
+  const [isSavingPin, setIsSavingPin] = useState(false);
+
+  /** Sets/changes the quick PIN, or removes it when `pin` is null. Needs an unlocked vault. */
+  const savePin = async (pin: string | null) => {
+    setIsSavingPin(true);
+    try {
+      const res = await apiFetch("/api/vault/pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast?.(data.detail || "Could not update your PIN.", "warning");
+        return;
+      }
+      setPinDraft("");
+      await checkVaultStatus();
+      showToast?.(pin ? "Quick PIN saved." : "Quick PIN removed.", "success");
+    } finally {
+      setIsSavingPin(false);
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -78,7 +103,7 @@ export const VaultSettings: React.FC<VaultSettingsProps> = ({
                   Auto-Lock Inactivity Timeout
                 </p>
                 <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0 }}>
-                  Automatically locks your vault and wipes encryption keys from volatile memory when idle.
+                  Locks your vault when idle. Your PIN can reopen it until you close the app.
                 </p>
               </div>
             </div>
@@ -137,7 +162,7 @@ export const VaultSettings: React.FC<VaultSettingsProps> = ({
                   Master Credentials & Recovery Key
                 </p>
                 <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0 }}>
-                  Update your vault password, set a 4-digit PIN, or generate an emergency recovery card.
+                  Change your vault password using your current password or your Emergency Card.
                 </p>
               </div>
             </div>
@@ -163,6 +188,113 @@ export const VaultSettings: React.FC<VaultSettingsProps> = ({
               <KeyRound size={13} />
               <span>Change Password</span>
             </button>
+          </div>
+
+          {/* Row 3: Quick PIN (re-opens the vault after it locks, until the app closes) */}
+          <div
+            style={{
+              padding: "16px 20px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              borderTop: "1px solid var(--glass-border)",
+              gap: "16px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div
+                style={{
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "var(--radius-full)",
+                  backgroundColor: "rgba(16, 185, 129, 0.12)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "var(--accent-success)",
+                  flexShrink: 0,
+                }}
+              >
+                <Hash size={18} />
+              </div>
+              <div>
+                <p style={{ fontSize: "13px", fontWeight: 600, margin: "0 0 2px 0", color: "var(--text-primary)" }}>
+                  Quick PIN
+                </p>
+                <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0 }}>
+                  {!isVaultUnlocked
+                    ? "Unlock your vault to set or change your PIN."
+                    : hasVaultPin
+                    ? "Reopens your vault after it locks, until you close the app."
+                    : "Set a 4-digit PIN to reopen your vault quickly after it locks."}
+                </p>
+              </div>
+            </div>
+
+            {isVaultUnlocked && (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  aria-label="New quick PIN"
+                  placeholder="4 digits"
+                  maxLength={4}
+                  value={pinDraft}
+                  onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  style={{
+                    width: "84px",
+                    padding: "6px 10px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "var(--glass-pill-bg)",
+                    border: "1px solid var(--glass-border)",
+                    color: "var(--text-primary)",
+                    fontSize: "13px",
+                    fontFamily: "var(--font-mono)",
+                    textAlign: "center",
+                    outline: "none",
+                  }}
+                />
+                <button
+                  onClick={() => savePin(pinDraft)}
+                  disabled={pinDraft.length !== 4 || isSavingPin}
+                  className="clickable"
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "rgba(59, 130, 246, 0.12)",
+                    border: "1px solid rgba(59, 130, 246, 0.25)",
+                    color: "var(--accent-primary)",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: pinDraft.length === 4 ? "pointer" : "default",
+                    opacity: pinDraft.length === 4 ? 1 : 0.6,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {hasVaultPin ? "Change PIN" : "Set PIN"}
+                </button>
+                {hasVaultPin && (
+                  <button
+                    onClick={() => savePin(null)}
+                    disabled={isSavingPin}
+                    className="clickable"
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: "var(--radius-full)",
+                      backgroundColor: "var(--glass-pill-bg)",
+                      border: "1px solid var(--glass-border)",
+                      color: "var(--text-secondary)",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -301,7 +433,7 @@ export const VaultSettings: React.FC<VaultSettingsProps> = ({
           setShowResetModal(false);
           showToast?.("Master credentials updated successfully!", "success");
         }}
-        initialMode="pin"
+        initialMode="current"
       />
     </div>
   );
