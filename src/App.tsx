@@ -974,7 +974,9 @@ export const App: React.FC = () => {
                         }}
                       >
                         <Loader2 size={12} className="spin" />
-                        {optimizationProgress.completed_count >= optimizationProgress.total_count
+                        {optimizationProgress.paused_reason === "on_battery"
+                          ? `Enhancing paused on battery (${optimizationProgress.completed_count} of ${optimizationProgress.total_count} done)`
+                          : optimizationProgress.completed_count >= optimizationProgress.total_count
                           ? `Finishing enhancements (${optimizationProgress.completed_count} of ${optimizationProgress.total_count})`
                           : `Optimizing photo quality (${optimizationProgress.completed_count + 1} of ${optimizationProgress.total_count})`}
                       </span>

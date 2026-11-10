@@ -486,6 +486,37 @@ async def rebuild_fts_index(
             await conn.close()
 
 
+async def _apply_one_time_migrations(conn: aiosqlite.Connection) -> None:
+    """Runs data migrations that must happen exactly once per library.
+
+    Each migration is recorded by name in ``applied_migrations`` and committed
+    together with its changes, so it never re-runs (e.g. after an unplug).
+    """
+    await conn.execute(
+        "CREATE TABLE IF NOT EXISTS applied_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);"
+    )
+
+    async def already_applied(name: str) -> bool:
+        async with conn.execute("SELECT 1 FROM applied_migrations WHERE name = ?;", (name,)) as cur:
+            return await cur.fetchone() is not None
+
+    # C1: since paths became relative (Oct 2026), the enhancer couldn't find new imports
+    # and marked them optimized without enhancing. Give those photos another pass.
+    name = "2026_11_c1_requeue_skipped_enhancement"
+    if not await already_applied(name):
+        cur = await conn.execute(
+            """
+            UPDATE photos SET is_optimized = 0
+            WHERE is_optimized = 1 AND is_enhanced = 0 AND is_encrypted = 0 AND trashed_at IS NULL
+              AND (mime_type IS NULL OR mime_type NOT LIKE 'video/%');
+            """
+        )
+        await conn.execute("INSERT INTO applied_migrations (name) VALUES (?);", (name,))
+        await conn.commit()
+        if cur.rowcount:
+            logger.info("Re-queued %d photo(s) for enhancement that were skipped earlier.", cur.rowcount)
+
+
 async def run_migrations(db_path: Optional[Path] = None) -> None:
     """Executes idempotent database schema migrations, indexes, and triggers.
 
@@ -503,6 +534,7 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
     conn = await get_db_connection(target_path)
     try:
         await conn.executescript(SCHEMA_DDL)
+        await _apply_one_time_migrations(conn)
 
         # Drop legacy unscoped photos_ad & photos_au triggers if present and recreate vault-safe versions
         await conn.execute("DROP TRIGGER IF EXISTS photos_ad;")

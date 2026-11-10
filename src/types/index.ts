@@ -141,6 +141,8 @@ export interface OptimizationProgress {
   completed_count: number;
   total_count: number;
   last_completed_photo_id?: number | null;
+  /** "on_battery" while the battery guard is waiting for the charger. */
+  paused_reason?: string | null;
 }
 
 export interface TimelineYearItem {

@@ -22,7 +22,8 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 
 ## Critical
 
-### C1 · Make the single-version enhancement pipeline safe and honour its settings — `todo` (decided 2026-11-10)
+### C1 · Make the single-version enhancement pipeline safe and honour its settings — `review` (branch `fix/c1-enhancement`, history §102)
+- **Follow-ups:** (1) blurry-face restoration is built but OFF (`AUTO_FACE_RESTORE_ENABLED`) until H9 clears CodeFormer or replaces it; (2) `BLURRY_FACE_SHARPNESS_THRESHOLD = 100` must be calibrated on real photos before enabling; (3) owner kept default quality 80, which measured only ~9% smaller than a 12 MP phone JPEG (quality 70 ≈ 23%, 60 ≈ 38%).
 - **Decisions:**
   - Every import is always enhanced; there is no option to keep the original. Remove the misleading `enable_space_saver` toggle.
   - Keep 8K enlargement (the owner accepts the larger files).
@@ -114,6 +115,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - `face_recognition_service.py:27-28`, `face_restore_service.py:25-26`, `neural_sr_service.py:25`, `deblur_service.py:25` download from HuggingFace `main` branches with no hash check. Rule §3.4 says models are bundled, but CI ships a placeholder. Pin the revision and SHA-256, verify before loading, and download into `data/models` only. Reword the README: "all photo processing is on-device; models download once, updates are checked online".
 
 ### H9 · Model license audit and alternatives — `todo`
+- **Now blocks** automatic face restoration (C1): it's implemented but disabled until this passes.
 - To verify (confidence medium, from memory): CodeFormer (S-Lab 1.0, non-commercial), InsightFace ArcFace w600k (non-commercial research), `yoloface_8n` (YOLOv8 → possibly AGPL-3.0), `realesr-general-x4v3` (BSD-3, likely fine), `1x-ReFocus-Cleanly` (unknown). Find permissive alternatives that still serve the enhancement and face goals.
 
 ---

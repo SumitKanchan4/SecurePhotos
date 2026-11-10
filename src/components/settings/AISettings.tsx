@@ -1,5 +1,5 @@
 import React from "react";
-import { Sparkles, BatteryMedium, Users, Sliders } from "lucide-react";
+import { BatteryMedium, Users, Sliders } from "lucide-react";
 import { AppSettings } from "../../hooks/useAppSettings";
 import { ToggleSwitch } from "../ui/ToggleSwitch";
 
@@ -11,39 +11,41 @@ interface AISettingsProps {
 /**
  * AISettings Component
  *
- * Configures 8K ULTRA neural upscaling, compression profiles, battery awareness,
- * and offline face recognition.
+ * Configures photo quality for enhancement, the battery guard, and offline face recognition.
+ * Every imported photo is always enhanced (owner decision, C1), so there is no on/off toggle.
  */
 export const AISettings: React.FC<AISettingsProps> = ({
   settings,
   updateSetting,
 }) => {
-  const getQualityTier = (crf: number) => {
-    if (crf <= 15) {
+  // Slider 12 (best) .. 28 (smallest); the engine maps it to photo quality
+  // (12 -> 92, 18 -> 80, 28 -> 60). Applies to photos imported from now on.
+  const getQualityTier = (level: number) => {
+    if (level <= 15) {
       return {
-        label: "Studio Archival (~5.0 MB)",
+        label: "Best quality",
         color: "var(--accent-primary)",
-        desc: "Highest bit-depth fidelity. Visually identical to uncompressed camera originals.",
+        desc: "Keeps the most fine detail. Uses the most space.",
       };
     }
-    if (crf <= 20) {
+    if (level <= 20) {
       return {
-        label: "Ultra-Quality 8K (Recommended)",
+        label: "Balanced (Recommended)",
         color: "var(--accent-success)",
-        desc: "Human eye cannot discern quality differences at 100% zoom. Saves up to 60% disk space.",
+        desc: "Looks the same as the original in normal viewing.",
       };
     }
-    if (crf <= 24) {
+    if (level <= 24) {
       return {
-        label: "High Efficiency (~1.5 MB)",
+        label: "Smaller files",
         color: "var(--accent-warning)",
-        desc: "Compact storage profile tailored for very large collections exceeding 50,000 photos.",
+        desc: "Saves more space. Very fine detail may soften when zoomed in.",
       };
     }
     return {
-      label: "Maximum Space Saver (~800 KB)",
+      label: "Smallest files",
       color: "var(--text-muted)",
-      desc: "Aggressive lightweight compression when saving disk space is your top priority.",
+      desc: "Saves the most space. Fine detail softens noticeably when zoomed in.",
     };
   };
 
@@ -73,51 +75,7 @@ export const AISettings: React.FC<AISettingsProps> = ({
             overflow: "hidden",
           }}
         >
-          {/* Row 1: 8K Space-Saver */}
-          <div
-            style={{
-              padding: "16px 20px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              borderBottom: "1px solid var(--glass-border)",
-              gap: "16px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <div
-                style={{
-                  width: "36px",
-                  height: "36px",
-                  borderRadius: "var(--radius-full)",
-                  backgroundColor: "rgba(245, 158, 11, 0.12)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#f59e0b",
-                  flexShrink: 0,
-                }}
-              >
-                <Sparkles size={18} />
-              </div>
-              <div>
-                <p style={{ fontSize: "13px", fontWeight: 600, margin: "0 0 2px 0", color: "var(--text-primary)" }}>
-                  Enable 8K ULTRA Space-Saver
-                </p>
-                <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0 }}>
-                  Reconstructs photos to 8K Ultra HD while saving 50% to 70% storage with modern visual proxies.
-                </p>
-              </div>
-            </div>
-
-            <ToggleSwitch
-              checked={settings.enable_space_saver}
-              onChange={(checked) => updateSetting("enable_space_saver", checked)}
-              ariaLabel="Enable 8K Space-Saver"
-            />
-          </div>
-
-          {/* Row 2: Compression Quality Slider */}
+          {/* Quality slider (every imported photo is always enhanced) */}
           <div
             style={{
               padding: "16px 20px",
@@ -146,10 +104,10 @@ export const AISettings: React.FC<AISettingsProps> = ({
                 </div>
                 <div>
                   <p style={{ fontSize: "13px", fontWeight: 600, margin: "0 0 2px 0", color: "var(--text-primary)" }}>
-                    Visual Compression Profile
+                    Photo quality
                   </p>
                   <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0 }}>
-                    Target quality tier: <span style={{ fontFamily: "var(--font-mono)", color: "var(--accent-primary)" }}>CRF {settings.quality_crf}</span>
+                    Applies to photos you import from now on.
                   </p>
                 </div>
               </div>
@@ -219,7 +177,7 @@ export const AISettings: React.FC<AISettingsProps> = ({
                   Thermal & Battery Guard
                 </p>
                 <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0 }}>
-                  Automatically pauses heavy neural upscaling when running on battery to keep your PC cool.
+                  Pauses photo enhancement while your PC runs on battery, and resumes when it's plugged in.
                 </p>
               </div>
             </div>

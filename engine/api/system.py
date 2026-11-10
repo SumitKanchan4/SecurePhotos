@@ -550,7 +550,6 @@ DEFAULT_APP_SETTINGS: Dict[str, Any] = {
     "grid_density": "comfortable",
     "reduce_motion": False,
     "auto_lock_duration": 300,
-    "enable_space_saver": True,
     "quality_crf": 18,
     "pause_on_battery": True,
     "face_clustering": True,
