@@ -31,6 +31,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
   - Connect the quality slider (`quality_crf`) to AVIF quality for future imports, with a visually lossless default.
   - Make `pause_on_battery` work: pause on battery, resume when plugged in.
   - Use `resolve_media_path` and relative paths.
+- **Found during C5 (confidence medium-high, not yet confirmed on an installed build):** managed imports store relative paths, but the optimizer checks `Path(filepath).exists()` (`photos.py:166`, also `:305`) relative to the engine's working directory. The bundled engine does not set one, so the file is usually "not found" and the photo is **marked `is_optimized = 1` without being enhanced** (`photos.py:211-217`). Confirm on an installed build first. The fix must also re-queue photos wrongly marked as optimized.
 - **Agreed intent:** keep one version of each photo; the enhanced file replaces the imported original (history §14). This is *not* being reversed.
 - **Current:** [engine/api/photos.py](../../engine/api/photos.py) `run_background_optimization()` runs on every engine start (`main.py:50`) and after every import (`photos.py:1038`). It calls `upscale_and_optimize_to_8k(..., destination_path=None)` in [super_resolution_service.py](../../engine/services/super_resolution_service.py), then `restore_faces_in_image` (CodeFormer) on the same file.
 - **Problems found:**
@@ -73,7 +74,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - **Proposed scope to encrypt or remove:** OCR text plus its FTS rows, caption/tags, GPS, filename, face embeddings plus face crops (or delete faces on lock and rescan on unlock). Keep in plaintext: id, size, mime, width/height, dates, flags.
 - **Decision:** confirm the list above.
 
-### C5 · Make vault lock/unlock crash-safe — `todo` (briefing confirmed 2026-11-10)
+### C5 · Make vault lock/unlock crash-safe — `review` (branch `fix/c5-vault-crash-safe`, history §99)
 - **Scope confirmed:** crash-safety, plus one shared helper replacing the 4 copies, plus relative paths for the rows it writes. Branch `fix/c5-vault-crash-safe`.
 - **Current:** `lock_photos_to_vault`, `lock_album_to_vault`, `restore_photos_from_vault` and `unlock_album_from_vault` in [vault.py](../../engine/api/vault.py) encrypt the file, **delete the plaintext**, and only commit the DB at the end of the whole batch. Unlock writes plaintext directly (no temp file or fsync), then deletes the `.enc` file. The logic is copy-pasted 4 times.
 - **Impact:** a crash, power loss or hot-unplug mid-batch (which rule §6 expects) leaves rows pointing at deleted files, and `.enc` files that no row references. Photos look lost.
@@ -136,6 +137,9 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 
 ### M6 · Disable `/docs` and `/openapi.json` in frozen builds — `todo` (do with H6)
 
+### M7 · Trash purge cannot find files with relative paths — `todo` (found during C5)
+- `trash.py:120` `_unlink_photo_files` uses `Path(path_str)` directly. Managed imports store relative paths, so after 30 days the row is deleted but the original, thumbnail and preview probably **stay on disk forever** (wasted space, and "deleted" photos remain). Resolve paths against the data folder using `vault_storage.resolve_stored_path`. Also add a one-off cleanup for files already orphaned this way.
+
 ---
 
 ## Code health and standards
@@ -151,6 +155,10 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 
 ### Q4 · Backend structure — `todo` (= review item 15)
 - Remove duplication in `vault.py` (partly done in C5), add a small repository layer instead of per-route connection and dict mapping, and review the 76 broad `except Exception` blocks.
+
+### Q6 · Tests run against the real library database — `todo` (found during C5)
+- The tests use `settings.database_path` (the developer's real `data/` library) and only back up and restore `vault_configs`. Tests insert and delete rows in the live DB. Give pytest its own temporary data folder (`SECUREPHOTOS_DATA_DIR` set in `conftest.py` before `engine.config` is imported).
+- Several vault tests call `/api/vault/reset` with no body; C6 makes the phrase required, so update those tests in C6.
 
 ### Q5 · Split oversized frontend components — `todo` (= review item 15)
 - PeopleView (3.3k lines), AlbumsView (3.3k), StoriesView (2.2k), VaultView (2k), Lightbox and DashboardView (1.8k), App (1.7k). Split by feature with hooks.
