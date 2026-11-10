@@ -28,6 +28,7 @@ This document serves as the **central, living source of truth** for all function
 99. [Crash-Safe Vault Lock & Unlock with Startup Recovery](#99-crash-safe-vault-lock--unlock-with-startup-recovery)
 100. [Isolated Throwaway Library for Automated Tests](#100-isolated-throwaway-library-for-automated-tests)
 101. [Vault Reset Permanently Erases Vault Contents](#101-vault-reset-permanently-erases-vault-contents)
+102. [Single-Version AVIF Enhancement Pipeline (Fixed & Settings-Driven)](#102-single-version-avif-enhancement-pipeline-fixed--settings-driven)
 
 ---
 
@@ -4953,4 +4954,41 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 ### State & Lifecycle Impact
 - Faces, album links and duplicate-group entries are removed through existing `ON DELETE CASCADE` foreign keys; people whose cover face disappears self-heal to another face (existing behaviour).
 - Any interrupted vault lock/unlock journal entries for erased photos are removed.
+
+---
+
+## 102. Single-Version AVIF Enhancement Pipeline (Fixed & Settings-Driven)
+
+### Functionality Overview
+- Every imported photo is enhanced in the background and the enhanced AVIF **replaces** the imported file (one version per photo). Photos under 3840px are enlarged to 8K; larger photos keep their resolution and are sharpened.
+- Camera details (date, GPS, camera) and colour profile are kept; the photo is stored upright with a normal orientation, so viewers don't rotate it twice.
+- Settings: the quality slider now really controls AVIF quality for future imports; the battery guard pauses enhancement on battery and resumes when plugged in (status pill: "Enhancing paused on battery"). The space-saver toggle was removed (enhancement is always on).
+- Blurry-face restoration is built (only faces measured as blurry are restored) but **switched off** until the model license check (H9) passes.
+
+### Bugs found and fixed
+- **Enhancement silently skipped since Oct 2026**: paths became relative to the data folder, but the enhancer checked them against the process working directory, so every new import was marked optimized without being enhanced. Released v0.1.0 (Sep 2026) predates this. A one-time migration (`applied_migrations: 2026_11_c1_requeue_skipped_enhancement`) re-queues affected photos.
+- **Face restoration never ran**: the background call used `fidelity_weight=` but the function takes `fidelity=`; the `TypeError` was swallowed at debug level. It would also have written WebP data under a `.jpg` name and re-compressed the photo a second time.
+- **Thumbnail regeneration** had the same working-directory lookup bug.
+
+### Functional Decision Points & Rationale (owner decisions 2026-11-10/11)
+- No option to keep the original; keep 8K enlargement; AVIF output; faces only when blurry; slider wired to AVIF; battery guard made real.
+- **Default quality 80 kept** after measurement: on a 12 MP phone JPEG it was ~9% smaller (quality 70 ≈ 23%, 60 ≈ 38%); 8K-enlarged small photos grow 2.4–4x. The strong sharpening (160%) is the main reason files don't shrink more.
+- **One encode per photo**: sharpening, upscaling and (later) face restoration happen in memory, then one AVIF save; temp file, fsync, decode check, atomic replace.
+- **Delete the old file only after the database points at the new one**; a crash in between leaves at most an orphaned old file, never a lost photo. Missing files (drive asleep/unplugged) are retried later instead of being marked done.
+- **Runs in a worker thread** (`asyncio.to_thread`) so the app stays responsive during 3–7 s encodes.
+- Slider mapping: 12 -> 92, 18 (default) -> 80, 28 -> 60. Wording follows rule §7 (no "CRF"); unverifiable size claims removed from the tiers.
+
+### Technical Touchpoints
+- `engine/services/enhancement_service.py` (new): `enhance_to_avif`, `slider_to_avif_quality`, `AUTO_FACE_RESTORE_ENABLED = False`.
+- `engine/services/media_paths.py` (new, shared with the vault): `to_db_path`, `resolve_stored_path`, `unique_path`.
+- `engine/services/super_resolution_service.py`: `enhance_pixels` (in-memory core; existing functions unchanged).
+- `engine/services/face_restore_service.py`: `face_sharpness`, `restore_faces_on_image(max_sharpness=...)`, `BLURRY_FACE_SHARPNESS_THRESHOLD`; the manual restore endpoint keeps its behaviour.
+- `engine/api/photos.py`: rewritten `run_background_optimization` (relative-path lookup, AVIF swap, settings, battery guard); `paused_reason` in `/api/photos/optimization-progress`; thumbnail-regeneration lookup fix.
+- `engine/database.py`: `applied_migrations` table and the one-time re-queue.
+- `engine/api/system.py`, `src/hooks/useAppSettings.ts`, `src/components/settings/AISettings.tsx`: space-saver removed, new wording. `src/App.tsx`, `src/types/index.ts`: battery-pause status.
+- Tests: `engine/tests/test_enhancement_pipeline.py` (new); `conftest.py` disables the real enhancer for import tests unless marked `real_optimizer`.
+
+### State & Lifecycle Impact
+- An enhanced photo's `filepath`, `filename` and `mime_type` change to `.avif`; `original_file_hash`/`original_file_size` keep the imported baseline for duplicate detection and savings stats.
+- Measured speed: ~3.5 s per 12 MP photo, ~6.5 s per photo enlarged to 8K.
 

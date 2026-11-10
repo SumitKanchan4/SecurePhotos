@@ -19,6 +19,50 @@ from engine.services.thumbnail_service import calculate_file_hash
 logger = logging.getLogger("securephotos.super_resolution")
 
 
+def enhance_pixels(img: Image.Image, target_long_edge: int = 7680) -> Image.Image:
+    """Applies the 8K ULTRA sharpen/upscale step to an already-upright image in memory.
+
+    - Long edge >= 3840px: keeps native resolution and applies fine-edge acutance.
+    - Long edge < target_long_edge: Lanczos upscale to target_long_edge, then acutance.
+    - Otherwise: returned unchanged.
+
+    Args:
+        img: Upright (EXIF-transposed) PIL image.
+        target_long_edge: Long-edge size to upscale smaller images to (7680 = 8K).
+
+    Returns:
+        The enhanced image (a new object unless unchanged).
+    """
+    orig_w, orig_h = img.size
+    long_edge = max(orig_w, orig_h)
+    short_edge = min(orig_w, orig_h)
+    aspect = long_edge / short_edge if short_edge > 0 else 1.0
+
+    # Smart 1:1 Acutance Preservation vs Upscaling:
+    # If the image is already high resolution (>= 3840px on long edge, e.g. 12MP/16MP camera shots),
+    # DO NOT artificially stretch to 8K, which creates 20 million empty interpolated pixels and causes softness.
+    # Preserve pristine 1:1 sensor acuity and apply fine-edge acutance kernel (hair, eyes, fabric).
+    if long_edge >= 3840:
+        new_w, new_h = orig_w, orig_h
+        # Fine-edge micro-contrast acutance (radius 0.8, 160% strength, threshold 1)
+        enhanced = img.filter(ImageFilter.UnsharpMask(radius=0.8, percent=160, threshold=1))
+    elif long_edge < target_long_edge:
+        # For lower resolution images, upscale to target_long_edge with Lanczos + acutance
+        new_long = target_long_edge
+        new_short = int(target_long_edge / aspect)
+        if orig_w >= orig_h:
+            new_w, new_h = new_long, new_short
+        else:
+            new_w, new_h = new_short, new_long
+
+        upscaled = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        enhanced = upscaled.filter(ImageFilter.UnsharpMask(radius=0.9, percent=150, threshold=1))
+    else:
+        enhanced = img
+        new_w, new_h = orig_w, orig_h
+    return enhanced
+
+
 def upscale_and_optimize_to_8k(
     source_path: Path | str,
     destination_path: Optional[Path | str] = None,
@@ -56,32 +100,8 @@ def upscale_and_optimize_to_8k(
             img = ImageOps.exif_transpose(img)
             orig_w, orig_h = img.size
 
-            long_edge = max(orig_w, orig_h)
-            short_edge = min(orig_w, orig_h)
-            aspect = long_edge / short_edge if short_edge > 0 else 1.0
-
-            # Smart 1:1 Acutance Preservation vs Upscaling:
-            # If the image is already high resolution (>= 3840px on long edge, e.g. 12MP/16MP camera shots),
-            # DO NOT artificially stretch to 8K, which creates 20 million empty interpolated pixels and causes softness.
-            # Preserve pristine 1:1 sensor acuity and apply fine-edge acutance kernel (hair, eyes, fabric).
-            if long_edge >= 3840:
-                new_w, new_h = orig_w, orig_h
-                # Fine-edge micro-contrast acutance (radius 0.8, 160% strength, threshold 1)
-                enhanced = img.filter(ImageFilter.UnsharpMask(radius=0.8, percent=160, threshold=1))
-            elif long_edge < target_long_edge:
-                # For lower resolution images, upscale to target_long_edge with Lanczos + acutance
-                new_long = target_long_edge
-                new_short = int(target_long_edge / aspect)
-                if orig_w >= orig_h:
-                    new_w, new_h = new_long, new_short
-                else:
-                    new_w, new_h = new_short, new_long
-
-                upscaled = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-                enhanced = upscaled.filter(ImageFilter.UnsharpMask(radius=0.9, percent=150, threshold=1))
-            else:
-                enhanced = img
-                new_w, new_h = orig_w, orig_h
+            enhanced = enhance_pixels(img, target_long_edge)
+            new_w, new_h = enhanced.size
 
             if enhanced.mode in ("RGBA", "P"):
                 enhanced = enhanced.convert("RGB")

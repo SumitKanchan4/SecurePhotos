@@ -7,7 +7,6 @@ export interface AppSettings {
   grid_density: "compact" | "comfortable" | "spacious";
   reduce_motion: boolean;
   auto_lock_duration: number;
-  enable_space_saver: boolean;
   quality_crf: number;
   pause_on_battery: boolean;
   face_clustering: boolean;
@@ -20,7 +19,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   grid_density: "comfortable",
   reduce_motion: false,
   auto_lock_duration: 300,
-  enable_space_saver: true,
   quality_crf: 18,
   pause_on_battery: true,
   face_clustering: true,

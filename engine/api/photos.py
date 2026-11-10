@@ -71,6 +71,7 @@ class OptimizationProgressResponse(BaseModel):
     completed_count: int = 0
     total_count: int = 0
     last_completed_photo_id: Optional[int] = None
+    paused_reason: Optional[str] = None  # "on_battery" while waiting for the charger
 
 
 class BatchTrashRequest(BaseModel):
@@ -106,16 +107,78 @@ optimization_state = {
     "completed_count": 0,
     "total_count": 0,
     "last_completed_photo_id": None,
+    "paused_reason": None,  # "on_battery" while waiting for the charger
 }
 
 _optimization_lock = asyncio.Lock()
 
+BATTERY_RECHECK_SECONDS = 30
+
+
+def _running_on_battery() -> bool:
+    """True if the PC reports it is running on battery (desktops without a battery: False)."""
+    try:
+        import psutil
+
+        battery = psutil.sensors_battery()
+    except Exception:
+        return False
+    return bool(battery) and not battery.power_plugged
+
+
+async def _load_enhancement_settings() -> Dict[str, Any]:
+    """Reads the enhancement-related user settings (quality slider, battery guard)."""
+    from engine.api.system import get_app_settings
+
+    return (await get_app_settings())["settings"]
+
+
+async def _wait_while_on_battery() -> None:
+    """Waits while the battery guard is on and the PC runs on battery.
+
+    Settings are re-read on every check, so turning the guard off resumes at once.
+    """
+    while True:
+        app_settings = await _load_enhancement_settings()
+        if not (app_settings.get("pause_on_battery", True) and _running_on_battery()):
+            break
+        if optimization_state["paused_reason"] != "on_battery":
+            logger.info("Photo enhancement paused: running on battery.")
+        optimization_state["paused_reason"] = "on_battery"
+        await asyncio.sleep(BATTERY_RECHECK_SECONDS)
+    if optimization_state["paused_reason"]:
+        logger.info("Photo enhancement resumed.")
+    optimization_state["paused_reason"] = None
+
+
+async def _mark_optimized_without_change(photo_id: int) -> None:
+    """Marks a photo that cannot be enhanced so it isn't retried forever."""
+    conn = await get_db_connection()
+    try:
+        await conn.execute("UPDATE photos SET is_optimized = 1 WHERE id = ?;", (photo_id,))
+        await conn.commit()
+    finally:
+        await conn.close()
+
 
 async def run_background_optimization():
-    """Sequentially processes unoptimized photos to 8K ULTRA in background with progress."""
+    """Enhances every not-yet-enhanced photo, one at a time, replacing it with an AVIF.
+
+    Per photo: enhance to a new AVIF (in a worker thread, so the app stays
+    responsive), commit the row pointing at it, then delete the old file. A
+    crash before the commit leaves the original untouched; a crash after it
+    leaves at most an orphaned old file, never a lost photo.
+
+    Photos whose file can't be found (e.g. drive asleep or unplugged) are
+    skipped without being marked, so they're retried on the next run.
+    """
     global optimization_state
     if optimization_state["is_active"]:
         return
+
+    from engine.services import enhancement_service
+    from engine.services.media_paths import resolve_stored_path, to_db_path
+    from engine.services.thumbnail_service import calculate_file_hash
 
     async with _optimization_lock:
         optimization_state["is_active"] = True
@@ -125,11 +188,11 @@ async def run_background_optimization():
             try:
                 async with conn.execute(
                     """
-                    SELECT id, filename, filepath, preview_path 
-                    FROM photos 
+                    SELECT id, filename, filepath, preview_path
+                    FROM photos
                     WHERE (mime_type IS NULL OR mime_type NOT LIKE 'video/%')
-                      AND is_optimized = 0 
-                      AND trashed_at IS NULL 
+                      AND is_optimized = 0
+                      AND trashed_at IS NULL
                       AND is_encrypted = 0
                     ORDER BY id ASC;
                     """
@@ -138,99 +201,82 @@ async def run_background_optimization():
             finally:
                 await conn.close()
 
-            if not unoptimized:
-                optimization_state["is_active"] = False
-                return
-
             optimization_state["total_count"] = len(unoptimized)
             optimization_state["completed_count"] = 0
-
-            from engine.services.super_resolution_service import upscale_and_optimize_to_8k
-            from engine.services.thumbnail_service import calculate_file_hash
-            from PIL import Image
 
             for idx, row in enumerate(unoptimized):
                 photo_id = row["id"]
                 filename = row["filename"]
-                filepath = row["filepath"]
-                preview_path = row["preview_path"]
+
+                await _wait_while_on_battery()
 
                 optimization_state["active_photo_id"] = photo_id
                 optimization_state["active_filename"] = filename
-                optimization_state["item_progress"] = 25
+                optimization_state["item_progress"] = 10
 
-                await asyncio.sleep(0.4)
-                optimization_state["item_progress"] = 60
+                source = resolve_stored_path(row["filepath"])
+                if source is None:
+                    logger.warning("Photo %s not found on disk; will retry on the next run: %s", photo_id, row["filepath"])
+                    continue
 
                 try:
-                    target_file = Path(filepath)
-                    if target_file.exists():
-                        # Perform verified atomic in-place replacement directly on target_file
-                        opt_path, opt_w, opt_h, opt_sz = upscale_and_optimize_to_8k(target_file, destination_path=None)
-                        optimization_state["item_progress"] = 65
+                    app_settings = await _load_enhancement_settings()
+                    quality = enhancement_service.slider_to_avif_quality(
+                        app_settings.get("quality_crf", enhancement_service.DEFAULT_QUALITY_SLIDER)
+                    )
+                    optimization_state["item_progress"] = 30
+                    result = await asyncio.to_thread(
+                        enhancement_service.enhance_to_avif,
+                        source,
+                        quality,
+                        enhancement_service.AUTO_FACE_RESTORE_ENABLED,
+                    )
+                    optimization_state["item_progress"] = 80
+                    new_hash = await asyncio.to_thread(calculate_file_hash, result.path)
 
-                        # Automatically apply Google Photos-style face unblur (YOLOv8-Face + CodeFormer w=0.85)
-                        try:
-                            from engine.services.face_restore_service import restore_faces_in_image
-                            restore_faces_in_image(opt_path, opt_path, fidelity_weight=0.85)
-                        except Exception as face_err:
-                            logger.debug(f"Face unblur skipped or no faces in {filename}: {face_err}")
+                    conn = await get_db_connection()
+                    try:
+                        await conn.execute(
+                            """
+                            UPDATE photos
+                            SET filepath = ?, filename = ?, mime_type = ?,
+                                original_file_size = COALESCE(original_file_size, file_size),
+                                original_file_hash = COALESCE(original_file_hash, file_hash),
+                                file_hash = ?, file_size = ?, width = ?, height = ?,
+                                is_optimized = 1, is_enhanced = 1, preview_path = NULL
+                            WHERE id = ?;
+                            """,
+                            (
+                                to_db_path(result.path),
+                                result.path.name,
+                                result.mime_type,
+                                new_hash,
+                                result.size,
+                                result.width,
+                                result.height,
+                                photo_id,
+                            ),
+                        )
+                        await conn.commit()
+                    finally:
+                        await conn.close()
 
-                        # Calculate new verified checksum and accurate dimensions after enhancements
-                        new_hash = calculate_file_hash(opt_path)
-                        final_size = opt_path.stat().st_size
-                        with Image.open(opt_path) as fin_img:
-                            fin_w, fin_h = fin_img.size
-
-                        # Reclaim space: remove obsolete duplicate preview if present
-                        if preview_path:
-                            try:
-                                prev_file = Path(preview_path)
-                                if prev_file.exists() and prev_file.resolve() != opt_path.resolve():
-                                     prev_file.unlink(missing_ok=True)
-                            except Exception as pe:
-                                logger.debug(f"Could not remove old preview for {filename}: {pe}")
-
-                        optimization_state["item_progress"] = 90
-                        
-                        # Update database entry with new file hash, size, and dimensions, clearing preview_path
-                        conn = await get_db_connection()
-                        try:
-                            await conn.execute(
-                                """
-                                UPDATE photos 
-                                SET file_hash = ?, original_file_size = COALESCE(original_file_size, file_size), original_file_hash = COALESCE(original_file_hash, file_hash), file_size = ?, width = ?, height = ?, 
-                                    is_optimized = 1, is_enhanced = 1, preview_path = NULL 
-                                WHERE id = ?;
-                                """,
-                                (new_hash, final_size, fin_w, fin_h, photo_id),
-                            )
-                            await conn.commit()
-                        finally:
-                            await conn.close()
-                    else:
-                        logger.warning(f"Target file does not exist on disk, marking optimized: {filepath}")
-                        conn = await get_db_connection()
-                        try:
-                            await conn.execute("UPDATE photos SET is_optimized = 1 WHERE id = ?;", (photo_id,))
-                            await conn.commit()
-                        finally:
-                            await conn.close()
+                    # The row now points at the AVIF: the old files are no longer needed.
+                    if result.path.resolve() != source.resolve():
+                        source.unlink(missing_ok=True)
+                    old_preview = resolve_stored_path(row["preview_path"])
+                    if old_preview is not None and old_preview.resolve() != result.path.resolve():
+                        old_preview.unlink(missing_ok=True)
 
                 except Exception as err:
-                    logger.warning(f"Could not optimize photo {filename}: {err}")
-                    # Mark is_optimized = 1 to prevent infinite re-trigger loop on unprocessable files
-                    conn_err = await get_db_connection()
-                    try:
-                        await conn_err.execute("UPDATE photos SET is_optimized = 1 WHERE id = ?;", (photo_id,))
-                        await conn_err.commit()
-                    finally:
-                        await conn_err.close()
+                    logger.warning("Could not enhance photo %s (%s): %s", photo_id, filename, err)
+                    # Mark it so an unreadable file isn't retried on every run.
+                    await _mark_optimized_without_change(photo_id)
 
                 optimization_state["item_progress"] = 100
                 optimization_state["completed_count"] = idx + 1
                 optimization_state["last_completed_photo_id"] = photo_id
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0)
 
         finally:
             optimization_state["is_active"] = False
@@ -238,9 +284,9 @@ async def run_background_optimization():
             optimization_state["active_filename"] = None
             optimization_state["item_progress"] = 0
             optimization_state["last_completed_photo_id"] = None
+            optimization_state["paused_reason"] = None
 
 
-# Global in-memory thumbnail regeneration progress tracker
 thumbnail_regen_state = {
     "is_active": False,
     "total_count": 0,
@@ -302,7 +348,9 @@ async def run_background_thumbnail_regeneration():
                     continue
 
                 try:
-                    target_file = Path(filepath)
+                    # Stored paths are relative to the data folder, not the working directory.
+                    from engine.services.media_paths import resolve_stored_path
+                    target_file = resolve_stored_path(filepath) or Path(filepath)
                     if target_file.exists() and target_file.suffix.lower() != ".enc":
                         is_video = bool(
                             mime_type.startswith("video/")
