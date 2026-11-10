@@ -385,8 +385,20 @@ CREATE TABLE IF NOT EXISTS video_processing_queue (
     retry_count INTEGER DEFAULT 0
 );
 
-CREATE INDEX IF NOT EXISTS idx_video_queue_status 
+CREATE INDEX IF NOT EXISTS idx_video_queue_status
 ON video_processing_queue (status, created_at);
+
+-- ── 20b. Vault Operation Journal (crash recovery) ──────────────────────────
+-- One row per photo while it is being moved into or out of the vault.
+-- file_pairs is JSON [[plain_path, enc_path], ...] (portable relative paths).
+-- On startup, engine.services.vault_storage.reconcile_pending_vault_ops keeps
+-- the side the committed photos row points at and removes the leftovers.
+CREATE TABLE IF NOT EXISTS vault_pending_ops (
+    photo_id INTEGER PRIMARY KEY,
+    operation TEXT NOT NULL,        -- 'lock' | 'unlock'
+    file_pairs TEXT NOT NULL,
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ── 21. Self-Healing Relational Cascade Triggers ────────────────────────────
 -- Automatically purge video queue item when parent photo is deleted anywhere
