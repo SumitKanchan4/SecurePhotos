@@ -135,6 +135,16 @@ async def _load_vault_config() -> Optional[Any]:
         await conn.close()
 
 
+def _sealed(row: Any, mvk: bytes) -> Dict[str, Any]:
+    """Document text and GPS of a vault photo (sealed since C4; plain columns are empty).
+
+    Falls back to the plain columns for photos locked before C4.
+    """
+    if row["vault_meta_enc"]:
+        return vault_storage.decrypt_vault_details(row, mvk)
+    return {"ocr_text": row["ocr_text"], "latitude": row["latitude"], "longitude": row["longitude"]}
+
+
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class GridCardPayload(BaseModel):
@@ -666,7 +676,7 @@ async def list_vault_albums() -> List[dict]:
 @router.get("/albums/{album_id}/photos", status_code=status.HTTP_200_OK)
 async def list_vault_album_photos(album_id: int) -> List[dict]:
     """Returns decrypted photo metadata for photos in a specific locked album."""
-    get_active_mvk()
+    mvk = get_active_mvk()
     conn = await get_db_connection()
     try:
         query = """
@@ -675,7 +685,7 @@ async def list_vault_album_photos(album_id: int) -> List[dict]:
                 p.taken_at, p.camera_make, p.camera_model, p.latitude, p.longitude,
                 p.iso, p.aperture, p.shutter_speed, p.focal_length, p.is_favorite,
                 p.is_encrypted, p.is_optimized, p.is_enhanced, p.caption,
-                p.thumbnail_path, p.preview_path, p.is_document, p.ocr_text
+                p.thumbnail_path, p.preview_path, p.is_document, p.ocr_text, p.vault_meta_enc
             FROM photo_album pa
             JOIN photos p ON pa.photo_id = p.id
             WHERE pa.album_id = ? AND p.is_encrypted = 1 AND p.trashed_at IS NULL
@@ -696,8 +706,8 @@ async def list_vault_album_photos(album_id: int) -> List[dict]:
                     "taken_at": row["taken_at"],
                     "camera_make": row["camera_make"],
                     "camera_model": row["camera_model"],
-                    "latitude": row["latitude"],
-                    "longitude": row["longitude"],
+                    "latitude": _sealed(row, mvk)["latitude"],
+                    "longitude": _sealed(row, mvk)["longitude"],
                     "iso": row["iso"],
                     "aperture": row["aperture"],
                     "shutter_speed": row["shutter_speed"],
@@ -710,7 +720,7 @@ async def list_vault_album_photos(album_id: int) -> List[dict]:
                     "thumbnail_path": row["thumbnail_path"],
                     "preview_path": row["preview_path"],
                     "is_document": bool(row["is_document"]) if row["is_document"] is not None else False,
-                    "ocr_text": row["ocr_text"],
+                    "ocr_text": _sealed(row, mvk)["ocr_text"],
                 }
                 for row in rows
             ]
@@ -721,7 +731,7 @@ async def list_vault_album_photos(album_id: int) -> List[dict]:
 @router.get("/photos", status_code=status.HTTP_200_OK)
 async def list_vault_photos() -> List[dict]:
     """Returns all decrypted metadata for photos locked in the private vault."""
-    get_active_mvk()
+    mvk = get_active_mvk()
     conn = await get_db_connection()
     try:
         async with conn.execute(
@@ -730,7 +740,7 @@ async def list_vault_photos() -> List[dict]:
                    p.taken_at, p.camera_make, p.camera_model, p.latitude, p.longitude,
                    p.iso, p.aperture, p.shutter_speed, p.focal_length, p.is_favorite,
                    p.is_encrypted, p.is_optimized, p.is_enhanced, p.caption, p.thumbnail_path, p.preview_path,
-                   p.is_document, p.ocr_text,
+                   p.is_document, p.ocr_text, p.vault_meta_enc,
                    (
                        SELECT GROUP_CONCAT(a.name, ', ')
                        FROM photo_album pa
@@ -756,8 +766,8 @@ async def list_vault_photos() -> List[dict]:
                     "taken_at": row["taken_at"],
                     "camera_make": row["camera_make"],
                     "camera_model": row["camera_model"],
-                    "latitude": row["latitude"],
-                    "longitude": row["longitude"],
+                    "latitude": _sealed(row, mvk)["latitude"],
+                    "longitude": _sealed(row, mvk)["longitude"],
                     "iso": row["iso"],
                     "aperture": row["aperture"],
                     "shutter_speed": row["shutter_speed"],
@@ -770,7 +780,7 @@ async def list_vault_photos() -> List[dict]:
                     "thumbnail_path": row["thumbnail_path"],
                     "preview_path": row["preview_path"],
                     "is_document": bool(row["is_document"]) if row["is_document"] is not None else False,
-                    "ocr_text": row["ocr_text"],
+                    "ocr_text": _sealed(row, mvk)["ocr_text"],
                     "album_names": row["album_names"],
                 }
                 for row in rows
