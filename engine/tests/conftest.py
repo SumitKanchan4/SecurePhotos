@@ -47,6 +47,31 @@ from engine.services.video_queue_service import pause_video_queue  # noqa: E402
 asyncio.run(run_migrations())
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "real_optimizer: let photo imports run the real background enhancer (slow; 8K AVIF encodes)."
+    )
+
+
+@pytest.fixture(autouse=True)
+def disable_background_enhancer(request, monkeypatch):
+    """Stops photo imports from launching the real 8K/AVIF enhancer as a side effect.
+
+    Each enhancement takes seconds, so leaving it on makes every import test slow
+    and racy. Tests that exercise the enhancer use ``@pytest.mark.real_optimizer``.
+    """
+    if request.node.get_closest_marker("real_optimizer"):
+        yield
+        return
+    from engine.api import photos
+
+    async def _no_op():
+        return None
+
+    monkeypatch.setattr(photos, "run_background_optimization", _no_op)
+    yield
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Deletes the throwaway library after the run."""
     shutil.rmtree(_TEST_ROOT, ignore_errors=True)

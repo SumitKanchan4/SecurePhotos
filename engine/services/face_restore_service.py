@@ -188,6 +188,95 @@ def create_feather_mask(size: Tuple[int, int], feather_ratio: float = 0.18) -> I
     return mask.filter(ImageFilter.GaussianBlur(radius=blur_radius))
 
 
+# Faces whose sharpness score is below this are treated as blurry. Score = variance of
+# the Laplacian on a 256px grayscale face crop (0-255 scale). Initial value; needs
+# calibration on real photos before automatic restoration is enabled (see C1/H9).
+BLURRY_FACE_SHARPNESS_THRESHOLD = 100.0
+
+
+def face_sharpness(face_crop: Image.Image) -> float:
+    """Measures how sharp a face crop is (higher = sharper).
+
+    Uses the variance of a 4-neighbour Laplacian on a fixed-size grayscale copy,
+    so scores are comparable across face sizes.
+
+    Args:
+        face_crop: Face region (any size, any mode).
+
+    Returns:
+        Laplacian variance; blurry faces score low.
+    """
+    g = np.asarray(face_crop.convert("L").resize((256, 256), Image.Resampling.BILINEAR), dtype=np.float32)
+    lap = 4 * g[1:-1, 1:-1] - g[:-2, 1:-1] - g[2:, 1:-1] - g[1:-1, :-2] - g[1:-1, 2:]
+    return float(lap.var())
+
+
+def restore_faces_on_image(
+    img: Image.Image,
+    fidelity: float = 0.85,
+    max_sharpness: Optional[float] = None,
+) -> Tuple[Image.Image, int]:
+    """Restores faces in an in-memory RGB image with CodeFormer.
+
+    Args:
+        img: Upright RGB image.
+        fidelity: CodeFormer fidelity weight (higher = closer to the real face).
+        max_sharpness: If set, only faces whose :func:`face_sharpness` is below this
+            value are restored; sharp faces are left untouched.
+
+    Returns:
+        (result image, number of faces restored). The input image is not modified.
+    """
+    yolo_sess, cf_sess = get_sessions()
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    orig_w, orig_h = img.size
+    faces = detect_faces(img, yolo_sess)
+    result_img = img.copy()
+    restored = 0
+
+    for i, (bx1, by1, bx2, by2) in enumerate(faces):
+        if max_sharpness is not None:
+            score = face_sharpness(img.crop((bx1, by1, bx2, by2)))
+            if score >= max_sharpness:
+                logger.debug(f"Face {i + 1}/{len(faces)} is sharp ({score:.0f}); left untouched.")
+                continue
+
+        cw = bx2 - bx1
+        ch = by2 - by1
+        cx = (bx1 + bx2) // 2
+        cy = (by1 + by2) // 2
+
+        # Expand crop to include hair, ears, and chin with sufficient context
+        margin = int(max(cw, ch) * 0.70)
+        sx1 = max(0, cx - margin)
+        sy1 = max(0, cy - margin)
+        sx2 = min(orig_w, cx + margin)
+        sy2 = min(orig_h, cy + margin)
+        crop_w = sx2 - sx1
+        crop_h = sy2 - sy1
+
+        face_crop = img.crop((sx1, sy1, sx2, sy2)).resize((512, 512), Image.Resampling.LANCZOS)
+        arr = (np.array(face_crop, dtype=np.float32) / 255.0 - 0.5) / 0.5
+        arr = np.transpose(arr, (2, 0, 1))
+        tensor_in = np.expand_dims(arr, axis=0)
+
+        cf_out = cf_sess.run(None, {
+            "input": tensor_in,
+            "weight": np.array([fidelity], dtype=np.double),
+        })[0][0]
+
+        restored_arr = np.clip((cf_out * 0.5 + 0.5) * 255.0, 0, 255).astype(np.uint8)
+        restored_arr = np.transpose(restored_arr, (1, 2, 0))
+        restored_crop = Image.fromarray(restored_arr).resize((crop_w, crop_h), Image.Resampling.LANCZOS)
+
+        mask = create_feather_mask((crop_w, crop_h))
+        result_img.paste(restored_crop, (sx1, sy1), mask)
+        restored += 1
+
+    return result_img, restored
+
+
 def restore_faces_in_image(
     input_path: Path | str,
     output_path: Optional[Path | str] = None,
@@ -213,51 +302,12 @@ def restore_faces_in_image(
     out_file.parent.mkdir(parents=True, exist_ok=True)
     temp_out = out_file.parent / f".{out_file.name}.tmp"
 
-    yolo_sess, cf_sess = get_sessions()
-
     with Image.open(in_file) as img:
         if img.mode != "RGB":
             img = img.convert("RGB")
-
         orig_w, orig_h = img.size
-        faces = detect_faces(img, yolo_sess)
-        logger.info(f"Detected {len(faces)} faces in {in_file.name}")
-
-        result_img = img.copy()
-
-        for i, (bx1, by1, bx2, by2) in enumerate(faces):
-            cw = bx2 - bx1
-            ch = by2 - by1
-            cx = (bx1 + bx2) // 2
-            cy = (by1 + by2) // 2
-
-            # Expand crop to include hair, ears, and chin with sufficient context
-            margin = int(max(cw, ch) * 0.70)
-            sx1 = max(0, cx - margin)
-            sy1 = max(0, cy - margin)
-            sx2 = min(orig_w, cx + margin)
-            sy2 = min(orig_h, cy + margin)
-            crop_w = sx2 - sx1
-            crop_h = sy2 - sy1
-
-            face_crop = img.crop((sx1, sy1, sx2, sy2)).resize((512, 512), Image.Resampling.LANCZOS)
-            arr = (np.array(face_crop, dtype=np.float32) / 255.0 - 0.5) / 0.5
-            arr = np.transpose(arr, (2, 0, 1))
-            tensor_in = np.expand_dims(arr, axis=0)
-
-            cf_out = cf_sess.run(None, {
-                "input": tensor_in,
-                "weight": np.array([fidelity], dtype=np.double),
-            })[0][0]
-
-            restored_arr = np.clip((cf_out * 0.5 + 0.5) * 255.0, 0, 255).astype(np.uint8)
-            restored_arr = np.transpose(restored_arr, (1, 2, 0))
-            restored_crop = Image.fromarray(restored_arr).resize((crop_w, crop_h), Image.Resampling.LANCZOS)
-
-            mask = create_feather_mask((crop_w, crop_h))
-            result_img.paste(restored_crop, (sx1, sy1), mask)
-            logger.debug(f"Restored face {i + 1}/{len(faces)} for {in_file.name}")
-
+        result_img, restored = restore_faces_on_image(img, fidelity=fidelity)
+        logger.info(f"Restored {restored} face(s) in {in_file.name}")
         result_img.save(temp_out, "WEBP", quality=quality, method=4)
 
     os.replace(temp_out, out_file)
