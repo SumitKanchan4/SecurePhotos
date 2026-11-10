@@ -30,6 +30,7 @@ This document serves as the **central, living source of truth** for all function
 101. [Vault Reset Permanently Erases Vault Contents](#101-vault-reset-permanently-erases-vault-contents)
 102. [Single-Version AVIF Enhancement Pipeline (Fixed & Settings-Driven)](#102-single-version-avif-enhancement-pipeline-fixed--settings-driven)
 103. [Session-Only Quick PIN & Emergency Card Recovery](#103-session-only-quick-pin--emergency-card-recovery)
+104. [Vault Photos Keep No Readable Text, Location or Face Data](#104-vault-photos-keep-no-readable-text-location-or-face-data)
 
 ---
 
@@ -5020,4 +5021,33 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 ### State & Lifecycle Impact
 - The key's lifetime in memory is the app session; there is nothing on disk that the PIN can open.
 - Setup purges the key, then the wizard's own password unlock opens the vault as before.
+
+---
+
+## 104. Vault Photos Keep No Readable Text, Location or Face Data
+
+### Functionality Overview
+- When a photo is moved into the vault, its **document text** (read from receipts, IDs, medical papers) and **GPS location** are encrypted with the vault key, and the readable copies are cleared from the database. Its **face records and face crop images** are deleted.
+- While the vault is open, the vault screens still show the document text and location (decrypted on the fly).
+- When a photo is moved back out of the vault, its text and location are restored and it is face-scanned again like any library photo (it reappears under People).
+- Vault photos are never face-scanned while in the vault (the scanner already skipped encrypted photos).
+
+### Functional Decision Points & Rationale (owner decisions 2026-11-10/11)
+- **Protect text, faces and GPS; keep file names, captions and album names readable.**
+- **Delete only the locked photo's faces**: faces in library photos and the people they belong to are untouched. Edge case: a named person who appears only in vault photos loses their entry at the next startup cleanup (no faces left) and must be named again after the photos come out; acceptable ("not to be identified").
+- **Rescan after unlock** rather than keeping encrypted face data: manual face tags on a vault photo are re-matched automatically, not preserved.
+- **Sealed per photo**: AES-256-GCM with the photo id as associated data, so a sealed field copied onto another row fails to open (that photo then stays safely in the vault).
+- **No lingering copies**: `PRAGMA secure_delete = ON` for every connection, and a WAL checkpoint after each lock/unlock batch. Tested by scanning the raw database files for the secret text; turning `secure_delete` off makes that test fail. Limit: SSD wear-levelling may keep old physical copies that no application can erase.
+- **Search index leak fixed as a side effect**: the full-text index is rebuilt from the whole `photos` table at every startup (vault rows included); vault rows now have no text to index.
+
+### Technical Touchpoints
+- `engine/services/crypto_vault.py`: `encrypt_photo_metadata`, `decrypt_photo_metadata`.
+- `engine/services/vault_storage.py`: `lock_photo` seals text+GPS, clears the columns and deletes the photo's faces in the same commit as the lock, then deletes face crops; `unlock_photo` decrypts first (failure leaves the photo untouched), restores columns and sets `faces_scanned = 0`; journal `cleanup_paths` lets startup recovery delete face crops of a committed lock; `decrypt_vault_details`; `flush_deleted_data`.
+- `engine/api/vault.py`: `/api/vault/photos` and `/api/vault/albums/{id}/photos` return decrypted text/GPS.
+- `engine/database.py`: `photos.vault_meta_enc`, `vault_pending_ops.cleanup_paths`, `PRAGMA secure_delete = ON`.
+- Tests: `engine/tests/test_vault_metadata_privacy.py` (raw-file scan before/after lock and after index rebuild; library faces untouched; unlock restore; crash recovery of face crops; sealed field bound to its photo). `test_vault_reset.py` updated: locking now removes face crops.
+
+### State & Lifecycle Impact
+- No UI or API shape changes; frontend untouched.
+- Deletes are slightly slower (`secure_delete` zeroes freed space).
 

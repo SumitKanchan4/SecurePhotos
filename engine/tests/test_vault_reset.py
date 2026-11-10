@@ -62,6 +62,8 @@ async def populated_vault():
 
         lock = await client.post(f"/api/vault/albums/{album_id}/lock")
         assert lock.status_code == 200 and lock.json()["photos_encrypted"] == 1
+        # C4: locking removes the photo's face records and face crop images.
+        assert not face_crop.exists()
 
         yield {
             "client": client,
@@ -112,7 +114,6 @@ async def test_reset_without_correct_phrase_changes_nothing(populated_vault, bod
     assert await _exists("photos", populated_vault["vault_id"])
     assert await _exists("albums", populated_vault["album_id"])
     assert all(f.exists() for f in populated_vault["vault_files"])
-    assert populated_vault["face_crop"].exists()
 
 
 async def test_reset_preview_counts_vault_contents(populated_vault):

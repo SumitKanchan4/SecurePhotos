@@ -249,6 +249,39 @@ def unwrap_master_key(wrapped_b64: str, kek: bytes) -> Optional[bytes]:
         return None
 
 
+def _metadata_aad(photo_id: int) -> bytes:
+    # Binds the ciphertext to one photo, so a sealed blob can't be copied onto another row.
+    return f"securephotos:vault-meta:v1:{photo_id}".encode("utf-8")
+
+
+def encrypt_photo_metadata(metadata: Dict[str, Any], master_key: bytes, photo_id: int) -> str:
+    """Encrypts a vault photo's sensitive details (document text, GPS) with AES-256-GCM.
+
+    Args:
+        metadata: JSON-serialisable details, e.g. ``{"ocr_text": ..., "latitude": ...}``.
+        master_key: 32-byte master vault key.
+        photo_id: Row id; authenticated as associated data.
+
+    Returns:
+        Base64 string ``nonce || ciphertext+tag``.
+    """
+    nonce = secrets.token_bytes(12)
+    plaintext = json.dumps(metadata, separators=(",", ":")).encode("utf-8")
+    sealed = AESGCM(master_key).encrypt(nonce, plaintext, _metadata_aad(photo_id))
+    return base64.b64encode(nonce + sealed).decode("ascii")
+
+
+def decrypt_photo_metadata(blob: str, master_key: bytes, photo_id: int) -> Dict[str, Any]:
+    """Reverses :func:`encrypt_photo_metadata`.
+
+    Raises:
+        cryptography.exceptions.InvalidTag: Wrong key, wrong photo, or tampered data.
+    """
+    raw = base64.b64decode(blob.encode("ascii"))
+    plaintext = AESGCM(master_key).decrypt(raw[:12], raw[12:], _metadata_aad(photo_id))
+    return json.loads(plaintext.decode("utf-8"))
+
+
 def encrypt_file_chunked(
     source_path: Path | str,
     dest_path: Path | str,

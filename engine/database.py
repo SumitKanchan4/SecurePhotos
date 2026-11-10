@@ -25,6 +25,7 @@ PRAGMAS = [
     "PRAGMA mmap_size = 268435456;",     # 256 MB memory-mapped I/O
     "PRAGMA busy_timeout = 30000;",      # 30000ms wait before lock error
     "PRAGMA foreign_keys = ON;",         # Enforce relational constraints
+    "PRAGMA secure_delete = ON;",       # Zero out deleted data (vault details must not linger in free pages)
 ]
 
 SCHEMA_DDL = """
@@ -640,6 +641,16 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
         # Original media size migration: dynamically add original_file_size column if not present
         async with conn.execute("PRAGMA table_info(photos);") as cursor:
             existing_photo_cols = {row["name"] for row in await cursor.fetchall()}
+
+        # C4: a vault photo's document text and GPS, encrypted with the vault key.
+        if "vault_meta_enc" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN vault_meta_enc TEXT;")
+
+        # C4: face crops (and other files) to delete once a lock has committed.
+        async with conn.execute("PRAGMA table_info(vault_pending_ops);") as cursor:
+            journal_cols = {row["name"] for row in await cursor.fetchall()}
+        if "cleanup_paths" not in journal_cols:
+            await conn.execute("ALTER TABLE vault_pending_ops ADD COLUMN cleanup_paths TEXT;")
 
         if "original_file_size" not in existing_photo_cols:
             await conn.execute("ALTER TABLE photos ADD COLUMN original_file_size INTEGER;")
