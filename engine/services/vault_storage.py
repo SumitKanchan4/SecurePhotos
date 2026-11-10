@@ -401,6 +401,68 @@ async def unlock_photos(conn: aiosqlite.Connection, rows: Iterable[aiosqlite.Row
     return unlocked, failed
 
 
+# ── Vault erase (factory reset) ───────────────────────────────────────────────
+
+_VAULT_PHOTOS_SQL = "SELECT id FROM photos WHERE is_encrypted = 1"
+
+
+async def count_vault_contents(conn: aiosqlite.Connection) -> dict:
+    """Counts what a vault reset would erase.
+
+    Returns:
+        ``{"photo_count": int, "album_count": int}``.
+    """
+    async with conn.execute(f"SELECT COUNT(*) FROM ({_VAULT_PHOTOS_SQL});") as cur:
+        photo_count = (await cur.fetchone())[0]
+    async with conn.execute("SELECT COUNT(*) FROM albums WHERE is_vault = 1;") as cur:
+        album_count = (await cur.fetchone())[0]
+    return {"photo_count": photo_count, "album_count": album_count}
+
+
+async def erase_vault_contents(conn: aiosqlite.Connection) -> dict:
+    """Permanently deletes every vault photo, its files, face crops and the vault albums.
+
+    Files are deleted first, rows afterwards in one transaction. If the process
+    dies part-way, the rows still exist (pointing at already-deleted files) and
+    running the erase again finishes the job, so it is safe to repeat.
+
+    The caller deletes the vault keys (``vault_configs``) in the same commit, so
+    keys disappear only once nothing encrypted is left.
+
+    Args:
+        conn: Open connection with no uncommitted changes.
+
+    Returns:
+        ``{"photo_count": int, "album_count": int}`` that were erased. The
+        transaction is left open; the caller commits.
+    """
+    from engine.services.face_recognition_service import get_face_thumbnails_dir
+
+    counts = await count_vault_contents(conn)
+
+    async with conn.execute(
+        f"SELECT id, filepath, thumbnail_path, preview_path FROM photos WHERE id IN ({_VAULT_PHOTOS_SQL});"
+    ) as cur:
+        photos = await cur.fetchall()
+    for row in photos:
+        for key in ("filepath", "thumbnail_path", "preview_path"):
+            found = resolve_stored_path(row[key])
+            if found is not None:
+                _safe_unlink(found)
+
+    faces_dir = get_face_thumbnails_dir()
+    async with conn.execute(f"SELECT id FROM faces WHERE photo_id IN ({_VAULT_PHOTOS_SQL});") as cur:
+        face_ids = [r["id"] for r in await cur.fetchall()]
+    for face_id in face_ids:
+        _safe_unlink(faces_dir / f"{face_id}.webp")
+
+    # Faces, album links and duplicate entries cascade from the photos rows.
+    await conn.execute(f"DELETE FROM vault_pending_ops WHERE photo_id IN ({_VAULT_PHOTOS_SQL});")
+    await conn.execute(f"DELETE FROM photos WHERE id IN ({_VAULT_PHOTOS_SQL});")
+    await conn.execute("DELETE FROM albums WHERE is_vault = 1;")
+    return counts
+
+
 # ── Startup reconciliation ────────────────────────────────────────────────────
 
 async def _is_referenced_elsewhere(conn: aiosqlite.Connection, photo_id: int, path: Path) -> bool:

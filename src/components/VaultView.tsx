@@ -112,6 +112,27 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   const [showPasswordResetModal, setShowPasswordResetModal] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState("");
   const [isResetting, setIsResetting] = useState(false);
+  // What a reset would erase; fetched only when the reset screen opens (not polled).
+  const [resetPreview, setResetPreview] = useState<{ photo_count: number; album_count: number } | null>(null);
+
+  useEffect(() => {
+    if (!showResetModal) {
+      setResetPreview(null);
+      return;
+    }
+    let cancelled = false;
+    apiFetch("/api/vault/reset-preview")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setResetPreview(data);
+      })
+      .catch(() => {
+        /* Count is informational; the generic warning still shows. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showResetModal]);
 
   // Auto-lock countdown timer (5 minutes = 300s)
   const [secondsRemaining, setSecondsRemaining] = useState(AUTO_LOCK_SECONDS);
@@ -399,7 +420,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
       const res = await apiFetch("/api/vault/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirm_phrase: "ERASE ALL DATA" }),
+        // Send exactly what the user typed; the engine verifies the phrase itself.
+        body: JSON.stringify({ confirm_phrase: resetConfirmText.trim() }),
       });
 
       if (res.ok) {
@@ -409,7 +431,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
         setResetConfirmText("");
         setIsSetupMode(true);
         await checkVaultStatus();
-        showToast("Vault reset complete. You can now configure a new vault.", "info");
+        showToast("Vault erased. You can now set up a new vault.", "info");
       } else {
         const data = await res.json().catch(() => ({}));
         showToast(data.detail || "Reset failed.", "warning");
@@ -1877,11 +1899,23 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
           >
             <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "var(--accent-danger, #ef4444)" }}>
               <AlertTriangle size={24} />
-              <h3 style={{ fontSize: "16px", fontWeight: 700, margin: 0 }}>Factory Reset Encrypted Vault</h3>
+              <h3 style={{ fontSize: "16px", fontWeight: 700, margin: 0 }}>Erase Private Vault</h3>
             </div>
 
             <p style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: "1.5", margin: 0 }}>
-              Resetting will clear the master password, PIN, and cryptographic keys. Any encrypted photos currently stored in the vault will become permanently inaccessible without a backup.
+              {resetPreview && (resetPreview.photo_count > 0 || resetPreview.album_count > 0) ? (
+                <>
+                  This permanently erases{" "}
+                  <strong style={{ color: "var(--text-primary)" }}>
+                    {resetPreview.photo_count} {resetPreview.photo_count === 1 ? "photo" : "photos"}
+                    {resetPreview.album_count > 0 &&
+                      ` and ${resetPreview.album_count} ${resetPreview.album_count === 1 ? "album" : "albums"}`}
+                  </strong>{" "}
+                  from your vault, along with its password and PIN. This can't be undone.
+                </>
+              ) : (
+                "This permanently erases everything in your vault, along with its password and PIN. This can't be undone."
+              )}
             </p>
 
             <div>
