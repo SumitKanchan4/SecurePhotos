@@ -43,7 +43,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
   - It uses `Path(filepath)` instead of `resolve_media_path`, so it breaks when the drive letter changes.
 - **Decisions needed:** default on/off; whether to upscale at all; face restoration policy (off / opt-in / per photo); whether to keep a time-limited undo (e.g. the pre-enhancement file held in app trash for 30 days, then hard-deleted, which matches the trash model); which output format and quality actually saves space.
 
-### C2 · The 4-digit PIN slot can be brute-forced offline — `review` (branch `fix/c2-c3-pin-recovery`, history §103) (decided: option A; PIN undoes any lock until the app closes; no old-format migration since nobody uses the vault yet)
+### C2 · The 4-digit PIN slot can be brute-forced offline — `done` (merged 2026-11-11, history §103) (decided: option A; PIN undoes any lock until the app closes; no old-format migration since nobody uses the vault yet)
 - **Decision:** the PIN is a quick re-unlock only, for the current app session after a master-password unlock. Nothing PIN-derived is stored on disk. On upgrade, delete the existing `mvk_wrapped_pin`/`pin_salt` and tell the user the PIN now works after the first password unlock.
 - **Current:** `vault.py:198-209` wraps the master vault key with Argon2id(PIN). The wrapped key, salt and attempt counter are all in `securephotos.db`.
 - **Impact:** anyone with a copy of the drive can try all 10,000 PINs offline (minutes to hours) and decrypt the whole vault. The 5-attempt lock only applies through the API.
@@ -53,7 +53,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
   - (C) A longer PIN. Still weak offline; not recommended.
 - **Affects:** C3 (the reset path uses the PIN slot) and P12.
 
-### C3 · PIN lockout can be bypassed through password reset — `review` (branch `fix/c2-c3-pin-recovery`, history §103)
+### C3 · PIN lockout can be bypassed through password reset — `done` (merged 2026-11-11, history §103)
 - **Decision:** recovery is by **Emergency Card file upload OR typing all 16 card numbers**; a key slot is derived from all 16 cells with a strong KDF. Remove the 3-cell challenge, the "cells + PIN" path and the "PIN-only" reset path (`vault.py:527`, reset modal tabs `challenge` and `pin`). Migration for existing vaults: on the next password unlock, recover the cells from the stored hashes (90 candidates each), create the 16-cell slot, and delete `grid_cells_hash`. Do together with or after C2.
 - **Current:** `vault.py:490-515` (reset path B: grid cells + PIN) and `crypto_vault.py:182-197`:
   - Wrong PINs on this path never increment `pin_failed_attempts` or check the lockout.
@@ -68,7 +68,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
   - Rate-limit the cheap SHA-256 cell check (backoff).
 - **Note:** the cell hashes in the DB can be reversed offline (90 values each). That is acceptable only if this path also needs a strong secret. Revisit after C2 (under option A, the PIN slot goes away and this path needs redesign: grid card token, or cells + master-password-derived data).
 
-### C4 · Encrypt sensitive metadata for vault items — `todo` (decided 2026-11-10)
+### C4 · Encrypt sensitive metadata for vault items — `review` (branch `fix/c4-vault-metadata`, history §104)
 - **Decision:** protect OCR text plus its FTS rows, face data and GPS. Face data: delete embeddings and face crops on lock, rescan on unlock. Filename, caption/tags and album names stay in plaintext.
 - **Agreed:** encrypt the critical metadata, not everything.
 - **Current:** locking encrypts the file, thumbnail and preview only. These stay in plaintext: `filename`, `latitude/longitude`, `ocr_text` (and the FTS index), `caption`, `content_tags`, album names, **face embeddings (`faces` table) and face-crop thumbnails on disk** from scans done before locking.
@@ -85,6 +85,12 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - **Decision:** reset permanently deletes all vault items (files plus rows) with the keys. The user types the confirmation phrase themselves and sees the item count first. The API requires the phrase (no optional body).
 - **Current:** `vault.py:395-408` deletes `vault_configs` only. `.enc` files and their `photos` rows remain and can never be decrypted again. The confirmation phrase is optional in the API and hard-coded in the UI (`VaultView.tsx:399`), so it guards nothing.
 - **Decision:** on reset, either (a) permanently delete all vault items and files too, or (b) refuse to reset while vault items exist. Make the confirmation phrase required and typed by the user.
+
+### C7 · Enhance vault photos while the vault is open — `todo` (owner request 2026-11-11)
+- **Intent (owner):** vault photos get the same single-version enhancement as library photos (AVIF, 8K, settings), but only while the vault is unlocked. While it is locked, nothing is processed and the encrypted original stays as it is.
+- **Current:** `run_background_optimization` skips `is_encrypted = 1`. A photo locked before it was enhanced stays unenhanced until moved out of the vault (then it is enhanced as a library photo).
+- **Constraints:** decrypt in memory, enhance in memory, encrypt the result; **never write unencrypted data to disk** (the current enhancer writes a temp file next to the photo, so it needs an in-memory variant). Stop when the vault locks (idle, Lock, L, 5 wrong PINs) and resume on the next unlock. Crash-safe replacement through the `vault_storage` journal (new `.enc` written and verified before the row changes; old `.enc` deleted after commit). Respect battery guard and quality slider. `ACTIVE_VAULT_SESSION["batch_keepalive"]` already exists for long batches; decide whether enhancement may keep the vault from auto-locking (probably not).
+- **Open questions for the briefing:** should progress show in the vault screen; very large videos are out of scope (photos only, like C1).
 
 ---
 
