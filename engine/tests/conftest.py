@@ -1,19 +1,63 @@
-"""Pytest test configuration and isolation fixtures for SecurePhotos Engine."""
+"""Pytest configuration for the SecurePhotos engine.
 
-import pytest
-import sqlite3
-from engine.config import settings
-from engine.services.video_queue_service import pause_video_queue, resume_video_queue
+Test isolation (backlog item Q6): every test run gets its own throwaway data
+folder and home folder, set *before* anything from ``engine`` is imported,
+because ``engine.config.settings`` resolves the data folder once at import.
+The run aborts if the data folder is ever the project's real ``data/`` library,
+so tests can never read, change or erase a developer's photos.
+"""
+
+import os
+import shutil
+import tempfile
+from pathlib import Path
+
+# ── Isolation: must run before any `engine` import ───────────────────────────
+_TEST_ROOT = Path(tempfile.mkdtemp(prefix="securephotos_tests_"))
+_TEST_DATA_DIR = _TEST_ROOT / "data"
+_TEST_HOME = _TEST_ROOT / "home"
+_TEST_DATA_DIR.mkdir()
+_TEST_HOME.mkdir()
+
+os.environ["SECUREPHOTOS_DATA_DIR"] = str(_TEST_DATA_DIR)
+# Point the home folder away from the real one too: engine.config's legacy
+# migration copies and then deletes ~/.securephotos_data if it exists.
+os.environ["USERPROFILE"] = str(_TEST_HOME)
+os.environ["HOME"] = str(_TEST_HOME)
+
+import asyncio  # noqa: E402
+import sqlite3  # noqa: E402
+
+import pytest  # noqa: E402
+
+from engine.config import settings  # noqa: E402
+
+_REAL_LIBRARY = (Path(__file__).resolve().parents[2] / "data").resolve()
+if settings.data_dir.resolve() != _TEST_DATA_DIR.resolve() or settings.data_dir.resolve() == _REAL_LIBRARY:
+    shutil.rmtree(_TEST_ROOT, ignore_errors=True)
+    raise pytest.UsageError(
+        f"Refusing to run tests: data folder is {settings.data_dir}, expected the throwaway "
+        f"folder {_TEST_DATA_DIR}. Tests must never touch the real library."
+    )
+
+from engine.database import run_migrations  # noqa: E402
+from engine.services.video_queue_service import pause_video_queue  # noqa: E402
+
+# Fresh library: create the schema once so tests that don't migrate still find their tables.
+asyncio.run(run_migrations())
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Deletes the throwaway library after the run."""
+    shutil.rmtree(_TEST_ROOT, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)
 def isolate_video_queue_during_tests():
-    """Automatically isolates the background video queue during all tests.
-    
-    1. Pauses the worker to prevent concurrency races while creating test items.
-    2. Runs the test.
-    3. Cleans up any leftover orphaned or test-generated queue items.
-    4. Keeps background queue processing paused to prevent race conditions during loop teardown.
+    """Keeps the background video queue paused and clears leftover queue items.
+
+    Pausing prevents the worker racing tests that create queue items; leftover
+    items whose photo is gone or trashed are deleted after each test.
     """
     pause_video_queue()
     try:
@@ -26,39 +70,5 @@ def isolate_video_queue_during_tests():
             )
             conn.commit()
             conn.close()
-        except Exception:
+        except sqlite3.Error:
             pass
-
-
-@pytest.fixture(autouse=True)
-def isolate_vault_configs_during_tests():
-    """Automatically backs up and restores vault_configs so automated tests never erase user's vault setup."""
-    saved_rows = []
-    col_names = []
-    try:
-        conn = sqlite3.connect(settings.database_path)
-        conn.row_factory = sqlite3.Row
-        cur = conn.execute("SELECT * FROM vault_configs;")
-        rows = cur.fetchall()
-        if rows:
-            col_names = [description[0] for description in cur.description]
-            saved_rows = [list(r) for r in rows]
-        conn.close()
-    except Exception:
-        pass
-
-    try:
-        yield
-    finally:
-        try:
-            conn = sqlite3.connect(settings.database_path)
-            conn.execute("DELETE FROM vault_configs;")
-            if saved_rows and col_names:
-                placeholders = ",".join("?" for _ in col_names)
-                cols_str = ",".join(col_names)
-                conn.executemany(f"INSERT INTO vault_configs ({cols_str}) VALUES ({placeholders});", saved_rows)
-            conn.commit()
-            conn.close()
-        except Exception:
-            pass
-
