@@ -29,6 +29,7 @@ This document serves as the **central, living source of truth** for all function
 100. [Isolated Throwaway Library for Automated Tests](#100-isolated-throwaway-library-for-automated-tests)
 101. [Vault Reset Permanently Erases Vault Contents](#101-vault-reset-permanently-erases-vault-contents)
 102. [Single-Version AVIF Enhancement Pipeline (Fixed & Settings-Driven)](#102-single-version-avif-enhancement-pipeline-fixed--settings-driven)
+103. [Session-Only Quick PIN & Emergency Card Recovery](#103-session-only-quick-pin--emergency-card-recovery)
 
 ---
 
@@ -4991,4 +4992,32 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 ### State & Lifecycle Impact
 - An enhanced photo's `filepath`, `filename` and `mime_type` change to `.avif`; `original_file_hash`/`original_file_size` keep the imported baseline for duplicate detection and savings stats.
 - Measured speed: ~3.5 s per 12 MP photo, ~6.5 s per photo enlarged to 8K.
+
+---
+
+## 103. Session-Only Quick PIN & Emergency Card Recovery
+
+### Functionality Overview
+- **The master password opens the vault; the PIN only re-opens it.** After the password has been entered once since the app was opened, any lock (5-minute idle auto-lock, Lock button, L key) keeps the vault key in memory, and the 4-digit PIN reopens the vault. Closing the app, or 5 wrong PINs, means the password is needed again.
+- The first unlock screen after opening the app shows only the password field, with: "Enter your master password. After that, your PIN reopens the vault until you close the app."
+- **Forgot password**: the reset dialog offers *Card file* (the saved Emergency Card image or its key), *Card numbers* (all 16 numbers from the printed card), or *Current password* (used from Settings). The 3-box challenge and the PIN-based resets are gone.
+- **Settings → Private Vault → Quick PIN**: set, change or remove the PIN while the vault is unlocked.
+
+### Functional Decision Points & Rationale (owner decisions 2026-11-10/11)
+- **Why**: the vault key used to be stored on the drive encrypted with the 4-digit PIN, so anyone who copied the drive could try all 10,000 PINs offline and read the vault. The "5 attempts" counter lived in the same database and protected nothing offline. Password reset could also be done with just the PIN (no lockout) or with 3 card numbers + PIN (server didn't enforce the challenged letters).
+- **PIN never wraps the key** (chosen) vs. Windows Hello/TPM binding (rejected for now: breaks plug-into-any-PC portability) vs. longer PIN (rejected: still crackable offline). Only an Argon2id hash of the PIN is stored; cracking it reveals the PIN but decrypts nothing.
+- **PIN undoes any lock until the app closes** (owner choice) rather than only the idle lock or an 8-hour cap.
+- **16 card numbers** form a key slot of their own (Argon2id; 16 distinct numbers 10-99 ≈ 103 bits), so a paper-only card is enough to recover. The card-file slot (64-hex key) is unchanged.
+- **No migration of old vaults**: nobody uses the vault yet (owner, 2026-11-11). Old columns (`mvk_wrapped_pin`, `pin_salt`, `pin_failed_attempts`, `grid_cells_hash`) are no longer written or read.
+
+### Technical Touchpoints
+- `engine/services/crypto_vault.py`: `hash_pin`, `verify_pin`, `normalize_card_cells`, `derive_key_from_card_cells`; removed `derive_key_from_pin`, `verify_grid_challenge_cells` and per-cell challenge hashes from `generate_grid_card`.
+- `engine/api/vault.py`: in-memory soft lock (`soft_lock_vault`, `purge_vault_key`), PIN unlock only while the key is in memory with a 5-failure purge; `POST /api/vault/pin` (set/change/remove, vault must be unlocked); `/status` adds `pin_unlock_available`; `/reset-password` accepts `card_token`, `card_cells` (all 16), `current_password`, or an unlocked session; removed `GET /recovery/challenge`. Argon2 work runs in worker threads.
+- `engine/database.py`: columns `pin_verifier`, `mvk_wrapped_card_cells`, `card_cells_salt`.
+- `src/components/VaultPasswordResetModal.tsx` (tabs: Card file / Card numbers / Current password), `src/components/VaultView.tsx` (first-unlock explanation, lock toast, link wording), `src/components/settings/VaultSettings.tsx` (Quick PIN row, wording), `src/types/index.ts`, `src/utils/gridCardRenderer.ts`.
+- Tests: `test_vault_pin_is_session_only_quick_unlock`, `test_emergency_card_recovery_file_or_all_16_numbers`; UI walk-through with Playwright (setup wizard, first unlock after engine restart, Lock → PIN, 5 wrong PINs, 16-number recovery, Settings PIN change).
+
+### State & Lifecycle Impact
+- The key's lifetime in memory is the app session; there is nothing on disk that the PIN can open.
+- Setup purges the key, then the wizard's own password unlock opens the vault as before.
 

@@ -467,12 +467,6 @@ export interface GridCardData {
   cells: Record<string, string>;
   card_token: string;
   grid_salt: string;
-  challenge_hashes: Record<string, string>;
-}
-
-export interface VaultRecoveryChallenge {
-  card_id?: string | null;
-  required_cells: string[];
 }
 
 
