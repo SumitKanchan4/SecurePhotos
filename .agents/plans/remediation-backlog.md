@@ -80,7 +80,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - **Impact:** a crash, power loss or hot-unplug mid-batch (which rule §6 expects) leaves rows pointing at deleted files, and `.enc` files that no row references. Photos look lost.
 - **Proposed fix:** one shared helper that handles one file at a time: write `.enc` (temp file, fsync, replace), verify, update the row, commit, then delete the plaintext. Unlock does the reverse. Add a reconciliation sweep at startup for leftovers. Store relative paths for the rows it writes (rule §2).
 
-### C6 · Vault reset orphans encrypted files — `in-progress` (branch `fix/c6-vault-reset-erase`, WIP; waits for Q6) (decided 2026-11-10: erase everything, vault albums too)
+### C6 · Vault reset orphans encrypted files — `review` (branch `fix/c6-vault-reset-erase`, history §101) (decided 2026-11-10: erase everything, vault albums too)
 - **Decision:** reset permanently deletes all vault items (files plus rows) with the keys. The user types the confirmation phrase themselves and sees the item count first. The API requires the phrase (no optional body).
 - **Current:** `vault.py:395-408` deletes `vault_configs` only. `.enc` files and their `photos` rows remain and can never be decrypted again. The confirmation phrase is optional in the API and hard-coded in the UI (`VaultView.tsx:399`), so it guards nothing.
 - **Decision:** on reset, either (a) permanently delete all vault items and files too, or (b) refuse to reset while vault items exist. Make the confirmation phrase required and typed by the user.
@@ -156,7 +156,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ### Q4 · Backend structure — `todo` (= review item 15)
 - Remove duplication in `vault.py` (partly done in C5), add a small repository layer instead of per-route connection and dict mapping, and review the 76 broad `except Exception` blocks.
 
-### Q6 · Tests run against the real library database — `review` (branch `fix/q6-test-isolation`, history §100; blocks C6)
+### Q6 · Tests run against the real library database — `done` (merged 2026-11-11, history §100)
 - The tests use `settings.database_path` (the developer's real `data/` library) and only back up and restore `vault_configs`. Tests insert and delete rows in the live DB. Give pytest its own temporary data folder (`SECUREPHOTOS_DATA_DIR` set in `conftest.py` before `engine.config` is imported).
 - Several vault tests call `/api/vault/reset` with no body; C6 makes the phrase required, so update those tests in C6.
 
