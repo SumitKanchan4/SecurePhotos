@@ -627,6 +627,15 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
             await conn.execute("ALTER TABLE vault_configs ADD COLUMN grid_cells_hash TEXT;")
         if "grid_salt" not in existing_cols:
             await conn.execute("ALTER TABLE vault_configs ADD COLUMN grid_salt TEXT;")
+        # C2: the PIN is only a quick re-unlock. Only an Argon2id hash of it is stored;
+        # it never wraps the vault key (mvk_wrapped_pin / pin_salt are no longer written).
+        if "pin_verifier" not in existing_cols:
+            await conn.execute("ALTER TABLE vault_configs ADD COLUMN pin_verifier TEXT;")
+        # C3: recovery slot derived from all 16 Emergency Card numbers.
+        if "mvk_wrapped_card_cells" not in existing_cols:
+            await conn.execute("ALTER TABLE vault_configs ADD COLUMN mvk_wrapped_card_cells TEXT;")
+        if "card_cells_salt" not in existing_cols:
+            await conn.execute("ALTER TABLE vault_configs ADD COLUMN card_cells_salt TEXT;")
 
         # Original media size migration: dynamically add original_file_size column if not present
         async with conn.execute("PRAGMA table_info(photos);") as cursor:

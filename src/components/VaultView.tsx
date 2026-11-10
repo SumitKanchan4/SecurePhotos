@@ -326,13 +326,16 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     setVaultAlbums([]);
     setActiveVaultAlbumId(null);
     setVaultAlbumPhotos([]);
+    let pinCanReopen = false;
     try {
-      await apiFetch("/api/vault/lock", { method: "POST" });
+      const res = await apiFetch("/api/vault/lock", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      pinCanReopen = Boolean(data.pin_unlock_available);
     } catch (err) {
       console.error("Error locking vault:", err);
     }
     await checkVaultStatus();
-    showToast("Vault locked and RAM purged.", "info");
+    showToast(pinCanReopen ? "Vault locked. Your PIN can reopen it." : "Vault locked.", "info");
   };
 
   // Generic unlock submission
@@ -639,7 +642,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               <button
                 onClick={handleManualLock}
                 className="clickable"
-                title="Lock Vault and purge RAM immediately (L)"
+                title="Lock the vault (L)"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -992,16 +995,16 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               gap: "14px",
             }}
           >
-            {/* PIN Locked Warning Badge */}
+            {/* PIN not usable right now: first unlock since opening the app, or 5 wrong PINs */}
             {isVaultPinLocked && (
-              <div 
+              <div
                 style={{
                   width: "100%",
                   padding: "10px 14px",
                   borderRadius: "var(--radius-md)",
-                  backgroundColor: "rgba(249, 115, 22, 0.12)",
-                  border: "1px solid rgba(249, 115, 22, 0.3)",
-                  color: "#fb923c",
+                  backgroundColor: "var(--glass-pill-bg)",
+                  border: "1px solid var(--glass-border)",
+                  color: "var(--text-secondary)",
                   fontSize: "12px",
                   display: "flex",
                   alignItems: "center",
@@ -1011,7 +1014,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                 }}
               >
                 <ShieldAlert size={14} style={{ flexShrink: 0 }} />
-                <span>PIN is locked after 5 incorrect attempts. Please unlock using your Master Password.</span>
+                <span>Enter your master password. After that, your PIN reopens the vault until you close the app.</span>
               </div>
             )}
 
@@ -1314,7 +1317,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                   }}
                 >
                   <CreditCard size={13} />
-                  <span>Forgot password or PIN? Reset with Grid Card</span>
+                  <span>Forgot your password? Use your Emergency Card</span>
                 </button>
 
                 <button

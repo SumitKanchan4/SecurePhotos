@@ -225,83 +225,83 @@ async def test_vault_photos_crud_and_streaming_api():
 
 
 @pytest.mark.asyncio
-async def test_vault_pin_workflow_and_rate_limiting():
-    """Verifies 4-digit PIN setup, rapid unlock, 5-attempt brute-force lock, and recovery unwrap."""
+async def test_vault_pin_is_session_only_quick_unlock():
+    """C2: the PIN only re-opens a vault whose key is already in memory.
+
+    - No PIN-derived key is stored (a copied drive can't be opened by guessing PINs).
+    - PIN doesn't work before the first password unlock, nor after an app restart.
+    - Any lock (Lock button / auto-lock) keeps the key for the PIN.
+    - 5 wrong PINs purge the key; the master password is needed again.
+    """
+    from engine.api import vault as vault_api
+    from engine.database import get_db_connection
+
     await run_migrations()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # Setup with Master Password and 4-digit PIN
-        setup_res = await client.post(
-            "/api/vault/setup",
-            json={
-                "password": "MasterSecretPassword789!",
-                "pin": "1234",
-                "recovery_phrase": "timber ocean canyon desert mountain river breeze stone valley thunder shadow apple",
-                "password_hint": "Pin is 1234",
-            },
-        )
-        assert setup_res.status_code == 201
-        assert setup_res.json()["has_pin"] is True
+    password = "MasterSecretPassword789!"
+    phrase = "timber ocean canyon desert mountain river breeze stone valley thunder shadow apple"
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
+        setup_res = await client.post("/api/vault/setup", json={"password": password, "pin": "1234", "recovery_phrase": phrase})
+        assert setup_res.status_code == 201 and setup_res.json()["has_pin"] is True
 
-        # Check status shows has_pin=True and is_pin_locked=False
-        status_res = await client.get("/api/vault/status")
-        assert status_res.status_code == 200
-        assert status_res.json()["has_pin"] is True
-        assert status_res.json()["is_pin_locked"] is False
+        # Nothing on disk can open the vault with the PIN.
+        conn = await get_db_connection()
+        try:
+            async with conn.execute("SELECT mvk_wrapped_pin, pin_salt, pin_verifier FROM vault_configs;") as cur:
+                row = await cur.fetchone()
+        finally:
+            await conn.close()
+        assert row["mvk_wrapped_pin"] is None and row["pin_salt"] is None
+        assert row["pin_verifier"].startswith("$argon2id$")
 
-        # 1. Unlock with valid PIN
-        pin_unlock = await client.post(
-            "/api/vault/unlock",
-            json={"pin": "1234"},
-        )
-        assert pin_unlock.status_code == 200
-        assert pin_unlock.json()["status"] == "unlocked"
+        # 1. Before any password unlock the PIN can't be used.
+        status = (await client.get("/api/vault/status")).json()
+        assert status["has_pin"] is True and status["pin_unlock_available"] is False and status["is_pin_locked"] is True
+        early = await client.post("/api/vault/unlock", json={"pin": "1234"})
+        assert early.status_code == 401 and "master password" in early.json()["detail"]
 
-        # Lock vault
+        # 2. Password unlock, then Lock: the PIN re-opens it.
+        assert (await client.post("/api/vault/unlock", json={"password": password})).status_code == 200
+        lock_res = await client.post("/api/vault/lock")
+        assert lock_res.json()["pin_unlock_available"] is True
+        assert (await client.get("/api/vault/photos")).status_code == 401  # Really locked.
+        assert (await client.post("/api/vault/unlock", json={"pin": "1234"})).status_code == 200
+        assert (await client.get("/api/vault/photos")).status_code == 200
+
+        # 3. Idle auto-lock behaves the same way.
+        vault_api.ACTIVE_VAULT_SESSION["last_activity"] -= vault_api.AUTO_LOCK_SECONDS + 1
+        assert (await client.get("/api/vault/photos")).status_code == 401
+        assert (await client.post("/api/vault/unlock", json={"pin": "1234"})).status_code == 200
+
+        # 4. Five wrong PINs purge the key.
         await client.post("/api/vault/lock")
+        for attempt in range(1, 6):
+            wrong = await client.post("/api/vault/unlock", json={"pin": "9999"})
+            assert wrong.status_code == 401
+            if attempt < 5:
+                assert f"{5 - attempt} attempt" in wrong.json()["detail"]
+        assert vault_api.ACTIVE_VAULT_SESSION["mvk"] is None
+        right_too_late = await client.post("/api/vault/unlock", json={"pin": "1234"})
+        assert right_too_late.status_code == 401 and "master password" in right_too_late.json()["detail"]
 
-        # 2. Test PIN brute-force protection (enter wrong PIN 5 times)
-        for i in range(1, 6):
-            wrong_res = await client.post(
-                "/api/vault/unlock",
-                json={"pin": "9999"},
-            )
-            assert wrong_res.status_code == 401
-            if i < 5:
-                assert f"{5 - i} attempt" in wrong_res.json()["detail"]
-            else:
-                assert "PIN is now locked" in wrong_res.json()["detail"]
-
-        # Check status shows is_pin_locked=True
-        locked_status = await client.get("/api/vault/status")
-        assert locked_status.json()["is_pin_locked"] is True
-
-        # 3. Attempting PIN while locked fails immediately
-        locked_pin_res = await client.post(
-            "/api/vault/unlock",
-            json={"pin": "1234"},  # Even correct PIN is blocked
-        )
-        assert locked_pin_res.status_code == 401
-        assert "PIN entry is locked" in locked_pin_res.json()["detail"]
-
-        # 4. Master Password unlocks and resets the PIN lock
-        pass_unlock = await client.post(
-            "/api/vault/unlock",
-            json={"password": "MasterSecretPassword789!"},
-        )
-        assert pass_unlock.status_code == 200
-        assert pass_unlock.json()["status"] == "unlocked"
-
-        # Check status: PIN lock is cleared!
-        cleared_status = await client.get("/api/vault/status")
-        assert cleared_status.json()["is_pin_locked"] is False
-
-        # Lock and verify PIN works again
+        # 5. Password restores PIN use; changing the PIN needs an open vault.
+        assert (await client.post("/api/vault/unlock", json={"password": password})).status_code == 200
+        assert (await client.post("/api/vault/pin", json={"pin": "5678"})).status_code == 200
         await client.post("/api/vault/lock")
-        pin_ok = await client.post("/api/vault/unlock", json={"pin": "1234"})
-        assert pin_ok.status_code == 200
+        assert (await client.post("/api/vault/pin", json={"pin": "1111"})).status_code == 401
+        assert (await client.post("/api/vault/unlock", json={"pin": "1234"})).status_code == 401  # Old PIN gone.
+        assert (await client.post("/api/vault/unlock", json={"pin": "5678"})).status_code == 200
 
-        # Clean up test vault
+        # 6. App restart = memory gone: PIN no longer works.
+        vault_api.purge_vault_key()
+        assert (await client.post("/api/vault/unlock", json={"pin": "5678"})).status_code == 401
+
+        # 7. Without a PIN, Lock purges the key immediately.
+        assert (await client.post("/api/vault/unlock", json={"password": password})).status_code == 200
+        assert (await client.post("/api/vault/pin", json={"pin": None})).json()["has_pin"] is False
+        await client.post("/api/vault/lock")
+        assert vault_api.ACTIVE_VAULT_SESSION["mvk"] is None
+
         await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
 
 
@@ -698,155 +698,60 @@ async def test_vault_relative_thumbnail_and_video_handling():
 
 
 @pytest.mark.asyncio
-async def test_grid_card_generation_setup_and_password_reset():
-    """Verifies the complete ICICI-style Emergency Grid Card lifecycle:
-    1. Grid Card Generation with CSPRNG entropy.
-    2. Vault Setup with Grid Card payload.
-    3. Recovery Challenge API returning 3 random letters.
-    4. Password Reset via ICICI Challenge (3 cells + 4-digit PIN).
-    5. Password Reset via Full Card Token (uploaded card key).
-    6. Rejection of invalid credentials.
+async def test_emergency_card_recovery_file_or_all_16_numbers():
+    """C3: forgot password -> Emergency Card file (full key) OR all 16 card numbers.
+
+    The 3-number challenge and the PIN-based resets no longer exist.
     """
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # Step 0: Ensure fresh vault state
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
 
-        # Step 1: Generate Grid Card
-        gen_res = await client.get("/api/vault/grid-card/generate")
-        assert gen_res.status_code == 200
-        card = gen_res.json()
-        assert card["card_id"].startswith("SP-")
-        assert len(card["cells"]) == 16
-        assert len(card["card_token"]) == 64
-        assert len(card["challenge_hashes"]) == 16
+        card = (await client.get("/api/vault/grid-card/generate")).json()
+        assert card["card_id"].startswith("SP-") and len(card["cells"]) == 16 and len(card["card_token"]) == 64
+        assert "challenge_hashes" not in card
 
-        # Step 2: Configure Vault with Grid Card + PIN
-        setup_payload = {
-            "password": "InitialMasterPassword123!",
-            "pin": "4819",
-            "grid_card": card,
-            "password_hint": "Vault Initial Hint",
-        }
-        setup_res = await client.post("/api/vault/setup", json=setup_payload)
-        assert setup_res.status_code == 201
-        setup_data = setup_res.json()
-        assert setup_data["status"] == "configured"
-        assert setup_data["has_pin"] is True
-        assert setup_data["grid_card_id"] == card["card_id"]
+        setup = await client.post(
+            "/api/vault/setup",
+            json={"password": "InitialMasterPassword123!", "pin": "4819", "grid_card": card, "password_hint": "hint"},
+        )
+        assert setup.status_code == 201 and setup.json()["grid_card_id"] == card["card_id"]
+        status = (await client.get("/api/vault/status")).json()
+        assert status["has_grid_card"] is True and status["grid_card_id"] == card["card_id"]
 
-        # Verify status endpoint returns grid card metadata
-        status_res = await client.get("/api/vault/status")
-        assert status_res.status_code == 200
-        status_data = status_res.json()
-        assert status_data["is_configured"] is True
-        assert status_data["has_grid_card"] is True
-        assert status_data["grid_card_id"] == card["card_id"]
+        # Removed paths.
+        assert (await client.get("/api/vault/recovery/challenge")).status_code == 404
+        pin_only = await client.post("/api/vault/reset-password", json={"new_password": "NoWayPassword1!", "pin": "4819"})
+        assert pin_only.status_code == 400
 
-        # Step 3: Fetch ICICI Recovery Challenge
-        chal_res = await client.get("/api/vault/recovery/challenge")
-        assert chal_res.status_code == 200
-        chal_data = chal_res.json()
-        assert chal_data["card_id"] == card["card_id"]
-        assert len(chal_data["required_cells"]) == 3
-        req_letters = chal_data["required_cells"]
-
-        # Step 4: Reset Password via Path B (ICICI Challenge Cells + PIN)
-        provided_cells = {letter: card["cells"][letter] for letter in req_letters}
-        reset_res = await client.post(
+        # All 16 printed numbers reset the password.
+        res = await client.post(
             "/api/vault/reset-password",
-            json={
-                "new_password": "NewMasterPassword456!",
-                "new_password_hint": "Second Hint",
-                "challenge_cells": provided_cells,
-                "pin": "4819",
-            },
+            json={"new_password": "NewMasterPassword456!", "card_cells": card["cells"]},
         )
-        assert reset_res.status_code == 200
-        assert reset_res.json()["status"] == "success"
-
-        # Verify old password fails to unlock
-        old_unlock = await client.post(
-            "/api/vault/unlock", json={"password": "InitialMasterPassword123!"}
-        )
-        assert old_unlock.status_code == 401
-
-        # Verify new password unlocks cleanly
-        new_unlock = await client.post(
-            "/api/vault/unlock", json={"password": "NewMasterPassword456!"}
-        )
-        assert new_unlock.status_code == 200
-        assert new_unlock.json()["status"] == "unlocked"
+        assert res.status_code == 200
+        assert (await client.post("/api/vault/unlock", json={"password": "InitialMasterPassword123!"})).status_code == 401
+        assert (await client.post("/api/vault/unlock", json={"password": "NewMasterPassword456!"})).status_code == 200
         await client.post("/api/vault/lock")
 
-        # Step 5: Reset Password via Path A (Full Grid Card Token)
-        token_reset_res = await client.post(
-            "/api/vault/reset-password",
-            json={
-                "new_password": "ThirdMasterPassword789!",
-                "new_password_hint": "Third Hint",
-                "card_token": card["card_token"],
-            },
-        )
-        assert token_reset_res.status_code == 200
+        # 15 numbers, or one wrong number, are rejected.
+        fifteen = dict(list(card["cells"].items())[:15])
+        res15 = await client.post("/api/vault/reset-password", json={"new_password": "ShouldFail123!", "card_cells": fifteen})
+        assert res15.status_code == 400
+        one_wrong = dict(card["cells"])
+        one_wrong["P"] = "10" if one_wrong["P"] != "10" else "11"
+        res_wrong = await client.post("/api/vault/reset-password", json={"new_password": "ShouldFail123!", "card_cells": one_wrong})
+        assert res_wrong.status_code == 401
 
-        # Verify third password unlocks
-        third_unlock = await client.post(
-            "/api/vault/unlock", json={"password": "ThirdMasterPassword789!"}
+        # The card file's full key also works; an invalid key doesn't.
+        res_file = await client.post(
+            "/api/vault/reset-password", json={"new_password": "ThirdMasterPassword789!", "card_token": card["card_token"]}
         )
-        assert third_unlock.status_code == 200
+        assert res_file.status_code == 200
+        assert (await client.post("/api/vault/unlock", json={"password": "ThirdMasterPassword789!"})).status_code == 200
         await client.post("/api/vault/lock")
+        bad = await client.post("/api/vault/reset-password", json={"new_password": "ShouldFail123!", "card_token": "0" * 64})
+        assert bad.status_code == 401
+        short = await client.post("/api/vault/reset-password", json={"new_password": "short", "card_token": card["card_token"]})
+        assert short.status_code == 400
 
-        # Step 6: Negative Tests / Security Constraints
-        # Wrong challenge cells must reject
-        wrong_cells = {letter: "00" for letter in req_letters}
-        wrong_cell_res = await client.post(
-            "/api/vault/reset-password",
-            json={
-                "new_password": "ShouldFailPassword123!",
-                "challenge_cells": wrong_cells,
-                "pin": "4819",
-            },
-        )
-        assert wrong_cell_res.status_code == 401
-
-        # Wrong PIN with correct cells must reject
-        wrong_pin_res = await client.post(
-            "/api/vault/reset-password",
-            json={
-                "new_password": "ShouldFailPassword123!",
-                "challenge_cells": provided_cells,
-                "pin": "9999",
-            },
-        )
-        assert wrong_pin_res.status_code == 401
-
-        # Invalid token must reject
-        invalid_token_res = await client.post(
-            "/api/vault/reset-password",
-            json={
-                "new_password": "ShouldFailPassword123!",
-                "card_token": "invalid_hex_token_that_does_not_unwrap_the_master_key_1234567890",
-            },
-        )
-        assert invalid_token_res.status_code == 401
-
-        # Password < 8 characters must reject
-        short_pass_res = await client.post(
-            "/api/vault/reset-password",
-            json={
-                "new_password": "short",
-                "card_token": card["card_token"],
-            },
-        )
-        assert short_pass_res.status_code == 400
-
-        # Step 7: Teardown
         await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
-
-
-
-
-
-
-
