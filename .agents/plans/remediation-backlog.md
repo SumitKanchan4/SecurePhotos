@@ -22,7 +22,15 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 
 ## Critical
 
-### C1 · Make the single-version enhancement pipeline safe and honour its settings — `needs-decision`
+### C1 · Make the single-version enhancement pipeline safe and honour its settings — `todo` (decided 2026-11-10)
+- **Decisions:**
+  - Every import is always enhanced; there is no option to keep the original. Remove the misleading `enable_space_saver` toggle.
+  - Keep 8K enlargement (the owner accepts the larger files).
+  - Face restoration only on faces measured as blurry; sharp faces are left untouched.
+  - Save enhanced photos as **AVIF**, keeping EXIF (date, GPS, camera).
+  - Connect the quality slider (`quality_crf`) to AVIF quality for future imports, with a visually lossless default.
+  - Make `pause_on_battery` work: pause on battery, resume when plugged in.
+  - Use `resolve_media_path` and relative paths.
 - **Agreed intent:** keep one version of each photo; the enhanced file replaces the imported original (history §14). This is *not* being reversed.
 - **Current:** [engine/api/photos.py](../../engine/api/photos.py) `run_background_optimization()` runs on every engine start (`main.py:50`) and after every import (`photos.py:1038`). It calls `upscale_and_optimize_to_8k(..., destination_path=None)` in [super_resolution_service.py](../../engine/services/super_resolution_service.py), then `restore_faces_in_image` (CodeFormer) on the same file.
 - **Problems found:**
@@ -33,7 +41,8 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
   - It uses `Path(filepath)` instead of `resolve_media_path`, so it breaks when the drive letter changes.
 - **Decisions needed:** default on/off; whether to upscale at all; face restoration policy (off / opt-in / per photo); whether to keep a time-limited undo (e.g. the pre-enhancement file held in app trash for 30 days, then hard-deleted, which matches the trash model); which output format and quality actually saves space.
 
-### C2 · The 4-digit PIN slot can be brute-forced offline — `needs-decision`
+### C2 · The 4-digit PIN slot can be brute-forced offline — `todo` (decided 2026-11-10: option A)
+- **Decision:** the PIN is a quick re-unlock only, for the current app session after a master-password unlock. Nothing PIN-derived is stored on disk. On upgrade, delete the existing `mvk_wrapped_pin`/`pin_salt` and tell the user the PIN now works after the first password unlock.
 - **Current:** `vault.py:198-209` wraps the master vault key with Argon2id(PIN). The wrapped key, salt and attempt counter are all in `securephotos.db`.
 - **Impact:** anyone with a copy of the drive can try all 10,000 PINs offline (minutes to hours) and decrypt the whole vault. The 5-attempt lock only applies through the API.
 - **Options:**
@@ -42,7 +51,8 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
   - (C) A longer PIN. Still weak offline; not recommended.
 - **Affects:** C3 (the reset path uses the PIN slot) and P12.
 
-### C3 · PIN lockout can be bypassed through password reset — `needs-decision`
+### C3 · PIN lockout can be bypassed through password reset — `todo` (decided 2026-11-10)
+- **Decision:** recovery is by **Emergency Card file upload OR typing all 16 card numbers**; a key slot is derived from all 16 cells with a strong KDF. Remove the 3-cell challenge, the "cells + PIN" path and the "PIN-only" reset path (`vault.py:527`, reset modal tabs `challenge` and `pin`). Migration for existing vaults: on the next password unlock, recover the cells from the stored hashes (90 candidates each), create the 16-cell slot, and delete `grid_cells_hash`. Do together with or after C2.
 - **Current:** `vault.py:490-515` (reset path B: grid cells + PIN) and `crypto_vault.py:182-197`:
   - Wrong PINs on this path never increment `pin_failed_attempts` or check the lockout.
   - The server does not enforce the letters it challenged; the client can send any letters.
@@ -56,18 +66,21 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
   - Rate-limit the cheap SHA-256 cell check (backoff).
 - **Note:** the cell hashes in the DB can be reversed offline (90 values each). That is acceptable only if this path also needs a strong secret. Revisit after C2 (under option A, the PIN slot goes away and this path needs redesign: grid card token, or cells + master-password-derived data).
 
-### C4 · Encrypt sensitive metadata for vault items — `needs-decision` (scope)
+### C4 · Encrypt sensitive metadata for vault items — `todo` (decided 2026-11-10)
+- **Decision:** protect OCR text plus its FTS rows, face data and GPS. Face data: delete embeddings and face crops on lock, rescan on unlock. Filename, caption/tags and album names stay in plaintext.
 - **Agreed:** encrypt the critical metadata, not everything.
 - **Current:** locking encrypts the file, thumbnail and preview only. These stay in plaintext: `filename`, `latitude/longitude`, `ocr_text` (and the FTS index), `caption`, `content_tags`, album names, **face embeddings (`faces` table) and face-crop thumbnails on disk** from scans done before locking.
 - **Proposed scope to encrypt or remove:** OCR text plus its FTS rows, caption/tags, GPS, filename, face embeddings plus face crops (or delete faces on lock and rescan on unlock). Keep in plaintext: id, size, mime, width/height, dates, flags.
 - **Decision:** confirm the list above.
 
-### C5 · Make vault lock/unlock crash-safe — `todo` (agreed)
+### C5 · Make vault lock/unlock crash-safe — `todo` (briefing confirmed 2026-11-10)
+- **Scope confirmed:** crash-safety, plus one shared helper replacing the 4 copies, plus relative paths for the rows it writes. Branch `fix/c5-vault-crash-safe`.
 - **Current:** `lock_photos_to_vault`, `lock_album_to_vault`, `restore_photos_from_vault` and `unlock_album_from_vault` in [vault.py](../../engine/api/vault.py) encrypt the file, **delete the plaintext**, and only commit the DB at the end of the whole batch. Unlock writes plaintext directly (no temp file or fsync), then deletes the `.enc` file. The logic is copy-pasted 4 times.
 - **Impact:** a crash, power loss or hot-unplug mid-batch (which rule §6 expects) leaves rows pointing at deleted files, and `.enc` files that no row references. Photos look lost.
 - **Proposed fix:** one shared helper that handles one file at a time: write `.enc` (temp file, fsync, replace), verify, update the row, commit, then delete the plaintext. Unlock does the reverse. Add a reconciliation sweep at startup for leftovers. Store relative paths for the rows it writes (rule §2).
 
-### C6 · Vault reset orphans encrypted files — `needs-decision` (fix agreed)
+### C6 · Vault reset orphans encrypted files — `todo` (decided 2026-11-10: erase everything)
+- **Decision:** reset permanently deletes all vault items (files plus rows) with the keys. The user types the confirmation phrase themselves and sees the item count first. The API requires the phrase (no optional body).
 - **Current:** `vault.py:395-408` deletes `vault_configs` only. `.enc` files and their `photos` rows remain and can never be decrypted again. The confirmation phrase is optional in the API and hard-coded in the UI (`VaultView.tsx:399`), so it guards nothing.
 - **Decision:** on reset, either (a) permanently delete all vault items and files too, or (b) refuse to reset while vault items exist. Make the confirmation phrase required and typed by the user.
 
