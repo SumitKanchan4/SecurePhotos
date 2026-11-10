@@ -392,20 +392,45 @@ async def lock_vault() -> dict:
     return {"status": "locked"}
 
 
+VAULT_RESET_PHRASE = "ERASE ALL DATA"
+
+
+@router.get("/reset-preview", status_code=status.HTTP_200_OK)
+async def get_vault_reset_preview() -> dict:
+    """Returns how many vault photos and albums a reset would permanently erase.
+
+    Deliberately separate from ``/status`` so the vault size isn't sent with every
+    status poll; it's only requested when the user opens the reset screen.
+    """
+    conn = await get_db_connection()
+    try:
+        return await vault_storage.count_vault_contents(conn)
+    finally:
+        await conn.close()
+
+
 @router.post("/reset", status_code=status.HTTP_200_OK)
-async def reset_vault(payload: Optional[VaultResetRequest] = None) -> dict:
-    """Guarded reset of vault configuration. Requires explicit confirm_phrase for production safety."""
-    if payload is not None and payload.confirm_phrase != "ERASE ALL DATA":
-        raise HTTPException(status_code=400, detail="Invalid confirmation phrase. Must be 'ERASE ALL DATA'.")
+async def reset_vault(payload: VaultResetRequest) -> dict:
+    """Factory-resets the vault: permanently erases every vault photo, file, face crop and
+    vault album, then the keys.
+
+    The confirmation phrase is mandatory. Keys are deleted in the same commit as the
+    last rows, so a crash mid-reset never leaves unreadable files behind without keys
+    being kept; running reset again finishes the job.
+    """
+    if payload.confirm_phrase.strip() != VAULT_RESET_PHRASE:
+        raise HTTPException(status_code=400, detail=f"Invalid confirmation phrase. Must be '{VAULT_RESET_PHRASE}'.")
 
     lock_vault_memory()
     conn = await get_db_connection()
     try:
+        erased = await vault_storage.erase_vault_contents(conn)
         await conn.execute("DELETE FROM vault_configs WHERE vault_type = 'private';")
         await conn.commit()
     finally:
         await conn.close()
-    return {"status": "vault_reset"}
+    logger.info("Vault reset: erased %d photos and %d albums.", erased["photo_count"], erased["album_count"])
+    return {"status": "vault_reset", "erased_photos": erased["photo_count"], "erased_albums": erased["album_count"]}
 
 
 @router.get("/grid-card/generate", status_code=status.HTTP_200_OK)
