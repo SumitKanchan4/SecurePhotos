@@ -68,7 +68,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
   - Rate-limit the cheap SHA-256 cell check (backoff).
 - **Note:** the cell hashes in the DB can be reversed offline (90 values each). That is acceptable only if this path also needs a strong secret. Revisit after C2 (under option A, the PIN slot goes away and this path needs redesign: grid card token, or cells + master-password-derived data).
 
-### C4 · Encrypt sensitive metadata for vault items — `review` (branch `fix/c4-vault-metadata`, history §104)
+### C4 · Encrypt sensitive metadata for vault items — `done` (merged 2026-11-11, history §104)
 - **Decision:** protect OCR text plus its FTS rows, face data and GPS. Face data: delete embeddings and face crops on lock, rescan on unlock. Filename, caption/tags and album names stay in plaintext.
 - **Agreed:** encrypt the critical metadata, not everything.
 - **Current:** locking encrypts the file, thumbnail and preview only. These stay in plaintext: `filename`, `latitude/longitude`, `ocr_text` (and the FTS index), `caption`, `content_tags`, album names, **face embeddings (`faces` table) and face-crop thumbnails on disk** from scans done before locking.
@@ -96,6 +96,12 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 
 ## High
 
+### H10 · Blurry-face restoration: choose a permissive model or drop the idea — `needs-decision` (from H9)
+- CodeFormer (non-commercial) was removed in H9, together with C1's switched-off blurry-face step. Candidate: GFPGAN v1.4 (weights Apache-2.0, but trained on FFHQ, which is CC-BY-NC-SA; the same "permissive weights, research dataset" grey area as SFace). Needs an owner decision, then calibration of the blur threshold on real photos.
+
+### H11 · Rare false face detections — `todo` (found in H9 rehearsal)
+- YuNet finds ~15 more real background faces than the old pipeline, plus occasional non-faces (a hand, an ear/earring). Their detector score (0.67-0.84) overlaps named faces (lowest 0.68), so no safe score cut-off exists. Today they only appear as "who is this?" suggestions the user can dismiss. Possible fixes: a small face/non-face check on the crop, or hiding single-face suggestions below a quality level.
+
 ### H1 · Check the vault session token on every vault request — `todo`
 - `get_active_mvk(token)` ignores its argument (`vault.py:47`). The vault is one global unlocked state, so any authenticated caller can use it. Fix: require `X-Session-Token` on all vault routes and compare it with `secrets.compare_digest`. Media `<img>` tags need a cookie or a short-lived signed URL; design that in the briefing.
 
@@ -121,7 +127,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ### H8 · Pin model downloads and correct the offline wording — `todo`
 - `face_recognition_service.py:27-28`, `face_restore_service.py:25-26`, `neural_sr_service.py:25`, `deblur_service.py:25` download from HuggingFace `main` branches with no hash check. Rule §3.4 says models are bundled, but CI ships a placeholder. Pin the revision and SHA-256, verify before loading, and download into `data/models` only. Reword the README: "all photo processing is on-device; models download once, updates are checked online".
 
-### H9 · Model license audit and alternatives — `todo`
+### H9 · Model license audit and alternatives — `review` (branch `fix/h9-permissive-models`, history §105)
 - **Now blocks** automatic face restoration (C1): it's implemented but disabled until this passes.
 - To verify (confidence medium, from memory): CodeFormer (S-Lab 1.0, non-commercial), InsightFace ArcFace w600k (non-commercial research), `yoloface_8n` (YOLOv8 → possibly AGPL-3.0), `realesr-general-x4v3` (BSD-3, likely fine), `1x-ReFocus-Cleanly` (unknown). Find permissive alternatives that still serve the enhancement and face goals.
 

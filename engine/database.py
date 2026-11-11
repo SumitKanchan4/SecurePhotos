@@ -517,6 +517,52 @@ async def _apply_one_time_migrations(conn: aiosqlite.Connection) -> None:
         if cur.rowcount:
             logger.info("Re-queued %d photo(s) for enhancement that were skipped earlier.", cur.rowcount)
 
+    # H9: which model produced each face embedding. NULL = legacy ArcFace (512-D).
+    async with conn.execute("PRAGMA table_info(faces);") as cursor:
+        face_cols = {row["name"] for row in await cursor.fetchall()}
+    if "embedding_model" not in face_cols:
+        await conn.execute("ALTER TABLE faces ADD COLUMN embedding_model TEXT;")
+        await conn.commit()
+
+    # H9: People moved to permissively licensed models (YuNet + SFace). Re-scan every
+    # library photo once; the scanner carries names over to the new faces by position.
+    # Resumable: each photo is marked scanned in the same commit as its face swap.
+    name = "2026_11_h9_rescan_faces_permissive_models"
+    if not await already_applied(name):
+        cur = await conn.execute(
+            "UPDATE photos SET faces_scanned = 0 WHERE is_encrypted = 0 AND trashed_at IS NULL;"
+        )
+        await conn.execute("INSERT INTO applied_migrations (name) VALUES (?);", (name,))
+        await conn.commit()
+        logger.info("Queued %d photo(s) to re-scan faces with the new face models.", cur.rowcount)
+
+    # H9: the old scanner stored face boxes as numpy float32, which SQLite keeps as
+    # 4-byte blobs. Convert every such box to a real number (faces that aren't
+    # re-scanned, e.g. on vault photos or named faces the new model didn't find).
+    name = "2026_11_h9_face_boxes_to_numbers"
+    if not await already_applied(name):
+        import struct
+
+        def as_number(v):
+            if isinstance(v, (bytes, bytearray)) and len(v) in (4, 8):
+                return struct.unpack("<f" if len(v) == 4 else "<d", v)[0]
+            return v
+
+        async with conn.execute(
+            "SELECT id, box_x, box_y, box_w, box_h FROM faces "
+            "WHERE typeof(box_x) = 'blob' OR typeof(box_y) = 'blob' OR typeof(box_w) = 'blob' OR typeof(box_h) = 'blob';"
+        ) as cursor:
+            blob_rows = await cursor.fetchall()
+        for r in blob_rows:
+            await conn.execute(
+                "UPDATE faces SET box_x = ?, box_y = ?, box_w = ?, box_h = ? WHERE id = ?;",
+                (*(as_number(r[k]) for k in ("box_x", "box_y", "box_w", "box_h")), r["id"]),
+            )
+        await conn.execute("INSERT INTO applied_migrations (name) VALUES (?);", (name,))
+        await conn.commit()
+        if blob_rows:
+            logger.info("Converted %d stored face box(es) from binary to numbers.", len(blob_rows))
+
 
 async def run_migrations(db_path: Optional[Path] = None) -> None:
     """Executes idempotent database schema migrations, indexes, and triggers.

@@ -33,7 +33,7 @@ SecurePhotos is engineered as a local-first, zero-cloud desktop application comb
 ### Core Technologies
 - **Desktop Host**: Tauri 2.0 (Rust) using Windows WebView2 runtime.
 - **Backend Runtime**: Python 3.12, FastAPI, Uvicorn, SQLite 3 (WAL mode + FTS5 full-text indexing), `aiosqlite`.
-- **AI & Acceleration**: ONNX Runtime with DirectML hardware acceleration, MobileCLIP, CodeFormer / Real-ESRGAN, YOLOv8-Face.
+- **AI & Acceleration**: ONNX Runtime with DirectML hardware acceleration; YuNet (face finding, MIT), SFace (face recognition, Apache-2.0), Real-ESRGAN (upscaling, BSD-3). Only permissively licensed models; see `THIRD_PARTY_NOTICES.md`.
 - **Frontend Framework**: React 18, TypeScript, Vite, `@tanstack/react-virtual`, Lucide React icons.
 - **Cryptography**: AES-256-GCM chunked streaming, Argon2id key derivation, Windows OS CSPRNG (`BCryptGenRandom`).
 
