@@ -229,7 +229,6 @@ async def run_background_optimization():
                         enhancement_service.enhance_to_avif,
                         source,
                         quality,
-                        enhancement_service.AUTO_FACE_RESTORE_ENABLED,
                     )
                     optimization_state["item_progress"] = 80
                     new_hash = await asyncio.to_thread(calculate_file_hash, result.path)
@@ -771,69 +770,6 @@ async def get_neural_preview(photo_id: int):
 
     return FileResponse(
         str(neural_path),
-        media_type="image/webp",
-        headers={"Cache-Control": "public, max-age=86400"}
-    )
-
-
-@router.post("/{photo_id}/face-restore", status_code=status.HTTP_200_OK)
-async def trigger_face_restore(photo_id: int):
-    """Executes high-fidelity face unblur and restoration (CodeFormer + YOLOv8-Face)."""
-    conn = await get_db_connection()
-    try:
-        async with conn.execute("SELECT filepath, is_encrypted FROM photos WHERE id = ?;", (photo_id,)) as cursor:
-            row = await cursor.fetchone()
-    finally:
-        await conn.close()
-
-    if not row:
-        raise HTTPException(status_code=404, detail="Photo not found")
-
-    if row["is_encrypted"]:
-        raise HTTPException(status_code=403, detail="Encrypted photo requires vault authentication")
-
-    src_file = resolve_media_path(row["filepath"])
-    if not src_file.exists():
-        raise HTTPException(status_code=404, detail="Original photo file missing")
-
-    from engine.config import settings
-    from engine.services.face_restore_service import restore_faces_in_image
-
-    preview_dir = settings.data_dir / "previews"
-    restore_dest = preview_dir / f"{photo_id}_face_restore.webp"
-
-    try:
-        loop = asyncio.get_running_loop()
-        out_path, w, h, sz = await loop.run_in_executor(
-            None,
-            restore_faces_in_image,
-            src_file,
-            restore_dest,
-            0.85,  # Fidelity weight strictly preserving authentic identity
-        )
-        return {
-            "status": "ok",
-            "photo_id": photo_id,
-            "preview_url": f"/api/photos/{photo_id}/face-restore-preview",
-            "width": w,
-            "height": h,
-            "size": sz,
-        }
-    except Exception as err:
-        logger.error(f"Face restoration failed for photo {photo_id}: {err}")
-        raise HTTPException(status_code=500, detail=f"Face restoration error: {str(err)}")
-
-
-@router.get("/{photo_id}/face-restore-preview")
-async def get_face_restore_preview(photo_id: int):
-    """Streams the high-fidelity face-restored preview proxy."""
-    from engine.config import settings
-    preview_path = settings.data_dir / "previews" / f"{photo_id}_face_restore.webp"
-    if not preview_path.exists():
-        raise HTTPException(status_code=404, detail="Face restore preview not generated yet")
-
-    return FileResponse(
-        str(preview_path),
         media_type="image/webp",
         headers={"Cache-Control": "public, max-age=86400"}
     )

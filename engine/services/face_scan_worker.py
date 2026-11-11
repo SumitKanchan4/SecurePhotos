@@ -1,8 +1,9 @@
 """Background Face Detection & Embedding Worker.
 
 This worker runs asynchronously in the background, ingesting photos with faces_scanned = 0,
-detecting facial bounding boxes and landmarks using YOLOv8-Face, computing 512-D ArcFace
-identity embeddings, persisting face crops to disk, and triggering unsupervised clustering.
+finding faces and landmarks with YuNet, computing 128-D SFace identity embeddings,
+persisting face crops to disk, and triggering unsupervised clustering. Re-scans carry
+names over to the new faces by position (see save_scanned_faces).
 
 Guarantees:
 - Non-Blocking: Asynchronous event loop execution without stalling frontend UI responsiveness.
@@ -15,7 +16,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image
 
@@ -41,6 +42,115 @@ face_scan_state: Dict[str, Any] = {
 
 _scan_lock = asyncio.Lock()
 
+# A new face inherits the name of an existing face it overlaps at least this much.
+NAME_CARRY_OVER_IOU = 0.4
+# Named face that a newer model couldn't find again: keeps its person link, has no
+# usable embedding and is left out of grouping.
+UNMATCHED_LEGACY_MODEL = "unmatched-legacy"
+
+
+def _iou(a, b) -> float:
+    ix1, iy1 = max(a[0], b[0]), max(a[1], b[1])
+    ix2, iy2 = min(a[2], b[2]), min(a[3], b[3])
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _stored_box(row) -> tuple:
+    """Relative (x1, y1, x2, y2) of a stored face; older rows stored float32 as 4-byte blobs."""
+    def num(v):
+        if isinstance(v, (bytes, bytearray)):
+            import numpy as np
+            return float(np.frombuffer(v, dtype=np.float32 if len(v) == 4 else np.float64)[0])
+        return float(v)
+    x, y, w, h = (num(row[k]) for k in ("box_x", "box_y", "box_w", "box_h"))
+    return (x, y, x + w, y + h)
+
+
+async def save_scanned_faces(conn, photo_id: int, faces: list, thumbnails_dir: Path) -> Tuple[int, List[int]]:
+    """Replaces a photo's faces with a fresh scan without losing names.
+
+    - Each new face inherits the person of the best-overlapping existing *named*
+      face (IoU >= ``NAME_CARRY_OVER_IOU``); that old face is replaced.
+    - Unnamed old faces are replaced.
+    - A named old face with no match is kept with its person. If it came from an
+      older model, its embedding is cleared and it's marked ``unmatched-legacy``,
+      so fingerprints from different models are never compared.
+
+    The caller commits; old crop images are deleted only after this returns.
+
+    Returns:
+        (number of new faces inserted, ids of deleted faces whose crop images
+        the caller removes after committing).
+    """
+    from engine.services.face_recognition_service import EMBEDDING_MODEL
+
+    async with conn.execute(
+        "SELECT id, person_id, box_x, box_y, box_w, box_h, embedding_model FROM faces WHERE photo_id = ?;", (photo_id,)
+    ) as cur:
+        existing = await cur.fetchall()
+    named = [r for r in existing if r["person_id"] is not None]
+    claimed: set = set()
+    to_delete = [r["id"] for r in existing if r["person_id"] is None]
+    inserted = 0
+
+    for face in faces:
+        new_box = (face["box_x"], face["box_y"], face["box_x"] + face["box_w"], face["box_y"] + face["box_h"])
+        best, best_iou = None, 0.0
+        for r in named:
+            if r["id"] in claimed:
+                continue
+            overlap = _iou(new_box, _stored_box(r))
+            if overlap > best_iou:
+                best, best_iou = r, overlap
+        person_id = None
+        if best is not None and best_iou >= NAME_CARRY_OVER_IOU:
+            claimed.add(best["id"])
+            to_delete.append(best["id"])
+            person_id = best["person_id"]
+
+        cursor = await conn.execute(
+            """
+            INSERT INTO faces (photo_id, person_id, box_x, box_y, box_w, box_h,
+                               quality_score, is_anchor_medoid, embedding, embedding_model)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?);
+            """,
+            (
+                photo_id, person_id,
+                float(face["box_x"]), float(face["box_y"]), float(face["box_w"]), float(face["box_h"]),
+                float(face["quality_score"]), json.dumps(face["embedding"]), face.get("embedding_model", EMBEDDING_MODEL),
+            ),
+        )
+        face["crop_thumbnail"].save(thumbnails_dir / f"{cursor.lastrowid}.webp", format="WEBP", quality=90)
+        inserted += 1
+
+    for r in named:
+        if r["id"] not in claimed and r["embedding_model"] != EMBEDDING_MODEL:
+            await conn.execute(
+                "UPDATE faces SET embedding = '[]', embedding_model = ?, cluster_id = NULL, is_anchor_medoid = 0 WHERE id = ?;",
+                (UNMATCHED_LEGACY_MODEL, r["id"]),
+            )
+            logger.info("Named face %s (photo %s) wasn't found by the new model; kept with its person.", r["id"], photo_id)
+
+    if to_delete:
+        await conn.execute(f"DELETE FROM faces WHERE id IN ({','.join('?' * len(to_delete))});", to_delete)
+    return inserted, to_delete
+
+
+def retire_old_face_models() -> None:
+    """Deletes model files the app no longer uses, once no face still needs them."""
+    from engine.services.face_recognition_service import RETIRED_MODEL_FILES, get_models_dir
+
+    for name in RETIRED_MODEL_FILES:
+        path = get_models_dir() / name
+        if path.exists():
+            try:
+                path.unlink()
+                logger.info("Removed retired model file %s.", name)
+            except OSError as err:
+                logger.warning("Could not remove retired model file %s: %s", name, err)
+
 
 def get_scan_status() -> Dict[str, Any]:
     """Returns a snapshot copy of the current background face scan progress."""
@@ -48,7 +158,7 @@ def get_scan_status() -> Dict[str, Any]:
 
 
 async def run_background_face_scan(force: bool = False) -> Dict[str, Any]:
-    """Iterates through all unscanned library photos, extracting faces and ArcFace vectors."""
+    """Iterates through all unscanned library photos, extracting faces and SFace embeddings."""
     global face_scan_state
 
     async with _scan_lock:
@@ -92,6 +202,18 @@ async def run_background_face_scan(force: bool = False) -> Dict[str, Any]:
 
             logger.info(f"Starting background face scan for {len(unscanned)} photos...")
             thumbnails_dir = get_face_thumbnails_dir()
+
+            # Load (and if needed download + verify) the face models before touching any
+            # photo: if they're unavailable (e.g. offline), stop without marking photos as
+            # scanned, so nothing is skipped and the next run tries again.
+            if unscanned:
+                from engine.services.face_recognition_service import get_inference_sessions
+                try:
+                    await asyncio.to_thread(get_inference_sessions)
+                except Exception as model_err:
+                    logger.warning("Face models unavailable; face scan postponed: %s", model_err)
+                    face_scan_state["error"] = "Face recognition models are not available yet."
+                    return {"status": "postponed", "error": str(model_err)}
 
             new_faces_count = 0
 
@@ -144,49 +266,18 @@ async def run_background_face_scan(force: bool = False) -> Dict[str, Any]:
                     loop = asyncio.get_running_loop()
                     faces = await loop.run_in_executor(None, _process, scan_path)
 
-                    # Clean up only unconfirmed faces and their thumbnails for this photo
-                    async with conn.execute("SELECT id FROM faces WHERE photo_id = ? AND person_id IS NULL;", (photo_id,)) as cur:
-                        old_rows = await cur.fetchall()
-                        for old_r in old_rows:
-                            old_thumb = thumbnails_dir / f"{old_r['id']}.webp"
-                            if old_thumb.exists():
-                                try:
-                                    old_thumb.unlink()
-                                except OSError:
-                                    pass
-                    await conn.execute("DELETE FROM faces WHERE photo_id = ? AND person_id IS NULL;", (photo_id,))
-
-                    for face in faces:
-                        emb_json = json.dumps(face["embedding"])
-                        cursor = await conn.execute(
-                            """
-                            INSERT INTO faces (
-                                photo_id, box_x, box_y, box_w, box_h,
-                                quality_score, is_anchor_medoid, embedding
-                            ) VALUES (?, ?, ?, ?, ?, ?, 0, ?);
-                            """,
-                            (
-                                photo_id,
-                                face["box_x"],
-                                face["box_y"],
-                                face["box_w"],
-                                face["box_h"],
-                                face["quality_score"],
-                                emb_json,
-                            ),
-                        )
-                        face_id = cursor.lastrowid
-
-                        # Persist WebP face avatar thumbnail
-                        thumb_crop: Image.Image = face["crop_thumbnail"]
-                        thumb_file = thumbnails_dir / f"{face_id}.webp"
-                        thumb_crop.save(thumb_file, format="WEBP", quality=90)
-
-                        new_faces_count += 1
-                        face_scan_state["faces_found"] += 1
+                    inserted, deleted_ids = await save_scanned_faces(conn, photo_id, faces, thumbnails_dir)
+                    await conn.execute("UPDATE photos SET faces_scanned = 1 WHERE id = ?;", (photo_id,))
+                    await conn.commit()
+                    for old_id in deleted_ids:
+                        (thumbnails_dir / f"{old_id}.webp").unlink(missing_ok=True)
+                    new_faces_count += inserted
+                    face_scan_state["faces_found"] += inserted
 
                 except Exception as ex:
                     logger.error(f"Error scanning faces for photo {photo_id} ({filename}): {ex}", exc_info=True)
+                    # Undo any half-saved faces of this photo; its previous faces stay as they were.
+                    await conn.rollback()
                 finally:
                     # ALWAYS mark faces_scanned = 1 so corrupted or failed items never crash in an infinite retry loop
                     await conn.execute("UPDATE photos SET faces_scanned = 1 WHERE id = ?;", (photo_id,))
@@ -197,6 +288,15 @@ async def run_background_face_scan(force: bool = False) -> Dict[str, Any]:
 
             # Run unsupervised clustering on all detected faces
             await recluster_all_faces()
+
+            # H9: once every library photo has been re-scanned with the new models,
+            # the old (non-permissively licensed) model files are no longer needed.
+            async with conn.execute(
+                "SELECT COUNT(*) FROM photos WHERE faces_scanned = 0 AND trashed_at IS NULL AND is_encrypted = 0;"
+            ) as cur:
+                pending = (await cur.fetchone())[0]
+            if pending == 0:
+                retire_old_face_models()
 
             return {
                 "status": "completed",

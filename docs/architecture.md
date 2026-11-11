@@ -166,23 +166,22 @@ sequenceDiagram
 
 ---
 
-### 3.3 8K ULTRA Automated AI Enhancement & Face Unblur Pipeline
+### 3.3 Single-Version Photo Enhancement Pipeline
 
 ```mermaid
 flowchart LR
-    Scan[Photo Ingestion] --> Micro[256px Fast Thumbnail]
-    Micro --> Queue[Background Worker Queue]
-    Queue --> Face[YOLOv8-Face Detection]
-    Face --> CodeFormer[CodeFormer Unblur w=0.85]
-    CodeFormer --> Lanczos[8K ULTRA Resampling & Acutance]
-    Lanczos --> Proxy[8K Proxy Save CRF 19]
-    Proxy --> DB[(Update is_optimized=1)]
-    DB --> Lightbox[Lightbox Split Slider Available]
+    Import[Photo Import] --> Queue[Background Enhancer]
+    Queue --> Battery{On battery and guard on?}
+    Battery -- yes --> Wait[Pause until plugged in]
+    Battery -- no --> Enhance[Upright + sharpen / enlarge to 8K in memory]
+    Enhance --> Save[Save one AVIF: temp, fsync, verify, atomic replace]
+    Save --> DB[(Row points at the AVIF)]
+    DB --> Delete[Delete the old file]
 ```
 
-- **Hands-Free Operation**: Zero manual buttons; background daemon processes unoptimized photos asynchronously.
-- **Pristine Fallback**: When viewing queued/processing photos, Lightbox streams unmodified source image via `GET /api/photos/{id}/original` with a live progress pill.
-- **Before/After Split Comparison**: Upon completion, the 8K proxy (`GET /api/photos/{id}/preview`) activates with an interactive split slider (`E` shortcut).
+- Every imported photo is enhanced once and the AVIF replaces the original (one version per photo). Camera details are kept; quality follows the Settings slider.
+- No AI model is used in this pipeline. Blurry-face restoration was removed (no permissively licensed model); see `THIRD_PARTY_NOTICES.md`.
+- Details: `.agents/history/features_and_functional_decisions.md` §102.
 
 ---
 

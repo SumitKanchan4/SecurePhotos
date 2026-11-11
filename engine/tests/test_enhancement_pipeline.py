@@ -4,14 +4,13 @@ import shutil
 
 import piexif
 import pytest
-from PIL import Image, ImageFilter
+from PIL import Image
 
 from engine.api import photos
 from engine.config import settings
 from engine.database import get_db_connection, run_migrations
 from engine.services import enhancement_service
 from engine.services.enhancement_service import enhance_to_avif, slider_to_avif_quality
-from engine.services.face_restore_service import face_sharpness
 from engine.services.media_paths import to_db_path
 
 
@@ -40,11 +39,6 @@ def test_slider_maps_to_avif_quality():
     assert slider_to_avif_quality(28) == 60
     assert slider_to_avif_quality(5) == 92 and slider_to_avif_quality(99) == 60
     assert slider_to_avif_quality("garbage") == 80
-
-
-def test_face_restoration_stays_off_until_license_check():
-    """Owner decision: blurry-face restoration is built but not enabled before H9."""
-    assert enhancement_service.AUTO_FACE_RESTORE_ENABLED is False
 
 
 def test_avif_keeps_camera_details_and_is_upright(work_dir):
@@ -86,13 +80,6 @@ def test_never_overwrites_an_existing_avif(work_dir):
     result = enhance_to_avif(src, 80)
     assert result.path.name == "clash (1).avif"
     assert other.read_bytes() == b"another photo"
-
-
-def test_face_sharpness_ranks_blurry_below_sharp():
-    sharp = Image.effect_noise((256, 256), 80).convert("RGB")
-    blurry = sharp.filter(ImageFilter.GaussianBlur(6))
-    assert face_sharpness(blurry) < face_sharpness(sharp)
-    assert face_sharpness(blurry) < 100 < face_sharpness(sharp)
 
 
 async def _insert_photo(conn, path, **cols):

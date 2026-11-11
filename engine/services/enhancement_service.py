@@ -2,13 +2,14 @@
 
 Owner decisions (2026-11-10): every imported photo is enhanced and the result
 replaces the original; small photos are enlarged to 8K; output is AVIF with the
-camera details kept; face restoration touches only blurry faces; the quality
-slider controls AVIF quality.
+camera details kept; the quality slider controls AVIF quality. Blurry-face
+restoration was removed in H9 (no permissively licensed model; CodeFormer is
+non-commercial).
 
 Everything happens in memory and the file is written exactly once:
 
     open -> read EXIF/ICC -> turn upright -> sharpen/upscale
-         -> (restore blurry faces) -> save AVIF to temp -> fsync -> verify -> atomic replace
+         -> save AVIF to temp -> fsync -> verify -> atomic replace
 
 The original file is NOT deleted here. The caller deletes it only after the
 database row points at the new file (see ``engine.api.photos``).
@@ -27,10 +28,6 @@ from engine.services.media_paths import unique_path
 from engine.services.super_resolution_service import enhance_pixels
 
 logger = logging.getLogger("securephotos.enhancement")
-
-# Automatic face restoration stays OFF until the CodeFormer license check (backlog
-# H9) passes or a permissively licensed model replaces it. Owner decision 2026-11-11.
-AUTO_FACE_RESTORE_ENABLED = False
 
 TARGET_LONG_EDGE = 7680  # 8K
 EXIF_ORIENTATION_TAG = 0x0112
@@ -81,7 +78,7 @@ def _has_alpha(img: Image.Image) -> bool:
     return img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
 
 
-def enhance_to_avif(source: Path, avif_quality: int, restore_blurry_faces: bool = False) -> EnhancedPhoto:
+def enhance_to_avif(source: Path, avif_quality: int) -> EnhancedPhoto:
     """Enhances one photo and writes it as AVIF next to the source.
 
     The camera details (EXIF: date, GPS, camera) and colour profile are kept.
@@ -91,9 +88,6 @@ def enhance_to_avif(source: Path, avif_quality: int, restore_blurry_faces: bool 
     Args:
         source: Existing image file.
         avif_quality: AVIF quality from :func:`slider_to_avif_quality`.
-        restore_blurry_faces: Restore faces measured as blurry (ignored for
-            images with transparency).
-
     Returns:
         The new file's details. ``path`` is ``source`` itself if it was already
         ``.avif``; otherwise a free ``<name>.avif`` beside it.
@@ -117,22 +111,6 @@ def enhance_to_avif(source: Path, avif_quality: int, restore_blurry_faces: bool 
             exif[EXIF_ORIENTATION_TAG] = 1
 
         enhanced = enhance_pixels(upright, TARGET_LONG_EDGE)
-
-        if restore_blurry_faces and not alpha:
-            try:
-                from engine.services.face_restore_service import (
-                    BLURRY_FACE_SHARPNESS_THRESHOLD,
-                    restore_faces_on_image,
-                )
-
-                enhanced, restored = restore_faces_on_image(
-                    enhanced, fidelity=0.85, max_sharpness=BLURRY_FACE_SHARPNESS_THRESHOLD
-                )
-                if restored:
-                    logger.info("Restored %d blurry face(s) in %s", restored, source.name)
-            except Exception as face_err:
-                # Face restoration is an extra; the enhanced photo is still saved.
-                logger.warning("Face restoration skipped for %s: %s", source.name, face_err)
 
         save_kwargs = {"quality": avif_quality}
         if len(exif):

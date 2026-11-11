@@ -1,6 +1,6 @@
 """Unsupervised Face Clustering & Representative Medoid Selection Service.
 
-This module clusters 512-D ArcFace facial embeddings into identity groups using
+This module clusters 128-D SFace facial embeddings into identity groups using
 cosine distance metrics, determines the most representative medoid face (anchor)
 for each identity, and maintains life-stage diversity across photo collections.
 
@@ -18,28 +18,39 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from engine.database import get_db_connection
+from engine.services.face_recognition_service import EMBEDDING_MODEL
 
 logger = logging.getLogger("securephotos.face_clustering")
 
-# Cosine distance threshold for ArcFace (distance = 1.0 - cosine_similarity)
-# ArcFace cosine similarity: >= 0.52 (distance <= 0.48) robustly groups identical identities
-# across smiles, expressive features, and tilted/reclined poses without collapsing distinct individuals
-SIMILARITY_THRESHOLD = 0.52
+# Cosine similarity at which two SFace embeddings count as the same person.
+# Calibrated on the owner's 71 named faces / 10 people (H9, 2026-11-11): at 0.45
+# SFace grouped them exactly like ArcFace did at 0.52 (11 groups, no group mixing
+# two people, no face in a wrong group); 0.40 already mixed one group.
+SIMILARITY_THRESHOLD = 0.45
 DISTANCE_THRESHOLD = 1.0 - SIMILARITY_THRESHOLD
 
 
 def cluster_embeddings(
     embeddings: np.ndarray,
     distance_threshold: float = DISTANCE_THRESHOLD,
+    photo_ids: Optional[List[int]] = None,
 ) -> List[List[int]]:
-    """Groups normalized embeddings into disjoint identity clusters using single-pass greedy clustering.
+    """Groups normalized embeddings into identity clusters (single linkage, strongest first).
+
+    Pairs closer than the threshold are linked in order of similarity. When
+    ``photo_ids`` is given, a link is refused if it would put two faces from the
+    same photo in one cluster: one person can't appear twice in a photo. This
+    stops chains of look-alike background faces in crowd shots from merging
+    different people (found in the H9 rehearsal).
 
     Args:
         embeddings: (N, D) array of L2-normalized vectors.
         distance_threshold: Maximum cosine distance (1 - sim) to consider faces the same person.
+        photo_ids: Optional photo id of each face (same order as ``embeddings``).
 
     Returns:
-        List of cluster index lists: [[idx0, idx3], [idx1, idx4, idx5], ...]
+        List of cluster index lists, each sorted, ordered by first member:
+        [[idx0, idx3], [idx1, idx4, idx5], ...]
     """
     n = len(embeddings)
     if n == 0:
@@ -47,34 +58,32 @@ def cluster_embeddings(
     if n == 1:
         return [[0]]
 
-    # Matrix multiplication: since embeddings are L2-normalized, dot product == cosine similarity
+    # Embeddings are L2-normalised, so the dot product is the cosine similarity.
     sim_matrix = np.dot(embeddings, embeddings.T)
-    dist_matrix = 1.0 - sim_matrix
+    min_sim = 1.0 - distance_threshold
+    ii, jj = np.where(np.triu(sim_matrix >= min_sim, k=1))
+    order = np.argsort(-sim_matrix[ii, jj], kind="stable")
 
-    visited = np.zeros(n, dtype=bool)
-    clusters: List[List[int]] = []
+    parent = list(range(n))
+    photos_in = [{photo_ids[i]} if photo_ids is not None else set() for i in range(n)]
 
-    # Find connected components with distance <= threshold
-    for i in range(n):
-        if visited[i]:
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for k in order:
+        ri, rj = find(int(ii[k])), find(int(jj[k]))
+        if ri == rj or (photos_in[ri] & photos_in[rj]):
             continue
+        parent[rj] = ri
+        photos_in[ri] |= photos_in[rj]
 
-        cluster = [i]
-        visited[i] = True
-        queue = [i]
-
-        while queue:
-            curr = queue.pop(0)
-            # Find all unvisited neighbors within distance threshold
-            neighbors = np.where((dist_matrix[curr] <= distance_threshold) & (~visited))[0]
-            for nb in neighbors:
-                visited[nb] = True
-                cluster.append(int(nb))
-                queue.append(int(nb))
-
-        clusters.append(cluster)
-
-    return clusters
+    groups: Dict[int, List[int]] = {}
+    for i in range(n):
+        groups.setdefault(find(i), []).append(i)
+    return sorted(groups.values(), key=lambda g: g[0])
 
 
 def select_cluster_medoid(
@@ -133,9 +142,10 @@ async def recluster_all_faces() -> Dict[str, Any]:
             SELECT f.id, f.photo_id, f.person_id, f.quality_score, f.embedding
             FROM faces f
             JOIN photos p ON f.photo_id = p.id
-            WHERE p.trashed_at IS NULL
+            WHERE p.trashed_at IS NULL AND f.embedding_model = ?
             ORDER BY f.id ASC;
-            """
+            """,
+            (EMBEDDING_MODEL,),
         ) as cursor:
             rows = await cursor.fetchall()
 
@@ -161,7 +171,9 @@ async def recluster_all_faces() -> Dict[str, Any]:
         norms[norms == 0] = 1.0
         embeddings_arr = embeddings_arr / norms
 
-        clusters = cluster_embeddings(embeddings_arr, distance_threshold=DISTANCE_THRESHOLD)
+        clusters = cluster_embeddings(
+            embeddings_arr, distance_threshold=DISTANCE_THRESHOLD, photo_ids=[r["photo_id"] for r in rows]
+        )
 
         # Update database with clusters & medoids
         for c_num, cluster_indices in enumerate(clusters):
