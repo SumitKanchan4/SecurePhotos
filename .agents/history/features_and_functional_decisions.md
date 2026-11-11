@@ -31,6 +31,7 @@ This document serves as the **central, living source of truth** for all function
 102. [Single-Version AVIF Enhancement Pipeline (Fixed & Settings-Driven)](#102-single-version-avif-enhancement-pipeline-fixed--settings-driven)
 103. [Session-Only Quick PIN & Emergency Card Recovery](#103-session-only-quick-pin--emergency-card-recovery)
 104. [Vault Photos Keep No Readable Text, Location or Face Data](#104-vault-photos-keep-no-readable-text-location-or-face-data)
+105. [Permissively Licensed Face Models (YuNet + SFace) & Name-Preserving Migration](#105-permissively-licensed-face-models-yunet--sface--name-preserving-migration)
 
 ---
 
@@ -5050,4 +5051,37 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 ### State & Lifecycle Impact
 - No UI or API shape changes; frontend untouched.
 - Deletes are slightly slower (`secure_delete` zeroes freed space).
+
+---
+
+## 105. Permissively Licensed Face Models (YuNet + SFace) & Name-Preserving Migration
+
+### Functionality Overview
+- People now finds faces with **YuNet (MIT)** and recognises people with **SFace (Apache-2.0)**, replacing YOLOv8-face (GPL-3.0/AGPL-3.0) and InsightFace ArcFace w600k_r50 (non-commercial research only).
+- On upgrade, every library photo is re-scanned once in the background. Each new face takes the name of the old named face it overlaps, so People keeps every name. A named face the new model can't find keeps its name (it just has no fingerprint and isn't grouped).
+- Model files are downloaded once and must match a pinned SHA-256 before use. Old model files are deleted when the re-scan has finished. Credits and licences are in `THIRD_PARTY_NOTICES.md`.
+- Removed: CodeFormer face restoration (non-commercial; its endpoints had no UI and C1's blurry-face step was switched off) and the unused deblur model (licence unverifiable).
+
+### Functional Decision Points & Rationale (owner decisions 2026-11-11)
+- **Permissive licences only**, but **no accuracy loss**: measured on the owner's own library (72 named faces, 10 people) before switching. YuNet found every named face; SFace at similarity 0.45 grouped the named faces exactly like ArcFace at 0.52 (no group mixing two people, no face in a wrong group) and, with the same-photo rule, split fewer people (2 vs 3).
+- **No OpenCV at runtime**: YuNet decoding and SFace alignment are re-implemented on onnxruntime + NumPy and verified against OpenCV's reference on the owner's 51 photos: identical detections (102/102, box IoU 0.998), identical aligned crops (pixel diff 0.00, embedding cosine 1.0000), end to end 0.999 average.
+- **Same-photo rule in grouping**: the H9 rehearsal on a copy of the library showed look-alike background faces in a crowd photo chaining into one "person". Grouping is now single-linkage, strongest pairs first, and never puts two faces from the same photo in one group.
+- **Models must never mix**: each face stores `embedding_model`; grouping only compares faces from the current model.
+- **Rehearsal before shipping**: the real migration ran on a full copy of the owner's library: 75 named faces before, 75 after, no name lost, all 14 people kept, 12 visible people in the People screen before and after.
+- **Known limitation**: rare false detections (a hand, an ear) can appear as dismissible "who is this?" suggestions; no safe score cut-off exists (backlog H11).
+
+### Bugs found and fixed along the way
+- Face boxes were stored as 4-byte binary blobs (numpy float32 passed to SQLite); new faces store numbers and a one-time migration converts all old boxes.
+- Re-scanning a photo kept named faces **and** inserted a new unnamed copy of the same face (duplicates); the new swap replaces instead.
+- A photo whose scan failed half-way had its partial changes committed; the failed photo's changes are now rolled back.
+- If face models were unavailable (e.g. offline), every photo was marked scanned without being scanned; the scan is now postponed instead.
+
+### Technical Touchpoints
+- `engine/services/face_recognition_service.py`: rewritten (YuNet decode, Umeyama alignment + OpenCV-identical warp, SFace embedding, pinned/verified downloads, `RETIRED_MODEL_FILES`).
+- `engine/services/face_scan_worker.py`: `save_scanned_faces` (name carry-over by IoU >= 0.4, model separation), `retire_old_face_models`, model pre-check, rollback on failure.
+- `engine/services/face_clustering_service.py`: threshold 0.45, same-photo rule, current-model filter.
+- `engine/database.py`: `faces.embedding_model`; one-time migrations `2026_11_h9_rescan_faces_permissive_models` and `2026_11_h9_face_boxes_to_numbers`.
+- `engine/services/neural_sr_service.py`: Real-ESRGAN download verified by SHA-256.
+- Removed: `engine/services/face_restore_service.py`, `engine/services/deblur_service.py`, `POST /api/photos/{id}/face-restore`, `GET /api/photos/{id}/face-restore-preview`, blurry-face code in `enhancement_service.py`.
+- New: `THIRD_PARTY_NOTICES.md`, `engine/tests/test_face_models.py` (13 tests); docs updated (`docs/architecture.md`, `docs/development.md`).
 
