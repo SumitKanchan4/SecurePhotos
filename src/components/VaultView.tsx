@@ -237,6 +237,36 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     }
   }, [isVaultUnlocked, fetchVaultPhotos, fetchVaultAlbums]);
 
+  // Background enhancement of vault photos (C7). The engine answers this without
+  // counting it as activity, so polling never keeps the vault from auto-locking.
+  const [vaultEnhancement, setVaultEnhancement] = useState<{
+    is_active: boolean;
+    completed_count: number;
+    total_count: number;
+    paused_reason: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!isVaultUnlocked) {
+      setVaultEnhancement(null);
+      return;
+    }
+    let cancelled = false;
+    const poll = () =>
+      apiFetch("/api/vault/enhancement-progress")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!cancelled) setVaultEnhancement(data);
+        })
+        .catch(() => {});
+    poll();
+    const timer = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [isVaultUnlocked]);
+
   const handleRestoreAlbum = async (albumId: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setRestoringAlbumId(albumId);
@@ -616,6 +646,29 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", minWidth: "160px" }}>
           {isVaultUnlocked ? (
             <>
+              {vaultEnhancement?.is_active && vaultEnhancement.total_count > 0 && (
+                <span
+                  title="Vault photos are enhanced only while the vault is open. Nothing is ever stored unencrypted."
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "4px 10px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "var(--glass-badge-bg)",
+                    border: "1px solid var(--glass-badge-border)",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "var(--accent-primary)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <Loader2 size={12} className="spin" />
+                  {vaultEnhancement.paused_reason === "on_battery"
+                    ? `Enhancing paused on battery (${vaultEnhancement.completed_count} of ${vaultEnhancement.total_count} done)`
+                    : `Enhancing vault photos (${Math.min(vaultEnhancement.completed_count + 1, vaultEnhancement.total_count)} of ${vaultEnhancement.total_count})`}
+                </span>
+              )}
               <button
                 onClick={() => setIsPrivacyShieldActive(!isPrivacyShieldActive)}
                 className="clickable"
