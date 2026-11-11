@@ -17,10 +17,12 @@ database row points at the new file (see ``engine.api.photos``).
 
 from __future__ import annotations
 
+import io
 import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Tuple, Union
 
 from PIL import Image, ImageOps
 
@@ -78,16 +80,61 @@ def _has_alpha(img: Image.Image) -> bool:
     return img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
 
 
-def enhance_to_avif(source: Path, avif_quality: int) -> EnhancedPhoto:
-    """Enhances one photo and writes it as AVIF next to the source.
+def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int) -> Tuple[bytes, int, int]:
+    """Enhances an image entirely in memory and returns it encoded as AVIF.
 
     The camera details (EXIF: date, GPS, camera) and colour profile are kept.
     The orientation tag is reset to "normal" because the pixels are already
     turned upright; otherwise viewers would rotate the photo a second time.
+    The encoded result is decoded once to verify it before it is returned.
+
+    Args:
+        source: Image file path, or the image file's bytes (e.g. a decrypted vault photo).
+        avif_quality: AVIF quality from :func:`slider_to_avif_quality`.
+
+    Returns:
+        (AVIF bytes, width, height).
+    """
+    opened = Image.open(io.BytesIO(source) if isinstance(source, (bytes, bytearray)) else source)
+    with opened as im:
+        exif = im.getexif()
+        icc_profile = im.info.get("icc_profile")
+        upright = ImageOps.exif_transpose(im)
+        alpha = _has_alpha(upright)
+        upright = upright.convert("RGBA" if alpha else "RGB")
+
+    if EXIF_ORIENTATION_TAG in exif:
+        exif[EXIF_ORIENTATION_TAG] = 1
+
+    enhanced = enhance_pixels(upright, TARGET_LONG_EDGE)
+
+    save_kwargs = {"quality": avif_quality}
+    if len(exif):
+        save_kwargs["exif"] = exif.tobytes()
+    if icc_profile:
+        save_kwargs["icc_profile"] = icc_profile
+    buffer = io.BytesIO()
+    enhanced.save(buffer, "AVIF", **save_kwargs)
+    data = buffer.getvalue()
+
+    with Image.open(io.BytesIO(data)) as check:
+        check.verify()
+    with Image.open(io.BytesIO(data)) as check:
+        if check.size != enhanced.size:
+            raise IOError(f"Enhanced image has wrong size {check.size}, expected {enhanced.size}.")
+    return data, enhanced.size[0], enhanced.size[1]
+
+
+def enhance_to_avif(source: Path, avif_quality: int) -> EnhancedPhoto:
+    """Enhances one library photo and writes it as AVIF next to the source.
+
+    See :func:`render_enhanced_avif` for what is kept and changed. The file is
+    written to a temp name, fsynced, then atomically moved into place.
 
     Args:
         source: Existing image file.
         avif_quality: AVIF quality from :func:`slider_to_avif_quality`.
+
     Returns:
         The new file's details. ``path`` is ``source`` itself if it was already
         ``.avif``; otherwise a free ``<name>.avif`` beside it.
@@ -98,40 +145,16 @@ def enhance_to_avif(source: Path, avif_quality: int) -> EnhancedPhoto:
     """
     dest = source if source.suffix.lower() == ".avif" else unique_path(source.with_suffix(".avif"))
     temp = dest.parent / f".{dest.name}.opt.tmp"
-
     try:
-        with Image.open(source) as im:
-            exif = im.getexif()
-            icc_profile = im.info.get("icc_profile")
-            upright = ImageOps.exif_transpose(im)
-            alpha = _has_alpha(upright)
-            upright = upright.convert("RGBA" if alpha else "RGB")
-
-        if EXIF_ORIENTATION_TAG in exif:
-            exif[EXIF_ORIENTATION_TAG] = 1
-
-        enhanced = enhance_pixels(upright, TARGET_LONG_EDGE)
-
-        save_kwargs = {"quality": avif_quality}
-        if len(exif):
-            save_kwargs["exif"] = exif.tobytes()
-        if icc_profile:
-            save_kwargs["icc_profile"] = icc_profile
-        enhanced.save(temp, "AVIF", **save_kwargs)
-
-        with open(temp, "rb+") as fh:
+        data, width, height = render_enhanced_avif(source, avif_quality)
+        with open(temp, "wb") as fh:
+            fh.write(data)
+            fh.flush()
             os.fsync(fh.fileno())
-        with Image.open(temp) as check:
-            check.verify()
-        with Image.open(temp) as check:
-            if check.size != enhanced.size:
-                raise IOError(f"Enhanced file has wrong size {check.size}, expected {enhanced.size}.")
-
         os.replace(temp, dest)
     except Exception:
         temp.unlink(missing_ok=True)
         raise
 
-    width, height = enhanced.size
-    logger.info("Enhanced %s -> %s (%dx%d, %d bytes)", source.name, dest.name, width, height, dest.stat().st_size)
-    return EnhancedPhoto(path=dest, width=width, height=height, size=dest.stat().st_size)
+    logger.info("Enhanced %s -> %s (%dx%d, %d bytes)", source.name, dest.name, width, height, len(data))
+    return EnhancedPhoto(path=dest, width=width, height=height, size=len(data))

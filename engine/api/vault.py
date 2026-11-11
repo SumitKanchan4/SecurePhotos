@@ -78,6 +78,27 @@ def get_active_mvk(token: Optional[str] = None) -> bytes:
     return bytes(ACTIVE_VAULT_SESSION["mvk"])
 
 
+def peek_active_mvk() -> Optional[bytes]:
+    """Returns the vault key if the vault is unlocked and not idle-expired, else None.
+
+    Unlike :func:`get_active_mvk` this has no side effects: it neither counts as
+    user activity nor locks the vault. Background work (C7) uses it so it can
+    never keep the vault open.
+    """
+    if not ACTIVE_VAULT_SESSION["is_unlocked"] or not ACTIVE_VAULT_SESSION["mvk"]:
+        return None
+    if not ACTIVE_VAULT_SESSION["batch_keepalive"] and time.time() - ACTIVE_VAULT_SESSION["last_activity"] > AUTO_LOCK_SECONDS:
+        return None
+    return bytes(ACTIVE_VAULT_SESSION["mvk"])
+
+
+def _start_vault_enhancement() -> None:
+    """Kicks off background enhancement of vault photos (C7); no-op if already running."""
+    from engine.services import vault_enhancer
+
+    vault_enhancer.start_vault_enhancement()
+
+
 def purge_vault_key() -> None:
     """Removes the master vault key from memory; the master password is needed again."""
     if ACTIVE_VAULT_SESSION["mvk"]:
@@ -373,6 +394,7 @@ async def unlock_vault(payload: VaultUnlockRequest) -> dict:
             raise HTTPException(status_code=401, detail="Invalid 6-digit Authenticator TOTP code.")
 
     session_token = _open_session(unwrapped_mvk, row["pin_verifier"])
+    _start_vault_enhancement()
     return {"status": "unlocked", "session_token": session_token}
 
 
@@ -401,6 +423,19 @@ async def set_vault_pin(payload: VaultPinRequest) -> dict:
     ACTIVE_VAULT_SESSION["pin_verifier"] = pin_verifier
     ACTIVE_VAULT_SESSION["pin_failures"] = 0
     return {"status": "pin_set" if pin_verifier else "pin_removed", "has_pin": bool(pin_verifier)}
+
+
+@router.get("/enhancement-progress", status_code=status.HTTP_200_OK)
+async def get_vault_enhancement_progress() -> dict:
+    """Progress of background vault photo enhancement (C7), only while the vault is open.
+
+    Uses :func:`peek_active_mvk`, so polling it never keeps the vault from auto-locking.
+    """
+    from engine.services.vault_enhancer import vault_enhancement_state
+
+    if peek_active_mvk() is None:
+        return {"is_active": False, "completed_count": 0, "total_count": 0, "paused_reason": None}
+    return dict(vault_enhancement_state)
 
 
 VAULT_RESET_PHRASE = "ERASE ALL DATA"
@@ -589,6 +624,8 @@ async def lock_album_to_vault(album_id: int) -> dict:
         await conn.commit()
     finally:
         await conn.close()
+    if locked_ids:
+        _start_vault_enhancement()
 
     return {
         "status": "album_locked",
@@ -891,6 +928,8 @@ async def lock_photos_to_vault(payload: VaultPhotosLockRequest) -> dict:
         locked_ids, failed_ids = await vault_storage.lock_photos(conn, rows, mvk)
     finally:
         await conn.close()
+    if locked_ids:
+        _start_vault_enhancement()
 
     return {"status": "photos_locked", "locked_count": len(locked_ids), "failed_ids": failed_ids}
 

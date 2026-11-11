@@ -86,7 +86,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - **Current:** `vault.py:395-408` deletes `vault_configs` only. `.enc` files and their `photos` rows remain and can never be decrypted again. The confirmation phrase is optional in the API and hard-coded in the UI (`VaultView.tsx:399`), so it guards nothing.
 - **Decision:** on reset, either (a) permanently delete all vault items and files too, or (b) refuse to reset while vault items exist. Make the confirmation phrase required and typed by the user.
 
-### C7 · Enhance vault photos while the vault is open — `todo` (owner request 2026-11-11)
+### C7 · Enhance vault photos while the vault is open — `review` (branch `feature/c7-vault-enhancement`, history §106; progress pill: owner chose 'show a small status')
 - **Intent (owner):** vault photos get the same single-version enhancement as library photos (AVIF, 8K, settings), but only while the vault is unlocked. While it is locked, nothing is processed and the encrypted original stays as it is.
 - **Current:** `run_background_optimization` skips `is_encrypted = 1`. A photo locked before it was enhanced stays unenhanced until moved out of the vault (then it is enhanced as a library photo).
 - **Constraints:** decrypt in memory, enhance in memory, encrypt the result; **never write unencrypted data to disk** (the current enhancer writes a temp file next to the photo, so it needs an in-memory variant). Stop when the vault locks (idle, Lock, L, 5 wrong PINs) and resume on the next unlock. Crash-safe replacement through the `vault_storage` journal (new `.enc` written and verified before the row changes; old `.enc` deleted after commit). Respect battery guard and quality slider. `ACTIVE_VAULT_SESSION["batch_keepalive"]` already exists for long batches; decide whether enhancement may keep the vault from auto-locking (probably not).
@@ -127,7 +127,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ### H8 · Pin model downloads and correct the offline wording — `todo`
 - `face_recognition_service.py:27-28`, `face_restore_service.py:25-26`, `neural_sr_service.py:25`, `deblur_service.py:25` download from HuggingFace `main` branches with no hash check. Rule §3.4 says models are bundled, but CI ships a placeholder. Pin the revision and SHA-256, verify before loading, and download into `data/models` only. Reword the README: "all photo processing is on-device; models download once, updates are checked online".
 
-### H9 · Model license audit and alternatives — `review` (branch `fix/h9-permissive-models`, history §105)
+### H9 · Model license audit and alternatives — `done` (merged 2026-11-11, history §105)
 - **Now blocks** automatic face restoration (C1): it's implemented but disabled until this passes.
 - To verify (confidence medium, from memory): CodeFormer (S-Lab 1.0, non-commercial), InsightFace ArcFace w600k (non-commercial research), `yoloface_8n` (YOLOv8 → possibly AGPL-3.0), `realesr-general-x4v3` (BSD-3, likely fine), `1x-ReFocus-Cleanly` (unknown). Find permissive alternatives that still serve the enhancement and face goals.
 
