@@ -119,7 +119,8 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - `tauri.conf.json` has `"csp": null`, and `capabilities/default.json` grants `shell:default` on window `"*"`. Add a strict CSP (self + `http://127.0.0.1:*` for the engine, media from blob/engine), check whether the shell plugin is used at all, and limit capabilities to the `main` window.
 
 ### H6 · Harden IPC token handling — `review` (branch `fix/h1-h6-engine-auth`, history §107)
-- **Follow-up:** confirm the cookie on an installer build (page origin `http://tauri.localhost`); verified on the dev build (`http://localhost:1420`), where the old cookie was blocked by WebView2 (`SchemefulSameSiteLax`) and the new one works.
+- **Verified with Playwright on both page origins:** dev build (`http://localhost:1420`) and a production-style build (`http://tauri.localhost`, `tauri build --debug --no-bundle`): grid thumbnails, viewer, video (206, plays), vault thumbnail and vault viewer all load; no failed media requests. An NSIS installer run is still worth one manual check before release.
+- **Small follow-up:** the app polls the default engine address (`127.0.0.1:8000`) before the real port is known, producing a few harmless `ERR_CONNECTION_REFUSED` console errors at startup.
 - **Check while here (found in UI testing, confidence low):** the login cookie is `SameSite=Lax` and set by `127.0.0.1` for a page on another site (`tauri.localhost` in the app). In a browser on `localhost` it was rejected and every thumbnail got 403. Verify how WebView2 behaves; the redesign should not depend on cross-site cookies.
 - `auth_middleware.py`: remove the `?token=` fallback; with no secret set, refuse requests in a frozen build. `auth.py`: the cookie holds the raw secret for 30 days, so issue a separate random session value instead. Covers M6.
 

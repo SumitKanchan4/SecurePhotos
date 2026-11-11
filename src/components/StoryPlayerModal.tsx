@@ -361,7 +361,8 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
 
     const imgUrl = getApiUrl(`/api/photos/${currentSlide.photo_id}/preview`);
     const img = new Image();
-    img.crossOrigin = "anonymous";
+    // CORS-enabled (canvas colour sampling) with the engine's session cookie (H6).
+    img.crossOrigin = "use-credentials";
     img.src = imgUrl;
 
     img.onload = () => {
