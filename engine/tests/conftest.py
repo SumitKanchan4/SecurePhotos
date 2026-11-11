@@ -64,11 +64,14 @@ def disable_background_enhancer(request, monkeypatch):
         yield
         return
     from engine.api import photos
+    from engine.services import vault_enhancer
 
     async def _no_op():
         return None
 
     monkeypatch.setattr(photos, "run_background_optimization", _no_op)
+    # Unlocking a vault would otherwise start enhancing vault photos in the background (C7).
+    monkeypatch.setattr(vault_enhancer, "start_vault_enhancement", lambda: None)
     yield
 
 

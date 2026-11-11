@@ -32,6 +32,7 @@ This document serves as the **central, living source of truth** for all function
 103. [Session-Only Quick PIN & Emergency Card Recovery](#103-session-only-quick-pin--emergency-card-recovery)
 104. [Vault Photos Keep No Readable Text, Location or Face Data](#104-vault-photos-keep-no-readable-text-location-or-face-data)
 105. [Permissively Licensed Face Models (YuNet + SFace) & Name-Preserving Migration](#105-permissively-licensed-face-models-yunet--sface--name-preserving-migration)
+106. [Vault Photos Enhanced While the Vault Is Open](#106-vault-photos-enhanced-while-the-vault-is-open)
 
 ---
 
@@ -5084,4 +5085,29 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `engine/services/neural_sr_service.py`: Real-ESRGAN download verified by SHA-256.
 - Removed: `engine/services/face_restore_service.py`, `engine/services/deblur_service.py`, `POST /api/photos/{id}/face-restore`, `GET /api/photos/{id}/face-restore-preview`, blurry-face code in `enhancement_service.py`.
 - New: `THIRD_PARTY_NOTICES.md`, `engine/tests/test_face_models.py` (13 tests); docs updated (`docs/architecture.md`, `docs/development.md`).
+
+---
+
+## 106. Vault Photos Enhanced While the Vault Is Open
+
+### Functionality Overview
+- Vault photos get the same single-version enhancement as library photos (8K, AVIF, quality slider, battery guard), but **only while the vault is unlocked**. While it is locked, nothing is processed and the encrypted original stays as it is.
+- It starts after any unlock (password or PIN) and after locking new photos into an open vault, and handles one photo at a time in the background.
+- The vault header shows a small pill: "Enhancing vault photos (n of m)" or "Enhancing paused on battery (n of m done)".
+
+### Functional Decision Points & Rationale (owner decisions 2026-11-11)
+- **Never write unencrypted data to disk**: decrypt into memory -> enhance and encode AVIF in memory -> encrypt straight from memory into a new `.avif.enc` (temp, fsync, replace) -> verify it decrypts to the same bytes. The library enhancer's temp-file approach was not reused for this reason.
+- **Respect the lock strictly**: right before saving each photo, the runner checks the vault is still open; if it locked meanwhile, the enhanced copy is discarded and the original kept.
+- **Never delay auto-lock**: background work and the progress poll read the key through `peek_active_mvk`, which doesn't count as activity; the 5-minute idle lock still happens. For the same reason the vault photo list is not auto-refreshed when enhancement finishes (thumbnails don't change and the viewer always streams the current file).
+- **Crash-safe**: journaled like lock/unlock (operation `enhance`); recovery keeps whichever encrypted copy the row points at.
+- Photos only (no videos); an unreadable photo is marked so it isn't retried on every unlock.
+
+### Technical Touchpoints
+- `engine/services/enhancement_service.py`: `render_enhanced_avif` (in-memory, path or bytes); `enhance_to_avif` now writes its result.
+- `engine/services/crypto_vault.py`: `encrypt_file_chunked` also accepts bytes.
+- `engine/services/vault_storage.py`: `enhance_vault_photo`; recovery handles `enhance` journal entries.
+- `engine/services/vault_enhancer.py` (new): background runner, `vault_enhancement_state`, battery guard.
+- `engine/api/vault.py`: `peek_active_mvk`, `GET /api/vault/enhancement-progress`, start after unlock and after locking photos/albums.
+- `src/components/VaultView.tsx`: progress pill (polls every 3 s while unlocked).
+- Tests: `engine/tests/test_vault_enhancement.py` (records every file written during an enhancement and requires all to be encrypted; lock mid-way; crashes before/after the swap; runner through the real API; auto-lock not delayed). Playwright: three vault photos locked before enhancement, unlocked in the UI, pill counted 1->2->3, results 8K AVIF, only `.avif.enc` files on disk, viewer streams `image/avif`.
 

@@ -283,7 +283,7 @@ def decrypt_photo_metadata(blob: str, master_key: bytes, photo_id: int) -> Dict[
 
 
 def encrypt_file_chunked(
-    source_path: Path | str,
+    source_path: Path | str | bytes,
     dest_path: Path | str,
     master_key: bytes,
 ) -> None:
@@ -294,7 +294,9 @@ def encrypt_file_chunked(
     [Repeat: 4B Chunk Len | Encrypted Chunk Bytes | 16B Tag]
 
     Args:
-        source_path: Path to plaintext source file.
+        source_path: Path to the plaintext file, or the plaintext itself as bytes
+            (lets vault photos be re-encrypted from memory without ever writing
+            an unencrypted copy to disk).
         dest_path: Path for output encrypted .enc file.
         master_key: 32-byte Master Vault Key.
     """
@@ -306,7 +308,8 @@ def encrypt_file_chunked(
     dest_file.parent.mkdir(parents=True, exist_ok=True)
     temp_dest = dest_file.parent / f".{dest_file.name}.tmp"
 
-    with open(source_path, "rb") as fin, open(temp_dest, "wb") as fout:
+    source = io.BytesIO(source_path) if isinstance(source_path, (bytes, bytearray)) else open(source_path, "rb")
+    with source as fin, open(temp_dest, "wb") as fout:
         # Write header
         fout.write(VAULT_MAGIC_HEADER)
         fout.write(salt)

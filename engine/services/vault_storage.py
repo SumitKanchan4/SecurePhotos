@@ -27,7 +27,7 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import Callable, Iterable, List, Optional, Sequence, Tuple
 
 import aiosqlite
 
@@ -36,6 +36,7 @@ from engine.services.media_paths import ENC_SUFFIX, resolve_stored_path, to_db_p
 from engine.services.media_paths import unique_path as _unique_path
 from engine.services.crypto_vault import (
     decrypt_file_chunked_stream,
+    decrypt_file_to_bytes,
     decrypt_photo_metadata,
     encrypt_file_chunked,
     encrypt_photo_metadata,
@@ -396,6 +397,95 @@ async def unlock_photo(conn: aiosqlite.Connection, row: aiosqlite.Row, mvk: byte
     return True
 
 
+async def enhance_vault_photo(
+    conn: aiosqlite.Connection,
+    row: aiosqlite.Row,
+    mvk: bytes,
+    avif_quality: int,
+    still_unlocked: Callable[[], bool],
+) -> bool:
+    """Enhances one vault photo without ever writing unencrypted data to disk (C7).
+
+    Steps: decrypt into memory -> enhance + encode AVIF in memory -> encrypt into a
+    new ``.avif.enc`` (temp, fsync, replace) -> verify it decrypts to the same
+    bytes -> if the vault is still unlocked, point the row at it and commit ->
+    delete the old ``.enc``. Journaled like lock/unlock, so a crash at any point
+    leaves exactly the copy the row points at.
+
+    Args:
+        conn: Open connection with no uncommitted changes.
+        row: Row with ``id`` and ``filepath`` of an encrypted photo.
+        mvk: Master vault key (read without counting as user activity).
+        avif_quality: AVIF quality from the Settings slider.
+        still_unlocked: Called right before committing; if it returns False the
+            enhanced copy is discarded and the original stays as it is.
+
+    Returns:
+        True if the photo was replaced by its enhanced version.
+
+    Raises:
+        VaultAssetError: Decrypt/enhance/encrypt failed; the photo is unchanged.
+    """
+    import asyncio
+    import hashlib as _hashlib
+
+    from engine.services.enhancement_service import render_enhanced_avif
+
+    photo_id = row["id"]
+    old_enc = resolve_stored_path(row["filepath"])
+    if old_enc is None or old_enc.suffix != ENC_SUFFIX:
+        return False
+
+    plain_name = old_enc.name[: -len(ENC_SUFFIX)]
+    new_plain_name = os.path.splitext(plain_name)[0] + ".avif"
+    new_enc = _unique_path(old_enc.with_name(new_plain_name + ENC_SUFFIX))
+    pair = FilePair(plain=old_enc, enc=new_enc)  # Journal convention for "enhance": plain=old, enc=new.
+
+    try:
+        data = await asyncio.to_thread(decrypt_file_to_bytes, old_enc, mvk)
+        avif, width, height = await asyncio.to_thread(render_enhanced_avif, data, avif_quality)
+        del data
+    except Exception as err:
+        raise VaultAssetError(f"Could not enhance vault photo {photo_id}: {err}") from err
+
+    await _journal_start(conn, photo_id, "enhance", [pair])
+    try:
+        await asyncio.to_thread(encrypt_file_chunked, avif, new_enc, mvk)
+        expected = _hashlib.sha256(avif).hexdigest()
+        if await asyncio.to_thread(_sha256_decrypted, new_enc, mvk) != expected:
+            raise VaultAssetError(f"Enhanced copy of vault photo {photo_id} failed verification.")
+    except Exception as err:
+        _safe_unlink(new_enc)
+        _safe_unlink(_enc_temp(new_enc))
+        await _journal_end(conn, photo_id)
+        if isinstance(err, VaultAssetError):
+            raise
+        raise VaultAssetError(f"Could not save enhanced vault photo {photo_id}: {err}") from err
+
+    if not still_unlocked():
+        # The vault locked while this photo was being processed: respect it.
+        _safe_unlink(new_enc)
+        await _journal_end(conn, photo_id)
+        return False
+
+    await conn.execute(
+        """
+        UPDATE photos
+        SET filepath = ?, filename = ?, mime_type = 'image/avif',
+            original_file_size = COALESCE(original_file_size, file_size),
+            original_file_hash = COALESCE(original_file_hash, file_hash),
+            file_hash = ?, file_size = ?, width = ?, height = ?,
+            is_optimized = 1, is_enhanced = 1
+        WHERE id = ? AND is_encrypted = 1;
+        """,
+        (to_db_path(new_enc), new_plain_name, expected, len(avif), width, height, photo_id),
+    )
+    await conn.commit()
+    _safe_unlink(old_enc)
+    await _journal_end(conn, photo_id)
+    return True
+
+
 async def lock_photos(conn: aiosqlite.Connection, rows: Iterable[aiosqlite.Row], mvk: bytes) -> Tuple[List[int], List[int]]:
     """Locks several photos, one at a time, continuing past individual failures.
 
@@ -552,7 +642,7 @@ async def reconcile_pending_vault_ops(conn: Optional[aiosqlite.Connection] = Non
 
         for entry in entries:
             photo_id = entry["photo_id"]
-            async with conn.execute("SELECT is_encrypted FROM photos WHERE id = ?;", (photo_id,)) as cursor:
+            async with conn.execute("SELECT is_encrypted, filepath FROM photos WHERE id = ?;", (photo_id,)) as cursor:
                 photo = await cursor.fetchone()
 
             try:
@@ -567,7 +657,11 @@ async def reconcile_pending_vault_ops(conn: Optional[aiosqlite.Connection] = Non
                 _safe_unlink(_dec_temp(plain))
                 if photo is None:
                     continue  # Row gone: keep both files rather than guess.
-                keep, drop = (enc, plain) if photo["is_encrypted"] else (plain, enc)
+                if entry["operation"] == "enhance":
+                    # Both are encrypted (old and enhanced copy): keep the one the row points at.
+                    keep, drop = (enc, plain) if photo["filepath"] == enc_s else (plain, enc)
+                else:
+                    keep, drop = (enc, plain) if photo["is_encrypted"] else (plain, enc)
                 if keep.is_file() and drop.is_file() and not await _is_referenced_elsewhere(conn, photo_id, drop):
                     logger.info("Vault recovery: removing leftover %s (photo %s)", drop, photo_id)
                     _safe_unlink(drop)
