@@ -5137,4 +5137,6 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `engine/api/vault.py`: unused `session_token` removed from the session, unlock response and `get_active_mvk`.
 - Tests: `engine/tests/test_ipc_auth.py` rewritten (9 tests: cookie attributes and randomness, forged/old cookies rejected, URL token rejected, fail-closed, docs only in development); `test_vault.py` asserts the token is gone.
 - Verified in the real app (`tauri dev`, throwaway library): cookie stored, thumbnail 200, picture visible.
+- **Video and story images**: `<video crossOrigin="anonymous">` (needed for the Web Audio volume booster) and the story player's colour sampling sent no cookie and got 403. Both now use `crossOrigin="use-credentials"`; the engine's CORS already allows credentials for the app origins.
+- **Playwright validation on the production page origin** (`http://tauri.localhost`, production-style debug build, throwaway library): thumbnails 200, viewer 200, video 206 and plays, vault thumbnail and viewer 200 after unlocking through the UI; no failed media requests.
 
