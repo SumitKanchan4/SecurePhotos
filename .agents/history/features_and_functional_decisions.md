@@ -33,6 +33,7 @@ This document serves as the **central, living source of truth** for all function
 104. [Vault Photos Keep No Readable Text, Location or Face Data](#104-vault-photos-keep-no-readable-text-location-or-face-data)
 105. [Permissively Licensed Face Models (YuNet + SFace) & Name-Preserving Migration](#105-permissively-licensed-face-models-yunet--sface--name-preserving-migration)
 106. [Vault Photos Enhanced While the Vault Is Open](#106-vault-photos-enhanced-while-the-vault-is-open)
+107. [Engine Login Hardened; Photos Load in the Real App](#107-engine-login-hardened-photos-load-in-the-real-app)
 
 ---
 
@@ -5110,4 +5111,32 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `engine/api/vault.py`: `peek_active_mvk`, `GET /api/vault/enhancement-progress`, start after unlock and after locking photos/albums.
 - `src/components/VaultView.tsx`: progress pill (polls every 3 s while unlocked).
 - Tests: `engine/tests/test_vault_enhancement.py` (records every file written during an enhancement and requires all to be encrypted; lock mid-way; crashes before/after the swap; runner through the real API; auto-lock not delayed). Playwright: three vault photos locked before enhancement, unlocked in the UI, pill counted 1->2->3, results 8K AVIF, only `.avif.enc` files on disk, viewer streams `image/avif`.
+
+---
+
+## 107. Engine Login Hardened; Photos Load in the Real App
+
+### Functionality Overview
+- Thumbnails, previews and videos now load inside the real app. Before, whenever the app started the engine itself (always, outside of manual development setups), every media request failed with 403 and the grid showed placeholders.
+- The engine's login is stricter: media uses a separate random session value instead of the master secret, tokens are no longer accepted in URLs, installed builds refuse to run without a secret, and the API documentation isn't published by installed builds.
+
+### Root cause (verified in the real WebView2)
+- The app page (`localhost:1420` in development, `tauri.localhost` installed) and the engine (`127.0.0.1`) are different sites. The engine's cookie was `SameSite=Lax`; WebView2 blocked it (`SchemefulSameSiteLax`), so `<img>`/`<video>` requests carried no credentials. A probe in the real WebView2 showed `SameSite=None; Secure` cookies are accepted and sent (loopback counts as a secure origin).
+
+### Functional Decision Points & Rationale (owner decisions 2026-11-11)
+- **Session cookie** = random value from the handshake, kept in engine memory, `HttpOnly; SameSite=None; Secure`, no expiry date (ends with the engine). Never the IPC secret (the old cookie carried the secret itself for 30 days).
+- **No tokens in URLs**: `?token=` removed (unused by the app; URLs end up in logs).
+- **Fail closed in installed builds** without an IPC secret; the open fallback remains for development only.
+- **API docs** (`/docs`, `/redoc`, `/openapi.json`) only in development (backlog M6).
+- **H1 closed by removal**: the vault session token was created on unlock but never sent or checked. A vault-only credential would only add protection against a local program that already has the engine secret, so it was removed instead of implemented.
+
+### Technical Touchpoints
+- `engine/api/auth.py`: `_issue_session`, `is_valid_session`, cookie `securephotos_session`; handshake accepts the header only.
+- `engine/middleware/auth_middleware.py`: header or session cookie; no query token; frozen + no secret -> 403; exempt paths = health + handshake.
+- `engine/main.py`: docs URLs disabled when frozen.
+- `engine/api/vault.py`: unused `session_token` removed from the session, unlock response and `get_active_mvk`.
+- Tests: `engine/tests/test_ipc_auth.py` rewritten (9 tests: cookie attributes and randomness, forged/old cookies rejected, URL token rejected, fail-closed, docs only in development); `test_vault.py` asserts the token is gone.
+- Verified in the real app (`tauri dev`, throwaway library): cookie stored, thumbnail 200, picture visible.
+- **Video and story images**: `<video crossOrigin="anonymous">` (needed for the Web Audio volume booster) and the story player's colour sampling sent no cookie and got 403. Both now use `crossOrigin="use-credentials"`; the engine's CORS already allows credentials for the app origins.
+- **Playwright validation on the production page origin** (`http://tauri.localhost`, production-style debug build, throwaway library): thumbnails 200, viewer 200, video 206 and plays, vault thumbnail and viewer 200 after unlocking through the UI; no failed media requests.
 

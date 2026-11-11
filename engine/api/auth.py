@@ -1,15 +1,51 @@
-"""Zero-Trust Local IPC Handshake & Session API Router for SecurePhotos."""
+"""Zero-Trust Local IPC Handshake & Session API Router for SecurePhotos.
+
+The app proves itself with the IPC secret (header ``X-SecurePhotos-Token``) once,
+at handshake. Media elements (``<img>``, ``<video>``) can't send headers, so the
+handshake also sets a cookie. That cookie holds a **separate random session
+value** (never the IPC secret), lives only in this engine process's memory, and
+dies when the engine restarts (backlog H6).
+
+The cookie is ``SameSite=None; Secure; HttpOnly``: the app page (``tauri.localhost``
+or ``localhost:1420``) and the engine (``127.0.0.1``) are different sites, and
+WebView2 rejects ``SameSite=Lax`` cookies set across sites, which made every
+thumbnail fail with 403 in the real app. ``Secure`` is allowed on plain-HTTP
+``127.0.0.1`` because browsers treat loopback as a secure origin.
+"""
 
 import hmac
 import logging
+import secrets
 from typing import Optional
-from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel
 
 from engine.config import settings
 
 logger = logging.getLogger("securephotos.auth_api")
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
+
+SESSION_COOKIE = "securephotos_session"
+# Session values issued by this engine process (handshakes from app reloads add more).
+_MAX_SESSIONS = 16
+_active_sessions: list = []
+
+
+def is_valid_session(value: Optional[str]) -> bool:
+    """Constant-time check of a session cookie value against the issued ones."""
+    if not value:
+        return False
+    found = False
+    for issued in _active_sessions:
+        found |= hmac.compare_digest(value, issued)
+    return found
+
+
+def _issue_session() -> str:
+    value = secrets.token_hex(32)
+    _active_sessions.append(value)
+    del _active_sessions[:-_MAX_SESSIONS]  # Keep only the most recent ones.
+    return value
 
 
 class HandshakeResponse(BaseModel):
@@ -23,14 +59,13 @@ async def perform_handshake(
     response: Response,
     request: Request,
     x_securephotos_token: Optional[str] = Header(None, alias="X-SecurePhotos-Token"),
-    token: Optional[str] = Query(None),
 ) -> HandshakeResponse:
     """Authenticates the native frontend client and issues an HttpOnly session cookie.
 
     The session cookie ensures that standard HTML media elements (<img src>, <video src>)
     can load thumbnails and preview streams without requiring query parameter token leaks.
     """
-    provided_token = x_securephotos_token or token
+    provided_token = x_securephotos_token
 
     # In dev mode without an IPC secret configured, handshake succeeds unconditionally
     if not settings.ipc_secret:
@@ -47,14 +82,14 @@ async def perform_handshake(
             detail="Invalid or missing local IPC authorization token.",
         )
 
-    # Issue secure session cookie for media requests
+    # Session cookie for media requests: random per handshake, valid until the engine restarts.
     response.set_cookie(
-        key="securephotos_ipc",
-        value=settings.ipc_secret,
+        key=SESSION_COOKIE,
+        value=_issue_session(),
         httponly=True,
-        samesite="lax",
+        samesite="none",
+        secure=True,
         path="/",
-        max_age=86400 * 30,  # 30 days
     )
 
     logger.info("Successfully completed local IPC handshake and issued session cookie.")

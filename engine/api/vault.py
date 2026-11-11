@@ -54,7 +54,6 @@ MAX_PIN_ATTEMPTS = 5
 # that is the soft-locked state in which the PIN can re-unlock.
 ACTIVE_VAULT_SESSION: Dict[str, Any] = {
     "mvk": None,                 # bytearray holding the 32-byte master vault key
-    "session_token": None,
     "last_activity": 0.0,
     "is_unlocked": False,
     "batch_keepalive": False,    # True during active batch optimization
@@ -63,8 +62,14 @@ ACTIVE_VAULT_SESSION: Dict[str, Any] = {
 }
 
 
-def get_active_mvk(token: Optional[str] = None) -> bytes:
-    """Returns the master vault key if the vault is unlocked; soft-locks after 5 idle minutes."""
+def get_active_mvk() -> bytes:
+    """Returns the master vault key if the vault is unlocked; soft-locks after 5 idle minutes.
+
+    Vault requests are protected by the engine login (IPC token or session cookie,
+    see engine.middleware) plus the vault being unlocked. A separate per-unlock
+    token was considered and dropped (backlog H1, owner decision 2026-11-11): it
+    would only help against a program that already holds the engine secret.
+    """
     if not ACTIVE_VAULT_SESSION["is_unlocked"] or not ACTIVE_VAULT_SESSION["mvk"]:
         raise HTTPException(status_code=401, detail="Vault is locked. Please authenticate.")
 
@@ -104,7 +109,7 @@ def purge_vault_key() -> None:
     if ACTIVE_VAULT_SESSION["mvk"]:
         zero_memory(ACTIVE_VAULT_SESSION["mvk"])
     ACTIVE_VAULT_SESSION.update(
-        mvk=None, session_token=None, is_unlocked=False, batch_keepalive=False,
+        mvk=None, is_unlocked=False, batch_keepalive=False,
         pin_verifier=None, pin_failures=0,
     )
     logger.info("Vault key purged from memory.")
@@ -116,7 +121,7 @@ def soft_lock_vault() -> None:
     if not ACTIVE_VAULT_SESSION["pin_verifier"]:
         purge_vault_key()
         return
-    ACTIVE_VAULT_SESSION.update(session_token=None, is_unlocked=False, batch_keepalive=False)
+    ACTIVE_VAULT_SESSION.update(is_unlocked=False, batch_keepalive=False)
     logger.info("Vault locked; PIN quick unlock available until the app closes.")
 
 
@@ -129,15 +134,13 @@ def _pin_unlock_available() -> bool:
     )
 
 
-def _open_session(mvk: bytes, pin_verifier: Optional[str]) -> str:
-    session_token = secrets.token_hex(16)
+def _open_session(mvk: bytes, pin_verifier: Optional[str]) -> None:
     if ACTIVE_VAULT_SESSION["mvk"] and bytes(ACTIVE_VAULT_SESSION["mvk"]) != mvk:
         zero_memory(ACTIVE_VAULT_SESSION["mvk"])
     ACTIVE_VAULT_SESSION.update(
-        mvk=bytearray(mvk), session_token=session_token, last_activity=time.time(),
+        mvk=bytearray(mvk), last_activity=time.time(),
         is_unlocked=True, pin_verifier=pin_verifier, pin_failures=0,
     )
-    return session_token
 
 
 def _validate_pin(pin: str) -> str:
@@ -393,9 +396,9 @@ async def unlock_vault(payload: VaultUnlockRequest) -> dict:
         if not payload.totp_code or not verify_totp_code(row["totp_secret_encrypted"], payload.totp_code):
             raise HTTPException(status_code=401, detail="Invalid 6-digit Authenticator TOTP code.")
 
-    session_token = _open_session(unwrapped_mvk, row["pin_verifier"])
+    _open_session(unwrapped_mvk, row["pin_verifier"])
     _start_vault_enhancement()
-    return {"status": "unlocked", "session_token": session_token}
+    return {"status": "unlocked"}
 
 
 @router.post("/lock", status_code=status.HTTP_200_OK)
@@ -574,7 +577,7 @@ async def reset_vault_password(payload: VaultPasswordResetRequest) -> dict:
 @router.get("/stream/{photo_id}")
 async def stream_vault_photo(photo_id: int):
     """Streams decrypted photo/video chunks directly to memory blob URLs with zero disk temp writes."""
-    mvk = get_active_mvk(ACTIVE_VAULT_SESSION["session_token"])
+    mvk = get_active_mvk()
 
     conn = await get_db_connection()
     row = None
@@ -604,7 +607,7 @@ async def lock_album_to_vault(album_id: int) -> dict:
 
     Photos that fail are left unchanged and reported in ``failed_ids``.
     """
-    mvk = get_active_mvk(ACTIVE_VAULT_SESSION["session_token"])
+    mvk = get_active_mvk()
     conn = await get_db_connection()
     try:
         async with conn.execute(
