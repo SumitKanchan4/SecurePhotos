@@ -105,7 +105,7 @@ async def test_vault_setup_and_unlock_api():
         )
         assert unlock_res.status_code == 200
         assert unlock_res.json()["status"] == "unlocked"
-        assert "session_token" in unlock_res.json()
+        assert "session_token" not in unlock_res.json()  # H1: unused token removed.
 
         # Unlock with wrong password (should fail 401)
         bad_unlock = await client.post(

@@ -86,7 +86,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - **Current:** `vault.py:395-408` deletes `vault_configs` only. `.enc` files and their `photos` rows remain and can never be decrypted again. The confirmation phrase is optional in the API and hard-coded in the UI (`VaultView.tsx:399`), so it guards nothing.
 - **Decision:** on reset, either (a) permanently delete all vault items and files too, or (b) refuse to reset while vault items exist. Make the confirmation phrase required and typed by the user.
 
-### C7 · Enhance vault photos while the vault is open — `review` (branch `feature/c7-vault-enhancement`, history §106; progress pill: owner chose 'show a small status')
+### C7 · Enhance vault photos while the vault is open — `done` (merged 2026-11-11, history §106)
 - **Intent (owner):** vault photos get the same single-version enhancement as library photos (AVIF, 8K, settings), but only while the vault is unlocked. While it is locked, nothing is processed and the encrypted original stays as it is.
 - **Current:** `run_background_optimization` skips `is_encrypted = 1`. A photo locked before it was enhanced stays unenhanced until moved out of the vault (then it is enhanced as a library photo).
 - **Constraints:** decrypt in memory, enhance in memory, encrypt the result; **never write unencrypted data to disk** (the current enhancer writes a temp file next to the photo, so it needs an in-memory variant). Stop when the vault locks (idle, Lock, L, 5 wrong PINs) and resume on the next unlock. Crash-safe replacement through the `vault_storage` journal (new `.enc` written and verified before the row changes; old `.enc` deleted after commit). Respect battery guard and quality slider. `ACTIVE_VAULT_SESSION["batch_keepalive"]` already exists for long batches; decide whether enhancement may keep the vault from auto-locking (probably not).
@@ -102,7 +102,8 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ### H11 · Rare false face detections — `todo` (found in H9 rehearsal)
 - YuNet finds ~15 more real background faces than the old pipeline, plus occasional non-faces (a hand, an ear/earring). Their detector score (0.67-0.84) overlaps named faces (lowest 0.68), so no safe score cut-off exists. Today they only appear as "who is this?" suggestions the user can dismiss. Possible fixes: a small face/non-face check on the crop, or hiding single-face suggestions below a quality level.
 
-### H1 · Check the vault session token on every vault request — `todo`
+### H1 · Check the vault session token on every vault request — `done` (closed 2026-11-11 by removing the unused token; history §107)
+- **Owner decision:** remove rather than implement. The token was created on unlock but never sent or checked. Vault protection = engine login (hardened in H6) + vault unlocked + auto-lock; a second vault-only credential would only help against a program that already holds the engine secret.
 - `get_active_mvk(token)` ignores its argument (`vault.py:47`). The vault is one global unlocked state, so any authenticated caller can use it. Fix: require `X-Session-Token` on all vault routes and compare it with `secrets.compare_digest`. Media `<img>` tags need a cookie or a short-lived signed URL; design that in the briefing.
 
 ### H2 · Encrypted file format v3: truncation protection and an authenticated header — `todo`
@@ -117,7 +118,8 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ### H5 · Add a Content Security Policy and trim Tauri permissions — `todo`
 - `tauri.conf.json` has `"csp": null`, and `capabilities/default.json` grants `shell:default` on window `"*"`. Add a strict CSP (self + `http://127.0.0.1:*` for the engine, media from blob/engine), check whether the shell plugin is used at all, and limit capabilities to the `main` window.
 
-### H6 · Harden IPC token handling — `todo`
+### H6 · Harden IPC token handling — `review` (branch `fix/h1-h6-engine-auth`, history §107)
+- **Follow-up:** confirm the cookie on an installer build (page origin `http://tauri.localhost`); verified on the dev build (`http://localhost:1420`), where the old cookie was blocked by WebView2 (`SchemefulSameSiteLax`) and the new one works.
 - **Check while here (found in UI testing, confidence low):** the login cookie is `SameSite=Lax` and set by `127.0.0.1` for a page on another site (`tauri.localhost` in the app). In a browser on `localhost` it was rejected and every thumbnail got 403. Verify how WebView2 behaves; the redesign should not depend on cross-site cookies.
 - `auth_middleware.py`: remove the `?token=` fallback; with no secret set, refuse requests in a frozen build. `auth.py`: the cookie holds the raw secret for 30 days, so issue a separate random session value instead. Covers M6.
 
@@ -150,10 +152,13 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ### M5 · Token RNG must fail closed — `todo`
 - `lib.rs` `fallback_token()` uses time + PID. Use the `getrandom` crate and abort engine start if it fails.
 
-### M6 · Disable `/docs` and `/openapi.json` in frozen builds — `todo` (do with H6)
+### M6 · Disable `/docs` and `/openapi.json` in frozen builds — `review` (done in H6, history §107)
 
 ### M8 · Auto-lock time setting is ignored — `todo` (found during C2)
 - Settings offers 1/5/15/30 min/never (`auto_lock_duration`), but the engine (`vault.py` `AUTO_LOCK_SECONDS = 300`) and `VaultView.tsx` (`AUTO_LOCK_SECONDS = 300`) hard-code 5 minutes. Either wire it up (engine is the authority) or remove the option.
+
+### M9 · Engine auto-reload hangs in development — `todo` (found during H6)
+- With `tauri dev`, uvicorn `--reload` logged "Reloading..." after a Python change and never restarted; the old engine kept answering with old code. Likely a background task (face scan, video queue, enhancer) blocking shutdown on Windows. Development-only, but it makes code changes look ineffective. Fix: cancel background tasks in the lifespan shutdown, or drop `--reload` in the dev launcher.
 
 ### M7 · Trash purge cannot find files with relative paths — `todo` (found during C5)
 - `trash.py:120` `_unlink_photo_files` uses `Path(path_str)` directly. Managed imports store relative paths, so after 30 days the row is deleted but the original, thumbnail and preview probably **stay on disk forever** (wasted space, and "deleted" photos remain). Resolve paths against the data folder using `vault_storage.resolve_stored_path`. Also add a one-off cleanup for files already orphaned this way.
