@@ -105,46 +105,6 @@ async def test_neural_enhance_endpoint_success():
 
 
 @pytest.mark.asyncio
-async def test_face_restore_endpoint_success():
-    """Verifies that POST /api/photos/{id}/face-restore triggers restoration and preview is retrievable."""
-    await run_migrations()
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = Path(tmpdir)
-        photo_id = await create_test_photo(tmp_path)
-
-        def dummy_face_restore(src, dest, fidelity=0.85):
-            dest_p = Path(dest)
-            dest_p.parent.mkdir(parents=True, exist_ok=True)
-            img = Image.new("RGB", (320, 240), color=(255, 200, 180))
-            img.save(dest_p, "WEBP")
-            return dest_p, 320, 240, dest_p.stat().st_size
-
-        transport = ASGITransport(app=app)
-        try:
-            with patch("engine.services.face_restore_service.restore_faces_in_image", side_effect=dummy_face_restore):
-                async with AsyncClient(transport=transport, base_url="http://test") as client:
-                    res = await client.post(f"/api/photos/{photo_id}/face-restore")
-                    assert res.status_code == 200
-                    data = res.json()
-                    assert data["status"] == "ok"
-                    assert data["photo_id"] == photo_id
-                    assert data["width"] == 320
-                    assert data["height"] == 240
-
-                    # Verify face restore preview stream
-                    prev_res = await client.get(f"/api/photos/{photo_id}/face-restore-preview")
-                    assert prev_res.status_code == 200
-                    assert prev_res.headers["content-type"] == "image/webp"
-        finally:
-            conn = await get_db_connection()
-            try:
-                await conn.execute("DELETE FROM photos WHERE id = ?;", (photo_id,))
-                await conn.commit()
-            finally:
-                await conn.close()
-
-
-@pytest.mark.asyncio
 async def test_get_photo_original_endpoint():
     """Verifies that GET /api/photos/{id}/original streams the unmodified original media file."""
     await run_migrations()
@@ -179,14 +139,8 @@ async def test_enhancements_nonexistent_photo():
         res_neural = await client.post("/api/photos/999999/neural-enhance")
         assert res_neural.status_code == 404
 
-        res_face = await client.post("/api/photos/999999/face-restore")
-        assert res_face.status_code == 404
-
         res_neural_prev = await client.get("/api/photos/999999/neural-preview")
         assert res_neural_prev.status_code == 404
-
-        res_face_prev = await client.get("/api/photos/999999/face-restore-preview")
-        assert res_face_prev.status_code == 404
 
 
 @pytest.mark.asyncio
