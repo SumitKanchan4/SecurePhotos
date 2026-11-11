@@ -17,57 +17,59 @@ from engine.config import settings
 
 logger = logging.getLogger("securephotos.auth_middleware")
 
-# Paths that are public for health checking, docs, or initial handshake
+# Paths reachable without credentials: liveness checks and the handshake itself.
+# API docs (/docs, /redoc, /openapi.json) are only served in development builds,
+# where requests are not checked anyway (see engine.main.create_app).
 EXEMPT_PATHS = {
     "/health",
     "/api/health",
-    "/docs",
-    "/openapi.json",
-    "/redoc",
-    "/favicon.ico",
+    "/api/auth/handshake",
 }
 
 
+def _is_installed_build() -> bool:
+    """True when running as the packaged (PyInstaller) engine."""
+    import sys
+
+    return bool(getattr(sys, "frozen", False))
+
+
 class LocalIPCSecurityMiddleware(BaseHTTPMiddleware):
-    """Enforces zero-trust authentication on all incoming HTTP requests."""
+    """Enforces zero-trust authentication on all incoming HTTP requests (backlog H6).
+
+    Accepted credentials:
+    - ``X-SecurePhotos-Token`` header equal to the IPC secret (API calls);
+    - ``securephotos_session`` cookie issued by the handshake (media elements).
+    Tokens in the URL (``?token=``) are not accepted: URLs end up in logs.
+    """
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        # 1. Allow health checks, API docs, and preflight OPTIONS requests without credentials
         if request.method == "OPTIONS":
-            return await call_next(request)
+            return await call_next(request)  # CORS preflight carries no credentials.
 
         path = request.url.path
-        if path in EXEMPT_PATHS or path == "/api/auth/handshake":
+        if path in EXEMPT_PATHS:
             return await call_next(request)
 
-        # 2. Transparent bypass in development if no IPC secret is configured
         if not settings.ipc_secret:
-            return await call_next(request)
+            if _is_installed_build():
+                # Fail closed: an installed engine must never run without a secret.
+                logger.error("Rejected %s %s: engine started without an IPC secret.", request.method, path)
+                return JSONResponse(status_code=403, content={"detail": "Engine is not configured for secure access."})
+            return await call_next(request)  # Development only.
 
-        expected_secret = settings.ipc_secret
-
-        # 3. Check X-SecurePhotos-Token custom header (primary for API calls)
         auth_header = request.headers.get("X-SecurePhotos-Token")
-        if auth_header and hmac.compare_digest(auth_header, expected_secret):
+        if auth_header and hmac.compare_digest(auth_header, settings.ipc_secret):
             return await call_next(request)
 
-        # 4. Check securephotos_ipc cookie (for media tags <img>, <video>, <audio>)
-        auth_cookie = request.cookies.get("securephotos_ipc")
-        if auth_cookie and hmac.compare_digest(auth_cookie, expected_secret):
+        from engine.api.auth import SESSION_COOKIE, is_valid_session
+
+        if is_valid_session(request.cookies.get(SESSION_COOKIE)):
             return await call_next(request)
 
-        # 5. Check URL query parameter fallback (?token=...)
-        query_token = request.query_params.get("token")
-        if query_token and hmac.compare_digest(query_token, expected_secret):
-            return await call_next(request)
-
-        # 6. Reject unauthorized request
         client_host = request.client.host if request.client else "unknown"
         logger.warning(f"Blocked unauthorized IPC request: {request.method} {path} from {client_host}")
         return JSONResponse(
             status_code=403,
-            content={
-                "detail": "Unauthorized local IPC access. Valid token or session cookie required.",
-                "path": path,
-            },
+            content={"detail": "Unauthorized local IPC access. Valid token or session cookie required.", "path": path},
         )

@@ -1101,7 +1101,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   }}
                   src={videoStreamUrl}
                   poster={thumbnailUrl}
-                  crossOrigin="anonymous"
+                  // CORS-enabled for the Web Audio preamp, *with* the engine's session
+                  // cookie: "anonymous" sends no cookie, so the engine answered 403 (H6).
+                  crossOrigin="use-credentials"
                   controls
                   playsInline
                   preload="auto"
