@@ -70,11 +70,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 def create_app() -> FastAPI:
     """Factory function to instantiate and configure the FastAPI app."""
+    # API docs publish the full API map; only serve them in development (backlog M6).
+    installed_build = bool(getattr(sys, "frozen", False))
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
         description="Local-first, SLM-powered Desktop Media Library & Digital Vault Engine",
         lifespan=lifespan,
+        docs_url=None if installed_build else "/docs",
+        redoc_url=None if installed_build else "/redoc",
+        openapi_url=None if installed_build else "/openapi.json",
     )
 
     # Configure zero-trust local IPC security middleware
