@@ -106,7 +106,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - **Owner decision:** remove rather than implement. The token was created on unlock but never sent or checked. Vault protection = engine login (hardened in H6) + vault unlocked + auto-lock; a second vault-only credential would only help against a program that already holds the engine secret.
 - `get_active_mvk(token)` ignores its argument (`vault.py:47`). The vault is one global unlocked state, so any authenticated caller can use it. Fix: require `X-Session-Token` on all vault routes and compare it with `secrets.compare_digest`. Media `<img>` tags need a cookie or a short-lived signed URL; design that in the briefing.
 
-### H2 · Encrypted file format v3: truncation protection and an authenticated header — `review` (branch `fix/h2-vault-file-format`, history §109; owner: new format only, no SPENC02 reading)
+### H2 · Encrypted file format v3: truncation protection and an authenticated header — `done` (merged 2026-11-12, history §109)
 - `crypto_vault.py:239-333`. Chunks have no final-chunk flag and no associated data, so trailing chunks can be dropped without detection. The header salt is unused. Fix: a STREAM-style construction (nonce/AAD includes the chunk index and a last-chunk flag, and the header is in the AAD). Must still read `SPENC02` files, with optional background re-encryption.
 
 ### H3 · Remove TOTP leftovers — `todo`
@@ -115,7 +115,8 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ### H4 · Make in-memory key handling honest — `todo`
 - `zero_memory` does nothing for `bytes`, and `get_active_mvk` returns `bytes(...)` copies. Python cannot wipe memory reliably. Reduce copies where possible and correct the docstrings and README claims ("RAM key zeroing").
 
-### H5 · Add a Content Security Policy and trim Tauri permissions — `todo`
+### H5 · Add a Content Security Policy and trim Tauri permissions — `review` (branch `fix/h5-csp-permissions-fonts`, history §110; owner: bundle the fonts)
+- **Note:** `npm install` reports existing audit advisories in other packages; check under Q2 (CI quality gate).
 - `tauri.conf.json` has `"csp": null`, and `capabilities/default.json` grants `shell:default` on window `"*"`. Add a strict CSP (self + `http://127.0.0.1:*` for the engine, media from blob/engine), check whether the shell plugin is used at all, and limit capabilities to the `main` window.
 
 ### H6 · Harden IPC token handling — `done` (merged 2026-11-11, history §107)

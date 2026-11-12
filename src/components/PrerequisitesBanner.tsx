@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { openExternal } from "../services/external";
 import { AlertTriangle, RefreshCw, X, ExternalLink, Play, FileText } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { SystemPrerequisites } from "../types";
@@ -38,12 +39,12 @@ export const PrerequisitesBanner: React.FC<PrerequisitesBannerProps> = ({
   const { python, backend, vcredist, error_message } = prerequisites;
 
   const handleDownloadPython = () => {
-    window.open("https://www.python.org/downloads/", "_blank");
+    openExternal("https://www.python.org/downloads/");
   };
 
   const handleDownloadVcRedist = () => {
     const url = vcredist?.download_url || "https://aka.ms/vs/17/release/vc_redist.x64.exe";
-    window.open(url, "_blank");
+    openExternal(url);
   };
 
   const handleOpenLogs = async () => {
