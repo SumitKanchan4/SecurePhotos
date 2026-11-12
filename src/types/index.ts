@@ -76,6 +76,14 @@ export interface TimelineResponse {
   items: [number, string | null, number, number, string, number][];
 }
 
+/** /api/photos/{id}/context: what the viewer's details panel shows besides EXIF (redesign R3). */
+export interface PhotoContext {
+  people: { id: number; name: string; face_id: number | null }[];
+  albums: { id: number; name: string }[];
+  imported_at: string | null;
+  copied_into_library: boolean;
+}
+
 export interface AlbumItem {
   id: number;
   name: string;
