@@ -550,7 +550,7 @@ async def compress_video(
             os.replace(temp_path, target_path)
 
             # Re-extract accurate dimensions & metadata
-            new_meta = extract_video_metadata(str(target_path))
+            new_meta = await asyncio.to_thread(extract_video_metadata, str(target_path))  # H7
             saved_bytes = orig_size - compressed_size
 
             # Atomic Step 1: Update database record FIRST
@@ -598,7 +598,9 @@ async def compress_video(
 
         # Refresh thumbnails for the new file
         if photo["thumbnail_path"]:
-            generate_video_thumbnail(str(target_path), photo["thumbnail_path"], photo["preview_path"])
+            await asyncio.to_thread(  # H7
+                generate_video_thumbnail, str(target_path), photo["thumbnail_path"], photo["preview_path"]
+            )
 
         logger.info(f"Successfully compressed video #{photo_id}: {orig_size} -> {compressed_size} bytes (saved {saved_bytes} bytes).")
         return {
@@ -752,7 +754,7 @@ async def enhance_old_video(
                 target_path.unlink()
             os.replace(temp_path, target_path)
 
-            new_meta = extract_video_metadata(str(target_path))
+            new_meta = await asyncio.to_thread(extract_video_metadata, str(target_path))  # H7
             new_size = target_path.stat().st_size
 
             # Atomic Step 1: Update database record FIRST before touching source file
@@ -802,7 +804,7 @@ async def enhance_old_video(
 
             if not moved:
                 try:
-                    shutil.copy2(orig_path, str(trash_orig_path))
+                    await asyncio.to_thread(shutil.copy2, orig_path, str(trash_orig_path))  # H7
                     try:
                         os.unlink(orig_path)
                     except OSError:
@@ -811,7 +813,9 @@ async def enhance_old_video(
                     pass
 
         if photo["thumbnail_path"]:
-            generate_video_thumbnail(str(target_path), photo["thumbnail_path"], photo["preview_path"])
+            await asyncio.to_thread(  # H7
+                generate_video_thumbnail, str(target_path), photo["thumbnail_path"], photo["preview_path"]
+            )
 
         return {
             "success": True,

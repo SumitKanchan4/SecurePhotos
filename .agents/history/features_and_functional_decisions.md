@@ -43,6 +43,7 @@ This document serves as the **central, living source of truth** for all function
 114. [Relative Paths Everywhere; Storage Clean-up Removed](#114-relative-paths-everywhere-storage-clean-up-removed)
 115. [TOTP Removed From the Engine](#115-totp-removed-from-the-engine)
 116. [Engine Access Token Never Falls Back to a Guessable Value](#116-engine-access-token-never-falls-back-to-a-guessable-value)
+117. [App Stays Responsive During Heavy Work; Overlapping Work Queued](#117-app-stays-responsive-during-heavy-work-overlapping-work-queued)
 
 ---
 
@@ -5352,3 +5353,32 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `src/App.tsx` (`handleStartEngine`, `handleRecheckPrerequisites` returns whether the engine is ready), `src/components/PrerequisitesBanner.tsx` (prop type).
 - Tests: `src-tauri/tests/token_rng.rs` (64 hex chars and unique; a brief failure is retried; no fallback when randomness keeps failing). Putting the time/process-ID fallback back makes the last test fail. CI quality gate now also runs `cargo test --test token_rng`.
 - Validated with the real app (`tauri build --debug --no-bundle`, throwaway library, Playwright attached to the WebView): the shell generated the token and started the engine; handshake and every API call returned 200 (no 401/403); no offline banner; "8K AI Engine Active".
+
+---
+
+## 117. App Stays Responsive During Heavy Work; Overlapping Work Queued
+
+### Functionality Overview
+- The app no longer freezes while the engine does heavy file work. Before, moving a large video into the vault froze the grid, viewer and progress bars until it finished; imports caused repeated freezes of a few seconds.
+- Measured on a throwaway library (longest time the engine did not answer while the work ran):
+
+| Work | Before | After |
+|---|---|---|
+| Import 12 photos (12 MP) | 2.30 s (6 of 15 checks slow) | 0.05 s (0 of 158) |
+| Move a 300 MB video into the vault | 5.35 s (the whole time) | 0.07 s |
+| Take it out of the vault | 2.43 s (the whole time) | 0.08 s |
+
+- **Also fixed (found while testing):** a double-clicked "Move to Vault" processed the same photo twice, and two imports of the same file at the same time added it twice. Both now happen once.
+
+### Functional Decision Points & Rationale (owner decision 2026-11-12: queue overlapping work one at a time)
+- Heavy work runs on background threads (`asyncio.to_thread`); database steps stay on the main loop, so the vault crash-safety journal and the order of writes are unchanged.
+- Vault operations (lock, unlock, vault enhancement, vault reset) wait for each other; imports (photos and documents) wait for each other. Browsing and viewing never wait. A repeated request finds the work already done and does nothing.
+- Password hashing (Argon2), photo enhancement and the face scan were already off the main loop; the backlog entry was partly out of date.
+
+### Technical Touchpoints
+- `engine/services/work_queues.py` (new: `vault_files()`, `imports()`, one lock per event loop).
+- Vault: `vault_storage.lock_photo` / `unlock_photo` (encrypt/decrypt + verify, sealed details), `lock_photos` / `unlock_photos` (queue), `vault_enhancer` (queue), `api/vault.py` reset (queue) and vault thumbnails.
+- Import: `ingestion_service` (`_copy_into_library`, `_make_thumbnails`, hash, EXIF, volume serial), `api/photos.py` import (queue), `document_service` import (queue) and OCR image load.
+- Other: thumbnail rebuild and background regeneration, studio-print download, face crops, collage render/save, video stream probe, video conversion follow-up (metadata, thumbnail, backup copy).
+- Tests: `engine/tests/test_responsiveness.py` (engine answers while a photo is being encrypted; two simultaneous locks of one photo are safe; two simultaneous imports of one file add it once). All 3 fail on the old code (the old code also locked twice / imported twice). With the queues switched off, the two overlap tests fail every time. 214 tests pass.
+- Validated in the UI (Playwright, throwaway library): while a 300 MB video was being locked, navigating Albums -> Photos -> Dashboard -> Photos took 0.13-0.36 s per step with the lock still running; no engine request took over 250 ms.

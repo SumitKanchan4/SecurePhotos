@@ -4,6 +4,7 @@ This router manages facial recognition identities, representative medoid cluster
 live scanning workflows, and the 'Name Once, Tag 1,000 Photos' clustering interface.
 """
 
+import asyncio
 from typing import Any, List, Optional
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
@@ -281,22 +282,25 @@ async def get_face_crop(face_id: int):
             raise HTTPException(status_code=404, detail="Source photo missing on disk")
 
         from PIL import Image
-        with Image.open(photo_path) as raw_img:
-            img = raw_img.convert("RGB")
-            w, h = img.size
-            bx = _parse_box_float(row["box_x"]) * w
-            by = _parse_box_float(row["box_y"]) * h
-            bw = _parse_box_float(row["box_w"]) * w
-            bh = _parse_box_float(row["box_h"]) * h
+        def _write_face_crop() -> None:  # H7: image work runs off the event loop.
+            with Image.open(photo_path) as raw_img:
+                img = raw_img.convert("RGB")
+                w, h = img.size
+                bx = _parse_box_float(row["box_x"]) * w
+                by = _parse_box_float(row["box_y"]) * h
+                bw = _parse_box_float(row["box_w"]) * w
+                bh = _parse_box_float(row["box_h"]) * h
 
-            margin = 0.25
-            x1 = max(0, int(bx - bw * margin))
-            y1 = max(0, int(by - bh * margin))
-            x2 = min(w, int(bx + bw * (1.0 + margin)))
-            y2 = min(h, int(by + bh * (1.0 + margin)))
+                margin = 0.25
+                x1 = max(0, int(bx - bw * margin))
+                y1 = max(0, int(by - bh * margin))
+                x2 = min(w, int(bx + bw * (1.0 + margin)))
+                y2 = min(h, int(by + bh * (1.0 + margin)))
 
-            crop = img.crop((x1, y1, x2, y2)).resize((200, 200), Image.Resampling.LANCZOS)
-            crop.save(face_thumb, format="WEBP", quality=90)
+                crop = img.crop((x1, y1, x2, y2)).resize((200, 200), Image.Resampling.LANCZOS)
+                crop.save(face_thumb, format="WEBP", quality=90)
+
+        await asyncio.to_thread(_write_face_crop)
 
         return FileResponse(face_thumb, media_type="image/webp")
     finally:
