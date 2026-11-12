@@ -42,6 +42,7 @@ This document serves as the **central, living source of truth** for all function
 113. [Import Only Copies Into the Library; Collages in Dated Folders](#113-import-only-copies-into-the-library-collages-in-dated-folders)
 114. [Relative Paths Everywhere; Storage Clean-up Removed](#114-relative-paths-everywhere-storage-clean-up-removed)
 115. [TOTP Removed From the Engine](#115-totp-removed-from-the-engine)
+116. [Engine Access Token Never Falls Back to a Guessable Value](#116-engine-access-token-never-falls-back-to-a-guessable-value)
 
 ---
 
@@ -5329,3 +5330,25 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `src/components/VaultSetupWizard.tsx`, `src/store/useAppStore.ts`.
 - Tests: `engine/tests/test_vault_no_totp.py` (2 tests, both fail on the old code: the old setup returned the plaintext secret; an old stored secret stayed). `test_vault.py` no longer sends `enable_totp`. 211 tests pass.
 - Validated in the UI (Playwright, throwaway library): vault wizard (password, PIN, emergency card) -> setup request carries only password, PIN and card; status reply has no `has_totp`; lock -> PIN reopens; lock again -> reopened; TOTP column empty; no console errors.
+
+---
+
+## 116. Engine Access Token Never Falls Back to a Guessable Value
+
+### Functionality Overview
+- No visible change in normal use. The app shell creates a random access token for the local engine at every start; it now comes only from the operating system's secure random source (via the standard `getrandom` crate).
+- Before, if that source failed, the shell silently used the current time plus the process ID, which another program on the PC could guess and then use the engine as if it were the app.
+- If secure randomness fails now, the shell retries a few times within about a second. If it still fails, the engine is not started and the startup banner says why ("Couldn't create a secure access key for the engine ... Click Start Engine to try again"). Reopening the app also retries.
+- The **Start Engine** button now keeps checking for up to 30 seconds until the engine answers (before, it checked once, right away, so the screen could stay "offline" even after the engine came up), and shows the real reason if the start was refused.
+
+### Functional Decision Points & Rationale (owner decision 2026-11-12: auto-retry, then one click)
+- Security code must refuse rather than quietly downgrade. The OS random source practically never fails; when it does, Windows itself is unwell, so a visible message is better than a silent loop.
+- 4 attempts, 250 ms apart. The reason is kept in the shell (`last_start_error`) and reported through the existing prerequisites check, so the existing banner shows it.
+- The token code lives in `src-tauri/src/token.rs` without Tauri so its tests run as a plain binary: test binaries that link the whole app don't get the app's Windows manifest and fail to start (`STATUS_ENTRYPOINT_NOT_FOUND`).
+- `getrandom` 0.3 was already in the dependency tree (via Tauri), so nothing new is downloaded.
+
+### Technical Touchpoints
+- `src-tauri/src/token.rs` (new), `src-tauri/src/lib.rs` (`start_backend_engine`, `AppEngineState.last_start_error`, prerequisites check; old `BCryptGenRandom` / `/dev/urandom` code and `fallback_token` removed), `src-tauri/Cargo.toml`.
+- `src/App.tsx` (`handleStartEngine`, `handleRecheckPrerequisites` returns whether the engine is ready), `src/components/PrerequisitesBanner.tsx` (prop type).
+- Tests: `src-tauri/tests/token_rng.rs` (64 hex chars and unique; a brief failure is retried; no fallback when randomness keeps failing). Putting the time/process-ID fallback back makes the last test fail. CI quality gate now also runs `cargo test --test token_rng`.
+- Validated with the real app (`tauri build --debug --no-bundle`, throwaway library, Playwright attached to the WebView): the shell generated the token and started the engine; handshake and every API call returned 200 (no 401/403); no offline banner; "8K AI Engine Active".

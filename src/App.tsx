@@ -293,9 +293,19 @@ export const App: React.FC = () => {
   // Manual engine launch helper
   const handleStartEngine = async () => {
     try {
-      await invoke("start_backend_engine");
-      showToast?.("Engine start initiated", "info");
-      await handleRecheckPrerequisites();
+      const result = await invoke<{ status?: string; message?: string }>("start_backend_engine");
+      if (result?.status === "error") {
+        // M5: e.g. no secure access key could be made; the banner shows the same reason.
+        showToast?.(result.message || "The engine couldn't start. Please try again.", "warning");
+        await handleRecheckPrerequisites();
+        return;
+      }
+      showToast?.("Starting the engine…", "info");
+      // The engine needs a few seconds to boot; keep checking so one click is enough.
+      for (let attempt = 0; attempt < 30; attempt++) {
+        if (await handleRecheckPrerequisites()) return;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
     } catch (err) {
       console.error("Failed to start engine:", err);
       showToast?.("Failed to launch background engine", "warning");
@@ -303,7 +313,7 @@ export const App: React.FC = () => {
   };
 
   // Manual / button-triggered prerequisites re-check
-  const handleRecheckPrerequisites = async () => {
+  const handleRecheckPrerequisites = async (): Promise<boolean> => {
     setIsRecheckingPrereqs(true);
     try {
       const prereqs = await invoke<SystemPrerequisites>("check_system_prerequisites");
@@ -312,17 +322,20 @@ export const App: React.FC = () => {
         const config = await invoke<{ port: number; token: string; base_url: string }>("get_engine_config");
         if (config && config.port > 0) {
           setEngineConfig(config.base_url, config.token || null);
-          if (config.token) {
-            await performHandshake(config.base_url, config.token);
+          if (config.token && !(await performHandshake(config.base_url, config.token))) {
+            return false; // Port is open but the engine is still starting.
           }
           setIsEngineReady(true);
           checkVaultStatus();
           loadPhotos(activeYear);
           loadTimelineYears();
+          return true;
         }
       }
+      return false;
     } catch (err) {
       console.warn("Prerequisites check warning:", err);
+      return false;
     } finally {
       setIsRecheckingPrereqs(false);
     }
