@@ -74,6 +74,9 @@ jobs:
       - name: Audit npm dependencies (fail on high severity)
         run: npm audit --audit-level=high
 
+      - name: Frontend unit tests (Vitest)
+        run: npm test
+
       - name: Typecheck and build frontend
         run: npm run build
 

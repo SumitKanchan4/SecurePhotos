@@ -48,6 +48,7 @@ This document serves as the **central, living source of truth** for all function
 119. [Honest Vault Key Handling in Memory](#119-honest-vault-key-handling-in-memory)
 120. [Engineering Checklists; Skills and Docs Match the Code](#120-engineering-checklists-skills-and-docs-match-the-code)
 121. [Dead 24-Word Recovery Mode Removed From the Vault Unlock Screens](#121-dead-24-word-recovery-mode-removed-from-the-vault-unlock-screens)
+122. [Frontend Unit Tests (Vitest) in the Quality Gate](#122-frontend-unit-tests-vitest-in-the-quality-gate)
 
 ---
 
@@ -5466,3 +5467,22 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `src/components/VaultView.tsx` and `src/components/VaultUnlockModal.tsx` (mode type, state, handler and form removed: about 170 lines), `src/components/VaultSetupWizard.tsx` (comment).
 - Tests: `test_docs_match_code.py::test_ui_does_not_offer_a_24_word_recovery_phrase` (fails on the old UI: all three files). 229 tests pass; `tsc` and the build pass.
 - Validated in the UI (Playwright, throwaway library): wizard (password, PIN, card) -> lock -> PIN pad, "Unlock with Master Password instead", Emergency Card link, Factory Reset; no "24-word" / "recovery phrase" text; PIN unlock works; the card link opens the reset dialog with Card file / Card numbers / Current password. No console errors.
+
+---
+
+## 122. Frontend Unit Tests (Vitest) in the Quality Gate
+
+### Functionality Overview
+- No app change. The React frontend now has unit tests (Vitest + React Testing Library + jsdom), and a failing frontend test blocks a merge in the GitHub check, like the Python tests.
+- First tests cover what the upcoming frontend redesign keeps: the API layer (every engine request carries the token header and the session cookie; no token in URLs; media URLs per library/vault route; the handshake reports failure instead of throwing) and the store (vault status read with token + cookie and kept when the engine is unreachable; photo selection; a toast's timer never hides a newer toast).
+
+### Functional Decision Points & Rationale (owner decisions 2026-11-12)
+- **Reduced scope**: the owner plans a frontend redesign, so component tests (vault unlock window, startup banner) were deferred; they will be written against the new screens. Q5 (splitting oversized components) is folded into the redesign.
+- **Block merges**: `npm test` is a required step in `quality.yml` (and in the release pipeline's validation).
+- **Versions**: Vitest 3.2.7 had published advisories (mock path traversal, worker prototype pollution; dev-only), so **Vitest 4.1.12** is used; `npm audit` reports 0 vulnerabilities. npm 10.9.2 crashes (`edgesOut`) while resolving Vitest 4's optional browser peers; the lock file was produced with npm 11 and verified with a clean `npm ci` on npm 10 (what CI runs). jsdom 26.1.0 and user-event 14.6.1 instead of releases younger than two weeks.
+- **Windows quirk**: started from a folder path with a lowercase drive letter (this VS Code terminal uses `c:\...`), Vitest loads itself twice and every file fails with "failed to find the current suite". `npm test` runs `scripts/run-vitest.mjs`, which starts Vitest from the uppercase path. Fixes inside `vite.config.ts` (`test.root`, `process.chdir`) did not work because the config itself is already loaded through the lowercase path.
+
+### Technical Touchpoints
+- `package.json` (`test` script; dev dependencies vitest 4.1.12, jsdom 26.1.0, @testing-library/react 16.3.3, @testing-library/dom 10.4.1, @testing-library/jest-dom 6.9.1, @testing-library/user-event 14.6.1), `package-lock.json`, `vite.config.ts` (`test` block), `scripts/run-vitest.mjs`, `src/test/setup.ts`.
+- Tests: `src/services/api.test.ts` (7), `src/store/useAppStore.test.ts` (4). Mutation checks: dropping the session cookie, dropping the token header, or letting a toast timer hide a newer toast each make tests fail.
+- `.github/workflows/quality.yml` and `pipeline.yml` (`npm test`), `.agents/rules/engineering-checklists.md` §7, `docs/development.md`.

@@ -47,7 +47,8 @@ Check the relevant list before committing.
 - [ ] A test that only passes by timing is not a test: make it deterministic. (H7)
 - [ ] UI-visible changes are checked with Playwright against a **throwaway library** (`SECUREPHOTOS_DATA_DIR` + separate `USERPROFILE`), never the user's real `data/` folder or browser.
 - [ ] Stop every server you started and confirm by process (command line + start time), not only by port: a stopped `npx vite` task can leave its `node` process running.
-- [ ] `ruff check .`, the full pytest suite, `npx tsc --noEmit` and (for Rust) `cargo check` pass locally; the GitHub quality check passes on the PR.
+- [ ] `ruff check .`, the full pytest suite, `npm test` (Vitest), `npx tsc --noEmit` and (for Rust) `cargo check` pass locally; the GitHub quality check passes on the PR.
+- [ ] Frontend logic changes (API layer, store, components) come with a Vitest test next to the file (`*.test.ts[x]`).
 
 ## 8. Working with the owner
 - [ ] Before starting a task: what it is about, impact, current implementation, proposed solution.
