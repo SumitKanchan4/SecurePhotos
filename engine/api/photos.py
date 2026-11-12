@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Literal, Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -47,7 +47,8 @@ class ImportRequest(BaseModel):
     """Payload to trigger batch ingestion."""
     source_directory: Optional[str] = None
     file_paths: Optional[List[str]] = None
-    mode: str = "managed"          # "managed" (copy/move) or "scan" (in-place)
+    # Only copying into the library is supported (M4); anything else is rejected with 422.
+    mode: Literal["managed"] = "managed"
     delete_source: bool = False
     album_id: Optional[int] = None
 

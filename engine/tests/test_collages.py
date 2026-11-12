@@ -449,14 +449,15 @@ async def test_collage_suggestions_api_and_save_endpoint():
                 saved_collage_id = saved_data["photo_id"]
                 assert saved_collage_id is not None
 
-                # 3. Verify destination folder is settings.collages_dir (data/originals/collages)
+                # 3. Saved under collages/YYYY/MM by the collage's date (M4), with a relative path
                 conn = await get_db_connection()
                 async with conn.execute("SELECT filepath, caption FROM photos WHERE id = ?;", (saved_collage_id,)) as cur:
                     c_row = await cur.fetchone()
                 assert c_row is not None
                 saved_file_path = resolve_media_path(c_row["filepath"])
                 assert saved_file_path.exists()
-                assert saved_file_path.parent.resolve() == settings.collages_dir.resolve()
+                assert saved_file_path.parent.resolve() == (settings.collages_dir / "2026" / "08").resolve()
+                assert c_row["filepath"].startswith("originals/collages/2026/08/")
                 assert "Summer Adventure Burst" in c_row["caption"]
 
                 # 4. Verify association with Collages album

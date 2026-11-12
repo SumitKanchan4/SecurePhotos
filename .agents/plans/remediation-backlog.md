@@ -143,12 +143,13 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - `config.py` (last line of `resolve_media_path`) returns `data_dir / p.name`. A filename collision could serve, or trash-purge, the wrong file. Return "not found" instead.
 
 ### M2 · Store paths relative to the data folder everywhere — `todo`
+- **Also found (M4):** `ingest_single_photo` looks for a trashed row at the destination with `filepath = str(dest_path.resolve())` (absolute), but rows store relative paths, so that cleanup never matches (re-imports just get a `_hash` suffix). Compare with `to_db_path(dest_path)`.
 - Vault code writes `str(x.resolve())` (absolute) and builds thumbnail and preview paths with raw `Path()`. This breaks rule §2. Normalise on write, and migrate existing rows. (The vault rows touched by C5 are handled in C5.)
 
 ### M3 · Legacy migration deletes data after a best-effort copy — `done` (merged 2026-11-12, PR #2, history §112; owner: remove the migration entirely)
 - `config.py` `ensure_directories()` copies `~/.securephotos_data`, then runs `shutil.rmtree` with errors swallowed. Only delete after verifying the copy, or keep the source and log.
 
-### M4 · Remove the unused in-place "scan" import mode — `todo`
+### M4 · Remove the unused in-place "scan" import mode — `review` (branch `fix/m4-remove-scan-import-mode`, history §113; owner: collages in collages/YYYY/MM)
 - The UI only sends `mode: "managed"` (`ImportModal.tsx:229`), but `ingestion_service.py:408` and `photos.py:50` still accept `"scan"` (in-place). Remove it so trash purge and the optimizer can never touch files outside the app folder.
 
 ### M5 · Token RNG must fail closed — `todo`
