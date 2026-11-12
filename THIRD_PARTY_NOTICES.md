@@ -12,6 +12,18 @@ Only permissively licensed models are used. Models whose licences restrict comme
 
 The full licence texts and copyright notices for YuNet and SFace are in the `LICENSE` files of the upstream folders linked above; they apply to the downloaded model files.
 
+## Fonts
+
+The app's fonts are bundled with it (no download at runtime) through the Fontsource packages. All three are licensed under the [SIL Open Font License 1.1](https://openfontlicense.org/open-font-license-official-text/).
+
+| Font | Package | Licence |
+|---|---|---|
+| Inter | `@fontsource/inter` | OFL-1.1 |
+| Plus Jakarta Sans | `@fontsource/plus-jakarta-sans` | OFL-1.1 |
+| JetBrains Mono | `@fontsource/jetbrains-mono` | OFL-1.1 |
+
+The full licence text and copyright notices ship with each package (`node_modules/@fontsource/<font>/LICENSE`).
+
 ## Real-ESRGAN: BSD 3-Clause License
 
 Copyright (c) 2021, Xintao Wang
