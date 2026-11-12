@@ -36,6 +36,7 @@ This document serves as the **central, living source of truth** for all function
 107. [Engine Login Hardened; Photos Load in the Real App](#107-engine-login-hardened-photos-load-in-the-real-app)
 108. [Trash Really Deletes After 30 Days; Auto-Lock Follows Settings](#108-trash-really-deletes-after-30-days-auto-lock-follows-settings)
 109. [Vault File Format SPENC03 (Truncation-Proof, Per-File Keys)](#109-vault-file-format-spenc03-truncation-proof-per-file-keys)
+110. [Content Security Policy, Narrow Permissions, Bundled Fonts](#110-content-security-policy-narrow-permissions-bundled-fonts)
 
 ---
 
@@ -5189,4 +5190,26 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `engine/services/crypto_vault.py`: `VAULT_MAGIC_HEADER = b"SPENC03\0"`, `_file_key`, `_chunk_nonce`, rewritten `encrypt_file_chunked` / `decrypt_file_chunked_stream`.
 - `docs/architecture.md`: vault sequence diagram updated.
 - Tests: `engine/tests/test_vault_file_format.py` (11 tamper tests: dropped last chunk, header-only, empty file, cut chunk, appended data, dropped/reordered chunks, chunks from another file, header bit flip, old format refused, wrong key). Turning the last-chunk check off makes 3 of them fail. All 183 existing tests pass unchanged. End to end: lock writes SPENC03, vault viewer decrypts it, background enhancement re-encrypts to SPENC03 `.avif.enc` and the result decodes as an 8K AVIF.
+
+---
+
+## 110. Content Security Policy, Narrow Permissions, Bundled Fonts
+
+### Functionality Overview
+- The app window now has a strict Content Security Policy: scripts only from the app, images/video/API only from the app and its local engine, no plugins, frames or form submissions. If content were ever injected (e.g. through a file name or document text), it couldn't load outside code or send data out.
+- Only the main window has Tauri permissions; the shell permission is narrowed to "open a web link in the default browser". External links (photo location map, download pages) open in the default browser, never inside the app.
+- **Fonts ship with the app.** Before, every launch downloaded them from Google (sending the user's IP to Google, failing offline). The look is unchanged.
+
+### Functional Decision Points & Rationale (owner decision 2026-11-12: bundle the fonts)
+- Bundled via `@fontsource/*` (OFL-1.1; credited in `THIRD_PARTY_NOTICES.md`), same weights as the old Google link (Inter 300-700, JetBrains Mono 400-600, Plus Jakarta Sans 500-800).
+- `style-src 'unsafe-inline'` is kept: the UI uses inline style attributes throughout. Scripts stay strict (`'self'` only) in production.
+- A separate `devCsp` allows Vite's live reload (`ws://localhost:1420`) and its inline refresh script in development only.
+- Permissions previously applied to any window (`"*"`); a link opened in a new window would have had the app's powers.
+
+### Technical Touchpoints
+- `src-tauri/tauri.conf.json`: `security.csp`, `security.devCsp`.
+- `src-tauri/capabilities/default.json`: windows `["main"]`; `shell:default` -> `shell:allow-open`.
+- `src/services/external.ts` (`openExternal`); `src/components/Lightbox.tsx` (map link), `src/components/PrerequisitesBanner.tsx` (download links).
+- `index.html` (Google Fonts removed), `src/main.tsx` (font imports), `package.json` (`@fontsource/*`).
+- Validated with Playwright on the production page origin (`http://tauri.localhost`): every screen and Settings tab, viewer, video (plays), vault viewer -> no CSP violations, no request leaving the computer, all media 200/206, `shell.execute` denied, bundled fonts loaded. Development mode: no CSP violations, Vite live reload connected.
 

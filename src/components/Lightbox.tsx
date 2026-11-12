@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { PhotoItem, OptimizationProgress } from "../types";
 import { useAppStore } from "../store/useAppStore";
+import { openExternal } from "../services/external";
 import { apiFetch, getApiUrl } from "../services/api";
 
 interface LightboxProps {
@@ -1507,6 +1508,11 @@ export const Lightbox: React.FC<LightboxProps> = ({
                       href={`https://www.openstreetmap.org/?mlat=${currentPhoto.latitude}&mlon=${currentPhoto.longitude}#map=16/${currentPhoto.latitude}/${currentPhoto.longitude}`}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={(e) => {
+                        // Open in the default browser, never inside the app (H5).
+                        e.preventDefault();
+                        openExternal(e.currentTarget.href);
+                      }}
                       className="clickable"
                       style={{
                         display: "inline-flex",
