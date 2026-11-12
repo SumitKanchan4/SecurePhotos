@@ -34,6 +34,7 @@ This document serves as the **central, living source of truth** for all function
 105. [Permissively Licensed Face Models (YuNet + SFace) & Name-Preserving Migration](#105-permissively-licensed-face-models-yunet--sface--name-preserving-migration)
 106. [Vault Photos Enhanced While the Vault Is Open](#106-vault-photos-enhanced-while-the-vault-is-open)
 107. [Engine Login Hardened; Photos Load in the Real App](#107-engine-login-hardened-photos-load-in-the-real-app)
+108. [Trash Really Deletes After 30 Days; Auto-Lock Follows Settings](#108-trash-really-deletes-after-30-days-auto-lock-follows-settings)
 
 ---
 
@@ -5139,4 +5140,32 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - Verified in the real app (`tauri dev`, throwaway library): cookie stored, thumbnail 200, picture visible.
 - **Video and story images**: `<video crossOrigin="anonymous">` (needed for the Web Audio volume booster) and the story player's colour sampling sent no cookie and got 403. Both now use `crossOrigin="use-credentials"`; the engine's CORS already allows credentials for the app origins.
 - **Playwright validation on the production page origin** (`http://tauri.localhost`, production-style debug build, throwaway library): thumbnails 200, viewer 200, video 206 and plays, vault thumbnail and viewer 200 after unlocking through the UI; no failed media requests.
+
+---
+
+## 108. Trash Really Deletes After 30 Days; Auto-Lock Follows Settings
+
+### Functionality Overview
+- **Trash**: items are permanently deleted 30 days after being trashed (checked at engine start and every 6 hours). "Delete Permanently" and "Empty Trash" now remove the photo files from disk, not just the database rows.
+- **Vault auto-lock**: the engine and the vault countdown use the timeout chosen in Settings (1, 5, 15 or 30 minutes), applied immediately when changed. "Never" was removed; a stored "Never" becomes 30 minutes.
+
+### Bugs found
+- No automatic purge existed, although the Trash screen promised "30 days before being permanently purged" (`trash_expires_at` was never written).
+- Manual purge looked up stored relative paths against the working directory, so originals, thumbnails and previews stayed on disk forever.
+- "Delete permanently" accepted any photo id, not only trashed ones.
+- The engine and the countdown were hard-coded to 5 minutes regardless of the setting.
+
+### Functional Decision Points & Rationale (owner decisions)
+- 30 days in the app's trash, then permanent deletion (no Windows Recycle Bin), as decided on 2026-11-10.
+- "Never auto-lock" removed (2026-11-12): an unattended PC must not leave the vault open indefinitely.
+- **Rows before files**: a crash during purge leaves only orphaned files (wasted space), never entries pointing at missing files.
+- Files are found with the safe lookup (`media_paths.resolve_stored_path`), never "any file with the same name".
+
+### Technical Touchpoints
+- `engine/api/trash.py`: `TRASH_RETENTION_DAYS`, `purge_photos`, `purge_expired_trash`, `run_trash_purge_loop`; both purge endpoints use the shared function.
+- `engine/main.py`: starts the purge loop; applies the saved auto-lock at startup.
+- `engine/api/vault.py`: `AUTO_LOCK_CHOICES`, `normalize_auto_lock`, `set_auto_lock_seconds`.
+- `engine/api/system.py`: settings normalise and apply `auto_lock_duration`.
+- `src/components/settings/VaultSettings.tsx` (no "Never"), `src/components/VaultView.tsx` (countdown from the setting).
+- Tests: `engine/tests/test_trash_purge_and_autolock.py` (7). Playwright: Trash showed "30 days left", Empty Trash removed the files from disk, auto-lock options without "Never", 15 minutes -> countdown "14m 55s".
 
