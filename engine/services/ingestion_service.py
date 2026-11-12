@@ -20,6 +20,7 @@ import aiosqlite
 from PIL import Image, ExifTags, ImageOps
 
 from engine.config import settings
+from engine.services.media_paths import to_db_path
 from engine.services.thumbnail_service import (
     calculate_file_hash,
     generate_micro_thumbnail,
@@ -404,6 +405,11 @@ def cleanup_orphaned_tmp_files(base_dir: Optional[Path] = None) -> int:
     return cleaned_count
 
 
+
+def _db_path_or_none(path) -> Optional[str]:
+    """Library-relative path for the database (M2), or None (never the text "None")."""
+    return to_db_path(Path(path)) if path else None
+
 async def ingest_single_photo(
     conn: aiosqlite.Connection,
     source_path: Path,
@@ -461,7 +467,7 @@ async def ingest_single_photo(
         dest_path = get_hierarchical_destination_path(metadata["taken_at"], source_path.name, file_hash=file_hash)
         
         # Avoid filename collisions in same day folder or database unique filepath constraint
-        async with conn.execute("SELECT id, trashed_at FROM photos WHERE filepath = ?;", (str(dest_path.resolve()),)) as cursor:
+        async with conn.execute("SELECT id, trashed_at FROM photos WHERE filepath = ?;", (to_db_path(dest_path),)) as cursor:
             fp_row = await cursor.fetchone()
 
         if fp_row and fp_row[1] is not None:
@@ -627,8 +633,8 @@ async def ingest_single_photo(
             metadata["aperture"],
             metadata["shutter_speed"],
             metadata["focal_length"],
-            str(thumb_path),
-            str(preview_path),
+            _db_path_or_none(thumb_path),
+            _db_path_or_none(preview_path),
             file_hash,
             file_hash,
             1 if mode == MANAGED else 0,
