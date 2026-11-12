@@ -39,6 +39,10 @@ from engine.volume_tracker import get_volume_serial
 
 logger = logging.getLogger("securephotos.ingestion_service")
 
+# Import modes (M4). There is deliberately no in-place mode for files outside the library.
+MANAGED = "managed"        # Copy (or move) into the dated library folders.
+IN_LIBRARY = "in_library"  # A file the app wrote inside the library itself (e.g. a collage).
+
 # Supported photo and video media extensions
 SUPPORTED_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".webp", ".avif", ".heic", ".bmp", ".tiff",
@@ -403,7 +407,7 @@ def cleanup_orphaned_tmp_files(base_dir: Optional[Path] = None) -> int:
 async def ingest_single_photo(
     conn: aiosqlite.Connection,
     source_path: Path,
-    mode: str = "managed",          # "managed" (copy/move) or "scan" (in-place)
+    mode: str = MANAGED,
     delete_source: bool = False,
     task_id: Optional[int] = None,
     return_is_new: bool = False,
@@ -413,14 +417,25 @@ async def ingest_single_photo(
     Args:
         conn: Active aiosqlite database connection.
         source_path: Path to the target media file.
-        mode: 'managed' (moves/copies into date-sharded structure) or 'scan' (in-place).
+        mode: ``MANAGED`` copies (or moves) the file into the dated library folders.
+            ``IN_LIBRARY`` registers a file the app itself wrote inside the library
+            (e.g. a collage) where it is. There is no in-place mode for user folders
+            (M4): enhancement and trash purge must never touch files outside the library.
         delete_source: Whether to delete the source file after SHA-256 verified move.
         task_id: Optional parent import_task ID for journaling.
         return_is_new: If True, returns a tuple (photo_id, is_new). If False, returns photo_id.
 
     Returns:
         The inserted photo ID (or tuple (photo_id, is_new)), or None / (None, False) if skipped/failed.
+
+    Raises:
+        ValueError: Unknown mode, or an ``IN_LIBRARY`` file outside the library folder.
     """
+    if mode not in (MANAGED, IN_LIBRARY):
+        raise ValueError(f"Unknown import mode {mode!r}; only copying into the library is supported.")
+    if mode == IN_LIBRARY and not source_path.resolve().is_relative_to(settings.data_dir.resolve()):
+        raise ValueError(f"Refusing to register a file outside the library in place: {source_path}")
+
     if not source_path.exists() or source_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
         return (None, False) if return_is_new else None
 
@@ -442,7 +457,7 @@ async def ingest_single_photo(
     volume_uuid = get_volume_serial(source_path)
 
     # Determine final storage path
-    if mode == "managed":
+    if mode == MANAGED:
         dest_path = get_hierarchical_destination_path(metadata["taken_at"], source_path.name, file_hash=file_hash)
         
         # Avoid filename collisions in same day folder or database unique filepath constraint
@@ -530,12 +545,10 @@ async def ingest_single_photo(
         physical_filepath = str(dest_path.resolve())
         db_filepath = str(dest_path.relative_to(settings.data_dir)).replace("\\", "/")
     else:
-        # In-Place monitored scan mode
+        # IN_LIBRARY: a file the app itself just wrote inside the library (e.g. a collage).
+        # Checked at the top of this function to be inside the data folder.
         physical_filepath = str(source_path.resolve())
-        try:
-            db_filepath = str(source_path.relative_to(settings.data_dir)).replace("\\", "/")
-        except ValueError:
-            db_filepath = str(source_path.resolve())
+        db_filepath = source_path.resolve().relative_to(settings.data_dir.resolve()).as_posix()
 
     # Branch media processing by type (Video vs Photo)
     video_exts = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
@@ -618,7 +631,7 @@ async def ingest_single_photo(
             str(preview_path),
             file_hash,
             file_hash,
-            1 if mode == "managed" else 0,
+            1 if mode == MANAGED else 0,
             str(source_path.resolve()),
         ),
     )
