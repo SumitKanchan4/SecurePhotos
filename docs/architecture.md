@@ -5,10 +5,10 @@
 ## 1. Architectural Philosophy & Core Principles
 
 SecurePhotos is designed as an **offline-first, zero-cloud personal media vault**. The system prioritizes:
-1. **Data Sovereignty & Zero Trust**: No telemetry, no cloud dependencies, and zero external network calls.
-2. **High Scale & Low Latency**: Lightning-fast access across libraries containing 100,000+ high-resolution photos and videos.
-3. **Defense-in-Depth Cryptography**: Strong at-rest encryption (AES-256-GCM with PBKDF2/Argon2id key derivation) and ephemeral in-memory decryption.
-4. **Drive Portability**: Database, caches, and thumbnails live within a self-contained directory tree that can travel with external hard drives and SSDs.
+1. **Data Sovereignty**: No telemetry and no uploads. The AI models ship with the app; the only automatic network call is the update check (GitHub's latest-version file).
+2. **High Scale & Low Latency**: Fast access across libraries of 100,000+ photos and videos; heavy work runs off the engine's request loop (H7).
+3. **Defense-in-Depth Cryptography**: Vault files use AES-256-GCM (SPENC03, per-file keys); keys are derived with Argon2id; viewing decrypts in memory.
+4. **Drive Portability**: Database, media, thumbnails and models live in one library folder with paths stored relative to it, so it can travel on an external drive.
 
 ---
 
@@ -16,111 +16,91 @@ SecurePhotos is designed as an **offline-first, zero-cloud personal media vault*
 
 ```mermaid
 graph TB
-    subgraph UI_Layer ["Presentation Tier (Tauri 2.0 / React 18)"]
-        ReactUI["React 18 SPA (Vite)<br/>• Pure CSS Design Tokens<br/>• Virtualized Grids (@tanstack/react-virtual)<br/>• Fluid Lightbox & Keyboard Shortcuts"]
-        TauriShell["Tauri 2.0 Native Shell (Rust)<br/>• OS WebView2 (30-40 MB RAM)<br/>• Native Window Controls & Menus<br/>• IPC Bridge & File Confinement"]
-        
+    subgraph UI_Layer ["Presentation Tier (Tauri 2 / React 19)"]
+        ReactUI["React 19 SPA (Vite, TypeScript, Zustand)<br/>• Pure CSS Design Tokens<br/>• Virtualized Grids (@tanstack/react-virtual)<br/>• Lightbox & Keyboard Shortcuts"]
+        TauriShell["Tauri 2 Native Shell (Rust)<br/>• WebView2, strict CSP<br/>• Spawns the engine with a random token<br/>• Native dialogs, tray, updater"]
         TauriShell --> ReactUI
     end
 
-    subgraph Service_Layer ["Application Tier (FastAPI Engine)"]
-        FastAPIApp["FastAPI Web Server (Port 8000 / Dynamic)"]
-        AuthMiddleware["Vault Auth & JWT Verification"]
-        
+    subgraph Service_Layer ["Application Tier (FastAPI Engine sidecar)"]
+        FastAPIApp["FastAPI on 127.0.0.1 (dynamic port)"]
+        AuthMiddleware["Engine login: IPC token header or session cookie"]
         subgraph Domain_Routers ["Domain Routers"]
-            PhotosR["Photos & EXIF"]
-            ScanR["Scan & Watcher"]
-            VaultR["AES-256-GCM Vault"]
-            PeopleR["Face & People"]
-            InsightsR["Duplicates & Blur"]
-            ImportR["Transactional Import"]
-            ThumbR["Thumbnail Stream"]
-            TrashR["Trash & Purge"]
+            PhotosR["Photos, import & enhancement"]
+            VaultR["Private vault"]
+            PeopleR["Faces & People"]
+            DocsR["Documents & OCR"]
+            DupR["Duplicates"]
+            StoriesR["Stories, collages & videos"]
+            TrashR["Trash"]
+            SearchR["Search (FTS5)"]
         end
-        
         FastAPIApp --> AuthMiddleware
         AuthMiddleware --> Domain_Routers
     end
 
-    subgraph Background_Workers ["Asynchronous Background Workers"]
-        ScanWorker["Auto-Scan Daemon<br/>(Every 300s)"]
-        AIWorker["AI & SLM Inference Daemon<br/>(MobileCLIP & Moondream2)"]
-        TrashWorker["Trash Purge Daemon<br/>(Hourly 7-day TTL)"]
+    subgraph Background_Workers ["Background Workers"]
+        Enhancer["Photo enhancer (AVIF, battery guard)"]
+        VaultEnhancer["Vault enhancer (only while unlocked)"]
+        FaceWorker["Face scan (YuNet + SFace)"]
+        VideoWorker["Video queue (ffmpeg)"]
+        TrashWorker["Trash purge (startup, then every 6 h; 30-day retention)"]
     end
 
-    subgraph Storage_Tier ["Storage & Data Tier"]
-        DB[(SQLite DB<br/>WAL Mode & Pragmas)]
-        ThumbStore["Sharded Thumbnails<br/>(2-Char Prefix Hashing)"]
-        RawPhotos["Managed / Original Photos"]
-        EncryptedVault["AES-256-GCM Encrypted Files<br/>(*.enc)"]
-        ModelsDir["ONNX & GGUF Models<br/>(MobileCLIP & BlazeFace)"]
+    subgraph Storage_Tier ["Library folder (portable)"]
+        DB[(SQLite, WAL)]
+        Originals["originals/ (dated folders, collages/YYYY/MM)"]
+        ThumbStore["thumbnails/, previews/ (hash-sharded)"]
+        EncryptedVault["Vault files *.enc (SPENC03)"]
+        ModelsDir["models/ (bundled, SHA-256 verified ONNX)"]
     end
 
-    ReactUI -->|Typed IPC / HTTP| FastAPIApp
-    TauriShell -->|Spawns & Monitors| FastAPIApp
-
+    ReactUI -->|HTTP + token / cookie| FastAPIApp
+    TauriShell -->|Spawns & monitors| FastAPIApp
     Domain_Routers --> DB
+    Domain_Routers --> Originals
     Domain_Routers --> ThumbStore
-    Domain_Routers --> RawPhotos
     Domain_Routers --> EncryptedVault
-
     Background_Workers --> DB
     Background_Workers --> ModelsDir
-    Background_Workers --> ThumbStore
+    Background_Workers --> Originals
 ```
 
 ---
 
 ## 3. Subsystem Workflows & Flowcharts
 
-### 3.1 Photo Ingestion & Indexing Pipeline
+### 3.1 Photo Import Pipeline
 
 ```mermaid
 flowchart TD
-    StartScan([Start Directory Scan]) --> WalkDir[Traverse Filesystem via os.scandir]
-    WalkDir --> FilterExt{Supported Extension?<br/>.jpg, .png, .heic, .webp, .mp4}
-    
-    FilterExt -- No --> NextFile[Skip File]
-    FilterExt -- Yes --> ReadMeta[Read File Stat & Size]
-    
-    ReadMeta --> CheckDB{Filepath or File Hash<br/>in DB?}
-    CheckDB -- Exists & Unchanged --> NextFile
-    CheckDB -- New or Modified --> ExtractEXIF[Extract EXIF Metadata<br/>Date, GPS, Camera, ISO, F-Stop]
-    
-    ExtractEXIF --> GenHash[Compute SHA-256 File Hash]
-    GenHash --> GenThumb[Generate Multi-Size Thumbnails<br/>Pillow Lanczos Resize]
-    
-    GenThumb --> ShardThumb[Store Thumbnail in Sharded Path<br/>thumbnails/ab/ab12cd34....jpg]
-    ShardThumb --> InsertDB[Insert Record to 'photos' Table<br/>faces_scanned=False, trashed_at=Null]
-    
-    InsertDB --> BatchCommit{Batch Threshold Met?<br/>100 items}
-    BatchCommit -- Yes --> CommitDB[(Commit DB Transaction)]
-    BatchCommit -- No --> NextFile
-    
-    CommitDB --> NextFile
-    NextFile --> MoreFiles{More Files?}
-    MoreFiles -- Yes --> WalkDir
-    MoreFiles -- No --> FinishScan([Scan Completed])
+    Pick([User picks files or a folder]) --> Ext{Supported type?}
+    Ext -- No --> Skip[Skip]
+    Ext -- Yes --> Hash[SHA-256 of the source]
+    Hash --> Dup{Same hash already in library?}
+    Dup -- Yes --> Skip
+    Dup -- No --> Meta[Read EXIF: date, GPS, camera]
+    Meta --> Copy["Copy into originals/YYYY/MM/DD<br/>temp file, verify hash, atomic rename"]
+    Copy --> Thumb["Thumbnail (hash-sharded)"]
+    Thumb --> Row[(Insert row, relative paths)]
+    Row --> Optional{Move instead of copy?}
+    Optional -- Yes --> DelSrc[Delete the source only now]
 ```
+
+- Imports always copy into the library; there is no in-place mode (M4). One import batch runs at a time and file work runs off the request loop (H7). Each photo is enhanced afterwards (§3.4).
 
 ---
 
-### 3.2 Dual Hybrid Search Pipeline (FTS5 + Vector)
+### 3.2 Search
 
 ```mermaid
 flowchart LR
-    UserQuery["Search: 'electric bill from last winter'"] --> QueryParser[Query Analyzer]
-    
-    QueryParser --> TextBranch["1. SQLite FTS5 (Lexical Search)<br/>Matches OCR text, EXIF dates, filenames"]
-    QueryParser --> VectorBranch["2. MobileCLIP / SigLIP Encoder<br/>Converts text query to 512-D Vector"]
-    
-    VectorBranch --> VectorSearch["sqlite-vec Cosine Similarity<br/>Queries pre-indexed photo/doc embeddings"]
-    
-    TextBranch --> RRF["Reciprocal Rank Fusion (RRF)<br/>Combines & re-ranks top 50 matches"]
-    VectorSearch --> RRF
-    
-    RRF --> TopResults["Top Results rendered in < 8ms"]
+    UserQuery["Search: 'electric bill'"] --> FTS["SQLite FTS5<br/>file name, folder name, caption, tags, OCR text"]
+    FTS --> Filters["Type filter: all, photos, videos, documents, favourites"]
+    Filters --> Results[Results]
 ```
+
+- Search is lexical (FTS5) plus filters. There is no vector or AI search today; see the `sqlite-vector-search` skill for future ideas.
 
 ---
 
@@ -131,37 +111,32 @@ sequenceDiagram
     autonumber
     actor User
     participant UI as React UI (Vault Page)
-    participant Auth as Vault Controller
-    participant State as In-Memory State (_vault_sessions)
-    participant Crypto as Vault Crypto Engine (AES-GCM)
-    participant Disk as Encrypted Storage (.enc)
+    participant API as Vault API
+    participant State as In-memory session (master key)
+    participant Crypto as crypto_vault / vault_storage
+    participant Disk as Library folder
 
-    Note over User,Disk: 1. Authentication & Unlock
-    User->>UI: Enter Vault Password (+ TOTP if enabled)
-    UI->>Auth: POST /vault/verify {password, totp_code}
-    Auth->>Auth: Validate bcrypt hash & TOTP token
-    Auth->>State: Store password in-memory with session_id & 5-min TTL
-    Auth->>UI: Return JWT Token {sid: session_id, exp}
+    Note over User,Disk: 1. Unlock
+    User->>UI: Master password (or PIN after a normal lock, or the emergency card)
+    UI->>API: POST /api/vault/unlock (engine token / cookie)
+    API->>Crypto: Argon2id(password, salt) -> unwrap master key (AES-256-GCM)
+    API->>State: Keep the master key in memory; auto-lock after the configured idle time
 
-    Note over User,Disk: 2. Locking a Photo into the Vault
+    Note over User,Disk: 2. Move a photo into the vault
     User->>UI: Select photo -> "Move to Vault"
-    UI->>Auth: POST /photos/{id}/lock (Bearer JWT)
-    Auth->>State: Verify JWT & retrieve in-memory password
-    Auth->>Crypto: encrypt_file_streaming(photo.filepath, password)
-    Crypto->>Crypto: Derive Key via Argon2id / PBKDF2
-    Crypto->>Crypto: Per-file key = HKDF(vault key, random file salt); 64 KB chunks, AES-256-GCM
-    Crypto->>Disk: Write SPENC03 header (magic + file salt) + chunks (counter + last-chunk flag in nonce, header authenticated)
-    Crypto->>Disk: Securely delete unencrypted original
-    Auth->>UI: Return 200 OK
+    UI->>API: POST /api/vault/photos/lock
+    API->>Crypto: Journal, then encrypt (off the request loop, one vault job at a time)
+    Crypto->>Crypto: Per-file key = HKDF(master key, random file salt); 64 KB chunks, AES-256-GCM
+    Crypto->>Disk: Write SPENC03 (temp, fsync, replace) and verify it decrypts
+    Crypto->>Disk: Commit the row, then delete the original; seal OCR text + GPS
+    API-->>UI: 200 OK
 
-    Note over User,Disk: 3. Viewing Encrypted Photo / Streaming
-    User->>UI: Open Vault Thumbnail / Lightbox
-    UI->>Auth: GET /photos/{id}/vault-raw (Bearer JWT)
-    Auth->>State: Validate JWT session
-    Auth->>Crypto: decrypt_file_stream(filepath.enc, password)
+    Note over User,Disk: 3. View a vault photo / video
+    User->>UI: Open vault thumbnail / lightbox
+    UI->>API: GET /api/vault/stream/{id}
+    API->>Crypto: decrypt_file_chunked_stream(file.enc, master key)
     Crypto->>Disk: Read chunks, verify each tag; reject missing last chunk, extra data or old formats
-    Crypto-->>Auth: Stream decrypted chunk buffer to HTTP response
-    Auth-->>UI: Image/Video renders smoothly (Zero Disk Footprint)
+    Crypto-->>UI: Stream decrypted bytes (no decrypted file on disk)
 ```
 
 #### Vault key in memory (what is and isn't protected)
@@ -172,7 +147,7 @@ sequenceDiagram
 
 ---
 
-### 3.3 Single-Version Photo Enhancement Pipeline
+### 3.4 Single-Version Photo Enhancement Pipeline
 
 ```mermaid
 flowchart LR
@@ -191,7 +166,7 @@ flowchart LR
 
 ---
 
-### 3.4 Soft-Delete Trash & Retention Lifecycle
+### 3.5 Soft-Delete Trash & Retention Lifecycle
 
 ```mermaid
 sequenceDiagram
@@ -200,7 +175,7 @@ sequenceDiagram
     participant Lightbox as Lightbox / Grid UI
     participant API as FastAPI photos.py
     participant DB as SQLite WAL
-    participant Purge as Hourly Purge Daemon
+    participant Purge as Trash purge (startup, then every 6 h)
 
     User->>Lightbox: Press Delete/Backspace or Click Trash
     Lightbox->>API: DELETE /api/photos/{id} (or POST /batch-trash)
@@ -209,7 +184,8 @@ sequenceDiagram
     Lightbox->>Lightbox: Advance to adjacent photo or close
 
     Note over DB,Purge: 30-Day TTL Background Cleanup
-    Purge->>DB: DELETE FROM photos WHERE trashed_at IS NOT NULL AND trash_expires_at < CURRENT_TIMESTAMP
+    Purge->>DB: Delete rows trashed more than 30 days ago (rows first)
+    Purge->>Purge: Then delete their files (originals, thumbnails, previews)
 ```
 
 - **Query Isolation**: All library grids, searches, albums, and facial clusters enforce `WHERE trashed_at IS NULL`.
@@ -308,9 +284,11 @@ erDiagram
     VAULT_CONFIG {
         int id PK
         string vault_type
-        string password_hash
+        string mvk_wrapped_password
+        string mvk_wrapped_recovery
+        string mvk_wrapped_card_cells
+        string pin_verifier
         string password_hint
-        string totp_secret
         boolean is_configured
     }
 

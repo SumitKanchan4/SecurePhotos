@@ -46,6 +46,7 @@ This document serves as the **central, living source of truth** for all function
 117. [App Stays Responsive During Heavy Work; Overlapping Work Queued](#117-app-stays-responsive-during-heavy-work-overlapping-work-queued)
 118. [AI Models Bundled, Pinned and Verified; Honest Offline Wording](#118-ai-models-bundled-pinned-and-verified-honest-offline-wording)
 119. [Honest Vault Key Handling in Memory](#119-honest-vault-key-handling-in-memory)
+120. [Engineering Checklists; Skills and Docs Match the Code](#120-engineering-checklists-skills-and-docs-match-the-code)
 
 ---
 
@@ -5426,3 +5427,23 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `engine/services/crypto_vault.py` (module docstring, `zero_memory` docstring), `engine/api/vault.py` (`auto_lock_message`, getter docstring, session comment, `_open_session` comparison), `engine/main.py` (purge on shutdown).
 - `docs/architecture.md` ("Vault key in memory"), `docs/roadmap.md`, `src/components/VaultView.tsx` (comment).
 - Tests: `engine/tests/test_key_handling.py` (the real startup/shutdown routine overwrites the session buffer and drops the key, even with a PIN set; the auto-lock notice uses the configured minutes). Both fail on the old code (the key stayed in memory after shutdown). 221 tests pass.
+
+---
+
+## 120. Engineering Checklists; Skills and Docs Match the Code
+
+### Functionality Overview
+- No app change. The agent rules, skills and documentation now describe what the app really does, and a short always-on checklist captures the lessons of the November 2026 remediation, so the same bugs aren't reintroduced.
+
+### Functional Decision Points & Rationale (owner decision 2026-11-12: correct the crypto skill, mark the other two as future ideas)
+- **New rule `.agents/rules/engineering-checklists.md`** (always on): data safety, paths, responsiveness/concurrency, security, AI models and licences, docs-match-code, verification before merge, working with the owner. Each item names the helper to use (`resolve_stored_path`, `to_db_path`, `work_queues`, `ai_models`, `purge_vault_key` ...) and the backlog item that taught it.
+- **`strict-approval-and-standards.md`**: skill list corrected; the `codegraph` / `headroom` MCP tools are "use when available" (they aren't installed everywhere); "ask one question at a time" added.
+- **Skills**: `zero-trust-crypto` rewritten to the real vault (key slots, Argon2id, emergency card, session-only PIN, SPENC03, sealed details, crash-safe lock, honest key-in-memory). `local-slm-engineering` and `sqlite-vector-search` keep their content but open with a "not used today" note (no Moondream2/Phi-3.5/MobileCLIP, no sqlite-vec; embeddings are JSON text compared with NumPy).
+- **Docs fixed**: `architecture.md` (React 19; no JWT, bcrypt, sqlite-vec, MobileCLIP, Moondream2, TOTP; real import flow, FTS5-only search with type filter, real vault unlock/lock/view sequence; trash purge at startup then every 6 h with 30-day retention; vault table columns), `development.md` (React 19, `getrandom` token), `database_schema.md` (vector table marked "not implemented", vault and face column comments), `design_system.md` (no Windows Hello/TOTP in the unlock mock-up), `SECURITY.md` (no TOTP/Windows Hello/bcrypt/"bank-grade"; honest offline and key wording), `README.md` (no "military/bank-grade"). The roadmap and changelog are left as they are (future plans and past history).
+- **Font licences (H8 follow-up)**: the bundled fonts' copyright lines and the SIL OFL 1.1 text are now in `THIRD_PARTY_NOTICES.md`, which ships with the app.
+- **Found, not fixed here** (behaviour change, new backlog item V1): the vault unlock screens still offer a "24-word recovery phrase" mode, but setup has created an emergency card instead since C3.
+
+### Technical Touchpoints
+- `.agents/rules/engineering-checklists.md` (new), `.agents/rules/strict-approval-and-standards.md`, `.agents/skills/{zero-trust-crypto,local-slm-engineering,sqlite-vector-search}/SKILL.md`.
+- `README.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md`, `docs/architecture.md`, `docs/development.md`, `docs/database_schema.md`, `docs/design_system.md`; `engine/database.py` (stale schema comments only).
+- Tests: `engine/tests/test_docs_match_code.py` (7: the known false claims stay out of README / SECURITY / architecture / development; React version in docs matches `package.json`; every bundled model and font has its licence notice; the checklist only names helpers and files that exist). 6 of 7 fail on the old docs. 228 tests pass.

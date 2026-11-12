@@ -173,7 +173,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 
 ## Code health and standards
 
-### Q1 · Review the `.agents` rules and skills so they prevent these issues — `todo`
+### Q1 · Review the `.agents` rules and skills so they prevent these issues — `done` (merged 2026-11-12, PR #10, history §120; owner: correct crypto skill, mark the other two as future)
 - The rules are long and mostly about styling. They have no enforceable checks for data safety, crypto, or doc/code agreement, and they reference MCP tools (`codegraph`, `headroom`) that may not be present. Add short, testable checklists: never delete before commit; no absolute paths; no `except Exception: pass`; claims in docs must match code. Fix doc drift: README says React 18 (it is 19); architecture.md mentions JWT, bcrypt, sqlite-vec, MobileCLIP and Moondream2, none of which exist; the trash TTL is 7 vs 30 days; "secure delete" and "military/bank-grade" wording.
 
 ### Q2 · CI quality gate — `done` (merged 2026-11-12, PR #1, history §111; owner: run on pushes to master + PRs)
@@ -197,6 +197,9 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ---
 
 ## Planned features
+
+### V1 · Vault unlock still offers a "24-word recovery phrase" — `todo` (found in Q1)
+- `VaultView.tsx` (Mode 3, ~line 1299) and `VaultUnlockModal.tsx` (~line 574) offer "Enter your 24-word recovery phrase", and the wizard header comment still describes a 24-word step. Since C3, setup creates an emergency card (card file or 16 numbers) instead, and "Forgot your password? Use your Emergency Card" already covers recovery. Decide: remove the 24-word mode, or relabel it as "card code". Backend `/unlock` still accepts `recovery_phrase` (needed only for vaults created before C3; nobody has one).
 
 ### P12 · Windows Hello quick unlock — `todo`
 - Optional, per PC, on top of the portable master password. Design together with C2 (option B).
