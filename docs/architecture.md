@@ -149,8 +149,8 @@ sequenceDiagram
     Auth->>State: Verify JWT & retrieve in-memory password
     Auth->>Crypto: encrypt_file_streaming(photo.filepath, password)
     Crypto->>Crypto: Derive Key via Argon2id / PBKDF2
-    Crypto->>Crypto: Stream in 64 KB Chunks with AES-256-GCM
-    Crypto->>Disk: Write Salt + IV + Chunked Ciphertext to filepath.enc
+    Crypto->>Crypto: Per-file key = HKDF(vault key, random file salt); 64 KB chunks, AES-256-GCM
+    Crypto->>Disk: Write SPENC03 header (magic + file salt) + chunks (counter + last-chunk flag in nonce, header authenticated)
     Crypto->>Disk: Securely delete unencrypted original
     Auth->>UI: Return 200 OK
 
@@ -159,7 +159,7 @@ sequenceDiagram
     UI->>Auth: GET /photos/{id}/vault-raw (Bearer JWT)
     Auth->>State: Validate JWT session
     Auth->>Crypto: decrypt_file_stream(filepath.enc, password)
-    Crypto->>Disk: Read 64 KB Chunks + verify Auth Tag
+    Crypto->>Disk: Read chunks, verify each tag; reject missing last chunk, extra data or old formats
     Crypto-->>Auth: Stream decrypted chunk buffer to HTTP response
     Auth-->>UI: Image/Video renders smoothly (Zero Disk Footprint)
 ```

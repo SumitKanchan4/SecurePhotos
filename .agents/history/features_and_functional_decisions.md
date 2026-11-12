@@ -35,6 +35,7 @@ This document serves as the **central, living source of truth** for all function
 106. [Vault Photos Enhanced While the Vault Is Open](#106-vault-photos-enhanced-while-the-vault-is-open)
 107. [Engine Login Hardened; Photos Load in the Real App](#107-engine-login-hardened-photos-load-in-the-real-app)
 108. [Trash Really Deletes After 30 Days; Auto-Lock Follows Settings](#108-trash-really-deletes-after-30-days-auto-lock-follows-settings)
+109. [Vault File Format SPENC03 (Truncation-Proof, Per-File Keys)](#109-vault-file-format-spenc03-truncation-proof-per-file-keys)
 
 ---
 
@@ -5168,4 +5169,24 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `engine/api/system.py`: settings normalise and apply `auto_lock_duration`.
 - `src/components/settings/VaultSettings.tsx` (no "Never"), `src/components/VaultView.tsx` (countdown from the setting).
 - Tests: `engine/tests/test_trash_purge_and_autolock.py` (7). Playwright: Trash showed "30 days left", Empty Trash removed the files from disk, auto-lock options without "Never", 15 minutes -> countdown "14m 55s".
+
+---
+
+## 109. Vault File Format SPENC03 (Truncation-Proof, Per-File Keys)
+
+### Functionality Overview
+- Every vault file (photo, thumbnail, preview) is written in a new format. A vault file that has been cut short, extended, reordered, mixed with pieces of another file, or had its header edited now fails to open with a clear error instead of silently showing a damaged or shortened photo.
+- No visible change for users.
+
+### Functional Decision Points & Rationale (owner decision 2026-11-12)
+- **Weaknesses of SPENC02**: no "last chunk" marker (chunks could be dropped from the end, or the file cut to its header, and it still decrypted); header not authenticated (and its salt unused); one key for all files with random 96-bit nonces (safe in practice but by luck, not design).
+- **STREAM construction**: per-file key = HKDF-SHA256(vault key, 32-byte random file salt, info "securephotos-vault-file-v3"); chunk nonce = 11-byte counter + 1-byte last-chunk flag; header (magic + salt) authenticated as associated data in every chunk; empty files carry one sealed empty last chunk.
+- **New format only**: nobody uses the vault yet, so SPENC02 files are refused rather than supported (no weaker code path left).
+- Function names and signatures are unchanged, so lock, unlock, enhancement, reset and the vault viewer needed no changes.
+- Streaming note: the vault viewer streams chunks as they are verified; if a later chunk fails, the response stops with an error (earlier, verified bytes may already have been sent). `decrypt_file_to_bytes` (used for re-encryption and thumbnails) verifies the whole file before returning.
+
+### Technical Touchpoints
+- `engine/services/crypto_vault.py`: `VAULT_MAGIC_HEADER = b"SPENC03\0"`, `_file_key`, `_chunk_nonce`, rewritten `encrypt_file_chunked` / `decrypt_file_chunked_stream`.
+- `docs/architecture.md`: vault sequence diagram updated.
+- Tests: `engine/tests/test_vault_file_format.py` (11 tamper tests: dropped last chunk, header-only, empty file, cut chunk, appended data, dropped/reordered chunks, chunks from another file, header bit flip, old format refused, wrong key). Turning the last-chunk check off makes 3 of them fail. All 183 existing tests pass unchanged. End to end: lock writes SPENC03, vault viewer decrypts it, background enhancement re-encrypts to SPENC03 `.avif.enc` and the result decodes as an 8K AVIF.
 

@@ -29,7 +29,9 @@ import pyotp
 logger = logging.getLogger("securephotos.crypto_vault")
 
 # Magic header prefix for SecurePhotos encrypted files
-VAULT_MAGIC_HEADER = b"SPENC02\x00"  # 8 bytes
+VAULT_MAGIC_HEADER = b"SPENC03\x00"  # 8 bytes; only this format is read or written (H2).
+FILE_SALT_SIZE = 32
+HEADER_SIZE = len(VAULT_MAGIC_HEADER) + FILE_SALT_SIZE
 CHUNK_SIZE = 64 * 1024               # 64 KB streaming chunk size
 ARGON2_TIME_COST = 3
 ARGON2_MEMORY_COST = 65536           # 64 MB RAM
@@ -282,27 +284,50 @@ def decrypt_photo_metadata(blob: str, master_key: bytes, photo_id: int) -> Dict[
     return json.loads(plaintext.decode("utf-8"))
 
 
+def _file_key(master_key: bytes, file_salt: bytes) -> bytes:
+    """Per-file AES-256 key: HKDF-SHA256(master key, salt=file salt)."""
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+    return HKDF(algorithm=hashes.SHA256(), length=32, salt=file_salt, info=b"securephotos-vault-file-v3").derive(master_key)
+
+
+def _chunk_nonce(index: int, last: bool) -> bytes:
+    """11-byte big-endian chunk counter + 1-byte last-chunk flag (STREAM construction)."""
+    return index.to_bytes(11, "big") + (b"\x01" if last else b"\x00")
+
+
 def encrypt_file_chunked(
     source_path: Path | str | bytes,
     dest_path: Path | str,
     master_key: bytes,
 ) -> None:
-    """Encrypts a file in 64 KB authenticated chunks using AES-256-GCM.
+    """Encrypts a file into the SPENC03 format (H2).
 
-    File Layout:
-    [8B Magic: SPENC02\0][16B Salt][12B Base Nonce][4B Chunk Size]
-    [Repeat: 4B Chunk Len | Encrypted Chunk Bytes | 16B Tag]
+    Layout::
+
+        [8B magic "SPENC03\0"][32B random file salt]
+        repeated: [4B big-endian ciphertext length][AES-256-GCM ciphertext + 16B tag]
+
+    - Each file has its own key, HKDF(master key, file salt), so nonces never
+      repeat across files.
+    - Chunk nonce = chunk number + "last chunk" flag; decryption rejects a
+      missing last chunk (truncation), data after it, reordering and dropped chunks.
+    - The header is authenticated as associated data in every chunk.
+    - An empty source still produces one (empty) last chunk.
+
+    The output is written to a temp file, fsynced and atomically renamed.
 
     Args:
         source_path: Path to the plaintext file, or the plaintext itself as bytes
             (lets vault photos be re-encrypted from memory without ever writing
             an unencrypted copy to disk).
-        dest_path: Path for output encrypted .enc file.
+        dest_path: Path for the output ``.enc`` file.
         master_key: 32-byte Master Vault Key.
     """
-    salt = secrets.token_bytes(16)
-    base_nonce = secrets.token_bytes(12)
-    aesgcm = AESGCM(master_key)
+    file_salt = secrets.token_bytes(FILE_SALT_SIZE)
+    header = VAULT_MAGIC_HEADER + file_salt
+    aesgcm = AESGCM(_file_key(master_key, file_salt))
 
     dest_file = Path(dest_path)
     dest_file.parent.mkdir(parents=True, exist_ok=True)
@@ -310,28 +335,19 @@ def encrypt_file_chunked(
 
     source = io.BytesIO(source_path) if isinstance(source_path, (bytes, bytearray)) else open(source_path, "rb")
     with source as fin, open(temp_dest, "wb") as fout:
-        # Write header
-        fout.write(VAULT_MAGIC_HEADER)
-        fout.write(salt)
-        fout.write(base_nonce)
-        fout.write(struct.pack(">I", CHUNK_SIZE))
-
-        chunk_index = 0
+        fout.write(header)
+        index = 0
+        chunk = fin.read(CHUNK_SIZE)
         while True:
-            chunk = fin.read(CHUNK_SIZE)
-            if not chunk:
+            following = fin.read(CHUNK_SIZE)
+            last = not following
+            sealed = aesgcm.encrypt(_chunk_nonce(index, last), chunk, header)
+            fout.write(struct.pack(">I", len(sealed)))
+            fout.write(sealed)
+            if last:
                 break
-
-            # Derive unique nonce per chunk by XORing chunk_index
-            chunk_nonce = bytearray(base_nonce)
-            for i in range(4):
-                chunk_nonce[11 - i] ^= (chunk_index >> (i * 8)) & 0xFF
-
-            encrypted_chunk = aesgcm.encrypt(bytes(chunk_nonce), chunk, None)
-            fout.write(struct.pack(">I", len(encrypted_chunk)))
-            fout.write(encrypted_chunk)
-            chunk_index += 1
-
+            chunk = following
+            index += 1
         fout.flush()
         os.fsync(fout.fileno())
 
@@ -342,43 +358,48 @@ def decrypt_file_chunked_stream(
     encrypted_path: Path | str,
     master_key: bytes,
 ) -> Generator[bytes, None, None]:
-    """Streams decrypted chunks into memory blob buffers with zero disk writes.
+    """Streams decrypted chunks of an SPENC03 file into memory (no disk writes).
 
-    Args:
-        encrypted_path: Path to .enc encrypted file on disk.
-        master_key: 32-byte Master Vault Key.
-
-    Yields:
-        Decrypted byte chunks.
+    Raises:
+        ValueError: Unknown/old format, truncated file, missing last chunk, data
+            after the last chunk, or any chunk that fails authentication.
     """
-    aesgcm = AESGCM(master_key)
     with open(encrypted_path, "rb") as fin:
-        magic = fin.read(len(VAULT_MAGIC_HEADER))
-        if magic != VAULT_MAGIC_HEADER:
-            raise ValueError("Invalid encrypted file format or corrupted header.")
+        header = fin.read(HEADER_SIZE)
+        if len(header) != HEADER_SIZE or header[: len(VAULT_MAGIC_HEADER)] != VAULT_MAGIC_HEADER:
+            raise ValueError("Not a SecurePhotos vault file in the current format (SPENC03).")
+        aesgcm = AESGCM(_file_key(master_key, header[len(VAULT_MAGIC_HEADER):]))
 
-        _salt = fin.read(16)
-        base_nonce = fin.read(12)
-        _chunk_size = struct.unpack(">I", fin.read(4))[0]
-
-        chunk_index = 0
+        index = 0
         while True:
             len_bytes = fin.read(4)
             if not len_bytes:
-                break
-
+                raise ValueError("Vault file is incomplete: its last part is missing.")
+            if len(len_bytes) != 4:
+                raise ValueError("Vault file is damaged: truncated chunk header.")
             chunk_len = struct.unpack(">I", len_bytes)[0]
-            encrypted_chunk = fin.read(chunk_len)
-            if len(encrypted_chunk) != chunk_len:
-                raise IOError("Truncated encrypted chunk.")
+            if chunk_len < 16 or chunk_len > CHUNK_SIZE + 16:
+                raise ValueError("Vault file is damaged: invalid chunk length.")
+            sealed = fin.read(chunk_len)
+            if len(sealed) != chunk_len:
+                raise ValueError("Vault file is incomplete: a chunk was cut short.")
 
-            chunk_nonce = bytearray(base_nonce)
-            for i in range(4):
-                chunk_nonce[11 - i] ^= (chunk_index >> (i * 8)) & 0xFF
+            try:
+                plaintext = aesgcm.decrypt(_chunk_nonce(index, False), sealed, header)
+                last = False
+            except Exception:
+                try:
+                    plaintext = aesgcm.decrypt(_chunk_nonce(index, True), sealed, header)
+                    last = True
+                except Exception as err:
+                    raise ValueError("Vault file failed its integrity check (wrong key, damaged or tampered).") from err
 
-            decrypted_chunk = aesgcm.decrypt(bytes(chunk_nonce), encrypted_chunk, None)
-            yield decrypted_chunk
-            chunk_index += 1
+            yield plaintext
+            if last:
+                if fin.read(1):
+                    raise ValueError("Vault file has unexpected data after its last part.")
+                return
+            index += 1
 
 
 def decrypt_file_to_bytes(
