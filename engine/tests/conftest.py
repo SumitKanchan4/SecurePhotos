@@ -20,8 +20,8 @@ _TEST_DATA_DIR.mkdir()
 _TEST_HOME.mkdir()
 
 os.environ["SECUREPHOTOS_DATA_DIR"] = str(_TEST_DATA_DIR)
-# Point the home folder away from the real one too: engine.config's legacy
-# migration copies and then deletes ~/.securephotos_data if it exists.
+# Point the home folder away from the real one too, so no test can ever read
+# or write the developer's real home folder.
 os.environ["USERPROFILE"] = str(_TEST_HOME)
 os.environ["HOME"] = str(_TEST_HOME)
 
