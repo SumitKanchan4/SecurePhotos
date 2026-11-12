@@ -75,7 +75,7 @@ async def test_thumbnail_regeneration_api():
         conn = await get_db_connection()
         photo_id = None
         try:
-            photo_id = await ingest_single_photo(conn, img_path, mode="copy")
+            photo_id = await ingest_single_photo(conn, img_path, mode="managed")
             assert photo_id is not None
 
             transport = ASGITransport(app=app)

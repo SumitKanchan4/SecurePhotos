@@ -39,6 +39,7 @@ This document serves as the **central, living source of truth** for all function
 110. [Content Security Policy, Narrow Permissions, Bundled Fonts](#110-content-security-policy-narrow-permissions-bundled-fonts)
 111. [CI Quality Gate and Pinned Dependencies](#111-ci-quality-gate-and-pinned-dependencies)
 112. [Missing Photos Stay Missing; Old Dev-Folder Migration Removed](#112-missing-photos-stay-missing-old-dev-folder-migration-removed)
+113. [Import Only Copies Into the Library; Collages in Dated Folders](#113-import-only-copies-into-the-library-collages-in-dated-folders)
 
 ---
 
@@ -5257,3 +5258,26 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `engine/services/media_paths.py`: `resolve_stored_path` simplified.
 - Tests: `engine/tests/test_path_and_migration_safety.py` (6 tests; 4 fail on the old code). 201 tests pass.
 - Validated in the UI (Playwright, throwaway library): a photo whose file is gone shows the "missing" placeholder and returns 404 for its thumbnail and original, while a red photo with the same name sits in the library folder (before: it would have been shown and thumbnailed). A normal photo still loads. No console errors.
+
+---
+
+## 113. Import Only Copies Into the Library; Collages in Dated Folders
+
+### Functionality Overview
+- Importing always copies photos into the app's library folder (as the UI already did). The engine no longer accepts an "in-place" import that would register photos where they sit in the user's own folders. Enhancement and trash purge can therefore never touch files outside the library.
+- New collages are saved in `originals/collages/YYYY/MM` (by the collage's date) instead of one flat folder, so no folder grows to thousands of files. Existing collages stay where they are.
+- Fixed: making a collage from library photos failed with "At least 2 valid source photo files on disk are required", because the source paths (stored relative to the library) were checked against the engine's working folder.
+
+### Functional Decision Points & Rationale (owner decisions 2026-11-12)
+- The owner's rule is that user originals are only removed through the import option; an in-place mode would let the AVIF enhancer or the 30-day purge delete files in the user's own folders.
+- `ingest_single_photo` now accepts only `MANAGED` (copy in) or `IN_LIBRARY` (a file the app wrote inside the library itself, e.g. a collage). `IN_LIBRARY` refuses any file outside the library; any other mode raises an error. Before, *any* other value (e.g. `"copy"`, used by one test) silently meant "register in place".
+- The import API accepts only `mode: "managed"`; anything else gets a 422 error. The UI is unchanged.
+- Collage folders: owner asked for `collages/YYYY/MM` (separate from photos, small folders). Name clashes get ` (1)` etc. via `unique_path`.
+- The owner's library had no in-place photos (50 managed rows, 1 collage inside the library), so no data migration. The unused `is_managed` column and empty `scan_paths` table are left in place.
+
+### Technical Touchpoints
+- `engine/services/ingestion_service.py`: `MANAGED`, `IN_LIBRARY`, mode checks in `ingest_single_photo`.
+- `engine/api/photos.py`: `ImportRequest.mode: Literal["managed"]`.
+- `engine/api/creatives.py`: source photos via `resolve_stored_path`; `collages/YYYY/MM`; `unique_path`; `IN_LIBRARY`.
+- Tests: `engine/tests/test_import_modes.py` (4 tests; 3 fail on the old code); `test_collages.py` (new folder layout), `test_thumbnails.py` (used the undocumented `mode="copy"`). 205 tests pass.
+- Validated in the UI (Playwright, throwaway library): API import with `mode: "scan"` -> 422; two photos imported through the Import screen (copied into `originals/undated/..`, source files untouched); selected both, "Create Collage (2)" -> "Generate Collage" -> collage shown in the grid and saved as `originals/collages/2026/11/M4_check_....webp` (relative path). No console errors.

@@ -2,7 +2,6 @@
 
 import datetime
 import logging
-from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
@@ -14,7 +13,8 @@ from engine.services.collage_service import (
     determine_collage_taken_at,
     generate_intelligent_collages,
 )
-from engine.services.ingestion_service import ingest_single_photo
+from engine.services.ingestion_service import IN_LIBRARY, ingest_single_photo
+from engine.services.media_paths import resolve_stored_path, unique_path
 
 logger = logging.getLogger("securephotos.api.creatives")
 
@@ -69,11 +69,9 @@ async def render_and_persist_collage(
         rows = await cursor.fetchall()
 
     rows_by_id = {r["id"]: r for r in rows if r["filepath"]}
-    photo_paths = [
-        Path(rows_by_id[pid]["filepath"])
-        for pid in photo_ids
-        if pid in rows_by_id and Path(rows_by_id[pid]["filepath"]).exists()
-    ]
+    # Stored paths are relative to the library folder, not the engine's working folder.
+    resolved = {pid: resolve_stored_path(rows_by_id[pid]["filepath"]) for pid in photo_ids if pid in rows_by_id}
+    photo_paths = [path for path in (resolved.get(pid) for pid in photo_ids) if path]
 
     if len(photo_paths) < 2:
         raise HTTPException(status_code=400, detail="At least 2 valid source photo files on disk are required.")
@@ -111,14 +109,15 @@ async def render_and_persist_collage(
     safe_title = "".join(c for c in clean_title if c.isalnum() or c in ("_", "-")) or "Collage"
     filename = f"{safe_title}_{timestamp_str}.webp"
 
-    collages_dir = settings.collages_dir
+    # collages/YYYY/MM (by the collage's date) keeps every folder small (M4, owner decision).
+    collages_dir = settings.collages_dir / collage_taken_at.strftime("%Y") / collage_taken_at.strftime("%m")
     collages_dir.mkdir(parents=True, exist_ok=True)
-    dest_path = collages_dir / filename
+    dest_path = unique_path(collages_dir / filename)
 
     canvas.save(dest_path, "WEBP", quality=92, method=4)
 
     # 4. Ingest into the SecurePhotos library
-    new_photo_id = await ingest_single_photo(conn, dest_path, mode="in_place")
+    new_photo_id = await ingest_single_photo(conn, dest_path, mode=IN_LIBRARY)
     if not new_photo_id:
         raise HTTPException(status_code=500, detail="Failed to ingest generated collage into library.")
 
