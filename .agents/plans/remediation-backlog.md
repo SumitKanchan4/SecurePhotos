@@ -174,7 +174,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ### Q1 · Review the `.agents` rules and skills so they prevent these issues — `todo`
 - The rules are long and mostly about styling. They have no enforceable checks for data safety, crypto, or doc/code agreement, and they reference MCP tools (`codegraph`, `headroom`) that may not be present. Add short, testable checklists: never delete before commit; no absolute paths; no `except Exception: pass`; claims in docs must match code. Fix doc drift: README says React 18 (it is 19); architecture.md mentions JWT, bcrypt, sqlite-vec, MobileCLIP and Moondream2, none of which exist; the trash TTL is 7 vs 30 days; "secure delete" and "military/bank-grade" wording.
 
-### Q2 · CI quality gate — `review` (branch `chore/q2-ci-quality-gate`, history §111; owner: run on pushes to master + PRs)
+### Q2 · CI quality gate — `done` (merged 2026-11-12, PR #1, history §111; owner: run on pushes to master + PRs)
 - `pipeline.yml` runs only on `workflow_dispatch`. Add a PR/push job with ruff, mypy, eslint, `tsc`, clippy and pytest. Use `npm ci`, pin actions to SHAs, pin Python dependencies (lock file), and move pytest out of runtime requirements.
 - **Done:** `quality.yml` (ruff, pytest, npm audit, tsc + build, cargo check), pinned requirements (`requirements*.in` -> `.txt` via uv), dev tools split out, `npm ci`, actions pinned to SHAs, Python 3.12. Linter found and fixed a story-deletion crash.
 - **Follow-up (not gating yet):** mypy, eslint and clippy each need a first clean-up pass before they can block merges.
