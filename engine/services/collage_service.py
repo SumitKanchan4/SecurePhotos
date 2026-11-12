@@ -9,7 +9,7 @@ import datetime
 import hashlib
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 import aiosqlite
 from PIL import Image, ImageOps, ImageFilter
 
@@ -168,11 +168,8 @@ def compute_treemap_boxes(count: int, width: int, height: int, gap: int = 24, ma
     if count == 4:
         # Left column: 2 unequal stacked. Right column: 2 unequal stacked inverted.
         w_left = int(usable_w * 0.52)
-        w_right = usable_w - w_left - gap
         h_top_l = int(usable_h * 0.58)
-        h_bot_l = usable_h - h_top_l - gap
         h_top_r = int(usable_h * 0.42)
-        h_bot_r = usable_h - h_top_r - gap
 
         boxes.append((margin, margin, margin + w_left, margin + h_top_l))
         boxes.append((margin, margin + h_top_l + gap, margin + w_left, margin + usable_h))

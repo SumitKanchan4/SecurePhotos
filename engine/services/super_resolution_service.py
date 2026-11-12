@@ -9,12 +9,10 @@ This module delivers:
 
 import logging
 import os
-import shutil
 from pathlib import Path
 from typing import Optional, Tuple
 from PIL import Image, ImageFilter, ImageOps
 
-from engine.services.thumbnail_service import calculate_file_hash
 
 logger = logging.getLogger("securephotos.super_resolution")
 

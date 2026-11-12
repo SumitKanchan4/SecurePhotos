@@ -15,16 +15,14 @@ import re
 import shutil
 import stat
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 import aiosqlite
 from PIL import Image, ExifTags, ImageOps
 
 from engine.config import settings
-from engine.database import get_db_connection
 from engine.services.thumbnail_service import (
     calculate_file_hash,
     generate_micro_thumbnail,
-    generate_display_preview,
     get_sharded_thumbnail_path,
     get_sharded_preview_path,
 )

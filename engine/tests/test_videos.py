@@ -2,17 +2,13 @@
 
 import os
 import subprocess
-import tempfile
 from pathlib import Path
-import shutil
 import pytest
-import pytest_asyncio
 import aiosqlite
 from httpx import AsyncClient, ASGITransport
 
 from engine.main import create_app, app
 from engine.database import run_migrations, get_db_connection
-from engine.config import settings
 from engine.services.video_runtime import (
     get_ffmpeg_path,
     get_ffprobe_path,
@@ -428,7 +424,6 @@ async def test_video_streaming_endpoint(tmp_path):
 def test_video_preview_lru_pruning(tmp_path):
     """Verifies that LRU preview cache pruning enforces storage limits and evicts oldest items first."""
     from engine.api.videos import prune_video_preview_cache
-    import os
 
     mock_video_previews = tmp_path / "videos"
     mock_video_previews.mkdir(parents=True, exist_ok=True)

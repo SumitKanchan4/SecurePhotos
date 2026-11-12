@@ -1,6 +1,5 @@
 """Tests for Video Ingestion Classification, Resilient Queue Service, and Disconnection Safety."""
 
-import os
 import uuid
 import pytest
 from httpx import AsyncClient, ASGITransport

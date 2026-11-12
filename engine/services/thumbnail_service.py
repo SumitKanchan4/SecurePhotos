@@ -6,7 +6,6 @@ directory bottlenecks on external storage drives.
 """
 
 import hashlib
-import io
 import logging
 from pathlib import Path
 from typing import Optional, Tuple

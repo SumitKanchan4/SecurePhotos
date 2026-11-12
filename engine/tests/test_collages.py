@@ -15,7 +15,6 @@ from engine.services.collage_service import (
     compute_treemap_boxes,
     determine_collage_taken_at,
     select_optimal_collage_layout,
-    generate_intelligent_collages,
 )
 from engine.services.thumbnail_service import calculate_file_hash
 
