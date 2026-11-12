@@ -106,7 +106,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - **Owner decision:** remove rather than implement. The token was created on unlock but never sent or checked. Vault protection = engine login (hardened in H6) + vault unlocked + auto-lock; a second vault-only credential would only help against a program that already holds the engine secret.
 - `get_active_mvk(token)` ignores its argument (`vault.py:47`). The vault is one global unlocked state, so any authenticated caller can use it. Fix: require `X-Session-Token` on all vault routes and compare it with `secrets.compare_digest`. Media `<img>` tags need a cookie or a short-lived signed URL; design that in the briefing.
 
-### H2 · Encrypted file format v3: truncation protection and an authenticated header — `todo`
+### H2 · Encrypted file format v3: truncation protection and an authenticated header — `review` (branch `fix/h2-vault-file-format`, history §109; owner: new format only, no SPENC02 reading)
 - `crypto_vault.py:239-333`. Chunks have no final-chunk flag and no associated data, so trailing chunks can be dropped without detection. The header salt is unused. Fix: a STREAM-style construction (nonce/AAD includes the chunk index and a last-chunk flag, and the header is in the AAD). Must still read `SPENC02` files, with optional background re-encryption.
 
 ### H3 · Remove TOTP leftovers — `todo`
@@ -155,14 +155,14 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 
 ### M6 · Disable `/docs` and `/openapi.json` in frozen builds — `done` (merged with H6, history §107)
 
-### M8 · Auto-lock time setting is ignored — `review` (branch `fix/m7-m8-trash-autolock`, history §108; owner removed the 'Never' option)
+### M8 · Auto-lock time setting is ignored — `done` (merged 2026-11-12, history §108; owner removed the 'Never' option)
 - **Small follow-up:** the vault screen counts mouse movement as activity, the engine only counts requests, so the engine can lock slightly before the on-screen countdown ends (the next action then shows the lock screen).
 - Settings offers 1/5/15/30 min/never (`auto_lock_duration`), but the engine (`vault.py` `AUTO_LOCK_SECONDS = 300`) and `VaultView.tsx` (`AUTO_LOCK_SECONDS = 300`) hard-code 5 minutes. Either wire it up (engine is the authority) or remove the option.
 
 ### M9 · Engine auto-reload hangs in development — `todo` (found during H6)
 - With `tauri dev`, uvicorn `--reload` logged "Reloading..." after a Python change and never restarted; the old engine kept answering with old code. Likely a background task (face scan, video queue, enhancer) blocking shutdown on Windows. Development-only, but it makes code changes look ineffective. Fix: cancel background tasks in the lifespan shutdown, or drop `--reload` in the dev launcher.
 
-### M7 · Trash purge cannot find files with relative paths — `review` (branch `fix/m7-m8-trash-autolock`, history §108)
+### M7 · Trash purge cannot find files with relative paths — `done` (merged 2026-11-12, history §108)
 - **Also found:** no automatic 30-day purge existed at all (the Trash screen promised one); now implemented.
 - `trash.py:120` `_unlink_photo_files` uses `Path(path_str)` directly. Managed imports store relative paths, so after 30 days the row is deleted but the original, thumbnail and preview probably **stay on disk forever** (wasted space, and "deleted" photos remain). Resolve paths against the data folder using `vault_storage.resolve_stored_path`. Also add a one-off cleanup for files already orphaned this way.
 
