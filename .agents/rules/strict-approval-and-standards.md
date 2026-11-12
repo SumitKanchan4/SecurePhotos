@@ -39,6 +39,7 @@ trigger: always_on
   - Once approved, **execute all steps end-to-end autonomously** (edits, tests, docs, commit, push) without requiring user babysitting.
   - Do NOT pause or ask permission for standard engineering tasks: reading files, grepping, symbol discovery (`codegraph_explore`), running tests/linters, checking git status, pulling/fetching, non-destructive diagnostics, writing scratch scripts, and executing planned edits.
 - **Real Permissions Only**:
+  - Ask questions **one at a time**, each self-contained (what it is about, why it matters, options with a recommendation first).
   - Reserve user confirmation strictly for:
     1. Plan approval before implementation.
     2. High-level architecture forks or ambiguous requirements with multiple designs.
@@ -56,7 +57,7 @@ trigger: always_on
 
 ## 3. Clean Architecture, Zero-Debt Policy & Design Standards
 - Keep code clean, decoupled, and modular. Do not mix presentation, business logic, and database operations in single files.
-- Adhere strictly to project skills (`modern-web-ui`, `local-slm-engineering`, `sqlite-vector-search`, `zero-trust-crypto`, `enterprise-standards-and-docs`).
+- Adhere strictly to project skills (`modern-web-ui`, `zero-trust-crypto`, `enterprise-standards-and-docs`) and the checklists in `engineering-checklists.md`. `local-slm-engineering` and `sqlite-vector-search` describe future ideas only (not used today).
 - **CRITICAL UI/UX STANDARD (View Headers & Toolbars)**: Must comply strictly with Section 4 of `modern-web-ui`:
   1. Balanced 3-Column flex layout (`flex: 1` Left / `flex: 0 1 auto` Center / `flex: 1` Right).
   2. Centered modern display title (`22px` to `24px` Plus Jakarta Sans, `fontWeight: 800`, `letterSpacing: -0.03em`).
@@ -76,7 +77,8 @@ trigger: always_on
   3. **Technical Touchpoints**: API endpoints, database schema/queries, and UI components.
   4. **State & Lifecycle Impact**: Interactions with existing states, persistence, and edge cases.
 
-## 6. Mandatory Token Efficiency & MCP Optimization (`codegraph` & `headroom`)
+## 6. Token Efficiency & MCP Optimization (`codegraph` & `headroom`, when available)
+- These MCP tools may not be installed in every environment. When they are, use them as below; otherwise use the editor's own search and read only the line ranges you need.
 - Maximize context efficiency and reduce token overhead using MCP tools:
   1. **`codegraph_explore` (MCP)**:
      - Always use as the **first** discovery tool for surveying features, symbols, call paths, hierarchies, and blast radius.

@@ -8,21 +8,21 @@ Looking for the end-user overview and user guide? See [README.md](../README.md).
 
 ## 🏛️ System Architecture Overview
 
-SecurePhotos is engineered as a local-first, zero-cloud desktop application combining a high-performance **Tauri 2.0 (Rust)** shell with an autonomous **Python 3.12 Engine (FastAPI)** sidecar and a reactive **React 18 / TypeScript** user interface.
+SecurePhotos is engineered as a local-first, zero-cloud desktop application combining a high-performance **Tauri 2.0 (Rust)** shell with an autonomous **Python 3.12 Engine (FastAPI)** sidecar and a reactive **React 19 / TypeScript** user interface.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        Tauri 2.0 Desktop Host (Rust)                   │
 │  - Native Window Lifecycle & Webview2 Hosting                          │
 │  - Ephemeral Port Allocation (127.0.0.1:0)                             │
-│  - Windows OS CSPRNG Token Generation (BCryptGenRandom)                │
+│  - OS secure random token (getrandom); engine not started without it  │
 │  - Child Process Lifetime & Sidecar Process Supervision                │
 └────────────────────────────────────┬───────────────────────────────────┘
                                      │ Local Loopback (CSPRNG Authenticated)
        ┌─────────────────────────────┴─────────────────────────────┐
        ▼                                                           ▼
 ┌─────────────────────────────────────────┐   ┌────────────────────────────────────────┐
-│        Frontend Client (React 18)       │   │        Backend Engine (Python 3.12)    │
+│        Frontend Client (React 19)       │   │        Backend Engine (Python 3.12)    │
 │  - TanStack Virtualized Grid (60fps)    │   │  - FastAPI REST Endpoints & Streaming  │
 │  - Pure CSS Liquid-Glass Design Tokens  │   │  - SQLite WAL Database & FTS5 Search   │
 │  - Centralized apiFetch & Cookie Client │   │  - On-Device AI: ONNX Face / OCR / CLIP│
@@ -34,8 +34,8 @@ SecurePhotos is engineered as a local-first, zero-cloud desktop application comb
 - **Desktop Host**: Tauri 2.0 (Rust) using Windows WebView2 runtime.
 - **Backend Runtime**: Python 3.12, FastAPI, Uvicorn, SQLite 3 (WAL mode + FTS5 full-text indexing), `aiosqlite`.
 - **AI & Acceleration**: ONNX Runtime with DirectML hardware acceleration; YuNet (face finding, MIT), SFace (face recognition, Apache-2.0), Real-ESRGAN (upscaling, BSD-3). Only permissively licensed models; see `THIRD_PARTY_NOTICES.md`.
-- **Frontend Framework**: React 18, TypeScript, Vite, `@tanstack/react-virtual`, Lucide React icons.
-- **Cryptography**: AES-256-GCM chunked streaming, Argon2id key derivation, Windows OS CSPRNG (`BCryptGenRandom`).
+- **Frontend Framework**: React 19, TypeScript, Vite, `@tanstack/react-virtual`, Lucide React icons.
+- **Cryptography**: AES-256-GCM chunked streaming, Argon2id key derivation, OS secure random source via the `getrandom` crate (no weaker fallback).
 
 ---
 
@@ -85,7 +85,7 @@ To prevent unauthorized local processes, rogue scripts, or third-party browser t
    - The Tauri host binds to `127.0.0.1:0`.
    - The operating system assigns an available, unassigned port at runtime, avoiding fixed-port collisions with developer servers.
 2. **CSPRNG Shared Secret**:
-   - Rust generates a 256-bit cryptographically secure token using Windows native `BCryptGenRandom` (`BCRYPT_USE_SYSTEM_PREFERRED_RNG`).
+   - Rust generates a 256-bit token from the OS secure random source (`getrandom`, `src-tauri/src/token.rs`); if that fails after a few retries, the engine is not started (M5).
    - The token is passed to the Python sidecar via the `SECUREPHOTOS_IPC_SECRET` environment variable.
 3. **Defense-in-Depth Middleware ([auth_middleware.py](../engine/middleware/auth_middleware.py))**:
    - Outermost Starlette middleware validates `X-SecurePhotos-Token` headers and `securephotos_ipc` cookies via constant-time comparison (`hmac.compare_digest`).
@@ -187,7 +187,7 @@ SecurePhotos/
 │   ├── tests/                    # Automated Pytest Test Suites (117+ tests)
 │   ├── config.py                 # Pydantic Settings & Directory Resolution
 │   └── main.py                   # FastAPI Application Entrypoint
-├── src/                          # React 18 / TypeScript Desktop Frontend
+├── src/                          # React 19 / TypeScript Desktop Frontend
 │   ├── assets/                   # Static Icons & Artwork
 │   ├── components/               # UI Views (Grid, Lightbox, People, Vault, Albums, etc.)
 │   ├── services/                 # Centralized apiFetch & Media URL Client

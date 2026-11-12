@@ -21,7 +21,7 @@ Most modern photo apps want your photos in their cloud, require ongoing monthly 
 | **Storage Location** | 💾 **Your PC or External SSD** | 🏢 Remote third-party data centers |
 | **Cost** | 💸 **Free & Lifetime Ownership** | 💳 Recurring monthly storage fees |
 | **Speed** | ⚡ **Instant 60fps Native Performance** | ⏳ Buffering, network lag & upload delays |
-| **Private Vault** | 🛡️ **Military-Grade Encryption (AES-256)** | 🔓 Plainly readable by cloud admins/AI |
+| **Private Vault** | 🛡️ **Strong Encryption (AES-256-GCM, per-file keys)** | 🔓 Plainly readable by cloud admins/AI |
 | **AI Processing** | 🧠 **100% On-Device Offline AI** | 🤖 Remote server-side AI training |
 
 ---
@@ -44,7 +44,7 @@ Group photos by the people you love without sending your biometric data to the c
 - **Offline & Safe**: All face detection runs 100% locally on your machine.
 
 ### 🔒 Encrypted Private Vault
-Protect sensitive paperwork, financial records, medical documents, and intimate photos behind a dedicated master password or PIN. Vault photos are stored with bank-grade encryption (AES-256) and are decrypted strictly in memory while you view them, never left exposed on the disk.
+Protect sensitive paperwork, financial records, medical documents, and intimate photos behind a dedicated master password or PIN. Vault photos are encrypted with AES-256-GCM and are decrypted strictly in memory while you view them, never left exposed on the disk.
 
 ### 🧹 Duplicate Cleaner & Disk Space Saver
 Free up valuable gigabytes on your computer:

@@ -1,54 +1,57 @@
 ---
 name: zero-trust-crypto
 description: >-
-  Enterprise zero-trust cryptographic standards for media vaults. Covers chunked AES-256-GCM authenticated streaming, Argon2id/PBKDF2 key derivation, zero-disk ephemeral decryption, RFC 6238 TOTP 2FA, session invalidation, and path traversal guards.
+  How the SecurePhotos private vault actually encrypts: one master vault key wrapped in several slots
+  (password, emergency card token, 16 card numbers), Argon2id key derivation, the SPENC03 chunked
+  AES-256-GCM file format with per-file keys, sealed photo details, a session-only PIN, crash-safe
+  lock/unlock, and honest key-in-memory handling. Use it before changing anything in the vault.
 ---
 
-# 🔐 Zero-Trust Cryptography & Vault Security Skill
+# 🔐 Vault Cryptography (as built, November 2026)
 
-This skill enforces enterprise cryptographic standards, data-at-rest protection, and memory safety for sensitive documents and private media.
+This skill describes what the code does today (`engine/services/crypto_vault.py`,
+`engine/services/vault_storage.py`, `engine/api/vault.py`). Change the code and this file together.
+Decisions and history: `.agents/history/features_and_functional_decisions.md` §103-§110, §115, §119.
 
 ---
 
-## 1. Core Cryptographic Specifications
+## 1. Keys
 
-| Parameter | Standard / Specification |
+| Item | How |
 |---|---|
-| **Cipher Algorithm** | **AES-256-GCM** (Authenticated Encryption with Associated Data) |
-| **Streaming Chunk Size** | Fixed **64 KB** (65,536 bytes) per block with 12-byte IV + 16-byte Auth Tag |
-| **Key Derivation Function** | **Argon2id** (Preferred) or **PBKDF2HMAC-SHA256** (100,000 rounds) |
-| **Salt Size** | 16 bytes cryptographically secure pseudo-random (`os.urandom(16)`) |
-| **Password Storage** | **bcrypt** with work factor 12 (Never store plaintext PINs/passwords) |
-| **Two-Factor Auth** | **RFC 6238 TOTP** with encrypted secret keys at rest |
+| **Master vault key (MVK)** | 32 random bytes, created at setup. Encrypts every vault file and sealed detail. Never stored in plaintext. |
+| **Password slot** | KEK = **Argon2id** (time 3, 64 MB memory, parallelism 4, 32-byte output) of the password + 16-byte salt; MVK wrapped with AES-256-GCM (`nonce‖ciphertext‖tag`, base64). |
+| **Emergency card** | The printed card has a 64-hex token (PBKDF2-HMAC-SHA256, 600,000 rounds; the token is high-entropy) and 16 numbers A-P (Argon2id). Each unwraps its own MVK slot. Recovery = card file **or** all 16 numbers (C3). |
+| **Quick PIN** | **Not a key slot.** Only an Argon2id verifier. A normal lock keeps the MVK in memory and the PIN reopens it until the app closes; 5 wrong PINs, or no PIN set, purge the key (C2). |
+| **Removed** | TOTP (H3), bcrypt, the 24-word phrase as a setup option (the unlock code still accepts it for older vaults). |
 
----
-
-## 2. Chunked AES-256-GCM Streaming Protocol
-
-To prevent Out-Of-Memory (OOM) crashes when encrypting multi-gigabyte video or RAW files, files are streamed in chunks:
+## 2. Vault file format: SPENC03 (H2)
 
 ```
-Encrypted File Structure (.enc):
-┌────────────────────────┬────────────────────────────────────────────────────────┐
-│ Header (28 bytes)      │ Salt (16B) | Total Chunks Count (4B) | File Version (8B)│
-├────────────────────────┼────────────────────────────────────────────────────────┤
-│ Chunk 0 (64 KB + 28B)  │ Nonce (12B) | Ciphertext (64 KB) | Auth Tag (16B)       │
-│ Chunk 1 (64 KB + 28B)  │ Nonce (12B) | Ciphertext (64 KB) | Auth Tag (16B)       │
-│ ...                    │ ...                                                    │
-└────────────────────────┴────────────────────────────────────────────────────────┘
+[ magic "SPENC03\0" (8 B) | file salt (32 B) ]          header, authenticated as AAD in every chunk
+[ AES-256-GCM chunk 0: ciphertext (<= 64 KB) | tag 16 B ]
+[ ... ]
+[ last chunk (may be empty), flagged as last ]
 ```
+- Per-file key = HKDF-SHA256(MVK, file salt, info `securephotos-vault-file-v3`).
+- Nonce = 11-byte chunk counter + 1-byte "last chunk" flag (STREAM construction). Truncation, reordering, mixing chunks of two files, appended data and header edits all fail to decrypt.
+- Only SPENC03 is read or written; older formats are refused.
+- Viewing decrypts chunk by chunk into memory and streams it; no decrypted temp files.
 
-- **Zero Disk Temporary Files**: When the user opens an encrypted video/photo in the lightbox, the backend decrypts chunk-by-chunk directly into memory and streams it over the local HTTP response.
+## 3. Sealed photo details (C4)
+- OCR text and GPS of a vault photo are sealed with AES-256-GCM under the MVK, with the photo id as AAD (`encrypt_photo_metadata`), and the plain columns are cleared. Face records of that photo are deleted; library faces are untouched.
 
----
+## 4. Lock and unlock are crash-safe (C5)
+- Journal row in `vault_pending_ops` first; write `.enc` (temp file, fsync, replace); verify it decrypts to the same SHA-256; update the row and commit; only then delete the plaintext. Startup `reconcile_pending_vault_ops` finishes or rolls back.
+- `PRAGMA secure_delete` + WAL checkpoint so freed database pages don't keep old plaintext.
+- File work runs off the event loop and through `work_queues.vault_files()` (H7).
+- Vault enhancement only while unlocked, in memory, re-encrypted to SPENC03 (C7).
 
-## 3. Path Traversal & Injection Defenses
+## 5. Keys in memory: be honest (H4)
+- The session key lives in one `bytearray`, overwritten by `purge_vault_key`. Copies made by Python and the crypto library cannot be overwritten; Windows may page memory to disk. Never claim "wiped from RAM" or "military-grade". See `docs/architecture.md` → "Vault key in memory".
 
-- Every file-system handler must canonicalize paths and verify confinement:
-```python
-def validate_safe_path(target_path: Path, allowed_root: Path) -> Path:
-    resolved = target_path.resolve()
-    if not resolved.is_relative_to(allowed_root.resolve()):
-        raise PermissionError("Path traversal attempt detected")
-    return resolved
-```
+## 6. Engine access
+- Every engine request needs the IPC token header or the session cookie (`HttpOnly; SameSite=None; Secure`); no tokens in URLs; frozen builds fail closed and hide `/docs` (H1, H6, M6). The token comes only from the OS random source (M5).
+
+## 7. Paths
+- Vault paths are stored relative to the library (`to_db_path`) and resolved with `resolve_stored_path`; never act on a guessed file (M1, M2).
