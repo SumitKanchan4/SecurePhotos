@@ -112,7 +112,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ### H3 · Remove TOTP leftovers — `done` (merged 2026-11-12, PR #5, history §115)
 - The UI always sends `enable_totp: false` (`VaultSetupWizard.tsx:226`), but the backend still generates and verifies TOTP and stores the secret in plaintext in `totp_secret_encrypted`. Remove the backend code, `has_totp` and the store fields. Leave the DB column (migration safety).
 
-### H4 · Make in-memory key handling honest — `todo`
+### H4 · Make in-memory key handling honest — `done` (merged 2026-11-12, PR #9, history §119)
 - `zero_memory` does nothing for `bytes`, and `get_active_mvk` returns `bytes(...)` copies. Python cannot wipe memory reliably. Reduce copies where possible and correct the docstrings and README claims ("RAM key zeroing").
 
 ### H5 · Add a Content Security Policy and trim Tauri permissions — `done` (merged 2026-11-12, history §110; owner: bundle the fonts)

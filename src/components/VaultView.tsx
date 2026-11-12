@@ -62,7 +62,7 @@ const getDocIcon = (doc: PhotoItem) => {
 /**
  * VaultView Component
  *
- * Flagship Zero-Trust Encrypted Vault with 5-minute auto-lock,
+ * Flagship Zero-Trust Encrypted Vault with configurable auto-lock (1-30 minutes),
  * 4-digit quick PIN unlock with brute-force lock protection,
  * Master Password fallback, 24-word recovery, and guarded factory reset.
  */
