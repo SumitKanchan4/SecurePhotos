@@ -181,7 +181,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - **Done:** `quality.yml` (ruff, pytest, npm audit, tsc + build, cargo check), pinned requirements (`requirements*.in` -> `.txt` via uv), dev tools split out, `npm ci`, actions pinned to SHAs, Python 3.12. Linter found and fixed a story-deletion crash.
 - **Follow-up (not gating yet):** mypy, eslint and clippy each need a first clean-up pass before they can block merges.
 
-### Q3 · Frontend tests — `review` (branch `chore/q3-frontend-tests`, history §122; owner: reduced scope before the redesign, block merges)
+### Q3 · Frontend tests — `done` (merged 2026-11-12, PR #12, history §122; owner: reduced scope before the redesign, block merges)
 - **Done:** Vitest + Testing Library, `npm test` in the quality gate, tests for `api.ts` and the store. **Deferred to the redesign:** component tests (vault unlock, startup banner) against the new screens.
 - There are none today. Add Vitest + Testing Library; start with `api.ts`, the store, and the vault flows.
 
