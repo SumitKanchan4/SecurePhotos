@@ -127,7 +127,6 @@ def build_engine():
         "--hidden-import=argon2",
         "--hidden-import=PIL",
         "--hidden-import=piexif",
-        "--hidden-import=pyotp",
         "--hidden-import=psutil",
         "--hidden-import=numpy",
         "--hidden-import=onnxruntime",

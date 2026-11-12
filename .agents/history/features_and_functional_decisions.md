@@ -41,6 +41,7 @@ This document serves as the **central, living source of truth** for all function
 112. [Missing Photos Stay Missing; Old Dev-Folder Migration Removed](#112-missing-photos-stay-missing-old-dev-folder-migration-removed)
 113. [Import Only Copies Into the Library; Collages in Dated Folders](#113-import-only-copies-into-the-library-collages-in-dated-folders)
 114. [Relative Paths Everywhere; Storage Clean-up Removed](#114-relative-paths-everywhere-storage-clean-up-removed)
+115. [TOTP Removed From the Engine](#115-totp-removed-from-the-engine)
 
 ---
 
@@ -5307,3 +5308,24 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `engine/database.py`: startup path conversion for `thumbnail_path` / `preview_path`, "None" clean-up, vault-thumbnail self-heal resolves against the library folder.
 - Tests: `engine/tests/test_relative_paths.py` (4 tests, all fail on the old code; on the old code the video test shows the other video overwritten, then a database error). 209 tests pass.
 - Validated in the UI (Playwright, throwaway library): imported 2 photos through the Import screen (thumbnails saved as `thumbnails/..`), set one back to the old full-path form, restarted the engine: path converted to relative, both thumbnails load in the grid (200), clean-up endpoint returns 404, library files intact, no console errors.
+
+---
+
+## 115. TOTP Removed From the Engine
+
+### Functionality Overview
+- No visible change: vault setup, PIN, password and card unlock work as before. The authenticator-app (TOTP) option was already gone from the UI; now the engine no longer has it either.
+- Before, anything that could call the local engine could still set up a vault with `enable_totp: true`. That stored the TOTP secret **unencrypted** (in a column named `totp_secret_encrypted`), returned it in the setup reply, and from then on demanded a 6-digit code at unlock that the UI cannot ask for, locking the owner out of their vault.
+
+### Functional Decision Points & Rationale (owner approved 2026-11-12)
+- Removed: TOTP setup and unlock check, `has_totp` in the vault status, the three TOTP helpers, the `pyotp` dependency (requirements and PyInstaller hidden import), `enable_totp` in the setup wizard, `hasVaultTotp` in the store.
+- The database column stays (no risky schema change). A one-time startup step (`2026_11_h3_blank_totp_secrets`) blanks it, so no plaintext secret can remain in any library. The owner's library had no vault configured, so nothing was stored.
+- Old clients that still send `enable_totp` keep working (the field is ignored).
+- Also fixed while recompiling requirements: Q2 had written a temporary local folder path into the comments of `requirements.txt` / `requirements-dev.txt`. They are now compiled without a separate constraints file (uv keeps the versions already pinned in the output), so the header shows the documented command and no local path. No version changed except `pyotp` removed.
+
+### Technical Touchpoints
+- `engine/api/vault.py`, `engine/services/crypto_vault.py`, `engine/database.py` (one-time step, column comment).
+- `engine/requirements.in`, `engine/requirements.txt`, `engine/requirements-dev.txt`, `scripts/build-engine.py`.
+- `src/components/VaultSetupWizard.tsx`, `src/store/useAppStore.ts`.
+- Tests: `engine/tests/test_vault_no_totp.py` (2 tests, both fail on the old code: the old setup returned the plaintext secret; an old stored secret stayed). `test_vault.py` no longer sends `enable_totp`. 211 tests pass.
+- Validated in the UI (Playwright, throwaway library): vault wizard (password, PIN, emergency card) -> setup request carries only password, PIN and card; status reply has no `has_totp`; lock -> PIN reopens; lock again -> reopened; TOTP column empty; no console errors.

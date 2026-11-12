@@ -86,7 +86,6 @@ async def test_vault_setup_and_unlock_api():
                 "password": "MasterVaultPassword99!",
                 "recovery_phrase": "timber ocean canyon desert mountain river breeze stone valley thunder shadow apple",
                 "password_hint": "Favorite nature words",
-                "enable_totp": False,
             },
         )
         assert setup_res.status_code == 201
@@ -135,7 +134,6 @@ async def test_vault_photos_crud_and_streaming_api():
             json={
                 "password": "SecureVaultPass456!",
                 "recovery_phrase": "timber ocean canyon desert mountain river breeze stone valley thunder shadow apple",
-                "enable_totp": False,
             },
         )
         unlock_res = await client.post(
@@ -462,7 +460,6 @@ async def test_vault_documents_and_self_healing_workflow():
                 "pin": "9999",
                 "recovery_phrase": "twenty four test words recovery phrase for test setup",
                 "password_hint": "doc hint",
-                "enable_totp": False,
             },
         )
         assert setup_res.status_code in (200, 201)
