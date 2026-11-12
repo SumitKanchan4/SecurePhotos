@@ -588,6 +588,73 @@ async def get_timeline_years() -> TimelineYearsResponse:
     return TimelineYearsResponse(total_count=total_count, years=years)
 
 
+class ContextPerson(BaseModel):
+    id: int
+    name: str
+    face_id: Optional[int] = None
+
+
+class ContextAlbum(BaseModel):
+    id: int
+    name: str
+
+
+class PhotoContextResponse(BaseModel):
+    """What the viewer's details panel shows besides EXIF: who is in it, where it is, when it came in."""
+    people: List[ContextPerson]
+    albums: List[ContextAlbum]
+    imported_at: Optional[str] = None
+    copied_into_library: bool = False
+
+
+@router.get("/{photo_id}/context", response_model=PhotoContextResponse, status_code=status.HTTP_200_OK)
+async def get_photo_context(photo_id: int) -> PhotoContextResponse:
+    """Named people (with their best face crop in this photo) and library albums for one library photo.
+
+    Vault and trashed photos are refused: their people and albums are not shown outside the vault.
+    """
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(
+            "SELECT created_at, is_managed FROM photos WHERE id = ? AND is_encrypted = 0 AND trashed_at IS NULL;",
+            (photo_id,),
+        ) as cursor:
+            photo = await cursor.fetchone()
+        if not photo:
+            raise HTTPException(status_code=404, detail="Photo not found")
+        async with conn.execute(
+            """
+            SELECT p.id, p.name,
+                   (SELECT f2.id FROM faces f2
+                     WHERE f2.photo_id = ? AND f2.person_id = p.id
+                     ORDER BY f2.quality_score DESC, f2.id LIMIT 1) AS face_id
+            FROM persons p
+            WHERE p.id IN (SELECT person_id FROM faces WHERE photo_id = ? AND person_id IS NOT NULL)
+            ORDER BY p.name COLLATE NOCASE;
+            """,
+            (photo_id, photo_id),
+        ) as cursor:
+            people = [ContextPerson(id=r["id"], name=r["name"], face_id=r["face_id"]) for r in await cursor.fetchall()]
+        async with conn.execute(
+            """
+            SELECT a.id, a.name FROM albums a
+            JOIN photo_album pa ON pa.album_id = a.id
+            WHERE pa.photo_id = ? AND COALESCE(a.is_vault, 0) = 0
+            ORDER BY a.name COLLATE NOCASE;
+            """,
+            (photo_id,),
+        ) as cursor:
+            albums = [ContextAlbum(id=r["id"], name=r["name"]) for r in await cursor.fetchall()]
+    finally:
+        await conn.close()
+    return PhotoContextResponse(
+        people=people,
+        albums=albums,
+        imported_at=photo["created_at"],
+        copied_into_library=bool(photo["is_managed"]),
+    )
+
+
 @router.get("/{photo_id}/thumbnail")
 async def get_photo_thumbnail(photo_id: int):
     """Streams the 512px Retina WebP micro-thumbnail for a photo or video."""
