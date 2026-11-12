@@ -54,6 +54,8 @@
   --accent-danger: #ff6b6b;
   --accent-vault: var(--accent-ink);
   --accent-vault-glow: rgba(198, 255, 0, 0.18);
+  --rail-active-bg: var(--accent-fill);
+  --rail-active-fg: var(--on-accent);
 
   /* Shadows & Elevation */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -118,6 +120,8 @@
   --accent-danger: #c42b2b;
   --accent-vault: var(--accent-ink);
   --accent-vault-glow: rgba(10, 10, 10, 0.08);
+  --rail-active-bg: #0a0a0a;
+  --rail-active-fg: #ffffff;
 
   /* Shadows & Elevation */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
@@ -308,4 +312,45 @@ html, body, #root {
   scroll-behavior: auto !important;
 }
 
+/* ═════════════════════════════════════════════════════════════════════════
+   🧭 APP SHELL: icon rail + window strip (redesign R1)
+   ═════════════════════════════════════════════════════════════════════════ */
+.rail-btn {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+.rail-btn:hover { background: var(--glass-pill-hover); color: var(--text-primary); }
+.rail-btn:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.rail-btn-active, .rail-btn-active:hover { background: var(--rail-active-bg); color: var(--rail-active-fg); }
 
+/* Hover label to the right of each rail button (from data-label). */
+.rail-btn[data-label]:hover::after,
+.rail-btn[data-label]:focus-visible::after {
+  content: attr(data-label);
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--text-primary);
+  color: var(--bg-app);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 400;
+  box-shadow: var(--shadow-md);
+}
+
+.window-close:hover { background: var(--accent-danger) !important; color: #ffffff !important; }

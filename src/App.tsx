@@ -15,8 +15,9 @@ import {
   CheckSquare,
   Search,
 } from "lucide-react";
-import { TitleBar } from "./components/TitleBar";
-import { Sidebar } from "./components/Sidebar";
+import { SearchPalette } from "./components/shell/SearchPalette";
+import { WindowStrip } from "./components/shell/WindowStrip";
+import { IconRail } from "./components/shell/IconRail";
 import { PrerequisitesBanner } from "./components/PrerequisitesBanner";
 import { PhotoGrid } from "./components/PhotoGrid";
 import { DriveStatusBanner } from "./components/DriveStatusBanner";
@@ -746,8 +747,9 @@ export const App: React.FC = () => {
         backgroundColor: "var(--bg-app)",
       }}
     >
-      {/* Frameless Window Custom Title Bar */}
-      <TitleBar 
+      {/* Frameless window: slim drag strip + global search palette (redesign R1) */}
+      <WindowStrip />
+      <SearchPalette
         onSelectPhoto={(photo, allPhotos) => {
           const mapped: PhotoItem[] = allPhotos.map((p) => ({
             id: p.id,
@@ -781,8 +783,8 @@ export const App: React.FC = () => {
 
       {/* Main Content Layout */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        {/* Navigation Sidebar */}
-        <Sidebar />
+        {/* Navigation: 64 px icon rail (redesign R1) */}
+        <IconRail />
 
         {/* Dynamic Main Workspace View */}
         <main 
