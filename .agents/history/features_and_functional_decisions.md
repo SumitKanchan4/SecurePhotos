@@ -38,6 +38,7 @@ This document serves as the **central, living source of truth** for all function
 109. [Vault File Format SPENC03 (Truncation-Proof, Per-File Keys)](#109-vault-file-format-spenc03-truncation-proof-per-file-keys)
 110. [Content Security Policy, Narrow Permissions, Bundled Fonts](#110-content-security-policy-narrow-permissions-bundled-fonts)
 111. [CI Quality Gate and Pinned Dependencies](#111-ci-quality-gate-and-pinned-dependencies)
+112. [Missing Photos Stay Missing; Old Dev-Folder Migration Removed](#112-missing-photos-stay-missing-old-dev-folder-migration-removed)
 
 ---
 
@@ -5236,3 +5237,23 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `engine/services/stories_service.py` (story export deletion fix); `engine/tests/test_story_cleanup.py`.
 - `package.json` / `package-lock.json` (Vite 6.4.6, audit fixes).
 - Validated locally: `ruff check .` clean, 195 tests pass, `tsc --noEmit` and `npm run build` pass, both workflow files are valid YAML.
+
+---
+
+## 112. Missing Photos Stay Missing; Old Dev-Folder Migration Removed
+
+### Functionality Overview
+- **M1:** when a photo's file can't be found, the app now shows it as missing. Before, it silently used any file with the same name at the top of the library folder, so it could show, download, convert or encrypt a *different* photo. Finding a library that moved, or a drive whose letter changed, works exactly as before.
+- **M3:** the engine no longer touches `~/.securephotos_data` at startup. Before, it copied that folder into the library (possibly overwriting photos), then deleted it even if the copy had failed.
+
+### Functional Decision Points & Rationale (owner decision 2026-11-12: remove the migration entirely)
+- `~/.securephotos_data` was only used by dev builds on 2-4 Sept 2026, before any release, and doesn't exist on the owner's machine. So no user has data there, and removing the code is safer than making it safe.
+- A missing photo now resolves to its stored path (which doesn't exist), so every caller's existing "file missing" check applies. All 13 callers were checked; each already handles a missing file (404 or skip).
+- An empty stored path used to become `Path()` = "." (the working folder, which exists); it now resolves to a name that can never exist.
+- `resolve_stored_path` (used for deleting files since C5) already refused the same-name guess; its special-case check was simplified.
+
+### Technical Touchpoints
+- `engine/config.py`: `ensure_directories` (migration removed), `resolve_media_path` (no name-only fallback; `MISSING_MEDIA_NAME`).
+- `engine/services/media_paths.py`: `resolve_stored_path` simplified.
+- Tests: `engine/tests/test_path_and_migration_safety.py` (6 tests; 4 fail on the old code). 201 tests pass.
+- Validated in the UI (Playwright, throwaway library): a photo whose file is gone shows the "missing" placeholder and returns 404 for its thumbnail and original, while a red photo with the same name sits in the library folder (before: it would have been shown and thumbnailed). A normal photo still loads. No console errors.

@@ -139,13 +139,13 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 
 ## Medium
 
-### M1 · `resolve_media_path` falls back to the filename only — `todo`
+### M1 · `resolve_media_path` falls back to the filename only — `review` (branch `fix/m1-m3-path-and-migration-safety`, history §112)
 - `config.py` (last line of `resolve_media_path`) returns `data_dir / p.name`. A filename collision could serve, or trash-purge, the wrong file. Return "not found" instead.
 
 ### M2 · Store paths relative to the data folder everywhere — `todo`
 - Vault code writes `str(x.resolve())` (absolute) and builds thumbnail and preview paths with raw `Path()`. This breaks rule §2. Normalise on write, and migrate existing rows. (The vault rows touched by C5 are handled in C5.)
 
-### M3 · Legacy migration deletes data after a best-effort copy — `todo`
+### M3 · Legacy migration deletes data after a best-effort copy — `review` (branch `fix/m1-m3-path-and-migration-safety`, history §112; owner: remove the migration entirely)
 - `config.py` `ensure_directories()` copies `~/.securephotos_data`, then runs `shutil.rmtree` with errors swallowed. Only delete after verifying the copy, or keep the source and log.
 
 ### M4 · Remove the unused in-place "scan" import mode — `todo`
