@@ -728,34 +728,49 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
         async with conn.execute("SELECT id, thumbnail_path FROM photos WHERE is_encrypted = 1;") as cursor:
             enc_photos = await cursor.fetchall()
 
+        from engine.services.media_paths import to_db_path
+
         for p in enc_photos:
             p_id = p["id"]
             t_path = p["thumbnail_path"]
-            if t_path and not Path(t_path).exists():
-                cand1 = Path(t_path).with_suffix(".enc")
-                cand2 = Path(str(t_path) + ".enc")
+            if not t_path:
+                continue
+            # Relative paths are relative to the library folder, not the working folder (M2).
+            t_full = Path(t_path) if Path(t_path).is_absolute() else settings.data_dir / t_path
+            if not t_full.exists():
+                cand1 = t_full.with_suffix(".enc")
+                cand2 = Path(str(t_full) + ".enc")
                 if cand1.exists():
-                    await conn.execute("UPDATE photos SET thumbnail_path = ? WHERE id = ?;", (str(cand1), p_id))
+                    await conn.execute("UPDATE photos SET thumbnail_path = ? WHERE id = ?;", (to_db_path(cand1), p_id))
                 elif cand2.exists():
-                    await conn.execute("UPDATE photos SET thumbnail_path = ? WHERE id = ?;", (str(cand2), p_id))
+                    await conn.execute("UPDATE photos SET thumbnail_path = ? WHERE id = ?;", (to_db_path(cand2), p_id))
 
         # Dynamic Drive Portability: Normalize legacy absolute paths to relative paths
-        # Ensures that moving the library or changing drive letters (D: -> E: -> F:) never breaks media
-        for anchor in ("originals", "vault"):
-            await conn.execute(
-                f"""
-                UPDATE photos 
-                SET filepath = SUBSTR(filepath, INSTR(filepath, '/{anchor}/') + 1)
-                WHERE filepath LIKE '%/{anchor}/%';
-                """
-            )
-            await conn.execute(
-                f"""
-                UPDATE photos 
-                SET filepath = REPLACE(SUBSTR(filepath, INSTR(filepath, '\\{anchor}\\') + 1), '\\', '/')
-                WHERE filepath LIKE '%\\{anchor}\\%';
-                """
-            )
+        # Ensures that moving the library or changing drive letters (D: -> E: -> F:) never breaks media.
+        # M2: thumbnails and previews too (imports used to save them as full paths).
+        for column, anchors in (
+            ("filepath", ("originals", "vault")),
+            ("thumbnail_path", ("thumbnails",)),
+            ("preview_path", ("previews",)),
+        ):
+            for anchor in anchors:
+                await conn.execute(
+                    f"""
+                    UPDATE photos
+                    SET {column} = SUBSTR({column}, INSTR({column}, '/{anchor}/') + 1)
+                    WHERE {column} LIKE '%/{anchor}/%';
+                    """
+                )
+                await conn.execute(
+                    f"""
+                    UPDATE photos
+                    SET {column} = REPLACE(SUBSTR({column}, INSTR({column}, '\\{anchor}\\') + 1), '\\', '/')
+                    WHERE {column} LIKE '%\\{anchor}\\%';
+                    """
+                )
+        # Imports used to save a missing preview as the text "None".
+        await conn.execute("UPDATE photos SET preview_path = NULL WHERE preview_path = 'None';")
+        await conn.execute("UPDATE photos SET thumbnail_path = NULL WHERE thumbnail_path = 'None';")
 
         await conn.commit()
         logger.info("Database schema migrations executed successfully.")
