@@ -55,6 +55,27 @@ export interface PhotoItem {
   is_pinned?: boolean;
 }
 
+/**
+ * One photo in the Photos timeline (redesign R2): only what the grid needs.
+ * Full details come from /api/photos/details when the photo is opened.
+ */
+export interface TimelinePhoto {
+  id: number;
+  taken_at: string | null;
+  width: number;
+  height: number;
+  is_video: boolean;
+  is_favorite: boolean;
+  is_optimized: boolean;
+  is_enhanced: boolean;
+}
+
+/** /api/photos/timeline: rows are [id, taken_at, width, height, "p" | "v", flags]. */
+export interface TimelineResponse {
+  total: number;
+  items: [number, string | null, number, number, string, number][];
+}
+
 export interface AlbumItem {
   id: number;
   name: string;

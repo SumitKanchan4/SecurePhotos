@@ -1,0 +1,154 @@
+import { describe, expect, it } from "vitest";
+import {
+  allSelected,
+  aspectRatio,
+  buildLayout,
+  groupByMonth,
+  monthKey,
+  monthLabel,
+  parseTimeline,
+  scrubberMarks,
+  sectionAt,
+  viewerWindow,
+  visibleRange,
+} from "./photoTimeline";
+
+const photo = (taken_at: string | null, width = 400, height = 300) => ({ taken_at, width, height });
+
+describe("parseTimeline", () => {
+  it("turns compact rows into photos with readable flags", () => {
+    const parsed = parseTimeline({
+      total: 2,
+      items: [
+        [7, "2026-05-14 10:00:00", 4000, 3000, "p", 1 | 4],
+        [8, null, 0, 0, "v", 2],
+      ],
+    });
+    expect(parsed[0]).toEqual({
+      id: 7, taken_at: "2026-05-14 10:00:00", width: 4000, height: 3000,
+      is_video: false, is_favorite: true, is_optimized: false, is_enhanced: true,
+    });
+    expect(parsed[1]).toMatchObject({ id: 8, is_video: true, is_favorite: false, is_optimized: true, is_enhanced: false });
+  });
+});
+
+describe("months", () => {
+  it("reads the month from engine and ISO dates, and treats the rest as undated", () => {
+    expect(monthKey("2026-05-14 10:00:00")).toBe("2026-05");
+    expect(monthKey("2024-12-01T08:00:00Z")).toBe("2024-12");
+    expect(monthKey(null)).toBe("undated");
+    expect(monthKey("2024-13-01")).toBe("undated");
+    expect(monthKey("garbage")).toBe("undated");
+    expect(monthLabel("2026-05")).toBe("May 2026");
+    expect(monthLabel("undated")).toBe("No date");
+  });
+
+  it("groups consecutive photos by month in list order", () => {
+    const sections = groupByMonth([
+      photo("2026-05-14"), photo("2026-05-01"), photo("2026-03-09"), photo("2024-12-31"), photo(null), photo(null),
+    ]);
+    expect(sections.map((s) => [s.key, s.start, s.count])).toEqual([
+      ["2026-05", 0, 2], ["2026-03", 2, 1], ["2024-12", 3, 1], ["undated", 4, 2],
+    ]);
+  });
+});
+
+describe("buildLayout", () => {
+  it("fills full rows to the exact width and keeps photo shapes", () => {
+    const photos = Array.from({ length: 7 }, () => photo("2026-05-01", 400, 300)); // 4:3
+    const layout = buildLayout(photos, groupByMonth(photos), { width: 1000, targetRowHeight: 200, gap: 4, headerHeight: 40 });
+    const rows = layout.entries.filter((e) => e.kind === "row");
+    const first = rows[0];
+    if (first.kind !== "row") throw new Error("expected a row");
+    // 4:3 at 200 px is 266.7 px wide, so four photos make the first full row.
+    expect(first.tiles).toHaveLength(4);
+    const last = first.tiles[first.tiles.length - 1];
+    expect(last.left + last.width).toBeCloseTo(1000, 5);
+    expect(first.height).toBeLessThanOrEqual(200);
+    expect(first.tiles[0].width / first.height).toBeCloseTo(4 / 3, 5);
+    // The leftover three photos stay at the target height instead of stretching.
+    const tail = rows[1];
+    if (tail.kind !== "row") throw new Error("expected a row");
+    expect(tail.tiles).toHaveLength(3);
+    expect(tail.height).toBe(200);
+  });
+
+  it("starts every month with a header and never mixes months in one row", () => {
+    const photos = [photo("2026-05-01"), photo("2026-04-01"), photo("2026-04-02")];
+    const sections = groupByMonth(photos);
+    const layout = buildLayout(photos, sections, { width: 2000, targetRowHeight: 200, gap: 4, headerHeight: 40, sectionGap: 16 });
+    expect(layout.entries.map((e) => e.kind)).toEqual(["header", "row", "header", "row"]);
+    expect(layout.sectionTops.get("2026-05")).toBe(0);
+    // header 40 + row 200 + section gap 16
+    expect(layout.sectionTops.get("2026-04")).toBe(256);
+    expect(layout.totalHeight).toBe(256 + 40 + 200);
+  });
+
+  it("treats missing sizes as square and limits extreme shapes", () => {
+    expect(aspectRatio({ width: 0, height: 0 })).toBe(1);
+    expect(aspectRatio({ width: 9000, height: 1000 })).toBe(3);
+    expect(aspectRatio({ width: 100, height: 1000 })).toBe(0.5);
+  });
+
+  it("returns nothing before the container has a width", () => {
+    const photos = [photo("2026-05-01")];
+    expect(buildLayout(photos, groupByMonth(photos), { width: 0, targetRowHeight: 200 }).entries).toEqual([]);
+  });
+});
+
+describe("windowing and scrubber", () => {
+  const photos = Array.from({ length: 400 }, (_, i) => photo(`2026-${String(12 - Math.floor(i / 40)).padStart(2, "0")}-01`));
+  const sections = groupByMonth(photos);
+  const layout = buildLayout(photos, sections, { width: 800, targetRowHeight: 200, gap: 4 });
+
+  it("renders only the entries near the viewport", () => {
+    const [start, end] = visibleRange(layout.entries, 5000, 800, 0);
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeLessThan(layout.entries.length - 1);
+    for (let i = start; i <= end; i++) {
+      const e = layout.entries[i];
+      expect(e.top + e.height).toBeGreaterThanOrEqual(5000);
+      expect(e.top).toBeLessThanOrEqual(5800);
+    }
+    expect(visibleRange([], 0, 800)).toEqual([0, -1]);
+  });
+
+  it("knows which month is on screen", () => {
+    const top = layout.sectionTops.get("2026-10") ?? 0;
+    expect(sectionAt(sections, layout.sectionTops, top + 10)?.key).toBe("2026-10");
+    expect(sectionAt(sections, layout.sectionTops, 0)?.key).toBe("2026-12");
+  });
+
+  it("places one mark per month and labels each year once, skipping crowded labels", () => {
+    const mixed = [photo("2026-05-01"), photo("2026-04-01"), photo("2025-12-01"), photo(null)];
+    const mixedSections = groupByMonth(mixed);
+    const mixedLayout = buildLayout(mixed, mixedSections, { width: 2000, targetRowHeight: 200 });
+    const marks = scrubberMarks(mixedSections, mixedLayout.sectionTops, mixedLayout.totalHeight, 600);
+    expect(marks.map((m) => m.yearLabel)).toEqual(["2026", null, "2025", "No date"]);
+    expect(marks[0].position).toBe(0);
+    expect(marks.every((m, i) => i === 0 || m.position > marks[i - 1].position)).toBe(true);
+
+    const crowded = scrubberMarks(mixedSections, mixedLayout.sectionTops, mixedLayout.totalHeight, 40);
+    expect(crowded.filter((m) => m.yearLabel).length).toBeLessThan(3);
+  });
+});
+
+describe("viewer window and selection", () => {
+  const list = Array.from({ length: 1000 }, (_, i) => ({ id: i + 1 }));
+
+  it("loads details around the opened photo and keeps its position", () => {
+    expect(viewerWindow(list, 500, 300)).toMatchObject({ offset: 150 });
+    expect(viewerWindow(list, 500, 300).ids[150]).toBe(501);
+    expect(viewerWindow(list, 3, 300)).toMatchObject({ offset: 3 });
+    const nearEnd = viewerWindow(list, 995, 300);
+    expect(nearEnd.ids).toHaveLength(300);
+    expect(nearEnd.ids[nearEnd.offset]).toBe(996);
+    expect(viewerWindow(list.slice(0, 10), 4, 300)).toEqual({ ids: list.slice(0, 10).map((p) => p.id), offset: 4 });
+  });
+
+  it("checks whether a whole list is selected", () => {
+    expect(allSelected([1, 2], new Set([1, 2, 3]))).toBe(true);
+    expect(allSelected([1, 2], new Set([1]))).toBe(false);
+    expect(allSelected([], new Set([1]))).toBe(false);
+  });
+});

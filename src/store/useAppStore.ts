@@ -161,7 +161,8 @@ export const useAppStore = create<AppState>((set) => ({
       return { selectedPhotoIds: next };
     }),
 
-  clearSelection: () => set({ selectedPhotoIds: new Set<number>() }),
+  // No-op when nothing is selected, so Escape doesn't re-render the whole app for nothing.
+  clearSelection: () => set((state) => (state.selectedPhotoIds.size === 0 ? state : { selectedPhotoIds: new Set<number>() })),
   setActiveVolume: (activeVolume) => set({ activeVolume }),
   setIsDriveConnected: (isDriveConnected) => set({ isDriveConnected }),
   setSystemHealth: (systemHealth) => set({ systemHealth }),
