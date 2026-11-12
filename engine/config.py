@@ -14,6 +14,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger("securephotos.config")
 
+# Name returned (under the data folder) for an empty stored path; never created on disk.
+MISSING_MEDIA_NAME = "<missing>"
+
 
 def resolve_default_data_dir() -> Path:
     """Resolves the active storage directory for database, cache, and models.
@@ -141,7 +144,12 @@ class AppConfig(BaseSettings):
         return self.originals_dir / "collages"
 
     def ensure_directories(self) -> None:
-        """Creates all required directory structures idempotently, migrating legacy data if present."""
+        """Creates all required directory structures idempotently.
+
+        Never copies, moves or deletes user data (M3: the old ``~/.securephotos_data``
+        migration, which deleted the source after a best-effort copy, was removed;
+        that folder was only used by pre-release dev builds).
+        """
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self.thumbnails_dir.mkdir(parents=True, exist_ok=True)
         self.previews_dir.mkdir(parents=True, exist_ok=True)
@@ -149,41 +157,6 @@ class AppConfig(BaseSettings):
         self.originals_dir.mkdir(parents=True, exist_ok=True)
         self.collages_dir.mkdir(parents=True, exist_ok=True)
         self.music_dir.mkdir(parents=True, exist_ok=True)
-
-        # Automatic legacy migration from ~/.securephotos_data if present
-        try:
-            legacy_data = Path.home() / ".securephotos_data"
-            legacy_db = legacy_data / "database" / "securephotos.db"
-            if legacy_data.exists() and legacy_data.resolve() != self.data_dir.resolve():
-                import shutil
-                logger.info(f"Migrating legacy database from {legacy_data} to {self.data_dir}")
-                if legacy_db.exists() and not self.database_path.exists():
-                    shutil.copy2(legacy_db, self.database_path)
-                for folder in ("thumbnails", "previews", "models", "originals"):
-                    legacy_folder = legacy_data / folder
-                    target_folder = self.data_dir / folder
-                    if legacy_folder.exists():
-                        shutil.copytree(legacy_folder, target_folder, dirs_exist_ok=True)
-
-                # Update SQLite paths in migrated database
-                if self.database_path.exists():
-                    import sqlite3
-                    conn = sqlite3.connect(self.database_path)
-                    old_prefix = str(legacy_data)
-                    new_prefix = str(self.data_dir)
-                    conn.execute(
-                        "UPDATE photos SET filepath = REPLACE(filepath, ?, ?), thumbnail_path = REPLACE(thumbnail_path, ?, ?), preview_path = REPLACE(preview_path, ?, ?);",
-                        (old_prefix, new_prefix, old_prefix, new_prefix, old_prefix, new_prefix)
-                    )
-                    conn.commit()
-                    conn.close()
-
-                # Clean up legacy user directory
-                shutil.rmtree(legacy_data, ignore_errors=True)
-                logger.info("Legacy data migration completed and ~/.securephotos_data cleaned up successfully.")
-        except Exception as e:
-            logger.warning(f"Legacy data migration notice: {e}")
-
 
     def resolve_media_path(self, filepath: str | Path) -> Path:
         r"""Dynamically resolves a photo or video filepath across drive letters and relative paths.
@@ -193,9 +166,15 @@ class AppConfig(BaseSettings):
         2. Absolute paths on current volume.
         3. Drive letter changes on Windows: 'E:\data\...' -> 'F:\data\...' when drive letter shifts.
         4. Relocated folders: re-anchors to current data_dir.
+
+        If none of these finds the file, the returned path does not exist, so callers
+        report "missing". It never falls back to "any file with the same name" (M1):
+        acting on a different photo with that name could show, encrypt or delete the
+        wrong file.
         """
         if not filepath:
-            return Path()
+            # Not Path() - that is "." (the working folder), which exists.
+            return self.data_dir / MISSING_MEDIA_NAME
 
         p = Path(filepath)
 
@@ -227,7 +206,7 @@ class AppConfig(BaseSettings):
                         if candidate.exists():
                             return candidate
 
-        return self.data_dir / p.name
+        return p  # The stored path itself: it doesn't exist, so callers report it missing.
 
 
 # Global settings singleton initialized at startup

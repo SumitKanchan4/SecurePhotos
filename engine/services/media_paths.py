@@ -58,9 +58,7 @@ def resolve_stored_path(stored: Optional[str]) -> Optional[Path]:
         return candidate if candidate.is_file() else None
     if raw.is_file():
         return raw
-    remapped = resolve_media_path(stored)
-    if remapped == settings.data_dir / raw.name:
-        return None  # Reject the name-only fallback.
+    remapped = resolve_media_path(stored)  # Drive-letter / moved-folder recovery only (M1).
     return remapped if remapped.is_file() else None
 
 
