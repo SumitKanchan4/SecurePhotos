@@ -1,16 +1,12 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { 
   Lock, 
   Plus, 
   LayoutGrid,
   Loader2,
   Trash2,
-  Calendar,
   FolderPlus,
   Download,
-  Images,
-  ChevronLeft,
-  ChevronRight,
   X,
   CheckSquare,
   Search,
@@ -19,7 +15,8 @@ import { SearchPalette } from "./components/shell/SearchPalette";
 import { WindowStrip } from "./components/shell/WindowStrip";
 import { IconRail } from "./components/shell/IconRail";
 import { PrerequisitesBanner } from "./components/PrerequisitesBanner";
-import { PhotoGrid } from "./components/PhotoGrid";
+import { PhotoTimeline } from "./components/photos/PhotoTimeline";
+import { EmptyLibraryState } from "./components/EmptyLibraryState";
 import { DriveStatusBanner } from "./components/DriveStatusBanner";
 import { ImportModal } from "./components/ImportModal";
 import { Lightbox } from "./components/Lightbox";
@@ -39,7 +36,8 @@ import { AddToAlbumModal } from "./components/AddToAlbumModal";
 import { UpdateModal } from "./components/UpdateModal";
 import { ToastNotification } from "./components/ToastNotification";
 import { useAppStore } from "./store/useAppStore";
-import { PhotoItem, SystemPrerequisites, OptimizationProgress, VideoOptimizationProgress, TimelineYearsData, SearchResponse, ImportProgressState } from "./types";
+import { PhotoItem, SystemPrerequisites, OptimizationProgress, VideoOptimizationProgress, SearchResponse, ImportProgressState, TimelinePhoto, TimelineResponse } from "./types";
+import { parseTimeline, viewerWindow } from "./utils/photoTimeline";
 import { invoke } from "@tauri-apps/api/core";
 import { check, Update } from "@tauri-apps/plugin-updater";
 import { apiFetch, getApiUrl, performHandshake } from "./services/api";
@@ -53,6 +51,7 @@ export const App: React.FC = () => {
     setGridDensity,
     searchQuery,
     setSearchQuery,
+    setSearchOpen,
     selectedPhotoIds, 
     clearSelection,
     setActiveVolume,
@@ -68,8 +67,8 @@ export const App: React.FC = () => {
     setIsEngineReady,
   } = useAppStore();
 
-  const [photos, setPhotos] = useState<PhotoItem[]>([]);
-  const [activeYear, setActiveYear] = useState<string>("All Years");
+  // Whole library as compact rows (redesign R2); full details load when a photo is opened.
+  const [photos, setPhotos] = useState<TimelinePhoto[]>([]);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isVaultUnlockModalOpen, setIsVaultUnlockModalOpen] = useState(false);
   const [pendingVaultAction, setPendingVaultAction] = useState<{
@@ -83,73 +82,32 @@ export const App: React.FC = () => {
   const [activeStoryId, setActiveStoryId] = useState<number | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxPhotos, setLightboxPhotos] = useState<PhotoItem[] | null>(null);
-  const [searchResults, setSearchResults] = useState<PhotoItem[] | null>(null);
+  // Set while the viewer shows a window of the Photos timeline: index of the window's first photo.
+  const [viewerWindowStart, setViewerWindowStart] = useState<number | null>(null);
+  const [searchResults, setSearchResults] = useState<TimelinePhoto[] | null>(null);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [optimizationProgress, setOptimizationProgress] = useState<OptimizationProgress | null>(null);
   const [videoProgress, setVideoProgress] = useState<VideoOptimizationProgress | null>(null);
   const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null);
-  const [timelineData, setTimelineData] = useState<TimelineYearsData>({ total_count: 0, years: [] });
   const hasRegeneratedThumbnailsRef = useRef(false);
-  const timelineRibbonRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-
-  const checkTimelineScroll = useCallback(() => {
-    const el = timelineRibbonRef.current;
-    if (!el) return;
-    const hasOverflow = el.scrollWidth > el.clientWidth + 2;
-    setCanScrollLeft(hasOverflow && el.scrollLeft > 4);
-    setCanScrollRight(hasOverflow && el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
-  }, []);
-
-  const scrollTimeline = (offset: number) => {
-    const el = timelineRibbonRef.current;
-    if (!el) return;
-    el.scrollBy({ left: offset, behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    checkTimelineScroll();
-    window.addEventListener("resize", checkTimelineScroll);
-    return () => window.removeEventListener("resize", checkTimelineScroll);
-  }, [timelineData, checkTimelineScroll]);
-
-  const loadTimelineYears = async () => {
+  // Load the whole library (not vault, not trash) as compact timeline rows.
+  const loadPhotos = async () => {
     try {
-      const res = await apiFetch("/api/photos/timeline-years");
+      const res = await apiFetch("/api/photos/timeline");
       if (res.ok) {
-        const data: TimelineYearsData = await res.json();
-        setTimelineData(data);
-      }
-    } catch {}
-  };
-
-  // Load photos from engine with optional Year or Undated filtering
-  const loadPhotos = async (selectedYear: string = activeYear) => {
-    try {
-      let url = "/api/photos?limit=500";
-      if (selectedYear === "Undated") {
-        url += "&year=Undated";
-      } else if (selectedYear && selectedYear !== "All Years") {
-        url += `&year=${selectedYear}`;
-      }
-      const res = await apiFetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        setPhotos(data);
-        setTotalPhotosCount(data.length);
+        const data: TimelineResponse = await res.json();
+        const items = parseTimeline(data);
+        setPhotos(items);
+        setTotalPhotosCount(items.length);
 
         // Auto-trigger background 512px Retina thumbnail regeneration once on load
-        if (!hasRegeneratedThumbnailsRef.current && data.length > 0) {
+        if (!hasRegeneratedThumbnailsRef.current && items.length > 0) {
           hasRegeneratedThumbnailsRef.current = true;
           apiFetch("/api/photos/regenerate-thumbnails", { method: "POST" }).catch(() => {});
         }
 
         // Auto-trigger background 8K optimization queue ONLY for photos (not videos)
-        const hasUnoptimizedPhotos = data.some(
-          (p: PhotoItem) => !p.is_optimized && (!p.mime_type || !p.mime_type.startsWith("video/"))
-        );
-        if (hasUnoptimizedPhotos) {
+        if (items.some((p) => !p.is_optimized && !p.is_video)) {
           apiFetch("/api/photos/start-optimization", { method: "POST" }).catch(() => {});
         }
       }
@@ -160,10 +118,9 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === "photos") {
-      loadPhotos(activeYear);
-      loadTimelineYears();
+      loadPhotos();
     }
-  }, [activeTab, activeYear]);
+  }, [activeTab]);
 
   // Debounced full-text & smart categorical search synchronization
   useEffect(() => {
@@ -182,21 +139,16 @@ export const App: React.FC = () => {
         const res = await apiFetch(`/api/search?q=${encodeURIComponent(trimmed)}`);
         if (res.ok && isMounted) {
           const data: SearchResponse = await res.json();
-          const mapped: PhotoItem[] = data.photos.map((p) => ({
+          const mapped: TimelinePhoto[] = data.photos.map((p) => ({
             id: p.id,
-            filename: p.filename,
-            filepath: p.filepath,
-            file_size: 0,
-            mime_type: p.mime_type,
-            taken_at: p.taken_at || undefined,
+            taken_at: p.taken_at || null,
+            width: 0,
+            height: 0,
+            is_video: Boolean(p.mime_type?.startsWith("video/")),
             is_favorite: p.is_favorite,
-            is_encrypted: false,
-            thumbnail_path: p.thumbnail_path || undefined,
-            caption: p.caption || undefined,
-            ocr_text: p.ocr_text || undefined,
-            is_document: p.is_document,
-            is_optimized: false,
-            is_enhanced: false,
+            // Search doesn't report these; they only decide whether a video can play yet.
+            is_optimized: true,
+            is_enhanced: true,
           }));
           setSearchResults(mapped);
         }
@@ -252,7 +204,7 @@ export const App: React.FC = () => {
 
           // If the entire active photo batch completed, do a single clean reload
           if (wasPhotoActive && !photoData.is_active) {
-            loadPhotos(activeYear);
+            loadPhotos();
             lastPhotoCompletedCount = 0;
           }
           wasPhotoActive = photoData.is_active;
@@ -264,7 +216,7 @@ export const App: React.FC = () => {
 
           // When video batch completes, reload photos & timeline
           if (wasVideoActive && !videoData.is_active) {
-            loadPhotos(activeYear);
+            loadPhotos();
           }
           wasVideoActive = videoData.is_active;
         }
@@ -275,8 +227,7 @@ export const App: React.FC = () => {
 
           // When media import batch completes, refresh library photos & timeline
           if (wasImportActive && !importData.is_active) {
-            loadPhotos(activeYear);
-            loadTimelineYears();
+            loadPhotos();
           }
           wasImportActive = importData.is_active;
         }
@@ -284,7 +235,7 @@ export const App: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [activeYear]);
+  }, []);
 
   // Updater and diagnostics state
   const [activeUpdate, setActiveUpdate] = useState<Update | null>(null);
@@ -328,8 +279,7 @@ export const App: React.FC = () => {
           }
           setIsEngineReady(true);
           checkVaultStatus();
-          loadPhotos(activeYear);
-          loadTimelineYears();
+          loadPhotos();
           return true;
         }
       }
@@ -379,8 +329,7 @@ export const App: React.FC = () => {
 
             // Hydrate persistent settings and initial photos
             checkVaultStatus();
-            loadPhotos(activeYear);
-            loadTimelineYears();
+            loadPhotos();
 
             apiFetch("/api/system/settings")
               .then((res) => (res.ok ? res.json() : null))
@@ -428,7 +377,7 @@ export const App: React.FC = () => {
         console.info("Running in standard non-Tauri mode:", err);
         setIsEngineReady(true);
         if (pollInterval) clearInterval(pollInterval);
-        loadPhotos(activeYear);
+        loadPhotos();
       }
     };
 
@@ -520,7 +469,6 @@ export const App: React.FC = () => {
     if (lightboxPhotos) {
       setLightboxPhotos((prev) => (prev ? prev.filter((p) => p.id !== photoId) : null));
     }
-    loadTimelineYears();
     if (lightboxIndex !== null) {
       const activeList = lightboxPhotos || photos;
       if (activeList.length <= 1) {
@@ -609,7 +557,6 @@ export const App: React.FC = () => {
         setSearchResults((prev) => (prev ? prev.filter((p) => !selectedPhotoIds.has(p.id)) : null));
         showToast(`Moved ${ids.length} photo(s) to Trash (held for 30 days)`, "info");
         clearSelection();
-        loadTimelineYears();
       }
     } catch (err) {
       console.error("Batch delete failed:", err);
@@ -643,7 +590,6 @@ export const App: React.FC = () => {
         setSearchResults((prev) => (prev ? prev.filter((p) => !selectedPhotoIds.has(p.id)) : null));
         showToast(`${ids.length} ${ids.length === 1 ? "item" : "items"} encrypted and moved into Private Vault.`, "success");
         clearSelection();
-        loadTimelineYears();
       } else if (res.status === 401) {
         setIsVaultUnlocked(false);
         setPendingVaultAction({ type: "batch_photos" });
@@ -690,8 +636,7 @@ export const App: React.FC = () => {
             : "Album and its photos encrypted and moved to Private Vault.", 
           "success"
         );
-        loadPhotos(activeYear);
-        loadTimelineYears();
+        loadPhotos();
       } else if (res.status === 401) {
         setIsVaultUnlocked(false);
         setPendingVaultAction({ type: "album", albumId, isVaultAlbum });
@@ -713,11 +658,10 @@ export const App: React.FC = () => {
     showToast(`📥 Downloading ${ids.length} photo(s) to your computer's Downloads folder...`, "info");
     ids.forEach((id, idx) => {
       setTimeout(() => {
-        const photo = photos.find((p) => p.id === id);
-        const filename = photo?.filename || `photo_${id}.jpg`;
+        // The engine names the file (Content-Disposition), so no filename is needed here.
         const link = document.createElement("a");
         link.href = getApiUrl(`/api/photos/${id}/download`);
-        link.setAttribute("download", filename);
+        link.setAttribute("download", "");
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -727,12 +671,62 @@ export const App: React.FC = () => {
 
   const selectedCount = selectedPhotoIds.size;
 
+  // Opens the viewer on a timeline photo: full details load for the photos around it.
+  const openPhotoViewer = async (list: TimelinePhoto[], index: number) => {
+    const targetId = list[index]?.id;
+    if (targetId === undefined) return;
+    const { ids } = viewerWindow(list, index);
+    try {
+      const res = await apiFetch(`/api/photos/details?ids=${ids.join(",")}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const details: PhotoItem[] = await res.json();
+      const at = details.findIndex((p) => p.id === targetId);
+      if (at < 0) {
+        showToast("This photo is no longer in your library.", "info");
+        loadPhotos();
+        return;
+      }
+      setLightboxPhotos(details);
+      setLightboxIndex(at);
+      setViewerWindowStart(index - at);
+    } catch (err) {
+      console.error("Could not load photo details:", err);
+      showToast("Couldn't open this photo. Please try again.", "warning");
+    }
+  };
+
+  // One plain-language line for background work, shown next to the Photos title.
+  const libraryActivity: { text: string; title?: string } | null = importProgress?.is_active
+    ? {
+        text: importProgress.album_name
+          ? `Adding to "${importProgress.album_name}" (${importProgress.completed_count} of ${importProgress.total_count})`
+          : `Importing (${importProgress.completed_count} of ${importProgress.total_count})`,
+        title: importProgress.current_filename ? `Importing: ${importProgress.current_filename}` : undefined,
+      }
+    : videoProgress?.is_active
+    ? {
+        text: videoProgress.total_count > 1
+          ? `Preparing videos (${videoProgress.completed_count + 1} of ${videoProgress.total_count})`
+          : "Preparing a video",
+        title: videoProgress.active_filename ? `Processing: ${videoProgress.active_filename}` : undefined,
+      }
+    : optimizationProgress?.is_active
+    ? {
+        text: optimizationProgress.paused_reason === "on_battery"
+          ? `Enhancing paused on battery (${optimizationProgress.completed_count} of ${optimizationProgress.total_count} done)`
+          : optimizationProgress.completed_count >= optimizationProgress.total_count
+          ? `Finishing enhancements (${optimizationProgress.completed_count} of ${optimizationProgress.total_count})`
+          : `Enhancing photos (${optimizationProgress.completed_count + 1} of ${optimizationProgress.total_count})`,
+        title: optimizationProgress.active_filename ? `Processing: ${optimizationProgress.active_filename}` : undefined,
+      }
+    : null;
+
   const selectedPhotosList = useMemo(
     () => photos.filter((p) => selectedPhotoIds.has(p.id)),
     [photos, selectedPhotoIds]
   );
   const hasVideoSelected = useMemo(
-    () => selectedPhotosList.some((p) => p.mime_type?.startsWith("video/")),
+    () => selectedPhotosList.some((p) => p.is_video),
     [selectedPhotosList]
   );
   const canCreateCollage = selectedCount >= 2 && selectedCount <= 9 && !hasVideoSelected;
@@ -884,459 +878,108 @@ export const App: React.FC = () => {
               {/* Stories Highlight Bar on Home View */}
               {photos.length > 0 && <StoriesCarousel onPlayStory={(id) => setActiveStoryId(id)} />}
 
-              {/* macOS Liquid Glass Floating Header Toolbar */}
-              <div 
-                className="liquid-glass-toolbar"
+              {/* Photos header (redesign R2): title, count, background work, search, import */}
+              <div
                 style={{
-                  margin: "14px 20px 8px 20px",
-                  padding: "12px 20px",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "space-between",
-                  backgroundColor: "var(--glass-surface)",
-                  backdropFilter: "blur(24px)",
-                  WebkitBackdropFilter: "blur(24px)",
-                  border: "1px solid var(--glass-border)",
-                  borderRadius: "var(--radius-lg)",
-                  boxShadow: "var(--glass-shadow)",
-                  position: "sticky",
-                  top: 0,
-                  zIndex: 20,
+                  gap: "14px",
+                  padding: "14px 76px 6px 24px",
                   flexShrink: 0,
+                  minWidth: 0,
                 }}
               >
-                {/* Left Column (flex: 1): Status / Live Optimization Badge */}
-                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "10px", minWidth: "120px" }}>
-                  {searchQuery.trim() ? (
-                    <span 
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        padding: "4px 10px",
-                        borderRadius: "var(--radius-full)",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
-                        color: "var(--accent-primary)",
-                        border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
-                      }}
-                    >
-                      <Search size={12} style={{ color: "var(--accent-primary)" }} />
-                      Search Active
-                    </span>
-                  ) : importProgress?.is_active ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span 
-                        title={importProgress.current_filename ? `Ingesting: ${importProgress.current_filename}` : undefined}
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "4px 10px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
-                          border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
-                          fontSize: "11px",
-                          color: "var(--accent-primary)",
-                          fontWeight: 600,
-                        }}
-                      >
-                        <Loader2 size={12} className="spin" />
-                        {importProgress.album_name
-                          ? `Adding to "${importProgress.album_name}" (${importProgress.completed_count} of ${importProgress.total_count})`
-                          : `Importing (${importProgress.completed_count} of ${importProgress.total_count})`}
-                      </span>
-                    </div>
-                  ) : videoProgress?.is_active ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span 
-                        title={videoProgress.active_filename ? `Processing: ${videoProgress.active_filename}` : undefined}
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "4px 10px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "var(--glass-badge-bg)",
-                          border: "1px solid var(--glass-badge-border)",
-                          fontSize: "11px",
-                          color: "var(--accent-primary)",
-                          fontWeight: 600,
-                        }}
-                      >
-                        <Loader2 size={12} className="spin" />
-                        {videoProgress.total_count > 1
-                          ? `Optimizing video (${videoProgress.completed_count + 1} of ${videoProgress.total_count}): ${videoProgress.active_filename || "Transcoding"}`
-                          : `Optimizing video: ${videoProgress.active_filename || "Transcoding"}`}
-                      </span>
-                    </div>
-                  ) : optimizationProgress?.is_active ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span 
-                        title={optimizationProgress.active_filename ? `Processing: ${optimizationProgress.active_filename}` : undefined}
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "4px 10px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "var(--glass-badge-bg)",
-                          border: "1px solid var(--glass-badge-border)",
-                          fontSize: "11px",
-                          color: "var(--accent-primary)",
-                          fontWeight: 600,
-                        }}
-                      >
-                        <Loader2 size={12} className="spin" />
-                        {optimizationProgress.paused_reason === "on_battery"
-                          ? `Enhancing paused on battery (${optimizationProgress.completed_count} of ${optimizationProgress.total_count} done)`
-                          : optimizationProgress.completed_count >= optimizationProgress.total_count
-                          ? `Finishing enhancements (${optimizationProgress.completed_count} of ${optimizationProgress.total_count})`
-                          : `Optimizing photo quality (${optimizationProgress.completed_count + 1} of ${optimizationProgress.total_count})`}
-                      </span>
-                    </div>
-                  ) : (
-                    <span 
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        padding: "4px 10px",
-                        borderRadius: "var(--radius-full)",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
-                        color: "var(--accent-primary)",
-                        border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
-                      }}
-                    >
-                      <Images size={12} style={{ color: "var(--accent-primary)" }} />
-                      Library Collection
-                    </span>
-                  )}
-                </div>
-
-                {/* Center Column (flex: 0 1 auto): 22px display-font title + Baseline Capsule */}
-                <div 
-                  style={{ 
-                    flex: "0 1 auto", 
-                    display: "flex", 
-                    alignItems: "baseline", 
-                    justifyContent: "center", 
-                    gap: "10px",
-                    minWidth: 0,
+                <h1
+                  style={{
+                    margin: 0,
+                    fontFamily: "var(--font-display)",
+                    fontSize: "30px",
+                    fontWeight: 900,
+                    letterSpacing: "-0.035em",
+                    color: "var(--text-primary)",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  <h1 
-                    style={{ 
-                      fontSize: "22px", 
-                      fontWeight: 800, 
-                      letterSpacing: "-0.03em", 
-                      margin: 0,
-                      color: "var(--text-primary)",
-                      fontFamily: "var(--font-display)",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {searchQuery.trim() ? "Search Results" : "Photos"}
-                  </h1>
-                  <span 
+                  {searchQuery.trim() ? "Search results" : "Photos"}
+                </h1>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                  {isSearchLoading
+                    ? "Searching…"
+                    : `${displayedPhotos.length.toLocaleString()} ${displayedPhotos.length === 1 ? "photo" : "photos"}`}
+                </span>
+                {libraryActivity && (
+                  <span
+                    title={libraryActivity.title}
+                    role="status"
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
-                      padding: "2px 8px",
+                      gap: "6px",
+                      padding: "4px 10px",
                       borderRadius: "var(--radius-full)",
                       fontSize: "11px",
-                      fontWeight: 700,
-                      backgroundColor: "var(--glass-badge-bg)",
-                      color: "var(--text-secondary)",
-                      border: "1px solid var(--glass-badge-border)",
-                      fontFamily: "var(--font-mono)",
+                      fontWeight: 600,
+                      backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
+                      color: "var(--accent-ink)",
+                      border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
                     }}
                   >
-                    {isSearchLoading ? "Searching..." : `${displayedPhotos.length.toLocaleString()} ${displayedPhotos.length === 1 ? "photo" : "photos"}`}
+                    <Loader2 size={12} className="spin" style={{ flexShrink: 0 }} />
+                    {libraryActivity.text}
                   </span>
-                </div>
+                )}
 
-                {/* Right Column (flex: 1): Global Action Pills */}
-                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px", minWidth: "120px" }}>
-                  {searchQuery.trim() ? (
-                    <button
-                      onClick={() => setSearchQuery("")}
-                      className="clickable"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        padding: "6px 14px",
-                        borderRadius: "var(--radius-full)",
-                        backgroundColor: "var(--glass-pill-bg)",
-                        border: "1px solid var(--glass-pill-border)",
-                        color: "var(--text-primary)",
-                        fontSize: "12px",
-                        fontWeight: 500,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      <X size={14} />
-                      Clear Search
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => setIsImportModalOpen(true)}
-                        className="clickable"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "6px 16px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "var(--accent-fill)",
-                          border: "none",
-                          color: "var(--on-accent)",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          boxShadow: "0 2px 10px color-mix(in srgb, var(--accent-ink) 25%, transparent)",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        <Plus size={15} />
-                        Import Media
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
+                <div style={{ flex: 1 }} />
 
-              {/* Scalable Data-Driven Timeline Year Filter Ribbon with Chevrons & Edge Fade */}
-              {!searchQuery.trim() && (
-                <div 
+                <button
+                  type="button"
+                  onClick={() => setSearchOpen(true)}
+                  className="clickable"
+                  aria-label="Search"
+                  title="Search (Ctrl+K)"
+                  style={{
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "var(--glass-pill-bg)",
+                    border: "1px solid var(--glass-pill-border)",
+                    color: "var(--text-primary)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Search size={16} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="clickable"
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: "10px",
-                    padding: "8px 20px",
-                    fontSize: "12px",
-                    borderBottom: "1px solid var(--border-subtle)",
-                    backgroundColor: "var(--glass-surface)",
-                    backdropFilter: "blur(20px)",
-                    WebkitBackdropFilter: "blur(20px)",
-                    position: "relative",
+                    gap: "6px",
+                    height: "34px",
+                    padding: "0 16px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "var(--accent-fill)",
+                    border: "none",
+                    color: "var(--on-accent)",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
                   }}
                 >
-                  {/* Left Pinned Action Group (Timeline label + All Years pill) */}
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "5px", color: "var(--text-muted)", fontWeight: 600, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px", marginRight: "2px" }}>
-                      <Calendar size={13} style={{ color: "var(--accent-primary)" }} />
-                      <span>Timeline:</span>
-                    </div>
-
-                    {/* All Years Pill */}
-                    <button
-                      className="clickable"
-                      onClick={() => setActiveYear("All Years")}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        background: activeYear === "All Years" ? "var(--glass-pill-active)" : "var(--glass-pill-bg)",
-                        color: activeYear === "All Years" ? "var(--text-primary)" : "var(--text-secondary)",
-                        border: activeYear === "All Years" ? "1px solid var(--glass-border-highlight)" : "1px solid var(--glass-pill-border)",
-                        padding: "4px 12px",
-                        borderRadius: "var(--radius-full)",
-                        fontSize: "11px",
-                        fontWeight: activeYear === "All Years" ? 600 : 500,
-                        flexShrink: 0,
-                        transition: "all 0.15s ease",
-                      }}
-                    >
-                      <span>All</span>
-                    </button>
-                  </div>
-
-                  {/* Subtle Vertical Glass Divider */}
-                  {timelineData.years.length > 0 && (
-                    <div style={{ width: "1px", height: "18px", backgroundColor: "var(--glass-border-highlight)", flexShrink: 0 }} />
-                  )}
-
-                  {/* Scrollable Years Track with Chevrons and Edge Fade */}
-                  {timelineData.years.length > 0 && (
-                    <div style={{ position: "relative", flex: 1, minWidth: 0, display: "flex", alignItems: "center" }}>
-                      {/* Left Scroll Chevron */}
-                      {canScrollLeft && (
-                        <button
-                          onClick={() => scrollTimeline(-240)}
-                          className="clickable"
-                          title="Scroll earlier years"
-                          style={{
-                            position: "absolute",
-                            left: "2px",
-                            zIndex: 10,
-                            width: "28px",
-                            height: "28px",
-                            borderRadius: "var(--radius-full)",
-                            backgroundColor: "var(--glass-surface)",
-                            backdropFilter: "blur(16px)",
-                            WebkitBackdropFilter: "blur(16px)",
-                            border: "1px solid var(--glass-border-highlight)",
-                            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "var(--text-primary)",
-                            cursor: "pointer",
-                            transition: "all 0.15s ease",
-                          }}
-                        >
-                          <ChevronLeft size={15} />
-                        </button>
-                      )}
-
-                      {/* Scrollable Track */}
-                      <div 
-                        ref={timelineRibbonRef}
-                        onScroll={checkTimelineScroll}
-                        onWheel={(e) => {
-                          if (e.deltaY !== 0) {
-                            e.currentTarget.scrollLeft += e.deltaY;
-                            checkTimelineScroll();
-                          }
-                        }}
-                        style={{ 
-                          display: "flex", 
-                          alignItems: "center", 
-                          gap: "8px", 
-                          overflowX: "auto", 
-                          whiteSpace: "nowrap", 
-                          scrollbarWidth: "none", 
-                          padding: "4px 8px", 
-                          width: "100%",
-                          maskImage: canScrollLeft && canScrollRight
-                            ? "linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent)"
-                            : canScrollRight
-                            ? "linear-gradient(to right, black calc(100% - 32px), transparent)"
-                            : canScrollLeft
-                            ? "linear-gradient(to right, transparent, black 32px)"
-                            : "none",
-                          WebkitMaskImage: canScrollLeft && canScrollRight
-                            ? "linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent)"
-                            : canScrollRight
-                            ? "linear-gradient(to right, black calc(100% - 32px), transparent)"
-                            : canScrollLeft
-                            ? "linear-gradient(to right, transparent, black 32px)"
-                            : "none",
-                        }}
-                      >
-                        {timelineData.years.map((item) => {
-                          const isActive = activeYear === item.year;
-                          return (
-                            <button
-                              key={item.year}
-                              className="clickable"
-                              onClick={() => setActiveYear(item.year)}
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "6px",
-                                background: isActive ? "var(--glass-pill-active)" : "var(--glass-pill-bg)",
-                                color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-                                border: isActive ? "1px solid var(--glass-border-highlight)" : "1px solid var(--glass-pill-border)",
-                                padding: "4px 12px",
-                                borderRadius: "var(--radius-full)",
-                                fontSize: "11px",
-                                fontWeight: isActive ? 600 : 500,
-                                flexShrink: 0,
-                                transition: "all 0.15s ease",
-                              }}
-                            >
-                              <span>{item.year}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* Right Scroll Chevron */}
-                      {canScrollRight && (
-                        <button
-                          onClick={() => scrollTimeline(240)}
-                          className="clickable"
-                          title="Scroll later years"
-                          style={{
-                            position: "absolute",
-                            right: "2px",
-                            zIndex: 10,
-                            width: "28px",
-                            height: "28px",
-                            borderRadius: "var(--radius-full)",
-                            backgroundColor: "var(--glass-surface)",
-                            backdropFilter: "blur(16px)",
-                            WebkitBackdropFilter: "blur(16px)",
-                            border: "1px solid var(--glass-border-highlight)",
-                            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "var(--text-primary)",
-                            cursor: "pointer",
-                            transition: "all 0.15s ease",
-                          }}
-                        >
-                          <ChevronRight size={15} />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Contextual In-Place Import Progress Banner (Photos Library) */}
-              {importProgress?.is_active && !importProgress.album_id && (
-                <div
-                  style={{
-                    margin: "0 24px 16px 24px",
-                    padding: "12px 18px",
-                    backgroundColor: "var(--glass-surface)",
-                    backdropFilter: "blur(24px)",
-                    WebkitBackdropFilter: "blur(24px)",
-                    border: "1px solid var(--glass-border)",
-                    borderRadius: "var(--radius-lg)",
-                    boxShadow: "var(--glass-shadow)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "8px",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <Loader2 size={16} className="spin" style={{ color: "var(--accent-primary)" }} />
-                      <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)" }}>
-                        Ingesting media into Library ({importProgress.completed_count} of {importProgress.total_count})
-                      </span>
-                      {importProgress.current_filename && (
-                        <span style={{ fontSize: "12px", color: "var(--text-muted)", maxWidth: "320px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          • {importProgress.current_filename}
-                        </span>
-                      )}
-                    </div>
-                    <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--accent-primary)" }}>
-                      {importProgress.total_count > 0 ? Math.round((importProgress.completed_count / importProgress.total_count) * 100) : 0}%
-                    </span>
-                  </div>
-                  <div style={{ width: "100%", height: "4px", backgroundColor: "var(--border-subtle)", borderRadius: "var(--radius-full)", overflow: "hidden" }}>
-                    <div
-                      style={{
-                        width: `${importProgress.total_count > 0 ? Math.round((importProgress.completed_count / importProgress.total_count) * 100) : 0}%`,
-                        height: "100%",
-                        backgroundColor: "var(--accent-fill)",
-                        borderRadius: "var(--radius-full)",
-                        transition: "width 0.2s ease",
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
+                  <Plus size={16} strokeWidth={2.5} />
+                  Import
+                </button>
+              </div>
 
               {/* 60 FPS Virtualized Grid / Empty State */}
               {searchQuery.trim() !== "" && !isSearchLoading && displayedPhotos.length === 0 ? (
@@ -1397,16 +1040,17 @@ export const App: React.FC = () => {
                   </button>
                 </div>
               ) : (
-                <PhotoGrid 
-                  photos={displayedPhotos} 
-                  optimizationProgress={optimizationProgress}
-                  videoProgress={videoProgress}
-                  onPhotoClick={(idx) => {
-                    setLightboxPhotos(displayedPhotos);
-                    setLightboxIndex(idx);
-                  }} 
-                  onImportClick={() => setIsImportModalOpen(true)}
+                <PhotoTimeline
+                  photos={displayedPhotos}
+                  onOpen={(idx) => openPhotoViewer(displayedPhotos, idx)}
                   onToggleFavorite={handleToggleFavorite}
+                  activeVideoId={videoProgress?.is_active ? videoProgress.active_video_id : null}
+                  empty={
+                    <EmptyLibraryState
+                      onSelectFolder={() => setIsImportModalOpen(true)}
+                      onImportMedia={() => setIsImportModalOpen(true)}
+                    />
+                  }
                 />
               )}
 
@@ -1468,7 +1112,7 @@ export const App: React.FC = () => {
                     }
                   }}
                   className="clickable"
-                  title={selectedCount === displayedPhotos.length ? "Deselect all items" : "Select all items in current view"}
+                  title={selectedCount === displayedPhotos.length ? "Unselect everything" : searchQuery.trim() ? "Select all search results" : "Select every photo in your library"}
                   style={{
                     padding: "5px 12px",
                     borderRadius: "var(--radius-full)",
@@ -1482,7 +1126,7 @@ export const App: React.FC = () => {
                     flexShrink: 0,
                   }}
                 >
-                  {selectedCount === photos.length ? "Deselect All" : "Select All"}
+                  {selectedCount === displayedPhotos.length ? "Deselect All" : "Select All"}
                 </button>
 
                 {/* Subtle Vertical Glass Divider */}
@@ -1655,8 +1299,7 @@ export const App: React.FC = () => {
           isOpen={isImportModalOpen} 
           onClose={() => setIsImportModalOpen(false)} 
           onImportComplete={() => {
-            loadPhotos(activeYear);
-            loadTimelineYears();
+            loadPhotos();
           }}
         />
       )}
@@ -1687,8 +1330,7 @@ export const App: React.FC = () => {
         selectedPhotoIds={Array.from(selectedPhotoIds)}
         onSuccess={() => {
           clearSelection();
-          loadPhotos(activeYear);
-          loadTimelineYears();
+          loadPhotos();
         }}
       />
 
@@ -1699,8 +1341,7 @@ export const App: React.FC = () => {
         onClose={() => setIsAddToAlbumModalOpen(false)}
         onSuccess={() => {
           clearSelection();
-          loadPhotos(activeYear);
-          loadTimelineYears();
+          loadPhotos();
         }}
       />
 
@@ -1719,15 +1360,29 @@ export const App: React.FC = () => {
 
       {/* Immersive Fluid Lightbox */}
       <Lightbox
-        photos={lightboxPhotos ?? displayedPhotos}
+        photos={lightboxPhotos ?? []}
         currentIndex={lightboxIndex ?? 0}
         isOpen={lightboxIndex !== null}
         optimizationProgress={optimizationProgress}
         onClose={() => {
           setLightboxIndex(null);
           setLightboxPhotos(null);
+          setViewerWindowStart(null);
         }}
-        onNavigate={(idx) => setLightboxIndex(idx)}
+        onNavigate={(idx) => {
+          setLightboxIndex(idx);
+          // Near either end of the loaded window: load a new window around this photo.
+          if (viewerWindowStart !== null && lightboxPhotos) {
+            const absolute = viewerWindowStart + idx;
+            const nearStart = idx < 20 && viewerWindowStart > 0;
+            const nearEnd = idx >= lightboxPhotos.length - 20 && viewerWindowStart + lightboxPhotos.length < displayedPhotos.length;
+            if ((nearStart || nearEnd) && displayedPhotos[absolute]?.id === lightboxPhotos[idx]?.id) {
+              openPhotoViewer(displayedPhotos, absolute);
+            }
+          }
+        }}
+        indexOffset={viewerWindowStart ?? 0}
+        totalCount={viewerWindowStart !== null ? displayedPhotos.length : undefined}
         onDelete={(id) => {
           handleDeletePhoto(id);
           if (lightboxPhotos) {
@@ -1745,14 +1400,12 @@ export const App: React.FC = () => {
         }}
         onVaultStatusChange={(photoId, isEncrypted) => {
           if (!isEncrypted) {
-            loadPhotos(activeYear);
-            loadTimelineYears();
+            loadPhotos();
             if (lightboxPhotos) {
               setLightboxPhotos((prev) => (prev ? prev.filter((p) => p.id !== photoId) : null));
             }
           } else {
             setPhotos((prev) => prev.filter((p) => p.id !== photoId));
-            loadTimelineYears();
           }
         }}
       />

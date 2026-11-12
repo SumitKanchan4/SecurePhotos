@@ -1,0 +1,245 @@
+/**
+ * Pure helpers for the Photos timeline (redesign R2): parse the engine's compact
+ * rows, group photos by month, lay them out as justified rows, place the month/year
+ * scrubber marks and pick which photos the viewer loads. No React, so all of it is
+ * unit-tested directly.
+ */
+import type { TimelinePhoto, TimelineResponse } from "../types";
+
+/** Flag bits used by /api/photos/timeline (see engine/api/photos.py). */
+export const FLAG_FAVORITE = 1;
+export const FLAG_OPTIMIZED = 2;
+export const FLAG_ENHANCED = 4;
+
+export function parseTimeline(data: TimelineResponse): TimelinePhoto[] {
+  return data.items.map(([id, takenAt, width, height, kind, flags]) => ({
+    id,
+    taken_at: takenAt,
+    width,
+    height,
+    is_video: kind === "v",
+    is_favorite: (flags & FLAG_FAVORITE) !== 0,
+    is_optimized: (flags & FLAG_OPTIMIZED) !== 0,
+    is_enhanced: (flags & FLAG_ENHANCED) !== 0,
+  }));
+}
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+export const UNDATED_KEY = "undated";
+
+/** "2026-05" for any date string starting with YYYY-MM, otherwise "undated". */
+export function monthKey(takenAt: string | null | undefined): string {
+  const match = takenAt ? /^(\d{4})-(\d{2})/.exec(takenAt) : null;
+  if (!match) return UNDATED_KEY;
+  const month = Number(match[2]);
+  return month >= 1 && month <= 12 ? `${match[1]}-${match[2]}` : UNDATED_KEY;
+}
+
+export function monthLabel(key: string): string {
+  if (key === UNDATED_KEY) return "No date";
+  const [year, month] = key.split("-");
+  return `${MONTHS[Number(month) - 1]} ${year}`;
+}
+
+export function shortMonthLabel(key: string): string {
+  if (key === UNDATED_KEY) return "No date";
+  const [year, month] = key.split("-");
+  return `${MONTHS[Number(month) - 1].slice(0, 3)} ${year}`;
+}
+
+export interface MonthSection {
+  key: string;
+  label: string;
+  /** Index of the section's first photo in the full list. */
+  start: number;
+  count: number;
+}
+
+/**
+ * Splits photos into consecutive month sections. The engine already sorts newest
+ * first with undated photos last, so sections follow the list order.
+ */
+export function groupByMonth(photos: Pick<TimelinePhoto, "taken_at">[]): MonthSection[] {
+  const sections: MonthSection[] = [];
+  photos.forEach((photo, index) => {
+    const key = monthKey(photo.taken_at);
+    const last = sections[sections.length - 1];
+    if (last && last.key === key) {
+      last.count += 1;
+    } else {
+      sections.push({ key, label: monthLabel(key), start: index, count: 1 });
+    }
+  });
+  return sections;
+}
+
+/** Width / height, kept within limits so a panorama or a sliver can't wreck a row. */
+export function aspectRatio(photo: Pick<TimelinePhoto, "width" | "height">): number {
+  if (!photo.width || !photo.height) return 1;
+  return Math.min(3, Math.max(0.5, photo.width / photo.height));
+}
+
+export interface LayoutTile {
+  index: number;
+  left: number;
+  width: number;
+}
+
+export type LayoutEntry =
+  | { kind: "header"; key: string; top: number; height: number; section: MonthSection }
+  | { kind: "row"; key: string; top: number; height: number; sectionKey: string; tiles: LayoutTile[] };
+
+export interface TimelineLayout {
+  entries: LayoutEntry[];
+  totalHeight: number;
+  /** Top offset of each section's header, by section key. */
+  sectionTops: Map<string, number>;
+}
+
+export interface LayoutOptions {
+  width: number;
+  targetRowHeight: number;
+  gap?: number;
+  headerHeight?: number;
+  /** Space above every header except the first. */
+  sectionGap?: number;
+}
+
+/**
+ * Justified rows per month: photos keep their shape and each full row is scaled to
+ * fill the width exactly (rows never get taller than the target). A month's last
+ * row stays at the target height instead of stretching a lone photo.
+ */
+export function buildLayout(
+  photos: Pick<TimelinePhoto, "taken_at" | "width" | "height">[],
+  sections: MonthSection[],
+  { width, targetRowHeight, gap = 4, headerHeight = 48, sectionGap = 16 }: LayoutOptions,
+): TimelineLayout {
+  const entries: LayoutEntry[] = [];
+  const sectionTops = new Map<string, number>();
+  let top = 0;
+  if (width <= 0) return { entries, totalHeight: 0, sectionTops };
+
+  sections.forEach((section, sectionIndex) => {
+    if (sectionIndex > 0) top += sectionGap;
+    sectionTops.set(section.key, top);
+    entries.push({ kind: "header", key: `h:${section.key}`, top, height: headerHeight, section });
+    top += headerHeight;
+
+    let row: { index: number; ratio: number }[] = [];
+    let ratioSum = 0;
+    const flush = (isFull: boolean) => {
+      if (row.length === 0) return;
+      const gaps = gap * (row.length - 1);
+      const height = isFull ? (width - gaps) / ratioSum : targetRowHeight;
+      let left = 0;
+      const tiles = row.map((item, i) => {
+        // The last tile of a full row takes the remaining width, so rounding never leaves a gap.
+        const tileWidth = isFull && i === row.length - 1 ? width - left : item.ratio * height;
+        const tile = { index: item.index, left, width: tileWidth };
+        left += tileWidth + gap;
+        return tile;
+      });
+      entries.push({ kind: "row", key: `r:${row[0].index}`, top, height, sectionKey: section.key, tiles });
+      top += height + gap;
+      row = [];
+      ratioSum = 0;
+    };
+
+    for (let index = section.start; index < section.start + section.count; index++) {
+      const ratio = aspectRatio(photos[index]);
+      row.push({ index, ratio });
+      ratioSum += ratio;
+      if (ratioSum * targetRowHeight + gap * (row.length - 1) >= width) flush(true);
+    }
+    flush(false);
+    top -= gap; // no gap after a section's last row
+  });
+
+  return { entries, totalHeight: Math.max(0, top), sectionTops };
+}
+
+/** Index range of entries that overlap the visible area (plus overscan), for windowing. */
+export function visibleRange(entries: LayoutEntry[], scrollTop: number, viewportHeight: number, overscan = 600): [number, number] {
+  if (entries.length === 0) return [0, -1];
+  const from = scrollTop - overscan;
+  const to = scrollTop + viewportHeight + overscan;
+  // First entry whose bottom is below `from` (binary search; entries are sorted by top).
+  let lo = 0;
+  let hi = entries.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (entries[mid].top + entries[mid].height < from) lo = mid + 1;
+    else hi = mid;
+  }
+  let end = lo;
+  while (end + 1 < entries.length && entries[end + 1].top <= to) end++;
+  return [lo, end];
+}
+
+/** The section shown at a scroll position: the last one whose header starts at or above it. */
+export function sectionAt(sections: MonthSection[], sectionTops: Map<string, number>, scrollTop: number): MonthSection | null {
+  let current: MonthSection | null = sections[0] ?? null;
+  for (const section of sections) {
+    if ((sectionTops.get(section.key) ?? 0) <= scrollTop + 1) current = section;
+    else break;
+  }
+  return current;
+}
+
+export interface ScrubberMark {
+  key: string;
+  /** 0..1 position along the scrubber track. */
+  position: number;
+  /** Year text for the first month of each year (when there is room), else null. */
+  yearLabel: string | null;
+}
+
+/**
+ * One mark per month along the scrubber, placed where that month starts in the
+ * scrolled content. Year labels are skipped where they would overlap the previous one.
+ */
+export function scrubberMarks(
+  sections: MonthSection[],
+  sectionTops: Map<string, number>,
+  totalHeight: number,
+  trackHeight: number,
+  minLabelSpacing = 18,
+): ScrubberMark[] {
+  let lastYear = "";
+  let lastLabelY = -Infinity;
+  return sections.map((section) => {
+    const position = totalHeight > 0 ? Math.min(1, (sectionTops.get(section.key) ?? 0) / totalHeight) : 0;
+    const year = section.key === UNDATED_KEY ? "No date" : section.key.slice(0, 4);
+    let yearLabel: string | null = null;
+    if (year !== lastYear) {
+      lastYear = year;
+      const y = position * trackHeight;
+      if (y - lastLabelY >= minLabelSpacing) {
+        yearLabel = year;
+        lastLabelY = y;
+      }
+    }
+    return { key: section.key, position, yearLabel };
+  });
+}
+
+/**
+ * Which photos the viewer loads full details for: up to `size` ids centred on the
+ * opened one (the details endpoint accepts at most 500 per request).
+ */
+export function viewerWindow<T extends { id: number }>(photos: T[], index: number, size = 300): { ids: number[]; offset: number } {
+  const half = Math.floor(size / 2);
+  const start = Math.max(0, Math.min(index - half, photos.length - size));
+  const ids = photos.slice(start, start + size).map((p) => p.id);
+  return { ids, offset: index - start };
+}
+
+/** Whether every id in the list is selected (false for an empty list). */
+export function allSelected(ids: number[], selected: Set<number>): boolean {
+  return ids.length > 0 && ids.every((id) => selected.has(id));
+}

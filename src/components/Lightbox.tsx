@@ -46,6 +46,9 @@ interface LightboxProps {
   onUnlockRequest?: (pendingAction?: () => void) => void;
   onVaultStatusChange?: (photoId: number, isEncrypted: boolean) => void;
   isDocumentView?: boolean;
+  /** When `photos` is a window of a longer list: position of photos[0] in it, and its length. */
+  indexOffset?: number;
+  totalCount?: number;
 }
 
 export const Lightbox: React.FC<LightboxProps> = ({
@@ -58,6 +61,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
   onDelete,
   onToggleFavorite,
   onTogglePin,
+  indexOffset = 0,
+  totalCount,
   onUnlockRequest,
   onVaultStatusChange,
   isDocumentView = false,
@@ -69,6 +74,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ mouseX: 0, mouseY: 0, startPanX: 0, startPanY: 0 });
+  const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
   const [showInfo, setShowInfo] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
@@ -235,48 +241,50 @@ export const Lightbox: React.FC<LightboxProps> = ({
     }
   }, [currentIndex, currentPhoto?.id, currentPhoto?.is_pinned]);
 
-  // Keyboard navigation shortcuts
+  // Keyboard navigation shortcuts. The listener is added once while the viewer is open and
+  // always calls the latest handler: re-adding it on every render meant a key that caused a
+  // re-render mid-event (Escape also clears the selection) never reached the viewer.
+  keyHandlerRef.current = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      onClose();
+    } else if (e.key === "ArrowRight" || e.key === "j" || e.key === "J") {
+      if (currentIndex < photos.length - 1) onNavigate(currentIndex + 1);
+    } else if (e.key === "ArrowLeft" || e.key === "k" || e.key === "K") {
+      if (currentIndex > 0) onNavigate(currentIndex - 1);
+    } else if (e.key === "f" || e.key === "F" || ((e.key === "p" || e.key === "P") && isDocumentView)) {
+      if (currentPhoto) {
+        if (isDocumentView) {
+          setIsPinned((prev) => !prev);
+          onTogglePin?.(currentPhoto.id);
+        } else {
+          setIsFavorite((prev) => !prev);
+          onToggleFavorite?.(currentPhoto.id);
+        }
+      }
+    } else if (e.key === "Delete" || e.key === "Backspace") {
+      handleDelete();
+    } else if (e.key === "l" || e.key === "L") {
+      handleToggleVault();
+    } else if (e.key === "i" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      setShowInfo((prev) => !prev);
+    } else if (isVideo && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.preventDefault();
+      const delta = e.key === "ArrowUp" ? 10 : -10;
+      const current = isMutedRef.current ? 0 : volumeBoostRef.current;
+      applyVolume(current + delta, false);
+    } else if (isVideo && (e.key === "m" || e.key === "M")) {
+      e.preventDefault();
+      toggleMute();
+    }
+  };
+
   useEffect(() => {
     if (!isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      } else if (e.key === "ArrowRight" || e.key === "j" || e.key === "J") {
-        if (currentIndex < photos.length - 1) onNavigate(currentIndex + 1);
-      } else if (e.key === "ArrowLeft" || e.key === "k" || e.key === "K") {
-        if (currentIndex > 0) onNavigate(currentIndex - 1);
-      } else if (e.key === "f" || e.key === "F" || ((e.key === "p" || e.key === "P") && isDocumentView)) {
-        if (currentPhoto) {
-          if (isDocumentView) {
-            setIsPinned((prev) => !prev);
-            onTogglePin?.(currentPhoto.id);
-          } else {
-            setIsFavorite((prev) => !prev);
-            onToggleFavorite?.(currentPhoto.id);
-          }
-        }
-      } else if (e.key === "Delete" || e.key === "Backspace") {
-        handleDelete();
-      } else if (e.key === "l" || e.key === "L") {
-        handleToggleVault();
-      } else if (e.key === "i" && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        setShowInfo((prev) => !prev);
-      } else if (isVideo && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-        e.preventDefault();
-        const delta = e.key === "ArrowUp" ? 10 : -10;
-        const current = isMutedRef.current ? 0 : volumeBoostRef.current;
-        applyVolume(current + delta, false);
-      } else if (isVideo && (e.key === "m" || e.key === "M")) {
-        e.preventDefault();
-        toggleMute();
-      }
-    };
-
+    const handleKeyDown = (e: KeyboardEvent) => keyHandlerRef.current(e);
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, currentIndex, photos.length, onClose, onNavigate, currentPhoto, isDocumentView, onTogglePin, onToggleFavorite, isVideo]);
+  }, [isOpen]);
 
   // Window drag/pan listener when zoomed into photos
   useEffect(() => {
@@ -512,7 +520,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
             {currentPhoto.filename}
           </span>
           <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-            {currentIndex + 1} of {photos.length}
+            {(indexOffset + currentIndex + 1).toLocaleString()} of {(totalCount ?? photos.length).toLocaleString()}
           </span>
           {isVideo ? (() => {
             const isEnhanced = Boolean(currentPhoto.is_enhanced);
