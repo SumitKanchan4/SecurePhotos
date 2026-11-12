@@ -110,6 +110,14 @@ To run only the IPC authentication test suite:
 .venv\Scripts\python.exe -m pytest engine/tests/test_ipc_auth.py -v
 ```
 
+### Frontend Unit Tests (Vitest)
+Unit tests live next to the code they test (`src/**/*.test.ts[x]`) and run in a simulated browser (jsdom):
+```powershell
+npm test               # run once (what the GitHub check runs)
+npm test -- --watch    # re-run on every change
+```
+`npm test` goes through `scripts/run-vitest.mjs`, which starts Vitest from the uppercase form of the folder path; started from a lowercase drive letter (some VS Code terminals use `c:\...`), Vitest fails every file with "failed to find the current suite". Whole-app checks are done with Playwright against a throwaway library.
+
 ### Frontend Typechecking & Compilation
 Run the TypeScript compiler and Vite production build:
 ```powershell
@@ -184,7 +192,7 @@ SecurePhotos/
 │   ├── database/                 # SQLite Connection, Schema, FTS5 & Migrations
 │   ├── middleware/               # Local IPC Authentication & Security Middleware
 │   ├── services/                 # Business Logic (Ingestion, Crypto, AI, Thumbnails)
-│   ├── tests/                    # Automated Pytest Test Suites (117+ tests)
+│   ├── tests/                    # Automated Pytest Test Suites (230+ tests)
 │   ├── config.py                 # Pydantic Settings & Directory Resolution
 │   └── main.py                   # FastAPI Application Entrypoint
 ├── src/                          # React 19 / TypeScript Desktop Frontend
