@@ -81,10 +81,11 @@ jobs:
       - name: Stage FFmpeg Binaries & Resource Directories
         shell: bash
         run: |
-          mkdir -p bin data/models
+          mkdir -p bin data/models build/models
           cp "$(which ffmpeg)" bin/ffmpeg.exe
           cp "$(which ffprobe)" bin/ffprobe.exe
           echo "SecurePhotos AI Models" > data/models/placeholder.txt
+          echo "AI models are fetched for release builds only" > build/models/placeholder.txt
           bin/ffmpeg.exe -version
           bin/ffprobe.exe -version
 
@@ -178,12 +179,17 @@ jobs:
       - name: Stage FFmpeg Binaries & Resource Directories
         shell: bash
         run: |
-          mkdir -p bin data/models
+          mkdir -p bin data/models build/models
           cp "$(which ffmpeg)" bin/ffmpeg.exe
           cp "$(which ffprobe)" bin/ffprobe.exe
-          echo "SecurePhotos AI Models" > data/models/placeholder.txt
           bin/ffmpeg.exe -version
           bin/ffprobe.exe -version
+
+      # H8: ship the AI models inside the installer so a fresh install works offline.
+      # Pinned commit + SHA-256 (engine/services/ai_models.py); a mismatch stops the build.
+      - name: Bundle verified AI models
+        shell: bash
+        run: python scripts/fetch_models.py build/models
 
       - name: Build Desktop Installer (NSIS)
         run: npm run tauri build
