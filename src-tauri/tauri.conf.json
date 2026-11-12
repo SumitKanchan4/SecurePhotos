@@ -88,7 +88,8 @@
     "resources": {
       "../bin/ffmpeg.exe": "bin/ffmpeg.exe",
       "../bin/ffprobe.exe": "bin/ffprobe.exe",
-      "../data/models/*": "data/models/",
+      "../build/models/*": "data/models/",
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
       "WebView2Loader.dll": "WebView2Loader.dll"
     },
     "windows": {

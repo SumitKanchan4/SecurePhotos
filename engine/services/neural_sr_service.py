@@ -19,17 +19,14 @@ from typing import Optional, Tuple
 import numpy as np
 from PIL import Image
 
+from engine.services.ai_models import MODELS, ensure_model
+
 logger = logging.getLogger("securephotos.neural_sr")
 
-MODEL_URL = "https://huggingface.co/huggingworld/onnx-image-models/resolve/main/realesr-general-x4v3.onnx"
-MODEL_FILENAME = "realesr_general_x4v3.onnx"
 # Real-ESRGAN (Xintao Wang, BSD-3-Clause); credit in THIRD_PARTY_NOTICES.md.
-MODEL_SPEC = {
-    "file": MODEL_FILENAME,
-    "url": MODEL_URL,
-    "sha256": "e8db65652ed421c2f8c92645d8f6fc6b07fd2868a916fdaa1a99c8d28091f097",
-    "license": "BSD-3-Clause",
-}
+# Pinned address and checksum live in engine.services.ai_models (H8).
+MODEL_SPEC = MODELS["realesr"]
+MODEL_FILENAME = MODEL_SPEC["file"]
 
 _session = None
 
@@ -46,10 +43,8 @@ def ensure_model_downloaded() -> Path:
     Returns:
         Path to the verified ONNX model file.
     """
-    # Verified download (H9): refuses a file whose SHA-256 doesn't match the pinned one.
-    from engine.services.face_recognition_service import _ensure_model
-
-    return _ensure_model(MODEL_SPEC)
+    # Verified (H8/H9): bundled copy or pinned download; never a file with the wrong SHA-256.
+    return ensure_model(MODEL_SPEC)
 
 
 def get_inference_session():
