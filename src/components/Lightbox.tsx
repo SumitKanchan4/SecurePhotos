@@ -1,37 +1,64 @@
+/**
+ * Lightbox: the photo and video viewer (redesign R3).
+ *
+ * Dark surround in both themes so colours look true (the root forces the dark tokens);
+ * only the details panel follows the app theme. Top bar: back, title with a small
+ * quality chip and the date, then Favourite (Pin for documents), Download, Details,
+ * and, set apart, Trash and the lime Move to Vault lock. Nothing sits on the photo
+ * except the previous/next arrows; a filmstrip shows the neighbours.
+ */
 import React, { useState, useEffect, useRef } from "react";
-import { 
-  X, 
-  ChevronLeft, 
-  ChevronRight, 
-  Sparkles, 
-  Heart, 
-  Info, 
-  ZoomIn, 
-  ZoomOut, 
+import {
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Heart,
+  Info,
   Copy,
   Check,
   Loader2,
-  Camera,
-  MapPin,
-  Aperture,
   ExternalLink,
   Clock,
   Trash2,
   Download,
   Printer,
-  Film,
   Lock,
   Unlock,
   Pin,
+  Play,
+  Sparkles,
   Volume2,
   Volume1,
   VolumeX,
   Zap,
 } from "lucide-react";
-import { PhotoItem, OptimizationProgress } from "../types";
+import { PhotoItem, OptimizationProgress, PhotoContext } from "../types";
 import { useAppStore } from "../store/useAppStore";
 import { openExternal } from "../services/external";
-import { apiFetch, getApiUrl } from "../services/api";
+import { apiFetch, getApiUrl, getThumbnailUrl } from "../services/api";
+import {
+  cameraName,
+  coordinatesLine,
+  dimensionsLine,
+  exposureLine,
+  filmstripRange,
+  formatDay,
+  formatTakenLine,
+  formatTime,
+  parseTakenAt,
+  printLine,
+  qualityChip,
+  storageLine,
+  viewerTitle,
+} from "./viewer/viewerFormat";
+
+/** One labelled block in the details panel. */
+const DetailSection: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <section className="viewer-section">
+    <h4>{label}</h4>
+    {children}
+  </section>
+);
 
 interface LightboxProps {
   photos: PhotoItem[];
@@ -84,6 +111,10 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isEnhancing4K, setIsEnhancing4K] = useState(false);
   const [videoVersion, setVideoVersion] = useState(0);
+  const appTheme = useAppStore((state) => state.theme);
+  const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
+  const [context, setContext] = useState<PhotoContext | null>(null);
+  const contextCache = useRef(new Map<number, PhotoContext>());
 
   const currentPhoto = photos[currentIndex];
   const isVideo = Boolean(currentPhoto?.mime_type?.startsWith("video/"));
@@ -238,15 +269,59 @@ export const Lightbox: React.FC<LightboxProps> = ({
       setIsPreviewLoaded(false);
       setPreviewHasError(false);
       setIsCopied(false);
+      setIsDownloadMenuOpen(false);
     }
   }, [currentIndex, currentPhoto?.id, currentPhoto?.is_pinned]);
+
+  // People, albums and import date for the details panel (library photos only, loaded when shown).
+  const contextPhotoId = currentPhoto && !currentPhoto.is_encrypted && !isDocumentView ? currentPhoto.id : null;
+  // Details stay open while stepping through photos, but every new viewing starts with them hidden.
+  useEffect(() => {
+    if (!isOpen) setShowInfo(false);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) contextCache.current.clear();
+    if (!isOpen || !showInfo || contextPhotoId === null) {
+      setContext(null);
+      return;
+    }
+    const cached = contextCache.current.get(contextPhotoId);
+    if (cached) {
+      setContext(cached);
+      return;
+    }
+    let alive = true;
+    setContext(null);
+    apiFetch(`/api/photos/${contextPhotoId}/context`)
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data: PhotoContext = await res.json();
+        contextCache.current.set(contextPhotoId, data);
+        if (alive) setContext(data);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [isOpen, showInfo, contextPhotoId]);
 
   // Keyboard navigation shortcuts. The listener is added once while the viewer is open and
   // always calls the latest handler: re-adding it on every render meant a key that caused a
   // re-render mid-event (Escape also clears the selection) never reached the viewer.
   keyHandlerRef.current = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
-      onClose();
+      if (isDownloadMenuOpen) setIsDownloadMenuOpen(false);
+      else onClose();
+    } else if (!isVideo && (e.key === "+" || e.key === "=")) {
+      setZoom((z) => Math.min(z + 0.5, 4));
+    } else if (!isVideo && e.key === "-") {
+      handleZoomOut();
+    } else if (!isVideo && e.key === "0") {
+      setZoom(1);
+      setPanOffset({ x: 0, y: 0 });
+    } else if ((e.key === "i" || e.key === "I") && !e.ctrlKey && !e.metaKey) {
+      setShowInfo((prev) => !prev);
     } else if (e.key === "ArrowRight" || e.key === "j" || e.key === "J") {
       if (currentIndex < photos.length - 1) onNavigate(currentIndex + 1);
     } else if (e.key === "ArrowLeft" || e.key === "k" || e.key === "K") {
@@ -314,7 +389,6 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
   if (!isOpen || !currentPhoto) return null;
 
-  const handleZoomIn = () => setZoom((z) => Math.min(z + 0.5, 4));
   const handleZoomOut = () => {
     setZoom((z) => {
       const next = Math.max(z - 0.5, 1);
@@ -464,6 +538,43 @@ export const Lightbox: React.FC<LightboxProps> = ({
     }
   };
 
+  const handleEnhanceVideo = async () => {
+    try {
+      setIsEnhancing4K(true);
+      showToast("Enhancing this video to 4K. This can take a few minutes.", "info");
+      const res = await apiFetch(`/api/videos/${currentPhoto.id}/enhance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_height: 2160 }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.already_enhanced) {
+          showToast("This video is already at 4K UHD resolution.", "info");
+        } else {
+          showToast("✨ Enhanced video to 4K UHD successfully!", "success");
+          // Update current photo in-place so UI badge immediately changes to 4K UHD
+          if (currentPhoto) {
+            currentPhoto.is_enhanced = true;
+            currentPhoto.is_optimized = true;
+            currentPhoto.height = data.height || 2160;
+            currentPhoto.width = data.width || currentPhoto.width;
+            if (data.file_size) currentPhoto.file_size = data.file_size;
+          }
+          // Invalidate video stream cache so player reloads the 4K stream
+          setIsPreviewLoaded(false);
+          setVideoVersion((v) => v + 1);
+        }
+      } else {
+        showToast(data.error || "Video enhancement failed", "warning");
+      }
+    } catch {
+      showToast("Failed to connect to video enhancement engine", "warning");
+    } finally {
+      setIsEnhancing4K(false);
+    }
+  };
+
   const handleDownload = (mode: "original" | "studio_print" = "original") => {
     if (!currentPhoto) return;
     const baseName = currentPhoto.filename ? currentPhoto.filename.replace(/\.[^/.]+$/, "") : "media";
@@ -486,418 +597,202 @@ export const Lightbox: React.FC<LightboxProps> = ({
     document.body.removeChild(link);
   };
 
+  const title = viewerTitle(currentPhoto);
+  const chip = qualityChip(currentPhoto);
+  const takenDate = parseTakenAt(currentPhoto.taken_at);
+  const camera = cameraName(currentPhoto);
+  const exposure = exposureLine(currentPhoto);
+  const dimensions = dimensionsLine(currentPhoto);
+  const statusText = isOptimizingThis
+    ? `Enhancing to 8K · ${optimizationProgress?.item_progress ?? 0}%`
+    : isQueued
+    ? "Waiting to be enhanced"
+    : null;
+  const [filmStart, filmEnd] = filmstripRange(currentIndex, photos.length);
+  const filmIndexes = photos.length > 1 ? Array.from({ length: filmEnd - filmStart + 1 }, (_, i) => filmStart + i) : [];
+  const importedDate = parseTakenAt(context?.imported_at);
+  const openInSection = (tab: "people" | "albums", name: string) => {
+    const store = useAppStore.getState();
+    store.setActiveTab(tab);
+    store.setSearchQuery(name);
+    onClose();
+  };
+
   return (
-    <div 
-      style={{
-        position: "fixed",
-        inset: 0,
-        backgroundColor: "var(--lightbox-backdrop)",
-        backdropFilter: "blur(28px)",
-        WebkitBackdropFilter: "blur(28px)",
-        display: "flex",
-        flexDirection: "column",
-        zIndex: 3000,
-        userSelect: "none",
-      }}
-    >
-      {/* Lightbox Top Header Toolbar */}
-      <div 
-        style={{
-          height: "52px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 16px",
-          backgroundColor: "var(--lightbox-toolbar-bg)",
-          backdropFilter: "blur(24px)",
-          WebkitBackdropFilter: "blur(24px)",
-          borderBottom: "1px solid var(--border-subtle)",
-          zIndex: 10,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>
-            {currentPhoto.filename}
-          </span>
-          <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-            {(indexOffset + currentIndex + 1).toLocaleString()} of {(totalCount ?? photos.length).toLocaleString()}
-          </span>
-          {isVideo ? (() => {
-            const isEnhanced = Boolean(currentPhoto.is_enhanced);
-            const is4K = Boolean((currentPhoto.height && currentPhoto.height >= 2160) || (currentPhoto.width && currentPhoto.width >= 3840));
-            const isHD = Boolean((currentPhoto.height && currentPhoto.height >= 720) || (currentPhoto.width && currentPhoto.width >= 1280));
-            return (
-              <span 
-                style={{
-                  fontSize: "10px",
-                  fontWeight: 700,
-                  color: isEnhanced ? "#fbbf24" : "rgba(255, 255, 255, 0.9)",
-                  backgroundColor: isEnhanced ? "rgba(251, 191, 36, 0.15)" : "rgba(255, 255, 255, 0.12)",
-                  border: isEnhanced ? "1px solid rgba(251, 191, 36, 0.35)" : "1px solid var(--glass-border)",
-                  padding: "2px 8px",
-                  borderRadius: "var(--radius-full)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
-              >
-                {isEnhanced ? <Sparkles size={10} style={{ color: "#fbbf24" }} /> : <Film size={10} />}
-                <span>{is4K ? "4K UHD" : isHD ? "HD" : "VIDEO"}</span>
-              </span>
-            );
-          })() : currentPhoto.is_enhanced ? (
-            <span 
-              style={{
-                fontSize: "10px",
-                fontWeight: 700,
-                color: "#fbbf24",
-                backgroundColor: "rgba(251, 191, 36, 0.15)",
-                border: "1px solid rgba(251, 191, 36, 0.35)",
-                padding: "2px 8px",
-                borderRadius: "var(--radius-full)",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "3px",
+    <div className="viewer" data-theme="dark" role="dialog" aria-modal="true" aria-label={`Viewing ${title}`}>
+      <div className="viewer-main">
+        <header className="viewer-bar">
+          <button type="button" className="viewer-icon-btn" aria-label="Back" title="Back (Esc)" onClick={onClose}>
+            <ChevronLeft size={18} strokeWidth={2.4} />
+          </button>
+          <div className="viewer-title-block">
+            <div className="viewer-title-row">
+              <h2 className="viewer-title" title={currentPhoto.filename}>{title}</h2>
+              {chip && (
+                <span className="viewer-chip" title={chip.title}>
+                  {chip.label}
+                </span>
+              )}
+            </div>
+            <div className="viewer-subline">
+              <span>{formatTakenLine(currentPhoto.taken_at)}</span>
+              {photos.length > 1 || totalCount ? (
+                <span className="viewer-count">
+                  {(indexOffset + currentIndex + 1).toLocaleString()} of {(totalCount ?? photos.length).toLocaleString()}
+                </span>
+              ) : null}
+              {statusText && (
+                <span className="viewer-status">
+                  {isOptimizingThis ? <Loader2 size={11} className="spin" /> : <Clock size={11} />}
+                  {statusText}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div style={{ flex: 1 }} />
+
+          {zoom > 1 && (
+            <button
+              type="button"
+              className="viewer-zoom-pill"
+              title="Back to fit (0)"
+              onClick={() => {
+                setZoom(1);
+                setPanOffset({ x: 0, y: 0 });
               }}
             >
-              <Sparkles size={10} style={{ color: "#fbbf24" }} /> 8K UHD
-            </span>
-          ) : null}
-        </div>
+              {Math.round(zoom * 100)}%
+            </button>
+          )}
 
-        {/* Action Controls */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          {/* Zoom Controls */}
-          <button 
-            onClick={handleZoomOut} 
-            disabled={zoom <= 1}
-            className="clickable" 
-            style={{ background: "transparent", border: "none", color: "var(--text-primary)", padding: "4px", opacity: zoom <= 1 ? 0.4 : 1 }}
-          >
-            <ZoomOut size={16} />
-          </button>
-          <span style={{ fontSize: "11px", fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
-            {Math.round(zoom * 100)}%
-          </span>
-          <button 
-            onClick={handleZoomIn} 
-            disabled={zoom >= 4}
-            className="clickable" 
-            style={{ background: "transparent", border: "none", color: "var(--text-primary)", padding: "4px", opacity: zoom >= 4 ? 0.4 : 1 }}
-          >
-            <ZoomIn size={16} />
-          </button>
-
-          {/* Favorite or Pin Toggle */}
           {isDocumentView ? (
             <button
+              type="button"
+              className={`viewer-icon-btn${isPinned ? " is-pinned" : ""}`}
+              aria-label={isPinned ? "Unpin document" : "Pin document"}
+              aria-pressed={isPinned}
+              title={isPinned ? "Unpin (P)" : "Pin to the top (P)"}
               onClick={() => {
-                if (currentPhoto) {
-                  setIsPinned(!isPinned);
-                  onTogglePin?.(currentPhoto.id);
-                }
-              }}
-              className="clickable"
-              title={isPinned ? "Unpin document (P)" : "Pin document to top (P)"}
-              style={{
-                background: isPinned ? "rgba(245, 158, 11, 0.2)" : "var(--glass-pill-bg)",
-                borderRadius: "var(--radius-full)",
-                border: isPinned ? "1px solid rgba(245, 158, 11, 0.5)" : "1px solid var(--glass-pill-border)",
-                color: isPinned ? "#f59e0b" : "var(--text-primary)",
-                padding: "4px 10px",
-                display: "flex",
-                alignItems: "center",
-                gap: "5px",
-                cursor: "pointer",
+                setIsPinned(!isPinned);
+                onTogglePin?.(currentPhoto.id);
               }}
             >
-              <Pin size={14} fill={isPinned ? "#f59e0b" : "none"} />
-              <span style={{ fontSize: "11px", fontWeight: 600 }}>{isPinned ? "Pinned" : "Pin"}</span>
+              <Pin size={17} fill={isPinned ? "currentColor" : "none"} />
             </button>
           ) : (
             <button
+              type="button"
+              className={`viewer-icon-btn${isFavorite ? " is-favourite" : ""}`}
+              aria-label={isFavorite ? "Remove from favourites" : "Add to favourites"}
+              aria-pressed={isFavorite}
+              title={isFavorite ? "Remove from favourites (F)" : "Add to favourites (F)"}
               onClick={() => {
-                if (currentPhoto) {
-                  setIsFavorite(!isFavorite);
-                  onToggleFavorite?.(currentPhoto.id);
-                }
-              }}
-              className="clickable"
-              title={isFavorite ? "Remove from Favorites (F)" : "Add to Favorites (F)"}
-              style={{
-                background: isFavorite ? "rgba(239, 68, 68, 0.15)" : "var(--glass-pill-bg)",
-                borderRadius: "var(--radius-full)",
-                border: isFavorite ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid var(--glass-pill-border)",
-                color: isFavorite ? "var(--accent-danger)" : "var(--text-primary)",
-                padding: "4px 10px",
-                display: "flex",
-                alignItems: "center",
-                gap: "5px",
-                cursor: "pointer",
+                setIsFavorite(!isFavorite);
+                onToggleFavorite?.(currentPhoto.id);
               }}
             >
-              <Heart size={15} fill={isFavorite ? "var(--accent-danger)" : "none"} />
-              <span style={{ fontSize: "11px", fontWeight: 600 }}>{isFavorite ? "Liked" : "Like"}</span>
+              <Heart size={17} fill={isFavorite ? "currentColor" : "none"} />
             </button>
           )}
 
-          {/* Vault Lock / Restore Button */}
-          <button
-            onClick={handleToggleVault}
-            className="clickable"
-            title={currentPhoto.is_encrypted ? "Restore to Public Library (L)" : "Move to Encrypted Vault (L)"}
-            style={{
-              background: currentPhoto.is_encrypted ? "color-mix(in srgb, var(--accent-ink) 15%, transparent)" : "var(--glass-pill-bg)",
-              borderRadius: "var(--radius-full)",
-              border: currentPhoto.is_encrypted ? "1px solid color-mix(in srgb, var(--accent-ink) 40%, transparent)" : "1px solid var(--glass-pill-border)",
-              color: currentPhoto.is_encrypted ? "var(--accent-primary)" : "var(--text-primary)",
-              padding: "4px 10px",
-              display: "flex",
-              alignItems: "center",
-              gap: "5px",
-              cursor: "pointer",
-            }}
-          >
-            {currentPhoto.is_encrypted ? <Unlock size={14} /> : <Lock size={14} />}
-            <span style={{ fontSize: "11px", fontWeight: 600 }}>
-              {currentPhoto.is_encrypted ? "Restore (L)" : "Vault (L)"}
-            </span>
-          </button>
-
-          {/* Standard Download */}
-          <button
-            onClick={() => handleDownload("original")}
-            className="clickable"
-            title="Download image file to your computer"
-            style={{
-              background: "var(--glass-pill-bg)",
-              borderRadius: "var(--radius-full)",
-              border: "1px solid var(--glass-pill-border)",
-              color: "var(--text-primary)",
-              padding: "4px 10px",
-              display: "flex",
-              alignItems: "center",
-              gap: "5px",
-              cursor: "pointer",
-            }}
-          >
-            <Download size={14} />
-            <span style={{ fontSize: "11px", fontWeight: 600 }}>Download</span>
-          </button>
-
-          {/* Studio Print Export Button (Photos Only) */}
-          {!currentPhoto.mime_type?.startsWith("video/") && (
+          <div className="viewer-menu-anchor">
             <button
-              onClick={() => handleDownload("studio_print")}
-              className="clickable"
-              title="Download print-ready photo for studio printing, posters, and framing"
-              style={{
-                background: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
-                borderRadius: "var(--radius-full)",
-                border: "1px solid color-mix(in srgb, var(--accent-ink) 35%, transparent)",
-                color: "var(--accent-primary)",
-                padding: "4px 12px",
-                display: "flex",
-                alignItems: "center",
-                gap: "5px",
-                cursor: "pointer",
-              }}
+              type="button"
+              className={`viewer-icon-btn${isDownloadMenuOpen ? " is-on" : ""}`}
+              aria-label="Download"
+              aria-haspopup="menu"
+              aria-expanded={isDownloadMenuOpen}
+              title="Download"
+              onClick={() => setIsDownloadMenuOpen((v) => !v)}
             >
-              <Printer size={14} />
-              <span style={{ fontSize: "11px", fontWeight: 600 }}>Print Ready</span>
+              <Download size={17} />
             </button>
-          )}
-
-          {/* Delete / Move to Trash */}
-          <button
-            onClick={handleDelete}
-            disabled={isDeleting}
-            className="clickable"
-            title="Move to Trash (Delete / Backspace)"
-            style={{
-              background: "var(--glass-pill-bg)",
-              borderRadius: "var(--radius-full)",
-              border: "1px solid var(--glass-pill-border)",
-              color: "var(--text-secondary)",
-              padding: "5px 8px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "all 0.15s ease",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent-danger)")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-secondary)")}
-          >
-            {isDeleting ? (
-              <Loader2 size={15} className="spin" style={{ color: "var(--accent-danger)" }} />
-            ) : (
-              <Trash2 size={15} />
-            )}
-          </button>
-
-          {/* EXIF Drawer Toggle */}
-          <button
-            onClick={() => setShowInfo(!showInfo)}
-            className="clickable"
-            style={{
-              background: showInfo ? "var(--accent-fill)" : "var(--glass-pill-bg)",
-              border: showInfo ? "1px solid var(--accent-primary)" : "1px solid var(--glass-pill-border)",
-              color: showInfo ? "var(--on-accent)" : "var(--text-primary)",
-              padding: "5px 10px",
-              borderRadius: "var(--radius-full)",
-              display: "flex",
-              alignItems: "center",
-              gap: "4px",
-            }}
-          >
-            <Info size={15} />
-            <span style={{ fontSize: "11px", fontWeight: 600 }}>Info</span>
-          </button>
-
-          {/* Close Lightbox */}
-          <button
-            onClick={onClose}
-            className="clickable"
-            style={{
-              background: "var(--glass-pill-bg)",
-              border: "1px solid var(--glass-pill-border)",
-              borderRadius: "var(--radius-full)",
-              color: "var(--text-primary)",
-              padding: "5px",
-              marginLeft: "4px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <X size={16} />
-          </button>
-        </div>
-      </div>
-
-      {/* Main Viewport Container */}
-      <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden" }}>
-        {/* Floating In-Progress / Queued Status Pill (Photos actively in optimization only) */}
-        {!isVideo && (isOptimizingThis || isQueued) && (
-          <div
-            style={{
-              position: "absolute",
-              top: "16px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              backgroundColor: "var(--glass-surface)",
-              backdropFilter: "blur(20px)",
-              WebkitBackdropFilter: "blur(20px)",
-              border: isOptimizingThis ? "1px solid var(--accent-primary)" : "1px solid var(--glass-border)",
-              padding: "8px 18px",
-              borderRadius: "var(--radius-full)",
-              color: "var(--text-primary)",
-              fontSize: "12px",
-              fontWeight: 600,
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              zIndex: 100,
-              boxShadow: "var(--glass-shadow)",
-            }}
-          >
-            {isOptimizingThis ? (
+            {isDownloadMenuOpen && (
               <>
-                <Loader2 size={14} className="spin" style={{ color: "var(--accent-primary)" }} />
-                <span>
-                  Optimizing to 8K UHD ({optimizationProgress?.item_progress || 0}%) — Showing original photo
-                </span>
-              </>
-            ) : (
-              <>
-                <Clock size={14} style={{ color: "var(--text-muted)" }} />
-                <span>Queued for 8K UHD — Showing original photo</span>
+                <div className="viewer-menu-backdrop" onClick={() => setIsDownloadMenuOpen(false)} />
+                <div className="viewer-menu" role="menu" aria-label="Download">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setIsDownloadMenuOpen(false);
+                      handleDownload("original");
+                    }}
+                  >
+                    <Download size={15} />
+                    <span>
+                      <strong>{isVideo ? "Video" : "Photo"}</strong>
+                      <small>The file as it is in your library</small>
+                    </span>
+                  </button>
+                  {!isVideo && !isVaultItem && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setIsDownloadMenuOpen(false);
+                        handleDownload("studio_print");
+                      }}
+                    >
+                      <Printer size={15} />
+                      <span>
+                        <strong>Print-ready copy</strong>
+                        <small>300 dpi JPEG for prints and posters</small>
+                      </span>
+                    </button>
+                  )}
+                </div>
               </>
             )}
           </div>
-        )}
 
-        {/* Navigation Arrows */}
-        {currentIndex > 0 && (
           <button
-            onClick={() => onNavigate(currentIndex - 1)}
-            className="clickable"
-            style={{
-              position: "absolute",
-              left: "20px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              width: "44px",
-              height: "44px",
-              borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--lightbox-nav-bg)",
-              backdropFilter: "blur(16px)",
-              WebkitBackdropFilter: "blur(16px)",
-              border: "1px solid var(--lightbox-nav-border)",
-              color: "var(--lightbox-nav-color)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 20,
-              boxShadow: "var(--glass-shadow)",
-            }}
+            type="button"
+            className={`viewer-icon-btn${showInfo ? " is-on" : ""}`}
+            aria-label={showInfo ? "Hide details" : "Show details"}
+            aria-pressed={showInfo}
+            title="Details (I)"
+            onClick={() => setShowInfo((v) => !v)}
           >
-            <ChevronLeft size={24} />
+            <Info size={17} />
           </button>
-        )}
 
-        {currentIndex < photos.length - 1 && (
+          <div className="viewer-divider" />
+
           <button
-            onClick={() => onNavigate(currentIndex + 1)}
-            className="clickable"
-            style={{
-              position: "absolute",
-              right: showInfo ? "360px" : "20px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              width: "44px",
-              height: "44px",
-              borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--lightbox-nav-bg)",
-              backdropFilter: "blur(16px)",
-              WebkitBackdropFilter: "blur(16px)",
-              border: "1px solid var(--lightbox-nav-border)",
-              color: "var(--lightbox-nav-color)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 20,
-              boxShadow: "var(--glass-shadow)",
-              transition: "right 0.2s ease",
-            }}
+            type="button"
+            className="viewer-icon-btn viewer-trash"
+            aria-label="Move to Trash"
+            title="Move to Trash (Delete)"
+            disabled={isDeleting}
+            onClick={handleDelete}
           >
-            <ChevronRight size={24} />
+            {isDeleting ? <Loader2 size={17} className="spin" /> : <Trash2 size={17} />}
           </button>
-        )}
-
-        {/* Image Rendering Area */}
-        <div 
-          style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "20px",
-            position: "relative",
-            overflow: "hidden",
-          }}
-        >
-          {/* Standard Lightbox Zoomable Media View with Real Image */}
-          <div 
-            style={{
-              width: "100%",
-              height: "100%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              position: "relative",
-            }}
+          <button
+            type="button"
+            className={`viewer-icon-btn${isVaultItem ? "" : " viewer-vault"}`}
+            aria-label={isVaultItem ? "Restore to library" : "Move to Vault"}
+            title={isVaultItem ? "Restore to your library (L)" : "Move to Private Vault (L)"}
+            onClick={handleToggleVault}
           >
+            {isVaultItem ? <Unlock size={17} /> : <Lock size={17} strokeWidth={2.4} />}
+          </button>
+        </header>
+
+        <div className="viewer-stage" onWheel={isVideo ? undefined : handleWheel}>
+          {currentIndex > 0 && (
+            <button type="button" className="viewer-nav viewer-nav-prev" aria-label="Previous photo" title="Previous (←)" onClick={() => onNavigate(currentIndex - 1)}>
+              <ChevronLeft size={22} strokeWidth={2.4} />
+            </button>
+          )}
+          {currentIndex < photos.length - 1 && (
+            <button type="button" className="viewer-nav viewer-nav-next" aria-label="Next photo" title="Next (→)" onClick={() => onNavigate(currentIndex + 1)}>
+              <ChevronRight size={22} strokeWidth={2.4} />
+            </button>
+          )}
+          <div className="viewer-media">
             {/* Instant Thumbnail Low-Res Backdrop while High-Res Loads (Photos only) */}
             {!isVideo && !isVaultItem && !isPreviewLoaded && !previewHasError && (
               <img
@@ -1034,7 +929,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 style={{
                   position: "relative",
                   maxWidth: "94%",
-                  maxHeight: "88vh",
+                  maxHeight: "100%",
                   width: "100%",
                   height: "100%",
                   display: "flex",
@@ -1134,7 +1029,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   }}
                   style={{
                     maxWidth: "100%",
-                    maxHeight: "calc(84vh - 60px)",
+                    maxHeight: "calc(100vh - 240px)",
                     borderRadius: "var(--radius-md)",
                     boxShadow: "var(--shadow-lightbox)",
                     backgroundColor: "#000000",
@@ -1289,13 +1184,12 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   draggable={false}
                   style={{
                     maxWidth: "100%",
-                    maxHeight: "88vh",
+                    maxHeight: "calc(100vh - 168px)",
                     objectFit: "contain",
                     transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
                     transition: isDragging ? "none" : zoom === 1 ? "transform 0.15s ease, opacity 0.25s ease" : "transform 0.08s ease-out",
                     opacity: isPreviewLoaded ? 1 : 0.4,
-                    borderRadius: "var(--radius-sm)",
-                    boxShadow: "var(--shadow-lightbox)",
+                    borderRadius: "10px",
                     cursor: zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default",
                     userSelect: "none",
                   }}
@@ -1386,494 +1280,132 @@ export const Lightbox: React.FC<LightboxProps> = ({
           </div>
         </div>
 
-        {/* Collapsible EXIF Metadata Drawer */}
-        {showInfo && (
-          <aside 
-            style={{
-              width: "340px",
-              backgroundColor: "var(--bg-sidebar)",
-              borderLeft: "1px solid var(--border-subtle)",
-              padding: "20px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "16px",
-              overflowY: "auto",
-              zIndex: 10,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <h3 style={{ fontSize: "14px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
-                <Info size={16} style={{ color: "var(--accent-primary)" }} />
-                Media Details & EXIF
-              </h3>
-              <button
-                onClick={() => setShowInfo(false)}
-                className="clickable"
-                style={{ background: "transparent", border: "none", color: "var(--text-muted)", padding: "2px" }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-            
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px", fontSize: "12px" }}>
-              {/* File & Dimension Card */}
-              <div style={{ backgroundColor: "var(--bg-surface)", padding: "12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
-                <div style={{ marginBottom: "8px" }}>
-                  <span style={{ color: "var(--text-muted)", fontSize: "11px", display: "block", marginBottom: "2px" }}>Filename:</span>
-                  <span style={{ fontWeight: 600, color: "var(--text-primary)", wordBreak: "break-all" }}>
-                    {currentPhoto.filename}
-                  </span>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "8px" }}>
-                  <div>
-                    <span style={{ color: "var(--text-muted)", fontSize: "11px", display: "block" }}>Resolution:</span>
-                    <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
-                      {currentPhoto.width || "?"} × {currentPhoto.height || "?"}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ color: "var(--text-muted)", fontSize: "11px", display: "block" }}>File Size:</span>
-                    <span style={{ fontWeight: 500, fontFamily: "var(--font-mono)" }}>
-                      {(currentPhoto.file_size / (1024 * 1024)).toFixed(2)} MB
-                    </span>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: "8px" }}>
-                  <span style={{ color: "var(--text-muted)", fontSize: "11px", display: "block" }}>Date Taken:</span>
-                  <span style={{ fontWeight: 500 }}>
-                    {currentPhoto.taken_at ? new Date(currentPhoto.taken_at).toLocaleString() : "Unknown"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Camera & Optics Card */}
-              <div style={{ backgroundColor: "var(--bg-surface)", padding: "12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px", color: "var(--text-primary)", fontWeight: 600 }}>
-                  <Camera size={14} style={{ color: "var(--accent-primary)" }} />
-                  <span>Camera & Optics</span>
-                </div>
-
-                <div style={{ marginBottom: "8px" }}>
-                  <span style={{ color: "var(--text-muted)", fontSize: "11px", display: "block" }}>Device:</span>
-                  <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
-                    {(() => {
-                      const make = (currentPhoto.camera_make || "").trim();
-                      const model = (currentPhoto.camera_model || "").trim();
-                      if (!make && !model) return "Standard Camera";
-                      if (!make) return model;
-                      if (!model) return make;
-                      if (model.toLowerCase().startsWith(make.toLowerCase())) return model;
-                      return `${make} ${model}`;
-                    })()}
-                  </span>
-                </div>
-
-                {/* Optical Badges Grid */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "6px", marginTop: "6px" }}>
-                  {currentPhoto.aperture ? (
-                    <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
-                      <span style={{ color: "var(--text-muted)", fontSize: "10px", display: "flex", alignItems: "center", gap: "3px" }}>
-                        <Aperture size={10} style={{ color: "var(--accent-primary)" }} /> Aperture
-                      </span>
-                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>f/{currentPhoto.aperture.toFixed(1)}</span>
-                    </div>
-                  ) : null}
-
-                  {currentPhoto.shutter_speed ? (
-                    <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
-                      <span style={{ color: "var(--text-muted)", fontSize: "10px", display: "block" }}>Shutter</span>
-                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{currentPhoto.shutter_speed}</span>
-                    </div>
-                  ) : null}
-
-                  {currentPhoto.iso ? (
-                    <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
-                      <span style={{ color: "var(--text-muted)", fontSize: "10px", display: "block" }}>ISO Speed</span>
-                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>ISO {currentPhoto.iso}</span>
-                    </div>
-                  ) : null}
-
-                  {currentPhoto.focal_length ? (
-                    <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
-                      <span style={{ color: "var(--text-muted)", fontSize: "10px", display: "block" }}>Focal Length</span>
-                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{currentPhoto.focal_length.toFixed(1)} mm</span>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-
-              {/* Location & GPS Card */}
-              {currentPhoto.latitude != null && currentPhoto.longitude != null && (
-                <div style={{ backgroundColor: "var(--bg-surface)", padding: "12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-primary)", fontWeight: 600 }}>
-                      <MapPin size={14} style={{ color: "var(--accent-primary)" }} />
-                      <span>GPS Location</span>
-                    </div>
-                    <a
-                      href={`https://www.openstreetmap.org/?mlat=${currentPhoto.latitude}&mlon=${currentPhoto.longitude}#map=16/${currentPhoto.latitude}/${currentPhoto.longitude}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => {
-                        // Open in the default browser, never inside the app (H5).
-                        e.preventDefault();
-                        openExternal(e.currentTarget.href);
-                      }}
-                      className="clickable"
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "4px",
-                        fontSize: "11px",
-                        color: "var(--accent-primary)",
-                        textDecoration: "none",
-                        fontWeight: 600,
-                      }}
-                    >
-                      Open Map <ExternalLink size={11} />
-                    </a>
-                  </div>
-
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--text-secondary)", marginBottom: "4px" }}>
-                    {currentPhoto.latitude.toFixed(4)}° {currentPhoto.latitude >= 0 ? "N" : "S"},{" "}
-                    {currentPhoto.longitude.toFixed(4)}° {currentPhoto.longitude >= 0 ? "E" : "W"}
-                  </div>
-                </div>
-              )}
-
-              {/* Storage & Quality Card */}
-              <div style={{ backgroundColor: "var(--bg-surface)", padding: "12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-                  <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>Local Storage:</span>
-                  <button
-                    onClick={copyStoragePath}
-                    className="clickable"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      background: "transparent",
-                      border: "none",
-                      color: isCopied ? "var(--accent-success)" : "var(--accent-primary)",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      padding: "2px 6px",
-                      borderRadius: "var(--radius-xs)",
-                    }}
-                  >
-                    {isCopied ? (
-                      <>
-                        <Check size={12} /> Copied!
-                      </>
-                    ) : (
-                      <>
-                        <Copy size={12} /> Copy Path
-                      </>
-                    )}
-                  </button>
-                </div>
-                <div 
-                  style={{ 
-                    fontFamily: "var(--font-mono)", 
-                    fontSize: "10px", 
-                    wordBreak: "break-all",
-                    backgroundColor: "var(--bg-card)",
-                    padding: "8px 10px",
-                    borderRadius: "var(--radius-xs)",
-                    border: "1px solid var(--border-subtle)",
-                    color: "var(--text-secondary)",
-                    lineHeight: "1.4",
-                    marginBottom: "10px",
-                  }}
+        {filmIndexes.length > 0 && (
+          <nav className="viewer-film" aria-label="Nearby photos">
+            {filmIndexes.map((i) => {
+              const item = photos[i];
+              const isCurrent = i === currentIndex;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`viewer-film-item${isCurrent ? " is-current" : ""}`}
+                  aria-label={`Open ${viewerTitle(item)}`}
+                  aria-current={isCurrent ? "true" : undefined}
+                  onClick={() => !isCurrent && onNavigate(i)}
                 >
-                  {currentPhoto.filepath}
-                </div>
-
-                <div>
-                  <span style={{ color: "var(--text-muted)", fontSize: "11px", display: "block", marginBottom: "2px" }}>Optimization Tier:</span>
-                  <span style={{ color: currentPhoto.is_optimized ? "var(--accent-success)" : "var(--accent-primary)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                    {currentPhoto.is_optimized ? (
-                      <>
-                        <Sparkles size={12} /> 8K ULTRA Lossless (CRF 19)
-                      </>
-                    ) : (
-                      "Original Camera Master"
-                    )}
-                  </span>
-                </div>
-              </div>
-
-              {/* Studio Poster Print Readiness Card (Photos Only) OR Video Specifications & Quality Card (Videos) */}
-              {!isVideo ? (
-                (() => {
-                  const w = currentPhoto.width || 0;
-                  const h = currentPhoto.height || 0;
-                  const dpi300W = w > 0 ? (w / 300).toFixed(1) : "0";
-                  const dpi300H = h > 0 ? (h / 300).toFixed(1) : "0";
-                  const dpi300Wcm = w > 0 ? ((w / 300) * 2.54).toFixed(0) : "0";
-                  const dpi300Hcm = h > 0 ? ((h / 300) * 2.54).toFixed(0) : "0";
-
-                  const dpi200W = w > 0 ? (w / 200).toFixed(1) : "0";
-                  const dpi200H = h > 0 ? (h / 200).toFixed(1) : "0";
-                  const dpi200Wcm = w > 0 ? ((w / 200) * 2.54).toFixed(0) : "0";
-                  const dpi200Hcm = h > 0 ? ((h / 200) * 2.54).toFixed(0) : "0";
-
-                  const maxDim = Math.max(w, h);
-                  const isPosterReady = maxDim >= 4500;
-                  const isMediumReady = maxDim >= 2400;
-
-                  return (
-                    <div style={{ backgroundColor: "var(--bg-surface)", padding: "12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-primary)", fontWeight: 600 }}>
-                          <Printer size={14} style={{ color: "var(--accent-primary)" }} />
-                          <span>Studio Print Readiness</span>
-                        </div>
-                        <span style={{ 
-                          fontSize: "10px", 
-                          fontWeight: 700, 
-                          padding: "2px 6px", 
-                          borderRadius: "var(--radius-xs)",
-                          backgroundColor: isPosterReady ? "rgba(16, 185, 129, 0.15)" : isMediumReady ? "color-mix(in srgb, var(--accent-ink) 15%, transparent)" : "rgba(245, 158, 11, 0.15)",
-                          color: isPosterReady ? "var(--accent-success)" : isMediumReady ? "var(--accent-primary)" : "var(--accent-warning)",
-                          border: `1px solid ${isPosterReady ? "rgba(16, 185, 129, 0.4)" : isMediumReady ? "color-mix(in srgb, var(--accent-ink) 40%, transparent)" : "rgba(245, 158, 11, 0.4)"}`
-                        }}>
-                          {isPosterReady ? "✓ Studio Poster Ready" : isMediumReady ? "✓ Studio Photo Ready" : "Desk Print Ready"}
-                        </span>
-                      </div>
-
-                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "11px" }}>
-                        <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
-                            <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>300 DPI (Studio Glossy / Framing)</span>
-                            <span style={{ color: "var(--accent-success)", fontWeight: 700 }}>Razor Sharp</span>
-                          </div>
-                          <div style={{ color: "var(--text-muted)", fontSize: "10px" }}>
-                            Max Crisp Size: <strong style={{ color: "var(--text-secondary)" }}>{dpi300W}" × {dpi300H}"</strong> ({dpi300Wcm} × {dpi300Hcm} cm)
-                          </div>
-                        </div>
-
-                        <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
-                            <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>200 DPI (Wall Poster / Canvas)</span>
-                            <span style={{ color: "var(--accent-primary)", fontWeight: 700 }}>Poster Grade</span>
-                          </div>
-                          <div style={{ color: "var(--text-muted)", fontSize: "10px" }}>
-                            Max Poster Size: <strong style={{ color: "var(--text-secondary)" }}>{dpi200W}" × {dpi200H}"</strong> ({dpi200Wcm} × {dpi200Hcm} cm)
-                          </div>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => handleDownload("studio_print")}
-                        className="clickable"
-                        title="Download print-ready photo to your computer's Downloads folder"
-                        style={{
-                          width: "100%",
-                          marginTop: "10px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: "6px",
-                          padding: "7px 10px",
-                          borderRadius: "var(--radius-xs)",
-                          backgroundColor: "var(--accent-fill)",
-                          border: "none",
-                          color: "var(--on-accent)",
-                          fontSize: "11px",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        <Printer size={13} /> Download Print-Ready Photo
-                      </button>
-                    </div>
-                  );
-                })()
-              ) : (
-                (() => {
-                  const w = currentPhoto.width || 0;
-                  const h = currentPhoto.height || 0;
-                  const isEnhanced = Boolean(currentPhoto.is_enhanced);
-                  const is4K = isEnhanced && (h >= 2160 || w >= 3840);
-                  const is1080p = h >= 1080 || w >= 1920;
-                  const is720p = h >= 720 || w >= 1280;
-
-                  const resolutionTier = is4K
-                    ? "4K Ultra HD"
-                    : is1080p
-                    ? "1080p Full HD"
-                    : is720p
-                    ? "720p HD"
-                    : w > 0 && h > 0
-                    ? `${w} × ${h} SD`
-                    : "Standard Definition";
-
-                  const durationStr = currentPhoto.duration
-                    ? `${Math.floor(currentPhoto.duration / 60)}m ${Math.floor(currentPhoto.duration % 60)}s`
-                    : null;
-
-                  return (
-                    <div style={{ backgroundColor: "var(--bg-surface)", padding: "12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-primary)", fontWeight: 600 }}>
-                          <Film size={14} style={{ color: isEnhanced ? "#fbbf24" : "var(--accent-primary)" }} />
-                          <span>Video Playback & Quality</span>
-                        </div>
-                        <span style={{ 
-                          fontSize: "10px", 
-                          fontWeight: 700, 
-                          padding: "2px 6px", 
-                          borderRadius: "var(--radius-xs)",
-                          backgroundColor: isEnhanced 
-                            ? "rgba(251, 191, 36, 0.15)" 
-                            : "color-mix(in srgb, var(--accent-ink) 15%, transparent)",
-                          color: isEnhanced 
-                            ? "#fbbf24" 
-                            : "var(--accent-primary)",
-                          border: `1px solid ${isEnhanced ? "rgba(251, 191, 36, 0.4)" : "color-mix(in srgb, var(--accent-ink) 40%, transparent)"}`,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "3px"
-                        }}>
-                          {isEnhanced && <Sparkles size={9} style={{ color: "#fbbf24" }} />}
-                          {isEnhanced ? (is4K ? "4K UHD" : "HD") : (is4K ? "4K UHD" : (currentPhoto.height && currentPhoto.height >= 720 ? "HD" : "Original Video"))}
-                        </span>
-                      </div>
-
-                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "11px" }}>
-                        <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
-                            <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>Resolution & Tier</span>
-                            <span style={{ color: isEnhanced ? "#fbbf24" : "var(--accent-primary)", fontWeight: 700 }}>
-                              {resolutionTier}
-                            </span>
-                          </div>
-                          <div style={{ color: "var(--text-muted)", fontSize: "10px" }}>
-                            Dimensions: <strong style={{ color: "var(--text-secondary)" }}>{w > 0 && h > 0 ? `${w} × ${h} px` : "Native stream"}</strong>
-                          </div>
-                        </div>
-
-                        {durationStr && (
-                          <div style={{ backgroundColor: "var(--bg-card)", padding: "6px 8px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border-subtle)" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
-                              <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>Total Duration</span>
-                              <span style={{ color: "var(--text-secondary)", fontWeight: 700 }}>{durationStr}</span>
-                            </div>
-                            <div style={{ color: "var(--text-muted)", fontSize: "10px" }}>
-                              Frame Timing: <strong style={{ color: "var(--text-secondary)" }}>Full playback available</strong>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {!is4K && (
-                        <button
-                          disabled={isEnhancing4K}
-                          onClick={async () => {
-                            try {
-                              setIsEnhancing4K(true);
-                              showToast("Starting 4K UHD upscale with Lanczos & 3D denoising...", "info");
-                              const res = await apiFetch(`/api/videos/${currentPhoto.id}/enhance`, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ target_height: 2160 }),
-                              });
-                              const data = await res.json();
-                              if (res.ok && data.success) {
-                                if (data.already_enhanced) {
-                                  showToast("This video is already at 4K UHD resolution.", "info");
-                                } else {
-                                  showToast("✨ Enhanced video to 4K UHD successfully!", "success");
-                                  // Update current photo in-place so UI badge immediately changes to 4K UHD
-                                  if (currentPhoto) {
-                                    currentPhoto.is_enhanced = true;
-                                    currentPhoto.is_optimized = true;
-                                    currentPhoto.height = data.height || 2160;
-                                    currentPhoto.width = data.width || currentPhoto.width;
-                                    if (data.file_size) currentPhoto.file_size = data.file_size;
-                                  }
-                                  // Invalidate video stream cache so player reloads the 4K stream
-                                  setIsPreviewLoaded(false);
-                                  setVideoVersion((v) => v + 1);
-                                }
-                              } else {
-                                showToast(data.error || "Video enhancement failed", "warning");
-                              }
-                            } catch {
-                              showToast("Failed to connect to video enhancement engine", "warning");
-                            } finally {
-                              setIsEnhancing4K(false);
-                            }
-                          }}
-                          className="clickable"
-                          title="Upscale video to 4K UHD with Lanczos & 3D temporal denoising"
-                          style={{
-                            width: "100%",
-                            marginTop: "10px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: "6px",
-                            padding: "7px 10px",
-                            borderRadius: "var(--radius-xs)",
-                            backgroundColor: isEnhancing4K ? "rgba(251, 191, 36, 0.08)" : "rgba(251, 191, 36, 0.15)",
-                            border: "1px solid rgba(251, 191, 36, 0.4)",
-                            color: "#fbbf24",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            cursor: isEnhancing4K ? "not-allowed" : "pointer",
-                            opacity: isEnhancing4K ? 0.75 : 1,
-                          }}
-                        >
-                          {isEnhancing4K ? (
-                            <>
-                              <Loader2 size={13} className="spin-animation" style={{ color: "#fbbf24" }} />
-                              <span>Upscaling to 4K UHD...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Sparkles size={13} style={{ color: "#fbbf24" }} />
-                              <span>Enhance to 4K UHD</span>
-                            </>
-                          )}
-                        </button>
-                      )}
-
-                      <button
-                        onClick={() => handleDownload("original")}
-                        className="clickable"
-                        title="Save video file to your computer's Downloads folder"
-                        style={{
-                          width: "100%",
-                          marginTop: "8px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: "6px",
-                          padding: "7px 10px",
-                          borderRadius: "var(--radius-xs)",
-                          backgroundColor: isEnhanced ? "#d97706" : "var(--accent-fill)",
-                          border: "none",
-                          color: "var(--on-accent)",
-                          fontSize: "11px",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        <Download size={13} /> Save Video to Downloads
-                      </button>
-                    </div>
-                  );
-                })()
-              )}
-            </div>
-          </aside>
+                  <img src={getThumbnailUrl(item.id, item.is_encrypted)} alt="" loading="lazy" draggable={false} />
+                  {item.mime_type?.startsWith("video/") && (
+                    <span className="viewer-film-play">
+                      <Play size={9} fill="currentColor" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
         )}
       </div>
+
+      {showInfo && (
+        <aside className="viewer-details" data-theme={appTheme} aria-label="Details">
+          <div className="viewer-details-head">
+            <h3>Details</h3>
+            <button type="button" className="viewer-close-details" aria-label="Close details" onClick={() => setShowInfo(false)}>
+              <X size={14} strokeWidth={2.4} />
+            </button>
+          </div>
+
+          <DetailSection label="Taken">
+            <p className="viewer-value">{takenDate ? formatDay(takenDate) : "Date unknown"}</p>
+            {takenDate && /[ T]\d{2}:\d{2}/.test(currentPhoto.taken_at ?? "") && <p className="viewer-sub">{formatTime(takenDate)}</p>}
+            {currentPhoto.latitude != null && currentPhoto.longitude != null && (
+              <p className="viewer-sub">
+                {coordinatesLine(currentPhoto.latitude, currentPhoto.longitude)}{" "}
+                <a
+                  className="viewer-link"
+                  href={`https://www.openstreetmap.org/?mlat=${currentPhoto.latitude}&mlon=${currentPhoto.longitude}#map=16/${currentPhoto.latitude}/${currentPhoto.longitude}`}
+                  onClick={(e) => {
+                    // Open in the default browser, never inside the app (H5).
+                    e.preventDefault();
+                    openExternal(e.currentTarget.href);
+                  }}
+                >
+                  Open map <ExternalLink size={11} />
+                </a>
+              </p>
+            )}
+          </DetailSection>
+
+          {(camera || exposure) && (
+            <DetailSection label="Camera">
+              {camera && <p className="viewer-value">{camera}</p>}
+              {exposure && <p className="viewer-sub">{exposure}</p>}
+            </DetailSection>
+          )}
+
+          <DetailSection label={isVideo ? "Video" : "Photo"}>
+            <p className="viewer-value">{dimensions ?? "Size unknown"}</p>
+            <p className="viewer-sub">{storageLine(currentPhoto)}</p>
+            {!isVideo && printLine(currentPhoto) && <p className="viewer-sub">{printLine(currentPhoto)}</p>}
+            {!isVideo && !isVaultItem && (
+              <button type="button" className="viewer-text-btn" onClick={() => handleDownload("studio_print")}>
+                <Printer size={13} /> Download print-ready copy
+              </button>
+            )}
+            {isVideo && chip?.label !== "4K" && !isVaultItem && (
+              <button type="button" className="viewer-text-btn" disabled={isEnhancing4K} onClick={handleEnhanceVideo}>
+                {isEnhancing4K ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
+                {isEnhancing4K ? "Enhancing to 4K…" : "Enhance to 4K"}
+              </button>
+            )}
+          </DetailSection>
+
+          <DetailSection label="File">
+            <p className="viewer-value viewer-break">{currentPhoto.filename}</p>
+            <button type="button" className="viewer-text-btn" onClick={copyStoragePath} title={currentPhoto.filepath}>
+              {isCopied ? <Check size={13} /> : <Copy size={13} />}
+              {isCopied ? "Location copied" : "Copy file location"}
+            </button>
+          </DetailSection>
+
+          {importedDate && (
+            <DetailSection label="Imported">
+              <p className="viewer-value">{formatDay(importedDate)}</p>
+              <p className="viewer-sub">{context?.copied_into_library ? "Copied into your library" : "Kept in its original folder"}</p>
+            </DetailSection>
+          )}
+
+          {context && context.people.length > 0 && (
+            <DetailSection label="People">
+              <div className="viewer-faces">
+                {context.people.map((person) => (
+                  <button key={person.id} type="button" className="viewer-face" onClick={() => openInSection("people", person.name)} title={`See all photos of ${person.name}`}>
+                    {person.face_id ? (
+                      <img src={getApiUrl(`/api/people/faces/${person.face_id}/crop`)} alt="" loading="lazy" />
+                    ) : (
+                      <span className="viewer-face-initial">{person.name.charAt(0).toUpperCase()}</span>
+                    )}
+                    <span>{person.name}</span>
+                  </button>
+                ))}
+              </div>
+            </DetailSection>
+          )}
+
+          {context && context.albums.length > 0 && (
+            <DetailSection label="Albums">
+              <div className="viewer-albums">
+                {context.albums.map((album) => (
+                  <button key={album.id} type="button" className="viewer-album" onClick={() => openInSection("albums", album.name)}>
+                    {album.name}
+                  </button>
+                ))}
+              </div>
+            </DetailSection>
+          )}
+        </aside>
+      )}
     </div>
   );
 };
