@@ -639,9 +639,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
             className="clickable"
             title={currentPhoto.is_encrypted ? "Restore to Public Library (L)" : "Move to Encrypted Vault (L)"}
             style={{
-              background: currentPhoto.is_encrypted ? "rgba(59, 130, 246, 0.15)" : "var(--glass-pill-bg)",
+              background: currentPhoto.is_encrypted ? "color-mix(in srgb, var(--accent-ink) 15%, transparent)" : "var(--glass-pill-bg)",
               borderRadius: "var(--radius-full)",
-              border: currentPhoto.is_encrypted ? "1px solid rgba(59, 130, 246, 0.4)" : "1px solid var(--glass-pill-border)",
+              border: currentPhoto.is_encrypted ? "1px solid color-mix(in srgb, var(--accent-ink) 40%, transparent)" : "1px solid var(--glass-pill-border)",
               color: currentPhoto.is_encrypted ? "var(--accent-primary)" : "var(--text-primary)",
               padding: "4px 10px",
               display: "flex",
@@ -684,9 +684,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
               className="clickable"
               title="Download print-ready photo for studio printing, posters, and framing"
               style={{
-                background: "rgba(59, 130, 246, 0.12)",
+                background: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
                 borderRadius: "var(--radius-full)",
-                border: "1px solid rgba(59, 130, 246, 0.35)",
+                border: "1px solid color-mix(in srgb, var(--accent-ink) 35%, transparent)",
                 color: "var(--accent-primary)",
                 padding: "4px 12px",
                 display: "flex",
@@ -732,9 +732,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
             onClick={() => setShowInfo(!showInfo)}
             className="clickable"
             style={{
-              background: showInfo ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+              background: showInfo ? "var(--accent-fill)" : "var(--glass-pill-bg)",
               border: showInfo ? "1px solid var(--accent-primary)" : "1px solid var(--glass-pill-border)",
-              color: showInfo ? "#ffffff" : "var(--text-primary)",
+              color: showInfo ? "var(--on-accent)" : "var(--text-primary)",
               padding: "5px 10px",
               borderRadius: "var(--radius-full)",
               display: "flex",
@@ -932,14 +932,14 @@ export const Lightbox: React.FC<LightboxProps> = ({
                     width: "68px",
                     height: "68px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(59, 130, 246, 0.12)",
-                    border: "1px solid rgba(59, 130, 246, 0.3)",
+                    backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--accent-ink) 30%, transparent)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     marginBottom: "20px",
                     color: "var(--accent-primary)",
-                    boxShadow: "0 0 20px rgba(59, 130, 246, 0.2)",
+                    boxShadow: "0 0 20px color-mix(in srgb, var(--accent-ink) 20%, transparent)",
                   }}
                 >
                   <Lock size={32} />
@@ -987,16 +987,16 @@ export const Lightbox: React.FC<LightboxProps> = ({
                     style={{
                       padding: "10px 22px",
                       borderRadius: "var(--radius-full)",
-                      backgroundColor: "var(--accent-primary)",
+                      backgroundColor: "var(--accent-fill)",
                       border: "none",
-                      color: "#ffffff",
+                      color: "var(--on-accent)",
                       fontSize: "13px",
                       fontWeight: 700,
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
                       gap: "7px",
-                      boxShadow: "0 4px 14px rgba(59, 130, 246, 0.4)",
+                      boxShadow: "0 4px 14px color-mix(in srgb, var(--accent-ink) 40%, transparent)",
                     }}
                   >
                     <Unlock size={15} />
@@ -1235,10 +1235,10 @@ export const Lightbox: React.FC<LightboxProps> = ({
                             padding: "3px 8px",
                             borderRadius: "var(--radius-full)",
                             backgroundColor: isActive
-                              ? (preset.value > 100 ? "rgba(251, 191, 36, 0.2)" : "rgba(59, 130, 246, 0.2)")
+                              ? (preset.value > 100 ? "rgba(251, 191, 36, 0.2)" : "color-mix(in srgb, var(--accent-ink) 20%, transparent)")
                               : "var(--glass-pill-bg)",
                             border: isActive
-                              ? (preset.value > 100 ? "1px solid rgba(251, 191, 36, 0.5)" : "1px solid rgba(59, 130, 246, 0.5)")
+                              ? (preset.value > 100 ? "1px solid rgba(251, 191, 36, 0.5)" : "1px solid color-mix(in srgb, var(--accent-ink) 50%, transparent)")
                               : "1px solid var(--glass-border)",
                             color: isActive
                               ? (preset.value > 100 ? "#fbbf24" : "var(--accent-primary)")
@@ -1362,13 +1362,13 @@ export const Lightbox: React.FC<LightboxProps> = ({
                     marginTop: "10px",
                     padding: "7px 18px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "var(--accent-primary)",
+                    backgroundColor: "var(--accent-fill)",
                     border: "none",
-                    color: "#ffffff",
+                    color: "var(--on-accent)",
                     fontSize: "12px",
                     fontWeight: 600,
                     cursor: "pointer",
-                    boxShadow: "0 2px 10px rgba(99, 102, 241, 0.3)",
+                    boxShadow: "0 2px 10px color-mix(in srgb, var(--accent-ink) 30%, transparent)",
                   }}
                 >
                   Retry Playback
@@ -1629,9 +1629,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
                           fontWeight: 700, 
                           padding: "2px 6px", 
                           borderRadius: "var(--radius-xs)",
-                          backgroundColor: isPosterReady ? "rgba(16, 185, 129, 0.15)" : isMediumReady ? "rgba(59, 130, 246, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                          backgroundColor: isPosterReady ? "rgba(16, 185, 129, 0.15)" : isMediumReady ? "color-mix(in srgb, var(--accent-ink) 15%, transparent)" : "rgba(245, 158, 11, 0.15)",
                           color: isPosterReady ? "var(--accent-success)" : isMediumReady ? "var(--accent-primary)" : "var(--accent-warning)",
-                          border: `1px solid ${isPosterReady ? "rgba(16, 185, 129, 0.4)" : isMediumReady ? "rgba(59, 130, 246, 0.4)" : "rgba(245, 158, 11, 0.4)"}`
+                          border: `1px solid ${isPosterReady ? "rgba(16, 185, 129, 0.4)" : isMediumReady ? "color-mix(in srgb, var(--accent-ink) 40%, transparent)" : "rgba(245, 158, 11, 0.4)"}`
                         }}>
                           {isPosterReady ? "✓ Studio Poster Ready" : isMediumReady ? "✓ Studio Photo Ready" : "Desk Print Ready"}
                         </span>
@@ -1672,9 +1672,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
                           gap: "6px",
                           padding: "7px 10px",
                           borderRadius: "var(--radius-xs)",
-                          backgroundColor: "var(--accent-primary)",
+                          backgroundColor: "var(--accent-fill)",
                           border: "none",
-                          color: "#ffffff",
+                          color: "var(--on-accent)",
                           fontSize: "11px",
                           fontWeight: 600,
                           cursor: "pointer",
@@ -1722,11 +1722,11 @@ export const Lightbox: React.FC<LightboxProps> = ({
                           borderRadius: "var(--radius-xs)",
                           backgroundColor: isEnhanced 
                             ? "rgba(251, 191, 36, 0.15)" 
-                            : "rgba(59, 130, 246, 0.15)",
+                            : "color-mix(in srgb, var(--accent-ink) 15%, transparent)",
                           color: isEnhanced 
                             ? "#fbbf24" 
                             : "var(--accent-primary)",
-                          border: `1px solid ${isEnhanced ? "rgba(251, 191, 36, 0.4)" : "rgba(59, 130, 246, 0.4)"}`,
+                          border: `1px solid ${isEnhanced ? "rgba(251, 191, 36, 0.4)" : "color-mix(in srgb, var(--accent-ink) 40%, transparent)"}`,
                           display: "inline-flex",
                           alignItems: "center",
                           gap: "3px"
@@ -1848,9 +1848,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
                           gap: "6px",
                           padding: "7px 10px",
                           borderRadius: "var(--radius-xs)",
-                          backgroundColor: isEnhanced ? "#d97706" : "var(--accent-primary)",
+                          backgroundColor: isEnhanced ? "#d97706" : "var(--accent-fill)",
                           border: "none",
-                          color: "#ffffff",
+                          color: "var(--on-accent)",
                           fontSize: "11px",
                           fontWeight: 600,
                           cursor: "pointer",

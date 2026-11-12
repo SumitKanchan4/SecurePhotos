@@ -49,6 +49,7 @@ This document serves as the **central, living source of truth** for all function
 120. [Engineering Checklists; Skills and Docs Match the Code](#120-engineering-checklists-skills-and-docs-match-the-code)
 121. [Dead 24-Word Recovery Mode Removed From the Vault Unlock Screens](#121-dead-24-word-recovery-mode-removed-from-the-vault-unlock-screens)
 122. [Frontend Unit Tests (Vitest) in the Quality Gate](#122-frontend-unit-tests-vitest-in-the-quality-gate)
+123. [Redesign Step 0: Mono + Acid Lime Tokens, Archivo, New App Icon](#123-redesign-step-0-mono--acid-lime-tokens-archivo-new-app-icon)
 
 ---
 
@@ -5486,3 +5487,22 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `package.json` (`test` script; dev dependencies vitest 4.1.12, jsdom 26.1.0, @testing-library/react 16.3.3, @testing-library/dom 10.4.1, @testing-library/jest-dom 6.9.1, @testing-library/user-event 14.6.1), `package-lock.json`, `vite.config.ts` (`test` block), `scripts/run-vitest.mjs`, `src/test/setup.ts`.
 - Tests: `src/services/api.test.ts` (7), `src/store/useAppStore.test.ts` (4). Mutation checks: dropping the session cookie, dropping the token header, or letting a toast timer hide a newer toast each make tests fail.
 - `.github/workflows/quality.yml` and `pipeline.yml` (`npm test`), `.agents/rules/engineering-checklists.md` §7, `docs/development.md`.
+
+---
+
+## 123. Redesign Step 0: Mono + Acid Lime Tokens, Archivo, New App Icon
+
+### Functionality Overview
+- First step of the frontend redesign (owner decisions on the concept board, 2026-11-12: colour direction "F · Mono + Neon" with acid lime, icon-rail + photo-first layout, 3D icon "C · Frosted glass, photos + lens"). Board: https://claude.ai/artifact/XsadhwxNhBkakuUzyR8wPU.
+- The whole app switches to black/white/grey with a single acid-lime accent, Archivo headings and the new app icon, before any layout changes. Layouts change in later steps.
+
+### Functional Decision Points & Rationale
+- **Accent roles**: lime is unreadable as text on light backgrounds and white text on lime fails contrast, so the accent is split into `--accent-fill` (lime, both themes), `--on-accent` (black, on the fill) and `--accent-ink` (accent as text/icon: lime in dark, near-black in light). `--accent-primary` now points at `--accent-ink`. 83 accent backgrounds became the lime fill and 72 white text colours in the same style objects became black (one check-mark icon fixed by hand); 154 blue tints became `color-mix(in srgb, var(--accent-ink) N%, transparent)`; 23 solid blue text/border uses became `--accent-ink`; 2 blue gradients became the solid fill. Album placeholder gradients and a faint glow on the printed emergency card stay until their screens are redesigned.
+- **Viewer surround**: dark in both themes (approved viewer design).
+- **Fonts**: Archivo (OFL-1.1, bundled offline) replaces Plus Jakarta Sans for headings, including the 12 places that named the old font directly and the emergency-card renderer (recovery reads the PNG text chunk, not the drawn text). Plus Jakarta Sans removed.
+- **App icon**: `src/assets/brand/app-icon.svg` (full, 48 px and up) and `app-icon-small.svg` (simplified, 32 px and below); `scripts/render_app_icons.py` renders `src-tauri/icons/*` including a multi-size `icon.ico` with the simplified art at 16/24/32. Title bar and favicon use the small mark; the old 3D render files were removed.
+- **Branching**: the redesign lands on the long-lived `feature/redesign` branch; master keeps today's app until the whole redesign is done (owner decision). The quality check also runs on pull requests into `feature/redesign`.
+
+### Technical Touchpoints
+- `src/index.css` (tokens), 33 component files (accent roles, blue literals, display font), `src/main.tsx` (Archivo), `src/utils/gridCardRenderer.ts` (font), `src/components/TitleBar.tsx`, `index.html`, `src/assets/brand/*`, `src-tauri/icons/*`, `scripts/render_app_icons.py`, `package.json` (+ `@fontsource/archivo`, - `@fontsource/plus-jakarta-sans`), `THIRD_PARTY_NOTICES.md`, `.github/workflows/quality.yml`.
+- Checks: `tsc` and build pass, 11 frontend + 229 Python tests pass, ruff clean, npm audit 0. Playwright on a throwaway library: all 8 screens and the import window in dark and light, with an automatic scan for light text on lime fills and lime text in the light theme: no problems found; no console errors.

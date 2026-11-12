@@ -814,9 +814,9 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     width: "28px",
                     height: "28px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "var(--accent-primary)",
+                    backgroundColor: "var(--accent-fill)",
                     border: "none",
-                    color: "#ffffff",
+                    color: "var(--on-accent)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -886,7 +886,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   {isCollages && (
                     <Sparkles
                       size={20}
-                      color="var(--accent-primary, #38bdf8)"
+                      color="var(--accent-primary)"
                       style={{ filter: "drop-shadow(0 0 8px rgba(56, 189, 248, 0.5))", flexShrink: 0 }}
                     />
                   )}
@@ -1040,7 +1040,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   borderRadius: "var(--radius-full)",
                   backgroundColor: "rgba(56, 189, 248, 0.12)",
                   border: "1px solid rgba(56, 189, 248, 0.25)",
-                  color: "var(--accent-primary, #38bdf8)",
+                  color: "var(--accent-primary)",
                   fontSize: "11px",
                   fontWeight: 600,
                   letterSpacing: "0.02em",
@@ -1061,11 +1061,11 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     width: "36px",
                     height: "36px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "var(--accent-primary)",
+                    backgroundColor: "var(--accent-fill)",
                     border: "none",
-                    color: "#ffffff",
+                    color: "var(--on-accent)",
                     cursor: "pointer",
-                    boxShadow: "0 2px 8px rgba(99, 102, 241, 0.25)",
+                    boxShadow: "0 2px 8px color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                     transition: "all 0.15s ease",
                     flexShrink: 0,
                   }}
@@ -1139,7 +1139,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                 style={{
                   width: `${importProgress.total_count > 0 ? Math.round((importProgress.completed_count / importProgress.total_count) * 100) : 0}%`,
                   height: "100%",
-                  backgroundColor: "var(--accent-primary)",
+                  backgroundColor: "var(--accent-fill)",
                   borderRadius: "var(--radius-full)",
                   transition: "width 0.2s ease",
                 }}
@@ -1206,9 +1206,9 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     gap: "6px",
                     padding: "9px 20px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "var(--accent-primary)",
+                    backgroundColor: "var(--accent-fill)",
                     border: "none",
-                    color: "#ffffff",
+                    color: "var(--on-accent)",
                     fontSize: "13px",
                     fontWeight: 600,
                     cursor: "pointer",
@@ -1279,7 +1279,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
-                              background: "linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(59, 130, 246, 0.2))",
+                              background: "linear-gradient(135deg, rgba(168, 85, 247, 0.2), color-mix(in srgb, var(--accent-ink) 20%, transparent))",
                             }}
                           >
                             <Film size={36} color="var(--text-muted)" />
@@ -1453,7 +1453,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                       marginBottom: "16px",
                     }}
                   >
-                    <Sparkles size={32} style={{ color: "var(--accent-primary, #38bdf8)" }} />
+                    <Sparkles size={32} style={{ color: "var(--accent-primary)" }} />
                   </div>
                   <h3 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0" }}>
                     No Collages Created Yet
@@ -1478,9 +1478,9 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                       gap: "6px",
                       padding: "9px 20px",
                       borderRadius: "var(--radius-full)",
-                      backgroundColor: "var(--accent-primary)",
+                      backgroundColor: "var(--accent-fill)",
                       border: "none",
-                      color: "#ffffff",
+                      color: "var(--on-accent)",
                       fontSize: "13px",
                       fontWeight: 600,
                       cursor: "pointer",
@@ -1524,13 +1524,13 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                       gap: "6px",
                       padding: "9px 20px",
                       borderRadius: "var(--radius-full)",
-                      backgroundColor: "var(--accent-primary)",
+                      backgroundColor: "var(--accent-fill)",
                       border: "none",
-                      color: "#ffffff",
+                      color: "var(--on-accent)",
                       fontSize: "13px",
                       fontWeight: 600,
                       cursor: "pointer",
-                      boxShadow: "0 2px 10px rgba(99, 102, 241, 0.3)",
+                      boxShadow: "0 2px 10px color-mix(in srgb, var(--accent-ink) 30%, transparent)",
                       transition: "all 0.15s ease",
                     }}
                   >
@@ -1603,12 +1603,12 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                         width: "18px",
                         height: "18px",
                         borderRadius: "var(--radius-xs, 4px)",
-                        backgroundColor: isSelected ? "var(--accent-primary)" : "rgba(0, 0, 0, 0.45)",
+                        backgroundColor: isSelected ? "var(--accent-fill)" : "rgba(0, 0, 0, 0.45)",
                         border: isSelected ? "none" : "1px solid rgba(255, 255, 255, 0.5)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        color: "#ffffff",
+                        color: "var(--on-accent)",
                         zIndex: 3,
                         opacity: isSelected || isHovered ? 1 : 0.35,
                         transition: "opacity 0.15s ease, background-color 0.15s ease",
@@ -1951,13 +1951,13 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        boxShadow: "0 0 24px rgba(59, 130, 246, 0.25)",
+                        boxShadow: "0 0 24px color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                       }}
                     >
                       <Loader2
                         size={28}
                         className="animate-spin"
-                        style={{ color: "var(--accent-primary, #3b82f6)" }}
+                        style={{ color: "var(--accent-primary, var(--accent-ink))" }}
                       />
                     </div>
 
@@ -2002,7 +2002,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                           position: "absolute",
                           inset: 0,
                           width: "50%",
-                          background: "linear-gradient(90deg, transparent, var(--accent-primary, #3b82f6), transparent)",
+                          background: "var(--accent-fill), transparent)",
                           borderRadius: "var(--radius-full)",
                         }}
                       />
@@ -2061,14 +2061,14 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                               width: "20px",
                               height: "20px",
                               borderRadius: "50%",
-                              backgroundColor: isSelected ? "var(--accent-primary)" : "rgba(0, 0, 0, 0.5)",
+                              backgroundColor: isSelected ? "var(--accent-fill)" : "rgba(0, 0, 0, 0.5)",
                               border: "1px solid #ffffff",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
                             }}
                           >
-                            {isSelected && <Check size={12} color="#ffffff" strokeWidth={3} />}
+                            {isSelected && <Check size={12} color="#0a0a0a" strokeWidth={3} />}
                           </div>
                         </div>
                       );
@@ -2120,9 +2120,9 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     gap: "6px",
                     padding: "8px 20px",
                     borderRadius: "var(--radius-sm)",
-                    backgroundColor: "var(--accent-primary)",
+                    backgroundColor: "var(--accent-fill)",
                     border: "none",
-                    color: "#ffffff",
+                    color: "var(--on-accent)",
                     fontSize: "12px",
                     fontWeight: 600,
                     opacity: pickerSelectedIds.size === 0 || isAddingPhotos ? 0.5 : 1,
@@ -2174,9 +2174,9 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               borderRadius: "var(--radius-full)",
               fontSize: "12px",
               fontWeight: 700,
-              backgroundColor: "rgba(59, 130, 246, 0.15)",
+              backgroundColor: "color-mix(in srgb, var(--accent-ink) 15%, transparent)",
               color: "var(--accent-primary)",
-              border: "1px solid rgba(59, 130, 246, 0.3)",
+              border: "1px solid color-mix(in srgb, var(--accent-ink) 30%, transparent)",
               fontFamily: "var(--font-mono)",
               whiteSpace: "nowrap",
               flexShrink: 0,
@@ -2365,8 +2365,8 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                 gap: "6px",
                 padding: "6px 14px",
                 borderRadius: "var(--radius-full)",
-                backgroundColor: "rgba(59, 130, 246, 0.15)",
-                border: "1px solid rgba(59, 130, 246, 0.35)",
+                backgroundColor: "color-mix(in srgb, var(--accent-ink) 15%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--accent-ink) 35%, transparent)",
                 color: "var(--accent-primary)",
                 fontSize: "12px",
                 fontWeight: 600,
@@ -2515,9 +2515,9 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               borderRadius: "var(--radius-full)",
               fontSize: "11px",
               fontWeight: 600,
-              backgroundColor: "rgba(59, 130, 246, 0.12)",
+              backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
               color: "var(--accent-primary)",
-              border: "1px solid rgba(59, 130, 246, 0.25)",
+              border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
             }}
           >
             <FolderHeart size={12} style={{ color: "var(--accent-primary)" }} />
@@ -2525,7 +2525,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
           </span>
         </div>
 
-        {/* Center Column (flex: 0 1 auto): 22px Plus Jakarta Sans Title + Baseline Capsule */}
+        {/* Center Column (flex: 0 1 auto): 22px display-font title + Baseline Capsule */}
         <div 
           style={{ 
             flex: "0 1 auto", 
@@ -2542,7 +2542,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               letterSpacing: "-0.03em", 
               margin: 0,
               color: "var(--text-primary)",
-              fontFamily: "Plus Jakarta Sans, sans-serif"
+              fontFamily: "var(--font-display)"
             }}
           >
             Albums
@@ -2577,13 +2577,13 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               gap: "6px",
               padding: "6px 16px",
               borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--accent-primary)",
-              color: "#ffffff",
+              backgroundColor: "var(--accent-fill)",
+              color: "var(--on-accent)",
               fontSize: "12px",
               fontWeight: 700,
               border: "none",
               cursor: "pointer",
-              boxShadow: "0 2px 10px rgba(59, 130, 246, 0.3)",
+              boxShadow: "0 2px 10px color-mix(in srgb, var(--accent-ink) 30%, transparent)",
               transition: "all 0.15s ease",
             }}
           >
@@ -2651,9 +2651,9 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
             style={{
               padding: "8px 16px",
               borderRadius: "var(--radius-sm)",
-              backgroundColor: "var(--accent-primary)",
+              backgroundColor: "var(--accent-fill)",
               border: "none",
-              color: "#ffffff",
+              color: "var(--on-accent)",
               fontSize: "12px",
               fontWeight: 600,
               opacity: !newAlbumName.trim() ? 0.6 : 1,
@@ -2823,7 +2823,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.transform = "translateY(-2px)";
-                      e.currentTarget.style.borderColor = "var(--accent-primary, #38bdf8)";
+                      e.currentTarget.style.borderColor = "var(--accent-primary)";
                       e.currentTarget.style.boxShadow = "0 8px 24px rgba(56, 189, 248, 0.25)";
                     }}
                     onMouseLeave={(e) => {
@@ -2906,7 +2906,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                         <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
                           {collagesAlbum?.photo_count || 0} {(collagesAlbum?.photo_count || 0) === 1 ? "collage" : "collages"}
                         </span>
-                        <span style={{ fontSize: "10px", color: "var(--accent-primary, #38bdf8)", fontWeight: 600 }}>
+                        <span style={{ fontSize: "10px", color: "var(--accent-primary)", fontWeight: 600 }}>
                           Smart Collection
                         </span>
                       </div>
@@ -2952,7 +2952,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                           savedStories[0]?.cover_photo_id &&
                           !failedCoverIds.has(savedStories[0].cover_photo_id)
                             ? "var(--bg-surface-elevated)"
-                            : "linear-gradient(135deg, rgba(168, 85, 247, 0.25) 0%, rgba(59, 130, 246, 0.2) 100%)",
+                            : "linear-gradient(135deg, rgba(168, 85, 247, 0.25) 0%, color-mix(in srgb, var(--accent-ink) 20%, transparent) 100%)",
                       }}
                     >
                       {savedStories.length > 0 &&
@@ -3170,7 +3170,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                                     style={{
                                       fontSize: "20px",
                                       fontWeight: 800,
-                                      fontFamily: "var(--font-display, Plus Jakarta Sans, sans-serif)",
+                                      fontFamily: "var(--font-display)",
                                       color: "#ffffff",
                                       textShadow: "0 2px 8px rgba(0, 0, 0, 0.5)",
                                     }}
@@ -3200,7 +3200,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                                 <span
                                   title="Encrypted Vault Album"
                                   style={{
-                                    backgroundColor: "rgba(59, 130, 246, 0.9)",
+                                    backgroundColor: "color-mix(in srgb, var(--accent-ink) 90%, transparent)",
                                     color: "#ffffff",
                                     padding: "3px 6px",
                                     borderRadius: "var(--radius-xs)",

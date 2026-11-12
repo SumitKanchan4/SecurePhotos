@@ -21,7 +21,7 @@ import {
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAppStore } from "../store/useAppStore";
 import { SearchResponse, SearchPhotoItem, SearchAlbumItem, SearchPersonItem } from "../types";
-import appIcon3d from "../assets/securephotos_3d_icon.webp";
+import appIcon from "../assets/brand/app-icon-small.svg";
 import { apiFetch, getApiUrl } from "../services/api";
 
 interface TitleBarProps {
@@ -202,15 +202,11 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
       {/* Brand & App Title */}
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }} data-tauri-drag-region>
         <img 
-          src={appIcon3d} 
-          alt="SecurePhotos Logo" 
+          src={appIcon}
+          alt="SecurePhotos Logo"
           style={{
             width: "28px",
             height: "28px",
-            borderRadius: "7px",
-            objectFit: "cover",
-            boxShadow: "0 2px 10px rgba(59, 130, 246, 0.4)",
-            border: "1px solid rgba(255, 255, 255, 0.15)",
             flexShrink: 0,
           }} 
         />
@@ -260,7 +256,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
               : "1px solid var(--glass-pill-border)",
             padding: "4px 12px",
             gap: "8px",
-            boxShadow: isFlyoutOpen ? "0 0 0 2px rgba(59, 130, 246, 0.2)" : "none",
+            boxShadow: isFlyoutOpen ? "0 0 0 2px color-mix(in srgb, var(--accent-ink) 20%, transparent)" : "none",
             transition: "all 0.15s ease",
           }}
         >
@@ -419,7 +415,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
                       fontWeight: 600,
                     }}
                   >
-                    <Film size={12} style={{ color: "#3b82f6" }} />
+                    <Film size={12} style={{ color: "var(--accent-ink)" }} />
                     <span>Videos</span>
                   </button>
 

@@ -268,7 +268,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
       case "receipt":
         return <Receipt size={17} style={{ color: "#10b981" }} />;
       case "identity":
-        return <CreditCard size={17} style={{ color: "#3b82f6" }} />;
+        return <CreditCard size={17} style={{ color: "var(--accent-ink)" }} />;
       case "tax":
         return <FileCheck2 size={17} style={{ color: "#8b5cf6" }} />;
       case "medical":
@@ -350,13 +350,13 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
               gap: "6px",
               padding: "6px 14px",
               borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--accent-primary)",
-              color: "#ffffff",
+              backgroundColor: "var(--accent-fill)",
+              color: "var(--on-accent)",
               fontSize: "12px",
               fontWeight: 600,
               border: "none",
               cursor: isImporting ? "wait" : "pointer",
-              boxShadow: "0 2px 8px rgba(59, 130, 246, 0.25)",
+              boxShadow: "0 2px 8px color-mix(in srgb, var(--accent-ink) 25%, transparent)",
               flexShrink: 0,
               transition: "transform 0.15s ease",
             }}
@@ -401,7 +401,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
             style={{
               fontSize: "22px",
               fontWeight: 800,
-              fontFamily: "Plus Jakarta Sans, sans-serif",
+              fontFamily: "var(--font-display)",
               letterSpacing: "-0.03em",
               color: "var(--text-primary)",
               margin: 0,
@@ -551,7 +551,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
                 width: "56px",
                 height: "56px",
                 borderRadius: "var(--radius-full)",
-                backgroundColor: "rgba(59, 130, 246, 0.1)",
+                backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -578,13 +578,13 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
                   gap: "8px",
                   padding: "8px 18px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: "var(--accent-primary)",
-                  color: "#ffffff",
+                  backgroundColor: "var(--accent-fill)",
+                  color: "var(--on-accent)",
                   fontSize: "13px",
                   fontWeight: 600,
                   border: "none",
                   cursor: isImporting ? "wait" : "pointer",
-                  boxShadow: "0 4px 12px rgba(59, 130, 246, 0.3)",
+                  boxShadow: "0 4px 12px color-mix(in srgb, var(--accent-ink) 30%, transparent)",
                 }}
               >
                 {isImporting ? <Loader2 size={14} className="spin" /> : <Plus size={14} />}

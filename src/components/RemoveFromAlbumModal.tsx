@@ -114,7 +114,7 @@ export const RemoveFromAlbumModal: React.FC<RemoveFromAlbumModalProps> = ({
                 width: "36px",
                 height: "36px",
                 borderRadius: "var(--radius-sm)",
-                backgroundColor: "rgba(59, 130, 246, 0.15)",
+                backgroundColor: "color-mix(in srgb, var(--accent-ink) 15%, transparent)",
                 color: "var(--accent-primary)",
                 display: "flex",
                 alignItems: "center",

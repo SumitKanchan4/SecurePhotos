@@ -92,7 +92,7 @@ export const AISettings: React.FC<AISettingsProps> = ({
                     width: "36px",
                     height: "36px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(59, 130, 246, 0.12)",
+                    backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",

@@ -1594,8 +1594,8 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                               marginTop: "4px",
                               padding: "6px 12px",
                               borderRadius: "var(--radius-sm)",
-                              backgroundColor: "var(--accent-primary)",
-                              color: "#ffffff",
+                              backgroundColor: "var(--accent-fill)",
+                              color: "var(--on-accent)",
                               border: "none",
                               fontSize: "12px",
                               fontWeight: 600,
@@ -2019,7 +2019,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
               </span>
             </div>
 
-            {/* Center Column (flex: 0 1 auto): 22px Plus Jakarta Sans Title + Baseline Capsule */}
+            {/* Center Column (flex: 0 1 auto): 22px display-font title + Baseline Capsule */}
             <div 
               style={{ 
                 flex: "0 1 auto", 
@@ -2036,7 +2036,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                   letterSpacing: "-0.03em", 
                   margin: 0,
                   color: "var(--text-primary)",
-                  fontFamily: "Plus Jakarta Sans, sans-serif",
+                  fontFamily: "var(--font-display)",
                   whiteSpace: "nowrap",
                 }}
               >
@@ -2113,15 +2113,15 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                   gap: "7px",
                   padding: "6px 16px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: scanStatus.is_scanning ? "var(--glass-pill-bg)" : "var(--accent-primary)",
+                  backgroundColor: scanStatus.is_scanning ? "var(--glass-pill-bg)" : "var(--accent-fill)",
                   border: "1px solid var(--glass-border)",
-                  color: scanStatus.is_scanning ? "var(--text-secondary)" : "#ffffff",
+                  color: scanStatus.is_scanning ? "var(--text-secondary)" : "var(--on-accent)",
                   fontSize: "12px",
                   fontWeight: 600,
                   opacity: scanStatus.is_scanning ? 0.7 : 1,
                   cursor: scanStatus.is_scanning ? "default" : "pointer",
                   transition: "all 0.2s ease",
-                  boxShadow: scanStatus.is_scanning ? "none" : "0 2px 8px rgba(59, 130, 246, 0.35)",
+                  boxShadow: scanStatus.is_scanning ? "none" : "0 2px 8px color-mix(in srgb, var(--accent-ink) 35%, transparent)",
                 }}
               >
                 <RefreshCw size={13} className={scanStatus.is_scanning ? "spinning" : ""} />
@@ -2176,7 +2176,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                   style={{
                     height: "100%",
                     width: `${scanStatus.total_photos > 0 ? (scanStatus.scanned_photos / scanStatus.total_photos) * 100 : 0}%`,
-                    backgroundColor: "var(--accent-primary)",
+                    backgroundColor: "var(--accent-fill)",
                     transition: "width 0.3s ease",
                   }}
                 />
@@ -2315,7 +2315,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.transform = "scale(1.08)";
-                        e.currentTarget.style.boxShadow = "0 4px 12px rgba(59, 130, 246, 0.35)";
+                        e.currentTarget.style.boxShadow = "0 4px 12px color-mix(in srgb, var(--accent-ink) 35%, transparent)";
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.transform = "scale(1)";
@@ -2713,9 +2713,9 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                               gap: "8px",
                               padding: "9px 16px",
                               borderRadius: "var(--radius-sm)",
-                              backgroundColor: currentName.trim() ? "var(--accent-primary)" : "var(--bg-surface-elevated)",
+                              backgroundColor: currentName.trim() ? "var(--accent-fill)" : "var(--bg-surface-elevated)",
                               border: "none",
-                              color: currentName.trim() ? "#ffffff" : "var(--text-muted)",
+                              color: currentName.trim() ? "var(--on-accent)" : "var(--text-muted)",
                               fontSize: "12px",
                               fontWeight: 600,
                               cursor: currentName.trim() && !isSubmitting ? "pointer" : "default",
@@ -3096,9 +3096,9 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                 style={{
                   padding: "6px 18px",
                   borderRadius: "var(--radius-sm)",
-                  backgroundColor: "var(--accent-primary)",
+                  backgroundColor: "var(--accent-fill)",
                   border: "none",
-                  color: "#ffffff",
+                  color: "var(--on-accent)",
                   fontSize: "12px",
                   fontWeight: 600,
                   cursor: "pointer",
@@ -3286,9 +3286,9 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                 style={{
                   padding: "6px 16px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: "var(--accent-primary)",
+                  backgroundColor: "var(--accent-fill)",
                   border: "none",
-                  color: "#ffffff",
+                  color: "var(--on-accent)",
                   fontSize: "12px",
                   fontWeight: 600,
                   cursor: "pointer",
