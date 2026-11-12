@@ -198,7 +198,8 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 
 ## Planned features
 
-### V1 · Vault unlock still offers a "24-word recovery phrase" — `todo` (found in Q1)
+### V1 · Vault unlock still offers a "24-word recovery phrase" — `done` (merged 2026-11-12, PR #11, history §121; owner: remove it)
+- **Finding:** the mode was unreachable (nothing switched to it); only the "no vault yet" message showed the old wording.
 - `VaultView.tsx` (Mode 3, ~line 1299) and `VaultUnlockModal.tsx` (~line 574) offer "Enter your 24-word recovery phrase", and the wizard header comment still describes a 24-word step. Since C3, setup creates an emergency card (card file or 16 numbers) instead, and "Forgot your password? Use your Emergency Card" already covers recovery. Decide: remove the 24-word mode, or relabel it as "card code". Backend `/unlock` still accepts `recovery_phrase` (needed only for vaults created before C3; nobody has one).
 
 ### P12 · Windows Hello quick unlock — `todo`
