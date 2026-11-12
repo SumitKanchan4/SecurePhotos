@@ -4,9 +4,8 @@ This router manages facial recognition identities, representative medoid cluster
 live scanning workflows, and the 'Name Once, Tag 1,000 Photos' clustering interface.
 """
 
-from pathlib import Path
-from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Query, status
+from typing import Any, List, Optional
+from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -16,7 +15,6 @@ from engine.services.face_recognition_service import get_face_thumbnails_dir
 from engine.services.face_scan_worker import (
     get_scan_status,
     reset_scan_state,
-    run_background_face_scan,
     start_background_scan,
 )
 

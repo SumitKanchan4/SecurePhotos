@@ -1,0 +1,8 @@
+# Python linting for the engine (backlog Q2). Error-level rules only: pyflakes (F)
+# catches undefined names, unused imports/variables and similar real defects;
+# E9 catches syntax/IO errors. Style rules can be added later.
+target-version = "py312"
+extend-exclude = [".venv", "node_modules", "dist", "src-tauri/target", "data"]
+
+[lint]
+select = ["E9", "F"]

@@ -5,7 +5,6 @@ dependencies into a single standalone binary inside `src-tauri/binaries/` named
 according to the host target triple (e.g. `securephotos-engine-x86_64-pc-windows-msvc.exe`).
 """
 
-import os
 import platform
 import shutil
 import subprocess
@@ -147,7 +146,7 @@ def build_engine():
         sys.exit(1)
 
     size_mb = target_exe.stat().st_size / (1024 * 1024)
-    print(f"[+] Engine Sidecar compiled successfully!")
+    print("[+] Engine Sidecar compiled successfully!")
     print(f"[+] File: {target_exe} ({size_mb:.2f} MB)")
 
     # On Windows, mirror to both gnu and msvc triples for seamless cross-PC compatibility

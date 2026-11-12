@@ -6,9 +6,9 @@ and custom audio soundtrack management with automatic mood tagging.
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse, StreamingResponse
+from typing import List, Optional
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from engine.database import get_db_connection
@@ -16,7 +16,6 @@ from engine.services.music_service import (
     MusicTrack,
     delete_track,
     get_track_by_id,
-    get_track_for_mood,
     scan_music_library,
     save_uploaded_music,
     update_track_mood,

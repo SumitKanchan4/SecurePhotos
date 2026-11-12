@@ -4,8 +4,7 @@ This module provides bidirectional health checking for the Tauri desktop shell,
 reporting database connectivity, active volume status, and engine readiness.
 """
 
-from typing import Dict, Any
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, status
 from pydantic import BaseModel
 
 from engine.config import settings

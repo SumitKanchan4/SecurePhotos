@@ -13,7 +13,6 @@ from engine.database import get_db_connection, run_migrations
 from engine.main import app
 from engine.services.ingestion_service import (
     ingest_single_photo,
-    extract_exif_metadata,
     parse_date_from_filename,
     parse_date_from_directory,
     get_hierarchical_destination_path,

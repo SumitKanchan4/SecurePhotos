@@ -3,7 +3,6 @@
 import tempfile
 from pathlib import Path
 import pytest
-import aiosqlite
 
 from engine.database import get_db_connection, rebuild_fts_index, run_migrations
 
