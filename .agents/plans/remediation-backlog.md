@@ -181,7 +181,8 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - **Done:** `quality.yml` (ruff, pytest, npm audit, tsc + build, cargo check), pinned requirements (`requirements*.in` -> `.txt` via uv), dev tools split out, `npm ci`, actions pinned to SHAs, Python 3.12. Linter found and fixed a story-deletion crash.
 - **Follow-up (not gating yet):** mypy, eslint and clippy each need a first clean-up pass before they can block merges.
 
-### Q3 · Frontend tests — `todo`
+### Q3 · Frontend tests — `done` (merged 2026-11-12, PR #12, history §122; owner: reduced scope before the redesign, block merges)
+- **Done:** Vitest + Testing Library, `npm test` in the quality gate, tests for `api.ts` and the store. **Deferred to the redesign:** component tests (vault unlock, startup banner) against the new screens.
 - There are none today. Add Vitest + Testing Library; start with `api.ts`, the store, and the vault flows.
 
 ### Q4 · Backend structure — `todo` (= review item 15)
@@ -191,7 +192,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - The tests use `settings.database_path` (the developer's real `data/` library) and only back up and restore `vault_configs`. Tests insert and delete rows in the live DB. Give pytest its own temporary data folder (`SECUREPHOTOS_DATA_DIR` set in `conftest.py` before `engine.config` is imported).
 - Several vault tests call `/api/vault/reset` with no body; C6 makes the phrase required, so update those tests in C6.
 
-### Q5 · Split oversized frontend components — `todo` (= review item 15)
+### Q5 · Split oversized frontend components — `todo` (= review item 15; owner plans a frontend redesign, fold this into it)
 - PeopleView (3.3k lines), AlbumsView (3.3k), StoriesView (2.2k), VaultView (2k), Lightbox and DashboardView (1.8k), App (1.7k). Split by feature with hooks.
 
 ---
