@@ -7,7 +7,7 @@ import { SystemPrerequisites } from "../types";
 interface PrerequisitesBannerProps {
   prerequisites: SystemPrerequisites | null;
   isLoading: boolean;
-  onRecheck: () => Promise<void>;
+  onRecheck: () => Promise<unknown>;
   onStartEngine?: () => Promise<void>;
   onDismiss?: () => void;
 }
