@@ -1,10 +1,12 @@
 ---
 name: local-slm-engineering
 description: >-
-  Guidelines for running on-device Small Language Models (SLMs) and Vision-Language Models (VLMs) like Moondream2, Phi-3.5, and MobileCLIP. Covers GGUF/INT4 quantization, VRAM/RAM budgets, DirectML/ONNX hardware acceleration, idle model eviction, and multimodal OCR & captioning.
+  FUTURE IDEAS ONLY - not used by the app today. Guidelines for running on-device Small Language Models (SLMs) and Vision-Language Models (VLMs) like Moondream2, Phi-3.5, and MobileCLIP. Covers GGUF/INT4 quantization, VRAM/RAM budgets, DirectML/ONNX hardware acceleration, idle model eviction, and multimodal OCR & captioning.
 ---
 
 # 🧠 Local SLM & Vision-Language Engineering Skill
+
+> **Not used today (checked November 2026).** SecurePhotos runs no language or vision-language model: no Moondream2, Phi-3.5 or MobileCLIP. The only on-device models are YuNet (face detection), SFace (face recognition) and Real-ESRGAN (upscaling), managed by `engine/services/ai_models.py`; OCR uses the Windows OCR engine. Treat this file as background for a possible future feature. Any new model must follow `.agents/rules/engineering-checklists.md` §5 (permissive licence, pinned commit + SHA-256, bundled from `build/models`).
 
 This skill guides the implementation and lifecycle management of on-device **Small Language Models (SLMs)** and **Vision-Language Models (VLMs)** in consumer desktop environments.
 

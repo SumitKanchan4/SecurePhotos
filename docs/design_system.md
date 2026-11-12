@@ -11,7 +11,7 @@ SecurePhotos 2.0 is built around **visual clarity, immediate responsiveness, and
 - **Crisp Typography**: High-legibility modern sans-serif typography (`Inter` for UI, `JetBrains Mono` for metadata/hashes).
 - **Subtle Glassmorphism & Depth**: Multi-tier elevation using subtle semi-transparent surfaces and borders rather than heavy, muddy drop-shadows.
 - **Zero Layout Shifts (CLS = 0)**: Pre-calculated aspect ratio skeletons prevent jarring page jumps during thumbnail streaming.
-- **Zero-Trust Intimacy & Privacy**: Total isolation of Vault photos with biometrics (Windows Hello), Authenticator 2FA, Full Album Lock/Unlock, and Frosted Privacy Shields.
+- **Zero-Trust Intimacy & Privacy**: Total isolation of Vault photos with a master password, a quick PIN, a printed emergency card, Full Album Lock/Unlock, and Frosted Privacy Shields (Windows Hello is planned).
 - **Nostalgia & Delight**: Automatic Stories with vibe-matched audio, 4K Collages, and Ken-Burns cinematic playback.
 - **Intelligent People Management**: Representative Medoid face cards that eliminate tagging fatigue ("Name Once, Tag 1,000 Photos").
 - **Drive Resilience & Transparency**: Clear, non-intrusive status indicators for external USB drives, hierarchical sharding status, and background 4K optimization queues.
@@ -173,14 +173,11 @@ To ensure rendering **100,000+ photos** never degrades frame rates:
 │ 🔐 Unlock Private Vault                                                │
 ├────────────────────────────────────────────────────────────────────────┤
 │                                                                        │
-│       [ 👆 Touch Fingerprint Sensor or use Windows Hello ]             │
-│                                                                        │
-│                      ─── OR ENTER PIN / PASSWORD ───                   │
+│                ─── ENTER PIN (after a lock) OR PASSWORD ───            │
 │                                                                        │
 │ PIN / Password: [ ••••••••••••              ]                          │
-│ Authenticator 2FA (TOTP): [ 482 910 ]                                  │
 │                                                                        │
-│      [ Unlock Vault ]         [ 🔑 Forgot Password? Use Recovery Key ] │
+│      [ Unlock Vault ]     [ 🔑 Forgot your password? Use your card ]   │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 

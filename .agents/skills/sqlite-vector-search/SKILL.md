@@ -1,10 +1,12 @@
 ---
 name: sqlite-vector-search
 description: >-
-  High-performance SQLite, FTS5 full-text indexing, and sqlite-vec vector search guidelines for 100k+ media items. Covers WAL mode tuning, composite covering indexes, hybrid Reciprocal Rank Fusion (RRF), zero-N+1 ORM queries, and batch transactional writes.
+  FUTURE IDEAS for vector search - sqlite-vec is not used today; the WAL, index and FTS5 guidance applies. High-performance SQLite, FTS5 full-text indexing, and sqlite-vec vector search guidelines for 100k+ media items. Covers WAL mode tuning, composite covering indexes, hybrid Reciprocal Rank Fusion (RRF), zero-N+1 ORM queries, and batch transactional writes.
 ---
 
 # ⚡ High-Scale SQLite & Vector Search Skill
+
+> **Partly future (checked November 2026).** The app does not use `sqlite-vec` or vector search, and has no CLIP embeddings. Face embeddings (SFace, 128-D) are stored as JSON text in `faces.embedding` and compared in Python with NumPy. The SQLite parts (WAL mode, covering indexes, FTS5, batched writes) describe the current database; the vector and hybrid-ranking sections are ideas for a possible future feature.
 
 This skill governs the database architecture, query optimization, and hybrid search pipelines to sustain sub-10ms response times across 100,000+ indexed photos, videos, and documents.
 
