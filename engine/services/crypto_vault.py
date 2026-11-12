@@ -4,8 +4,7 @@ This module implements military-grade data protection:
 1. Chunked authenticated streaming cipher (AES-256-GCM in 64 KB blocks).
 2. Memory-hard Argon2id key derivation for password/PIN authentication.
 3. Multi-slot Master Vault Key (MVK) wrapping (Password, Biometrics, 24-Word Recovery).
-4. RFC 6238 TOTP Authenticator 2FA generation and rate-limited validation.
-5. In-memory ephemeral streaming with zero disk-temp leakage and RAM key zeroing.
+4. In-memory ephemeral streaming with zero disk-temp leakage and RAM key zeroing.
 """
 
 import base64
@@ -23,7 +22,6 @@ import argon2
 import argon2.exceptions
 import argon2.low_level
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-import pyotp
 
 logger = logging.getLogger("securephotos.crypto_vault")
 
@@ -419,21 +417,3 @@ def decrypt_file_to_bytes(
         buffer.write(chunk)
     return buffer.getvalue()
 
-
-# ── TOTP 2FA Utility Methods ──────────────────────────────────────────────────
-
-def generate_totp_secret() -> str:
-    """Generates a high-entropy base32 secret for RFC 6238 TOTP."""
-    return pyotp.random_base32()
-
-
-def get_totp_provisioning_uri(secret: str, account_name: str = "Vault User") -> str:
-    """Generates an otpauth:// URI for QR code generation."""
-    totp = pyotp.TOTP(secret)
-    return totp.provisioning_uri(name=account_name, issuer_name="SecurePhotos 2.0")
-
-
-def verify_totp_code(secret: str, code: str) -> bool:
-    """Validates a 6-digit TOTP code with rate-limited drift window."""
-    totp = pyotp.TOTP(secret)
-    return totp.verify(code.strip(), valid_window=1)

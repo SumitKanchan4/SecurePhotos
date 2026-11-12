@@ -9,7 +9,6 @@ pillow
 piexif
 argon2-cffi
 cryptography
-pyotp
 psutil
 numpy
 onnxruntime

@@ -37,9 +37,6 @@ from engine.services.crypto_vault import (
     decrypt_file_to_bytes,
     wrap_master_key,
     unwrap_master_key,
-    generate_totp_secret,
-    get_totp_provisioning_uri,
-    verify_totp_code,
     zero_memory,
 )
 
@@ -203,14 +200,12 @@ class VaultSetupRequest(BaseModel):
     grid_card: Optional[GridCardPayload] = None
     card_token: Optional[str] = None
     password_hint: Optional[str] = None
-    enable_totp: bool = False
 
 
 class VaultUnlockRequest(BaseModel):
     pin: Optional[str] = None
     password: Optional[str] = None
     recovery_phrase: Optional[str] = None
-    totp_code: Optional[str] = None
 
 
 class VaultPinRequest(BaseModel):
@@ -239,7 +234,6 @@ class VaultStatusResponse(BaseModel):
     has_pin: bool
     is_pin_locked: bool            # True when a PIN is set but can't be used right now
     pin_unlock_available: bool = False
-    has_totp: bool
     has_biometrics: bool
     password_hint: Optional[str] = None
     grid_card_id: Optional[str] = None
@@ -259,7 +253,7 @@ async def get_vault_status() -> VaultStatusResponse:
     if not row:
         return VaultStatusResponse(
             is_configured=False, is_unlocked=False, has_pin=False, is_pin_locked=False,
-            has_totp=False, has_biometrics=False,
+            has_biometrics=False,
         )
 
     has_pin = bool(row["pin_verifier"])
@@ -270,7 +264,6 @@ async def get_vault_status() -> VaultStatusResponse:
         has_pin=has_pin,
         is_pin_locked=has_pin and not pin_available and not ACTIVE_VAULT_SESSION["is_unlocked"],
         pin_unlock_available=pin_available,
-        has_totp=bool(row["totp_secret_encrypted"]),
         has_biometrics=bool(row["has_biometrics"]),
         password_hint=row["password_hint"],
         grid_card_id=row["grid_card_id"],
@@ -317,11 +310,6 @@ async def setup_vault(payload: VaultSetupRequest) -> dict:
         kek_recovery = await asyncio.to_thread(derive_key_from_recovery_phrase, payload.recovery_phrase, salt)
     wrapped_recovery = wrap_master_key(mvk, kek_recovery)
 
-    totp_secret = totp_uri = None
-    if payload.enable_totp:
-        totp_secret = generate_totp_secret()
-        totp_uri = get_totp_provisioning_uri(totp_secret)
-
     conn = await get_db_connection()
     try:
         await conn.execute(
@@ -331,11 +319,11 @@ async def setup_vault(payload: VaultSetupRequest) -> dict:
                 password_salt, pin_salt, password_hint, pin_failed_attempts, has_pin, pin_verifier,
                 totp_secret_encrypted, grid_card_id, grid_cells_hash, grid_salt,
                 mvk_wrapped_card_cells, card_cells_salt, is_configured
-            ) VALUES ('private', ?, NULL, ?, ?, NULL, ?, 0, ?, ?, ?, ?, NULL, ?, ?, ?, 1);
+            ) VALUES ('private', ?, NULL, ?, ?, NULL, ?, 0, ?, ?, NULL, ?, NULL, ?, ?, ?, 1);
             """,
             (
                 wrapped_password, wrapped_recovery, salt.hex(), payload.password_hint,
-                1 if pin_verifier else 0, pin_verifier, totp_secret, grid_card_id, grid_salt,
+                1 if pin_verifier else 0, pin_verifier, grid_card_id, grid_salt,
                 wrapped_card_cells, card_cells_salt,
             ),
         )
@@ -348,8 +336,6 @@ async def setup_vault(payload: VaultSetupRequest) -> dict:
         "status": "configured",
         "has_pin": bool(pin_verifier),
         "grid_card_id": grid_card_id,
-        "totp_secret": totp_secret,
-        "totp_uri": totp_uri,
     }
     if generated_card:
         result["grid_card"] = generated_card  # Otherwise the user would never see their card.
@@ -409,10 +395,6 @@ async def unlock_vault(payload: VaultUnlockRequest) -> dict:
 
     else:
         raise HTTPException(status_code=400, detail="Must provide PIN, master password, or recovery phrase.")
-
-    if row["totp_secret_encrypted"]:
-        if not payload.totp_code or not verify_totp_code(row["totp_secret_encrypted"], payload.totp_code):
-            raise HTTPException(status_code=401, detail="Invalid 6-digit Authenticator TOTP code.")
 
     _open_session(unwrapped_mvk, row["pin_verifier"])
     _start_vault_enhancement()
