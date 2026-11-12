@@ -142,7 +142,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ### M1 · `resolve_media_path` falls back to the filename only — `done` (merged 2026-11-12, PR #2, history §112)
 - `config.py` (last line of `resolve_media_path`) returns `data_dir / p.name`. A filename collision could serve, or trash-purge, the wrong file. Return "not found" instead.
 
-### M2 · Store paths relative to the data folder everywhere — `review` (branch `fix/m2-relative-paths`, history §114; owner: remove the storage clean-up endpoint)
+### M2 · Store paths relative to the data folder everywhere — `done` (merged 2026-11-12, PR #4, history §114; owner: remove the storage clean-up endpoint)
 - **Done:** thumbnails/previews saved relative (startup converts old rows); same-name checks fixed in import and video conversion (video conversion could overwrite another video); `prune-orphans` removed (would have deleted every photo); no more "None" text paths.
 - Vault code writes `str(x.resolve())` (absolute) and builds thumbnail and preview paths with raw `Path()`. This breaks rule §2. Normalise on write, and migrate existing rows. (The vault rows touched by C5 are handled in C5.)
 
