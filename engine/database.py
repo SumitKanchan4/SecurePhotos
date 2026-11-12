@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS photo_album (
 CREATE TABLE IF NOT EXISTS persons (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    reference_embedding TEXT,       -- 512-D centroid embedding
+    reference_embedding TEXT,       -- JSON centroid embedding (128-D SFace since H9)
     anchor_faces_json TEXT,         -- JSON array of 3-4 representative face IDs (medoids)
     age_trajectory_json TEXT,       -- Chronological life-stage linking graph across years
     affinity_score REAL DEFAULT 0.0,-- Computed score (0.0 to 100.0)
@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS faces (
     box_h REAL NOT NULL,
     quality_score REAL DEFAULT 1.0, -- Sharpness, illumination & frontal score
     is_anchor_medoid BOOLEAN DEFAULT 0, -- 1 if chosen as a representative card face
-    embedding TEXT NOT NULL          -- 512-D MobileFaceNet embedding vector
+    embedding TEXT NOT NULL          -- JSON embedding vector (128-D SFace since H9; see embedding_model)
 );
 
 -- ── 6. Stories Table ─────────────────────────────────────────────────────────

@@ -20,11 +20,11 @@ We provide security updates for the following versions of SecurePhotos:
 
 SecurePhotos is designed with a zero-trust, zero-cloud architecture:
 
-- 🌐 **100% Offline by Design**: SecurePhotos never connects to the internet. There are no tracking scripts, telemetry collectors, or remote servers.
-- 🔑 **Bank-Grade Encryption**: Photos in your Private Vault are protected with AES-256-GCM encryption. Keys are derived locally using Argon2id with unique cryptographic salts.
+- 🌐 **Offline by Design**: Everything works without internet; the AI models ship with the app. There are no tracking scripts, telemetry collectors or remote servers. The only automatic network call is the update check (it downloads GitHub's latest-version file; nothing about you or your library is sent).
+- 🔑 **Strong Encryption**: Photos in your Private Vault are encrypted with AES-256-GCM, each file with its own key, in a format that detects any tampering or truncation. Your master password is turned into a key with Argon2id (unique random salt). The vault key is never written to disk; see `docs/architecture.md` ("Vault key in memory") for what is and isn't protected while the app runs.
 - 🧠 **Memory-Only Decryption**: When you view a photo from your Private Vault, it is decrypted directly in RAM. Unencrypted files are never written to temporary disk folders.
-- 🛡️ **Protected Local Communication**: The desktop app (Tauri) and local engine (FastAPI) talk only over a local loopback connection (127.0.0.1) using dynamic ports and cryptographically generated tokens (BCryptGenRandom). External devices on your network cannot access this channel.
-- 🔒 **Biometric and Two-Factor Options**: Support for Windows Hello authentication and RFC 6238 time-based one-time passwords (TOTP) for extra protection.
+- 🛡️ **Protected Local Communication**: The desktop app (Tauri) and local engine (FastAPI) talk only over a local loopback connection (127.0.0.1) using dynamic ports and a random access token from the operating system's secure random source (the engine refuses to start without one). External devices on your network cannot access this channel.
+- 🔒 **Recovery Without a Backdoor**: A printed emergency card (card file or its 16 numbers) can reset a forgotten password; there is no other way in. A 4-digit PIN reopens the vault quickly only while the app stays open. (Windows Hello is planned, not available yet.)
 
 ---
 

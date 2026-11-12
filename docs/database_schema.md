@@ -1,6 +1,6 @@
 # 🗄️ SecurePhotos: Database Schema & Indexing Architecture
 
-> **High-scale SQLite relational engine, composite covering indexes, full-text FTS5 search, `sqlite-vec` vector index, multi-slot zero-trust vault, social affinity graph, and creative montage asset specifications for 100,000+ media records.**
+> **High-scale SQLite relational engine, composite covering indexes, full-text FTS5 search, multi-slot zero-trust vault, social affinity graph, and creative montage asset specifications for 100,000+ media records.**
 
 ---
 
@@ -220,7 +220,8 @@ erDiagram
         string mvk_wrapped_recovery
         string password_salt
         string password_hint
-        string totp_secret_encrypted
+        string pin_verifier
+        string mvk_wrapped_card_cells
         boolean has_biometrics
         boolean is_configured
         datetime created_at
@@ -311,7 +312,7 @@ CREATE TABLE IF NOT EXISTS photo_album (
 CREATE TABLE IF NOT EXISTS persons (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    reference_embedding TEXT,       -- 512-D centroid embedding
+    reference_embedding TEXT,       -- JSON centroid embedding (128-D SFace since H9)
     anchor_faces_json TEXT,         -- JSON array of 3-4 representative face IDs (medoids)
     age_trajectory_json TEXT,       -- Chronological life-stage linking graph across years
     affinity_score REAL DEFAULT 0.0,-- Computed score (0.0 to 100.0)
@@ -335,7 +336,7 @@ CREATE TABLE IF NOT EXISTS faces (
     box_h REAL NOT NULL,
     quality_score REAL DEFAULT 1.0, -- Sharpness, illumination & frontal score
     is_anchor_medoid BOOLEAN DEFAULT 0, -- 1 if chosen as a representative card face
-    embedding TEXT NOT NULL          -- 512-D MobileFaceNet embedding vector
+    embedding TEXT NOT NULL          -- JSON embedding vector (128-D SFace since H9; see embedding_model)
 );
 
 -- ── 6. Stories Table ─────────────────────────────────────────────────────────
@@ -459,11 +460,12 @@ CREATE TABLE IF NOT EXISTS vault_configs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     vault_type TEXT NOT NULL UNIQUE,          -- 'private' or 'documents'
     mvk_wrapped_password TEXT NOT NULL,      -- Master Key encrypted with Argon2id password key
-    mvk_wrapped_biometric TEXT,              -- Master Key encrypted with Windows Hello / TPM key
-    mvk_wrapped_recovery TEXT NOT NULL,       -- Master Key encrypted with 24-word recovery key
+    mvk_wrapped_biometric TEXT,              -- Reserved for Windows Hello (planned, P12); unused
+    mvk_wrapped_recovery TEXT NOT NULL,       -- Master Key encrypted with the emergency card token key
     password_salt TEXT NOT NULL,             -- Randomized 16-byte salt for Argon2id
     password_hint TEXT,
-    totp_secret_encrypted TEXT,              -- Encrypted secret key for RFC 6238 TOTP
+    totp_secret_encrypted TEXT,              -- Unused since H3 (TOTP removed); always NULL
+    -- Added by migrations: pin_verifier (Argon2id PIN check), mvk_wrapped_card_cells + card_cells_salt (16 card numbers), grid_* (card)
     has_biometrics BOOLEAN DEFAULT 0,
     is_configured BOOLEAN DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -586,8 +588,8 @@ CREATE TRIGGER IF NOT EXISTS photos_au AFTER UPDATE ON photos BEGIN
 END;
 ```
 
-### B. Vector Embeddings (`sqlite-vec`)
-For natural language semantic text-to-image queries:
+### B. Vector Embeddings (`sqlite-vec`) - not implemented
+A possible future feature for natural-language image search. **This table does not exist today**; the app has no vector search (see the `sqlite-vector-search` skill):
 
 ```sql
 CREATE VIRTUAL TABLE IF NOT EXISTS vec_photos USING vec0(
