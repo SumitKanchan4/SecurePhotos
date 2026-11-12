@@ -915,9 +915,9 @@ export const App: React.FC = () => {
                         borderRadius: "var(--radius-full)",
                         fontSize: "11px",
                         fontWeight: 600,
-                        backgroundColor: "rgba(59, 130, 246, 0.12)",
+                        backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
                         color: "var(--accent-primary)",
-                        border: "1px solid rgba(59, 130, 246, 0.25)",
+                        border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                       }}
                     >
                       <Search size={12} style={{ color: "var(--accent-primary)" }} />
@@ -933,8 +933,8 @@ export const App: React.FC = () => {
                           gap: "6px",
                           padding: "4px 10px",
                           borderRadius: "var(--radius-full)",
-                          backgroundColor: "rgba(59, 130, 246, 0.12)",
-                          border: "1px solid rgba(59, 130, 246, 0.25)",
+                          backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
+                          border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                           fontSize: "11px",
                           color: "var(--accent-primary)",
                           fontWeight: 600,
@@ -1004,9 +1004,9 @@ export const App: React.FC = () => {
                         borderRadius: "var(--radius-full)",
                         fontSize: "11px",
                         fontWeight: 600,
-                        backgroundColor: "rgba(59, 130, 246, 0.12)",
+                        backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
                         color: "var(--accent-primary)",
-                        border: "1px solid rgba(59, 130, 246, 0.25)",
+                        border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                       }}
                     >
                       <Images size={12} style={{ color: "var(--accent-primary)" }} />
@@ -1015,7 +1015,7 @@ export const App: React.FC = () => {
                   )}
                 </div>
 
-                {/* Center Column (flex: 0 1 auto): 22px Plus Jakarta Sans Title + Baseline Capsule */}
+                {/* Center Column (flex: 0 1 auto): 22px display-font title + Baseline Capsule */}
                 <div 
                   style={{ 
                     flex: "0 1 auto", 
@@ -1033,7 +1033,7 @@ export const App: React.FC = () => {
                       letterSpacing: "-0.03em", 
                       margin: 0,
                       color: "var(--text-primary)",
-                      fontFamily: "Plus Jakarta Sans, sans-serif",
+                      fontFamily: "var(--font-display)",
                       whiteSpace: "nowrap",
                     }}
                   >
@@ -1091,12 +1091,12 @@ export const App: React.FC = () => {
                           gap: "6px",
                           padding: "6px 16px",
                           borderRadius: "var(--radius-full)",
-                          backgroundColor: "var(--accent-primary)",
+                          backgroundColor: "var(--accent-fill)",
                           border: "none",
-                          color: "#ffffff",
+                          color: "var(--on-accent)",
                           fontSize: "12px",
                           fontWeight: 600,
-                          boxShadow: "0 2px 10px rgba(59, 130, 246, 0.25)",
+                          boxShadow: "0 2px 10px color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                           whiteSpace: "nowrap",
                         }}
                       >
@@ -1327,7 +1327,7 @@ export const App: React.FC = () => {
                       style={{
                         width: `${importProgress.total_count > 0 ? Math.round((importProgress.completed_count / importProgress.total_count) * 100) : 0}%`,
                         height: "100%",
-                        backgroundColor: "var(--accent-primary)",
+                        backgroundColor: "var(--accent-fill)",
                         borderRadius: "var(--radius-full)",
                         transition: "width 0.2s ease",
                       }}
@@ -1443,9 +1443,9 @@ export const App: React.FC = () => {
                     borderRadius: "var(--radius-full)",
                     fontSize: "12px",
                     fontWeight: 700,
-                    backgroundColor: "rgba(59, 130, 246, 0.15)",
+                    backgroundColor: "color-mix(in srgb, var(--accent-ink) 15%, transparent)",
                     color: "var(--accent-primary)",
-                    border: "1px solid rgba(59, 130, 246, 0.3)",
+                    border: "1px solid color-mix(in srgb, var(--accent-ink) 30%, transparent)",
                     fontFamily: "var(--font-mono)",
                     whiteSpace: "nowrap",
                     flexShrink: 0,

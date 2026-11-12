@@ -229,13 +229,13 @@ export class ErrorBoundary extends Component<Props, State> {
                   gap: "6px",
                   padding: "8px 20px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: "var(--accent-primary)",
+                  backgroundColor: "var(--accent-fill)",
                   border: "none",
-                  color: "#ffffff",
+                  color: "var(--on-accent)",
                   fontSize: "12px",
                   fontWeight: 700,
                   cursor: "pointer",
-                  boxShadow: "0 2px 10px rgba(59, 130, 246, 0.35)",
+                  boxShadow: "0 2px 10px color-mix(in srgb, var(--accent-ink) 35%, transparent)",
                 }}
               >
                 <RefreshCw size={13} />

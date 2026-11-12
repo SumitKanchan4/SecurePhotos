@@ -180,9 +180,9 @@ function getArchetypeDetails(storyType?: string, title?: string) {
     default:
       return {
         label: "✨ Curated Story",
-        bg: "rgba(59, 130, 246, 0.2)",
-        color: "#60a5fa",
-        border: "rgba(59, 130, 246, 0.4)",
+        bg: "color-mix(in srgb, var(--accent-ink) 20%, transparent)",
+        color: "var(--accent-ink)",
+        border: "color-mix(in srgb, var(--accent-ink) 40%, transparent)",
       };
   }
 }
@@ -767,7 +767,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                   justifyContent: "space-between",
                   padding: "8px 10px",
                   borderRadius: "var(--radius-md)",
-                  backgroundColor: !activeAudioUrl ? "rgba(59, 130, 246, 0.2)" : "transparent",
+                  backgroundColor: !activeAudioUrl ? "color-mix(in srgb, var(--accent-ink) 20%, transparent)" : "transparent",
                   color: "#ffffff",
                   fontSize: "12px",
                   cursor: "pointer",
@@ -804,7 +804,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
                       justifyContent: "space-between",
                       padding: "8px 10px",
                       borderRadius: "var(--radius-md)",
-                      backgroundColor: isSelected ? "rgba(59, 130, 246, 0.2)" : "transparent",
+                      backgroundColor: isSelected ? "color-mix(in srgb, var(--accent-ink) 20%, transparent)" : "transparent",
                       color: "#ffffff",
                       fontSize: "12px",
                       cursor: "pointer",

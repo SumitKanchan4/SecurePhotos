@@ -15,7 +15,7 @@ export const ToastNotification: React.FC = () => {
         return "var(--accent-danger, #ef4444)";
       case "info":
       default:
-        return "var(--accent-primary, #3b82f6)";
+        return "var(--accent-primary)";
     }
   };
 
@@ -27,7 +27,7 @@ export const ToastNotification: React.FC = () => {
         return <AlertTriangle size={16} style={{ color: "var(--accent-danger, #ef4444)", flexShrink: 0 }} />;
       case "info":
       default:
-        return <Info size={16} style={{ color: "var(--accent-primary, #3b82f6)", flexShrink: 0 }} />;
+        return <Info size={16} style={{ color: "var(--accent-primary, var(--accent-ink))", flexShrink: 0 }} />;
     }
   };
 

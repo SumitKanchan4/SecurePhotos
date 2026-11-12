@@ -46,7 +46,7 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
             style={{
               padding: "16px 18px",
               borderRadius: "var(--radius-xl)",
-              backgroundColor: settings.theme === "dark" ? "rgba(59, 130, 246, 0.12)" : "var(--glass-surface)",
+              backgroundColor: settings.theme === "dark" ? "color-mix(in srgb, var(--accent-ink) 12%, transparent)" : "var(--glass-surface)",
               backdropFilter: "blur(24px)",
               WebkitBackdropFilter: "blur(24px)",
               border: settings.theme === "dark" ? "2px solid var(--accent-primary)" : "1px solid var(--glass-border)",
@@ -87,7 +87,7 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
                         fontSize: "10px", 
                         fontWeight: 700, 
                         color: "var(--accent-primary)", 
-                        backgroundColor: "rgba(59, 130, 246, 0.15)", 
+                        backgroundColor: "color-mix(in srgb, var(--accent-ink) 15%, transparent)", 
                         padding: "1px 6px", 
                         borderRadius: "var(--radius-full)" 
                       }}
@@ -121,7 +121,7 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
             style={{
               padding: "16px 18px",
               borderRadius: "var(--radius-xl)",
-              backgroundColor: settings.theme === "light" ? "rgba(59, 130, 246, 0.12)" : "var(--glass-surface)",
+              backgroundColor: settings.theme === "light" ? "color-mix(in srgb, var(--accent-ink) 12%, transparent)" : "var(--glass-surface)",
               backdropFilter: "blur(24px)",
               WebkitBackdropFilter: "blur(24px)",
               border: settings.theme === "light" ? "2px solid var(--accent-primary)" : "1px solid var(--glass-border)",
@@ -145,7 +145,7 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: "#2563eb",
+                  color: "var(--accent-ink)",
                   flexShrink: 0,
                 }}
               >
@@ -162,7 +162,7 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
                         fontSize: "10px", 
                         fontWeight: 700, 
                         color: "var(--accent-primary)", 
-                        backgroundColor: "rgba(59, 130, 246, 0.15)", 
+                        backgroundColor: "color-mix(in srgb, var(--accent-ink) 15%, transparent)", 
                         padding: "1px 6px", 
                         borderRadius: "var(--radius-full)" 
                       }}
@@ -230,7 +230,7 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
                   width: "36px",
                   height: "36px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: "rgba(59, 130, 246, 0.12)",
+                  backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",

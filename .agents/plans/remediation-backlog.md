@@ -203,6 +203,20 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - **Finding:** the mode was unreachable (nothing switched to it); only the "no vault yet" message showed the old wording.
 - `VaultView.tsx` (Mode 3, ~line 1299) and `VaultUnlockModal.tsx` (~line 574) offer "Enter your 24-word recovery phrase", and the wizard header comment still describes a 24-word step. Since C3, setup creates an emergency card (card file or 16 numbers) instead, and "Forgot your password? Use your Emergency Card" already covers recovery. Decide: remove the 24-word mode, or relabel it as "card code". Backend `/unlock` still accepts `recovery_phrase` (needed only for vaults created before C3; nobody has one).
 
+## Frontend redesign (started 2026-11-12)
+
+Integration branch `feature/redesign` (master untouched until the end; owner decision). Concept board: https://claude.ai/artifact/XsadhwxNhBkakuUzyR8wPU. Chosen: Mono + acid lime (#C6FF00, black text on it), Archivo headings over Inter, icon rail + photo-first layout with a right-side month/year scrubber, 3D app icon "C · Frosted glass". Approved screens: Photos, Viewer, Private Vault, People, Import + Settings.
+
+### R0 · Tokens, Archivo, app icon — `done` (merged into feature/redesign 2026-11-12, PR #13, history §123)
+### R1 · App shell: 64 px icon rail replaces sidebar + title bar — `todo`
+### R2 · Photos: justified rows (virtualised), big date headings, month/year scrubber — `todo` (expert note: free mosaic can't stay virtualised at 100k photos; justified rows instead, shown to owner first)
+### R3 · Viewer: dark surround, details on demand, 8K chip by the title, lime lock = Move to Vault, Trash set apart — `todo` (+ split Lightbox.tsx; Q5)
+### R4 · Private Vault: locked/unlocked designs; Factory reset moves to Settings — `todo`
+### R5 · People: close ones, "Same person?", "Who is this?" — `todo` (+ split PeopleView.tsx; Q5)
+### R6 · Import + Settings — `todo`
+### R7 · Not yet designed: Albums, Stories, Documents, Dashboard, Trash, Duplicates, Video optimizer — `todo` (boards first)
+- Each step: component tests (deferred from Q3), Playwright on a throwaway library, remaining hard-coded colours of that screen cleaned up.
+
 ### P12 · Windows Hello quick unlock — `todo`
 - Optional, per PC, on top of the portable master password. Design together with C2 (option B).
 
