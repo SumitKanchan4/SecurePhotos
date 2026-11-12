@@ -209,7 +209,7 @@ Integration branch `feature/redesign` (master untouched until the end; owner dec
 
 ### R0 · Tokens, Archivo, app icon — `done` (merged into feature/redesign 2026-11-12, PR #13, history §123)
 ### R1 · App shell: 64 px icon rail replaces sidebar + title bar — `done` (merged into feature/redesign 2026-11-12, PR #14, history §124; owner: slim strip + Ctrl+K)
-### R2 · Photos: whole-library timeline, justified rows (virtualised), big month headings, month/year scrubber — `done` (history §125; owner: one compact timeline list; also removed the old header's "Search Active" pill / "Clear Search", the year ribbon, and fixed Escape not closing the viewer)
+### R2 · Photos: whole-library timeline, justified rows (virtualised), big month headings, month/year scrubber — `done` (merged into feature/redesign 2026-11-12, PR #15, history §125; owner: one compact timeline list; also removed the old header's "Search Active" pill / "Clear Search", the year ribbon, and fixed Escape not closing the viewer)
 ### R3 · Viewer: dark surround, details on demand, 8K chip by the title, lime lock = Move to Vault, Trash set apart — `todo` (+ split Lightbox.tsx; Q5)
 ### R4 · Private Vault: locked/unlocked designs; Factory reset moves to Settings — `todo`
 ### R5 · People: close ones, "Same person?", "Who is this?" — `todo` (+ split PeopleView.tsx; Q5)
