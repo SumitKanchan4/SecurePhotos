@@ -64,7 +64,7 @@ const getDocIcon = (doc: PhotoItem) => {
  *
  * Flagship Zero-Trust Encrypted Vault with configurable auto-lock (1-30 minutes),
  * 4-digit quick PIN unlock with brute-force lock protection,
- * Master Password fallback, 24-word recovery, and guarded factory reset.
+ * Master Password fallback, Emergency Card password reset, and guarded factory reset.
  */
 export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   const { 
@@ -95,13 +95,12 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   const [restoringAlbumId, setRestoringAlbumId] = useState<number | null>(null);
   const [restoringDocId, setRestoringDocId] = useState<number | null>(null);
 
-  // Authentication mode: "pin" | "password" | "recovery"
-  const [authMode, setAuthMode] = useState<"pin" | "password" | "recovery">("password");
+  // Authentication mode: "pin" (after a lock) | "password"
+  const [authMode, setAuthMode] = useState<"pin" | "password">("password");
 
   // Form states
   const [password, setPassword] = useState("");
   const [pin, setPin] = useState(["", "", "", ""]);
-  const [recoveryPhrase, setRecoveryPhrase] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -366,7 +365,6 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     setIsVaultUnlocked(false);
     setPassword("");
     setPin(["", "", "", ""]);
-    setRecoveryPhrase("");
     setLoginError("");
     setVaultPhotos([]);
     setVaultAlbums([]);
@@ -385,7 +383,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   };
 
   // Generic unlock submission
-  const performUnlock = async (payload: { password?: string; pin?: string; recovery_phrase?: string }) => {
+  const performUnlock = async (payload: { password?: string; pin?: string }) => {
     setLoginError("");
     setIsSubmitting(true);
 
@@ -400,7 +398,6 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
         setIsVaultUnlocked(true);
         setPassword("");
         setPin(["", "", "", ""]);
-        setRecoveryPhrase("");
         await checkVaultStatus();
         showToast("Private Vault unlocked.", "success");
       } else {
@@ -425,12 +422,6 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     e.preventDefault();
     if (!password) return;
     performUnlock({ password });
-  };
-
-  const handleRecoverySubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!recoveryPhrase.trim()) return;
-    performUnlock({ recovery_phrase: recoveryPhrase.trim() });
   };
 
   // PIN change with auto-submit on 4th digit
@@ -1010,7 +1001,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
           </button>
         </div>
       ) : !isVaultUnlocked ? (
-        /* Locked Landing Screen with Quick PIN / Master Password / Recovery */
+        /* Locked Landing Screen with Quick PIN / Master Password (+ Emergency Card reset link) */
         <div 
           style={{
             flex: 1,
@@ -1047,17 +1038,15 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
           </h2>
 
           <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "440px", lineHeight: "1.5", margin: "0 0 24px 0" }}>
-            {authMode === "pin" 
-              ? "Enter your 4-digit quick PIN to unlock instantly." 
-              : authMode === "password"
-                ? "Enter your master password to decrypt and unlock."
-                : "Enter your 24-word recovery phrase to restore access."}
+            {authMode === "pin"
+              ? "Enter your 4-digit quick PIN to unlock instantly."
+              : "Enter your master password to decrypt and unlock."}
           </p>
 
           <div 
             style={{
               width: "100%",
-              maxWidth: authMode === "recovery" ? "460px" : "380px",
+              maxWidth: "380px",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
@@ -1296,78 +1285,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               </form>
             )}
 
-            {/* ── Mode 3: 24-Word Recovery Phrase ── */}
-            {authMode === "recovery" && (
-              <form onSubmit={handleRecoverySubmit} style={{ width: "100%", display: "flex", flexDirection: "column", gap: "10px" }}>
-                <textarea
-                  value={recoveryPhrase}
-                  onChange={(e) => setRecoveryPhrase(e.target.value)}
-                  placeholder="Enter 24-word recovery phrase (separated by spaces)..."
-                  rows={3}
-                  autoFocus
-                  disabled={isSubmitting}
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    padding: "12px 16px",
-                    borderRadius: "var(--radius-md)",
-                    backgroundColor: "var(--glass-surface)",
-                    border: "1px solid var(--glass-border)",
-                    color: "var(--text-primary)",
-                    fontSize: "13px",
-                    fontFamily: "var(--font-mono)",
-                    resize: "none",
-                    outline: "none",
-                    boxShadow: "var(--glass-shadow)",
-                  }}
-                />
-                <button
-                  type="submit"
-                  disabled={isSubmitting || !recoveryPhrase.trim()}
-                  className="clickable"
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "var(--accent-primary)",
-                    border: "none",
-                    color: "#ffffff",
-                    fontSize: "13px",
-                    fontWeight: 700,
-                    cursor: isSubmitting || !recoveryPhrase.trim() ? "default" : "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "6px",
-                    opacity: isSubmitting || !recoveryPhrase.trim() ? 0.6 : 1,
-                  }}
-                >
-                  {isSubmitting ? <Loader2 size={14} className="spin-animation" /> : <Unlock size={14} />}
-                  <span>{isSubmitting ? "Restoring Access..." : "Restore with Phrase"}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode(hasVaultPin && !isVaultPinLocked ? "pin" : "password");
-                    setLoginError("");
-                  }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--text-muted)",
-                    fontSize: "12px",
-                    cursor: "pointer",
-                    padding: "4px",
-                  }}
-                >
-                  Cancel and return to {hasVaultPin && !isVaultPinLocked ? "PIN" : "Password"}
-                </button>
-              </form>
-            )}
-
-            {/* Bottom Links: Recovery Link & Guarded Reset */}
-            {authMode !== "recovery" && (
+            {/* Bottom Links: Emergency Card password reset & Guarded Reset */}
+            {(
               <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "center", marginTop: "4px" }}>
                 <button
                   type="button"

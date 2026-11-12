@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { 
   Lock, 
-  KeyRound, 
   ShieldAlert, 
   X, 
   Eye, 
@@ -25,7 +24,7 @@ interface VaultUnlockModalProps {
  * VaultUnlockModal Component
  *
  * Modern liquid-glass unlock modal complying with the 3-tier lifecycle:
- * 4-digit quick PIN (default) > Master Password > 24-word Recovery Phrase.
+ * 4-digit quick PIN (after a lock) > Master Password; a forgotten password is reset with the Emergency Card.
  * Purged of all legacy Windows Hello, 2FA, and purple artifacts.
  */
 export const VaultUnlockModal: React.FC<VaultUnlockModalProps> = ({
@@ -43,10 +42,9 @@ export const VaultUnlockModal: React.FC<VaultUnlockModalProps> = ({
     showToast 
   } = useAppStore();
 
-  const [authMode, setAuthMode] = useState<"pin" | "password" | "recovery">("pin");
+  const [authMode, setAuthMode] = useState<"pin" | "password">("pin");
   const [pin, setPin] = useState(["", "", "", ""]);
   const [password, setPassword] = useState("");
-  const [recoveryPhrase, setRecoveryPhrase] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -61,7 +59,6 @@ export const VaultUnlockModal: React.FC<VaultUnlockModalProps> = ({
       setErrorMessage("");
       setPassword("");
       setPin(["", "", "", ""]);
-      setRecoveryPhrase("");
 
       if (hasVaultPin && !isVaultPinLocked) {
         setAuthMode("pin");
@@ -74,7 +71,7 @@ export const VaultUnlockModal: React.FC<VaultUnlockModalProps> = ({
   if (!isOpen) return null;
 
   // Generic unlock submission
-  const performUnlock = async (payload: { password?: string; pin?: string; recovery_phrase?: string }) => {
+  const performUnlock = async (payload: { password?: string; pin?: string }) => {
     setErrorMessage("");
     setIsSubmitting(true);
 
@@ -111,12 +108,6 @@ export const VaultUnlockModal: React.FC<VaultUnlockModalProps> = ({
     e.preventDefault();
     if (!password) return;
     performUnlock({ password });
-  };
-
-  const handleRecoverySubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!recoveryPhrase.trim()) return;
-    performUnlock({ recovery_phrase: recoveryPhrase.trim() });
   };
 
   // PIN auto-advance and auto-submit on 4th digit
@@ -258,7 +249,7 @@ export const VaultUnlockModal: React.FC<VaultUnlockModalProps> = ({
                 Initialize Your Private Vault
               </h3>
               <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0, lineHeight: "1.5", maxWidth: "360px" }}>
-                You haven&apos;t set up an encrypted vault yet. Create your Master Password, 4-digit quick PIN, and recovery phrase to lock items.
+                You haven&apos;t set up an encrypted vault yet. Create your Master Password, a 4-digit quick PIN, and your printed Emergency Card to lock items.
               </p>
 
               <div style={{ display: "flex", gap: "10px", width: "100%", marginTop: "8px" }}>
@@ -571,105 +562,6 @@ export const VaultUnlockModal: React.FC<VaultUnlockModalProps> = ({
                 </form>
               )}
 
-              {/* ── Mode 3: 24-Word Recovery Phrase ── */}
-              {authMode === "recovery" && (
-                <form onSubmit={handleRecoverySubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                  <div>
-                    <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "6px", display: "block" }}>
-                      24-Word Emergency Recovery Phrase:
-                    </label>
-                    <textarea
-                      rows={3}
-                      placeholder="Enter words separated by spaces..."
-                      value={recoveryPhrase}
-                      onChange={(e) => setRecoveryPhrase(e.target.value)}
-                      autoFocus
-                      disabled={isSubmitting}
-                      style={{
-                        width: "100%",
-                        boxSizing: "border-box",
-                        padding: "10px 12px",
-                        borderRadius: "var(--radius-sm)",
-                        backgroundColor: "var(--glass-pill-bg)",
-                        border: "1px solid var(--glass-border)",
-                        color: "var(--text-primary)",
-                        fontSize: "12px",
-                        fontFamily: "var(--font-mono)",
-                        outline: "none",
-                        resize: "none",
-                      }}
-                    />
-                  </div>
-
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthMode(hasVaultPin && !isVaultPinLocked ? "pin" : "password");
-                        setErrorMessage("");
-                      }}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: "var(--accent-primary)",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        padding: 0,
-                      }}
-                    >
-                      Back to {hasVaultPin && !isVaultPinLocked ? "PIN" : "Password"}
-                    </button>
-
-                    <div style={{ display: "flex", gap: "8px" }}>
-                      <button
-                        type="button"
-                        onClick={onClose}
-                        className="clickable"
-                        style={{
-                          padding: "8px 14px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "var(--glass-pill-bg)",
-                          border: "1px solid var(--glass-border)",
-                          color: "var(--text-secondary)",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={isSubmitting || !recoveryPhrase.trim()}
-                        className="clickable"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "8px 18px",
-                          borderRadius: "var(--radius-full)",
-                          backgroundColor: "var(--accent-primary)",
-                          border: "none",
-                          color: "#ffffff",
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          cursor: isSubmitting || !recoveryPhrase.trim() ? "default" : "pointer",
-                          boxShadow: "0 4px 14px var(--accent-glow)",
-                          opacity: isSubmitting || !recoveryPhrase.trim() ? 0.6 : 1,
-                        }}
-                      >
-                        {isSubmitting ? (
-                          <Loader2 size={13} className="spin-animation" />
-                        ) : (
-                          <KeyRound size={13} />
-                        )}
-                        <span>{isSubmitting ? "Restoring..." : "Restore Access"}</span>
-                      </button>
-                    </div>
-                  </div>
-                </form>
-              )}
             </>
           )}
 
