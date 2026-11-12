@@ -29,7 +29,7 @@ Most modern photo apps want your photos in their cloud, require ongoing monthly 
 ## ✨ Key Capabilities
 
 ### 🛡️ 100% Private & Truly Offline
-Every photo, video, face recognition scan, and document search runs strictly on your computer's local hardware. SecurePhotos never connects to any external cloud, has zero telemetry, and never phones home.
+Every photo, video, face recognition scan, and document search runs strictly on your computer's local hardware. The AI models ship inside the installer, so everything works offline from the first start. SecurePhotos never uploads your photos or data, and has zero telemetry. The only time it goes online on its own is a quick check for app updates (a download of the latest version number from GitHub; nothing about you or your library is sent).
 
 ### 💾 Portable External Drive Vault
 You can install and store your entire library directly on an external hard drive or high-speed portable SSD. When you unplug the drive and connect it to another PC, your entire library, albums, face tags, and encrypted vault are ready to use immediately.
@@ -94,7 +94,7 @@ Navigate your entire collection without taking your hands off the keyboard:
 ## 🛡️ The SecurePhotos Privacy Promise
 
 1. **Your Photos Are Yours**: Your pictures are stored in standard formats on your own drive. You are never locked in.
-2. **Zero Internet Dependency**: The application functions 100% identically whether you are connected to the internet or in airplane mode in the middle of nowhere.
+2. **Zero Internet Dependency**: Every feature works the same in airplane mode, including face recognition and photo enhancement (the AI models are bundled and checksum-verified). With internet, the app only checks GitHub for updates.
 3. **Zero Data Harvesting**: We do not collect analytics, email addresses, error logs, or usage metrics.
 
 ---
