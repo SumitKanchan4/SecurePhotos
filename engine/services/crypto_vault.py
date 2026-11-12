@@ -1,10 +1,14 @@
-"""Zero-Trust Cryptographic Engine & Multi-Slot Vault Manager for SecurePhotos.
+"""Vault cryptography for SecurePhotos.
 
-This module implements military-grade data protection:
-1. Chunked authenticated streaming cipher (AES-256-GCM in 64 KB blocks).
-2. Memory-hard Argon2id key derivation for password/PIN authentication.
-3. Multi-slot Master Vault Key (MVK) wrapping (Password, Biometrics, 24-Word Recovery).
-4. In-memory ephemeral streaming with zero disk-temp leakage and RAM key zeroing.
+1. Chunked authenticated encryption of vault files (AES-256-GCM, STREAM construction, SPENC03).
+2. Memory-hard Argon2id key derivation for the password, PIN and emergency card.
+3. Master Vault Key (MVK) wrapping in several slots (password, card token, card numbers).
+4. Decryption for viewing happens in memory; no decrypted temp files are written.
+
+Keys in memory are handled best-effort (H4): the open session's key buffer is
+overwritten when the vault fully locks or the engine shuts down gracefully, but Python and the
+crypto library make copies that cannot be overwritten (see docs/architecture.md,
+"Vault key in memory").
 """
 
 import base64
@@ -37,7 +41,12 @@ ARGON2_HASH_LEN = 32                 # 256-bit AES key
 
 
 def zero_memory(buffer: bytearray | bytes) -> None:
-    """Safely overwrites sensitive key memory buffers in RAM."""
+    """Overwrites a key held in a ``bytearray`` with zeros (best effort).
+
+    Only mutable buffers can be overwritten. ``bytes`` objects (and copies made
+    inside Python or the crypto library) are immutable and are left untouched;
+    they stay in freed memory until it is reused.
+    """
     if isinstance(buffer, bytearray):
         for i in range(len(buffer)):
             buffer[i] = 0

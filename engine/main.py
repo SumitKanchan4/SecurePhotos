@@ -74,6 +74,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     logger.info("Shutting down SecurePhotos Engine sidecar...")
+    # H4: overwrite and drop the vault key on a graceful shutdown. (When the app closes, the shell
+    # ends this process and Windows clears its memory, so this mainly covers development stops.)
+    from engine.api.vault import purge_vault_key
+    purge_vault_key()
     from engine.services.video_queue_service import stop_video_queue_worker
     await stop_video_queue_worker()
 

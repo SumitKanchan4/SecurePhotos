@@ -222,7 +222,7 @@ Integrate native Windows Hello authentication (fingerprint sensors and IR facial
 2. **Hardware TPM Master Vault Key (MVK) Wrapping**:
    - Master Vault Key (MVK) wrapping slot: When the user opts into Windows Hello, an ephemeral symmetric wrapping key is derived and protected inside the hardware Trusted Platform Module (TPM 2.0).
    - Biometric challenge verification unseals the key in volatile memory only for the duration of the active unlocked session.
-   - When the inactivity timer expires, the unsealed key is securely zeroized from RAM.
+   - When the inactivity timer expires, the unsealed key is dropped from the session and its buffer overwritten (best effort; see "Vault key in memory" in architecture.md).
 3. **Multi-Tier Fallback Hierarchy**:
    - Windows Hello Biometrics (Instant Primary) &rarr; 4-Digit Quick PIN (Fast Secondary) &rarr; Master Password (Authoritative Tertiary) &rarr; 24-Word Recovery Phrase (Emergency Air-Gapped Key).
 

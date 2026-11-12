@@ -45,6 +45,7 @@ This document serves as the **central, living source of truth** for all function
 116. [Engine Access Token Never Falls Back to a Guessable Value](#116-engine-access-token-never-falls-back-to-a-guessable-value)
 117. [App Stays Responsive During Heavy Work; Overlapping Work Queued](#117-app-stays-responsive-during-heavy-work-overlapping-work-queued)
 118. [AI Models Bundled, Pinned and Verified; Honest Offline Wording](#118-ai-models-bundled-pinned-and-verified-honest-offline-wording)
+119. [Honest Vault Key Handling in Memory](#119-honest-vault-key-handling-in-memory)
 
 ---
 
@@ -5406,3 +5407,22 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `src-tauri/tauri.conf.json` (`../build/models/*` -> `data/models/`, `THIRD_PARTY_NOTICES.md`), `THIRD_PARTY_NOTICES.md`, `README.md`, `.agents/rules/securephotos-app-rules.md` §3.4.
 - Tests: `engine/tests/test_ai_models.py` (7: pinned commits + checksums; tampered download refused; verified copy used; bundled copy used offline; damaged bundled copy not used; release script fetches and verifies all; installer bundles `build/models`, not the live library). Removing the bundled-copy step or putting an address back on `main` makes tests fail. 219 tests pass.
 - Validated: the release script downloaded all three models from the pinned addresses (checksums OK). Offline run (throwaway library, empty models folder, all downloads blocked by a dead proxy): imported a photo and ran the face scan; both face models were copied from the bundled folder, zero download attempts, scan completed.
+
+---
+
+## 119. Honest Vault Key Handling in Memory
+
+### Functionality Overview
+- No visible change. The documentation no longer over-promises: "RAM key zeroing" and "military-grade" are gone from the vault crypto module, and `docs/architecture.md` has a short "Vault key in memory" note saying what is protected (the key never goes to disk; the session buffer is overwritten when the vault fully locks), what isn't (copies Python and the crypto library make can stay in freed memory; Windows may write memory to the page file or hibernation file), and what the user can do (lock the vault when stepping away; use full-disk encryption such as BitLocker).
+- The engine now overwrites and drops the key on a graceful shutdown.
+- The auto-lock error states the user's real setting ("... after 15 minutes of inactivity") instead of always "5 minutes" (left over from before M8). The UI shows the lock screen on this error, not the text.
+
+### Functional Decision Points & Rationale (owner approved 2026-11-12)
+- Python can't reliably wipe memory: only the session's own `bytearray` can be overwritten; `bytes` copies cannot. So the fix is honest documentation plus the cheap improvements, not a promise.
+- Found while implementing: the app shell stops the engine with `child.kill()`, so the engine's shutdown code does not run when the app closes. Windows clears a process's memory before reusing it, so this leaves no readable key in RAM; the page file is the remaining risk, and a purge right before exit would not remove copies from it either. The shutdown purge therefore mainly covers development stops, and the docs say exactly that (no graceful-stop command added to the shell).
+- The key getters already hand out a single copy; one extra temporary copy (a comparison when opening a session) was removed.
+
+### Technical Touchpoints
+- `engine/services/crypto_vault.py` (module docstring, `zero_memory` docstring), `engine/api/vault.py` (`auto_lock_message`, getter docstring, session comment, `_open_session` comparison), `engine/main.py` (purge on shutdown).
+- `docs/architecture.md` ("Vault key in memory"), `docs/roadmap.md`, `src/components/VaultView.tsx` (comment).
+- Tests: `engine/tests/test_key_handling.py` (the real startup/shutdown routine overwrites the session buffer and drops the key, even with a PIN set; the auto-lock notice uses the configured minutes). Both fail on the old code (the key stayed in memory after shutdown). 221 tests pass.
