@@ -223,7 +223,6 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
           pin: pinStr.length === 4 ? pinStr : undefined,
           grid_card: gridCard,
           password_hint: passwordHint.trim() || undefined,
-          enable_totp: false,
         }),
       });
 
