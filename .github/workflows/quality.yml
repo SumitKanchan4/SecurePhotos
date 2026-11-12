@@ -6,7 +6,8 @@ name: Quality Gate
   push:
     branches: [master]
   pull_request:
-    branches: [master]
+    # feature/redesign: the frontend redesign integration branch (owner decision 2026-11-12).
+    branches: [master, feature/redesign]
   workflow_dispatch:
 
 concurrency:

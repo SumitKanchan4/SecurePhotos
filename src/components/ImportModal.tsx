@@ -368,8 +368,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                 width: "40px",
                 height: "40px",
                 borderRadius: "var(--radius-full)",
-                backgroundColor: "rgba(59, 130, 246, 0.12)",
-                border: "1px solid rgba(59, 130, 246, 0.25)",
+                backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -385,7 +385,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                   fontWeight: 800, 
                   letterSpacing: "-0.02em",
                   color: "var(--text-primary)",
-                  fontFamily: "var(--font-display, Plus Jakarta Sans, sans-serif)",
+                  fontFamily: "var(--font-display)",
                   margin: 0,
                 }}
               >
@@ -453,7 +453,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
             style={{
               border: isDragging ? "2px dashed var(--accent-primary)" : "1.5px dashed var(--glass-border)",
               backgroundColor: isDragging 
-                ? "rgba(59, 130, 246, 0.1)" 
+                ? "color-mix(in srgb, var(--accent-ink) 10%, transparent)" 
                 : hasSelection 
                   ? "var(--glass-pill-bg)" 
                   : "rgba(255, 255, 255, 0.02)",
@@ -475,7 +475,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                     width: "52px",
                     height: "52px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(59, 130, 246, 0.12)",
+                    backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -553,7 +553,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                       width: "44px",
                       height: "44px",
                       borderRadius: "var(--radius-full)",
-                      backgroundColor: "rgba(59, 130, 246, 0.15)",
+                      backgroundColor: "color-mix(in srgb, var(--accent-ink) 15%, transparent)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -613,7 +613,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                   gap: "8px",
                   padding: "14px 16px",
                   borderRadius: "var(--radius-md)",
-                  backgroundColor: cleanupMode === "copy" ? "rgba(59, 130, 246, 0.12)" : "rgba(255, 255, 255, 0.02)",
+                  backgroundColor: cleanupMode === "copy" ? "color-mix(in srgb, var(--accent-ink) 12%, transparent)" : "rgba(255, 255, 255, 0.02)",
                   border: cleanupMode === "copy" ? "1.5px solid var(--accent-primary)" : "1px solid var(--glass-border)",
                   cursor: "pointer",
                   transition: "all 0.15s ease",
@@ -653,7 +653,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                   gap: "8px",
                   padding: "14px 16px",
                   borderRadius: "var(--radius-md)",
-                  backgroundColor: cleanupMode === "move" ? "rgba(59, 130, 246, 0.12)" : "rgba(255, 255, 255, 0.02)",
+                  backgroundColor: cleanupMode === "move" ? "color-mix(in srgb, var(--accent-ink) 12%, transparent)" : "rgba(255, 255, 255, 0.02)",
                   border: cleanupMode === "move" ? "1.5px solid var(--accent-primary)" : "1px solid var(--glass-border)",
                   cursor: "pointer",
                   transition: "all 0.15s ease",
@@ -670,9 +670,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                       fontWeight: 700,
                       padding: "2px 8px",
                       borderRadius: "var(--radius-full)",
-                      backgroundColor: "rgba(59, 130, 246, 0.15)",
+                      backgroundColor: "color-mix(in srgb, var(--accent-ink) 15%, transparent)",
                       color: "var(--accent-primary)",
-                      border: "1px solid rgba(59, 130, 246, 0.3)",
+                      border: "1px solid color-mix(in srgb, var(--accent-ink) 30%, transparent)",
                     }}
                   >
                     Saves Space
@@ -699,7 +699,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                   style={{
                     height: "100%",
                     width: `${importProgress}%`,
-                    backgroundColor: "var(--accent-primary)",
+                    backgroundColor: "var(--accent-fill)",
                     borderRadius: "var(--radius-full)",
                     transition: "width 0.3s ease",
                   }}
@@ -755,14 +755,14 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                 gap: "6px",
                 padding: "8px 22px",
                 borderRadius: "var(--radius-full)",
-                backgroundColor: "var(--accent-primary)",
+                backgroundColor: "var(--accent-fill)",
                 border: "none",
-                color: "#ffffff",
+                color: "var(--on-accent)",
                 fontSize: "12px",
                 fontWeight: 700,
                 cursor: isImporting || !hasSelection ? "not-allowed" : "pointer",
                 opacity: !hasSelection ? 0.5 : 1,
-                boxShadow: hasSelection ? "0 2px 10px rgba(59, 130, 246, 0.35)" : "none",
+                boxShadow: hasSelection ? "0 2px 10px color-mix(in srgb, var(--accent-ink) 35%, transparent)" : "none",
                 transition: "all 0.15s ease",
               }}
             >

@@ -313,7 +313,7 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
       >
         <div>
           <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#ffffff", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
-            <Sparkles size={16} style={{ color: "var(--accent-primary, #6366f1)" }} />
+            <Sparkles size={16} style={{ color: "var(--accent-primary, var(--accent-ink))" }} />
             {albumName}
           </h2>
           <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.7)", margin: "2px 0 0", fontFamily: "var(--font-mono)" }}>
@@ -434,10 +434,10 @@ export const AlbumSlideshowModal: React.FC<AlbumSlideshowModalProps> = ({
           className="clickable"
           title={isPlaying ? "Pause (Space)" : "Play (Space)"}
           style={{
-            background: isPlaying ? "var(--accent-primary, #6366f1)" : "rgba(255,255,255,0.15)",
+            background: isPlaying ? "var(--accent-fill)" : "rgba(255,255,255,0.15)",
             border: "none",
             borderRadius: "50%",
-            color: "#ffffff",
+            color: "var(--on-accent)",
             width: "36px",
             height: "36px",
             display: "flex",

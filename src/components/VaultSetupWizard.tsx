@@ -97,7 +97,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
 
   const strengthScore = getPasswordStrength();
   const strengthLabels = ["Too short", "Weak", "Fair", "Strong", "Very Strong"];
-  const strengthColors = ["#ef4444", "#f97316", "#eab308", "#3b82f6", "#10b981"];
+  const strengthColors = ["#ef4444", "#f97316", "#eab308", "#c6ff00", "#10b981"];
 
   // Step 1 -> Step 2 validation
   const handleProceedToStep2 = (e: React.FormEvent) => {
@@ -405,7 +405,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
                         key={level}
                         style={{
                           flex: 1,
-                          backgroundColor: level <= strengthScore ? strengthColors[strengthScore - 1] || "var(--accent-primary)" : "var(--glass-border)",
+                          backgroundColor: level <= strengthScore ? strengthColors[strengthScore - 1] || "var(--accent-fill)" : "var(--glass-border)",
                           transition: "background-color 0.2s ease",
                         }}
                       />
@@ -489,9 +489,9 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
                 gap: "8px",
                 padding: "12px 20px",
                 borderRadius: "var(--radius-full)",
-                backgroundColor: "var(--accent-primary)",
+                backgroundColor: "var(--accent-fill)",
                 border: "none",
-                color: "#ffffff",
+                color: "var(--on-accent)",
                 fontSize: "13px",
                 fontWeight: 700,
                 cursor: "pointer",
@@ -532,8 +532,8 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
                   width: "48px",
                   height: "48px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: "rgba(59, 130, 246, 0.12)",
-                  border: "1px solid rgba(59, 130, 246, 0.25)",
+                  backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -579,7 +579,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
                       fontWeight: 700,
                       textAlign: "center",
                       outline: "none",
-                      boxShadow: pin[idx] ? "0 0 12px rgba(59, 130, 246, 0.2)" : "none",
+                      boxShadow: pin[idx] ? "0 0 12px color-mix(in srgb, var(--accent-ink) 20%, transparent)" : "none",
                       transition: "all 0.15s ease",
                     }}
                   />
@@ -614,7 +614,7 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
                       fontWeight: 700,
                       textAlign: "center",
                       outline: "none",
-                      boxShadow: confirmPin[idx] ? "0 0 12px rgba(59, 130, 246, 0.2)" : "none",
+                      boxShadow: confirmPin[idx] ? "0 0 12px color-mix(in srgb, var(--accent-ink) 20%, transparent)" : "none",
                       transition: "all 0.15s ease",
                     }}
                   />
@@ -658,9 +658,9 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
                   gap: "8px",
                   padding: "12px 20px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: "var(--accent-primary)",
+                  backgroundColor: "var(--accent-fill)",
                   border: "none",
-                  color: "#ffffff",
+                  color: "var(--on-accent)",
                   fontSize: "13px",
                   fontWeight: 700,
                   cursor: "pointer",
@@ -928,9 +928,9 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
                   gap: "8px",
                   padding: "12px 20px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: hasConfirmedSeed ? "var(--accent-primary)" : "var(--glass-border)",
+                  backgroundColor: hasConfirmedSeed ? "var(--accent-fill)" : "var(--glass-border)",
                   border: "none",
-                  color: "#ffffff",
+                  color: "var(--on-accent)",
                   fontSize: "13px",
                   fontWeight: 700,
                   cursor: hasConfirmedSeed ? "pointer" : "not-allowed",

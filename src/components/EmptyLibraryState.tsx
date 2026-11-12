@@ -83,7 +83,7 @@ export const EmptyLibraryState: React.FC<EmptyLibraryStateProps> = ({
         padding: "32px 20px",
         textAlign: "center",
         userSelect: "none",
-        backgroundColor: isDragOver ? "rgba(59, 130, 246, 0.06)" : "transparent",
+        backgroundColor: isDragOver ? "color-mix(in srgb, var(--accent-ink) 6%, transparent)" : "transparent",
         transition: "background-color 0.2s ease",
       }}
     >
@@ -94,10 +94,10 @@ export const EmptyLibraryState: React.FC<EmptyLibraryStateProps> = ({
           height: "88px",
           borderRadius: "26px",
           background: isDragOver 
-            ? "linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(99, 102, 241, 0.3) 100%)"
-            : "linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%)",
+            ? "linear-gradient(135deg, color-mix(in srgb, var(--accent-ink) 30%, transparent) 0%, color-mix(in srgb, var(--accent-ink) 30%, transparent) 100%)"
+            : "linear-gradient(135deg, color-mix(in srgb, var(--accent-ink) 15%, transparent) 0%, rgba(139, 92, 246, 0.15) 100%)",
           border: isDragOver 
-            ? "2px dashed var(--accent-primary, #3b82f6)" 
+            ? "2px dashed var(--accent-primary)" 
             : "1px solid var(--glass-border, rgba(255, 255, 255, 0.1))",
           display: "flex",
           alignItems: "center",
@@ -108,9 +108,9 @@ export const EmptyLibraryState: React.FC<EmptyLibraryStateProps> = ({
         }}
       >
         {isDragOver ? (
-          <UploadCloud size={40} style={{ color: "var(--accent-primary, #3b82f6)" }} />
+          <UploadCloud size={40} style={{ color: "var(--accent-primary, var(--accent-ink))" }} />
         ) : (
-          <FolderPlus size={38} style={{ color: "var(--accent-primary, #3b82f6)" }} />
+          <FolderPlus size={38} style={{ color: "var(--accent-primary, var(--accent-ink))" }} />
         )}
       </div>
 
@@ -122,7 +122,7 @@ export const EmptyLibraryState: React.FC<EmptyLibraryStateProps> = ({
           letterSpacing: "-0.03em", 
           marginBottom: "10px",
           color: "var(--text-primary, #f8fafc)",
-          fontFamily: "var(--font-display, Plus Jakarta Sans, sans-serif)",
+          fontFamily: "var(--font-display)",
         }}
       >
         Welcome to SecurePhotos
@@ -151,12 +151,12 @@ export const EmptyLibraryState: React.FC<EmptyLibraryStateProps> = ({
               gap: "8px",
               padding: "11px 24px",
               borderRadius: "var(--radius-full, 9999px)",
-              backgroundColor: "var(--accent-primary, #3b82f6)",
-              color: "#ffffff",
+              backgroundColor: "var(--accent-fill)",
+              color: "var(--on-accent)",
               fontWeight: 600,
               fontSize: "13px",
               border: "none",
-              boxShadow: "0 4px 16px rgba(59, 130, 246, 0.35)",
+              boxShadow: "0 4px 16px color-mix(in srgb, var(--accent-ink) 35%, transparent)",
               cursor: "pointer",
               transition: "transform 0.15s ease, box-shadow 0.15s ease",
             }}
@@ -186,7 +186,7 @@ export const EmptyLibraryState: React.FC<EmptyLibraryStateProps> = ({
               transition: "transform 0.15s ease, background-color 0.15s ease",
             }}
           >
-            <HardDrive size={16} style={{ color: "var(--accent-primary, #3b82f6)" }} />
+            <HardDrive size={16} style={{ color: "var(--accent-primary, var(--accent-ink))" }} />
             <span>{isConnecting ? "Connecting..." : "Connect Existing Library"}</span>
           </button>
         </div>
@@ -283,7 +283,7 @@ export const EmptyLibraryState: React.FC<EmptyLibraryStateProps> = ({
             color: "var(--text-secondary, #cbd5e1)",
           }}
         >
-          <Lock size={14} style={{ color: "var(--accent-primary, #3b82f6)" }} />
+          <Lock size={14} style={{ color: "var(--accent-primary, var(--accent-ink))" }} />
           <span>Protected Personal Vault</span>
         </div>
       </div>
