@@ -34,7 +34,7 @@ interface VaultViewProps {
   onPhotoClick?: (index: number, photos?: PhotoItem[]) => void;
 }
 
-const AUTO_LOCK_SECONDS = 300; // 5 minutes
+const DEFAULT_AUTO_LOCK_SECONDS = 300; // Used until the saved setting is loaded.
 
 const formatBytes = (bytes?: number) => {
   if (!bytes || bytes === 0) return "0 B";
@@ -135,7 +135,23 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   }, [showResetModal]);
 
   // Auto-lock countdown timer (5 minutes = 300s)
-  const [secondsRemaining, setSecondsRemaining] = useState(AUTO_LOCK_SECONDS);
+  // Idle timeout from Settings (auto_lock_duration); the engine enforces the same value (M8).
+  const [autoLockSeconds, setAutoLockSeconds] = useState(DEFAULT_AUTO_LOCK_SECONDS);
+  const [secondsRemaining, setSecondsRemaining] = useState(DEFAULT_AUTO_LOCK_SECONDS);
+
+  useEffect(() => {
+    if (!isVaultUnlocked) return;
+    apiFetch("/api/system/settings")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const seconds = Number(data?.settings?.auto_lock_duration);
+        if (seconds > 0) {
+          setAutoLockSeconds(seconds);
+          setSecondsRemaining(seconds);
+        }
+      })
+      .catch(() => {});
+  }, [isVaultUnlocked]);
   const lastActivityRef = useRef<number>(Date.now());
   const pinInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -315,13 +331,13 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     }
   };
 
-  // Handle 5-minute auto-lock countdown and activity tracking
+  // Auto-lock countdown (configured timeout) and activity tracking
   useEffect(() => {
     if (!isVaultUnlocked) return;
 
     const resetActivity = () => {
       lastActivityRef.current = Date.now();
-      setSecondsRemaining(AUTO_LOCK_SECONDS);
+      setSecondsRemaining(autoLockSeconds);
     };
 
     window.addEventListener("mousemove", resetActivity);
@@ -330,7 +346,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
 
     const interval = setInterval(() => {
       const elapsed = Math.floor((Date.now() - lastActivityRef.current) / 1000);
-      const remaining = Math.max(0, AUTO_LOCK_SECONDS - elapsed);
+      const remaining = Math.max(0, autoLockSeconds - elapsed);
       setSecondsRemaining(remaining);
 
       if (remaining <= 0) {
@@ -344,7 +360,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
       window.removeEventListener("keydown", resetActivity);
       window.removeEventListener("click", resetActivity);
     };
-  }, [isVaultUnlocked]);
+  }, [isVaultUnlocked, autoLockSeconds]);
 
   const handleManualLock = async () => {
     setIsVaultUnlocked(false);
