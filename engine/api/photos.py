@@ -362,10 +362,11 @@ async def run_background_thumbnail_regeneration():
                                 (settings.data_dir / raw_thumb) if raw_thumb else get_sharded_thumbnail_path(file_hash, is_encrypted=False)
                             )
                             # Generate video thumbnail via ffmpeg/OpenCV frame extraction
-                            success = generate_video_thumbnail(str(target_file), str(thumb_dest))
+                            success = await asyncio.to_thread(generate_video_thumbnail, str(target_file), str(thumb_dest))
                             thumb_path = thumb_dest if success else None
                         else:
-                            thumb_path, tw, th = generate_micro_thumbnail(
+                            thumb_path, tw, th = await asyncio.to_thread(
+                                generate_micro_thumbnail,
                                 target_file,
                                 file_hash=file_hash,
                                 size=1024,
@@ -533,10 +534,12 @@ async def get_photo_thumbnail(photo_id: int):
         if src_path.exists():
             if is_video:
                 from engine.services.video_service import generate_video_thumbnail
-                generate_video_thumbnail(str(src_path), str(thumb_path))
+                await asyncio.to_thread(generate_video_thumbnail, str(src_path), str(thumb_path))  # H7
             else:
                 from engine.services.thumbnail_service import generate_micro_thumbnail
-                thumb_path, _, _ = generate_micro_thumbnail(src_path, file_hash=row["file_hash"], size=1024)
+                thumb_path, _, _ = await asyncio.to_thread(  # H7
+                    generate_micro_thumbnail, src_path, file_hash=row["file_hash"], size=1024
+                )
 
     if not thumb_path.exists() or thumb_path.stat().st_size == 0:
         raise HTTPException(status_code=404, detail="Thumbnail file missing on disk")
@@ -667,23 +670,26 @@ async def download_photo(photo_id: int, mode: str = Query("original", pattern="^
         temp_dir = Path(tempfile.gettempdir())
         temp_print = temp_dir / f"securephotos_studio_print_{photo_id}_{os.getpid()}.jpg"
 
-        with Image.open(src_file) as img:
-            exif_data = img.info.get("exif")
-            img = ImageOps.exif_transpose(img)
-            if img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
+        def _write_studio_print() -> None:  # H7: image work runs off the event loop.
+            with Image.open(src_file) as img:
+                exif_data = img.info.get("exif")
+                img = ImageOps.exif_transpose(img)
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
 
-            save_kwargs = {
-                "format": "JPEG",
-                "quality": 98,
-                "subsampling": 0,  # 4:4:4 full color fidelity, eliminates chroma bleeding
-                "dpi": (300, 300),  # Explicit 300 DPI header for photo lab RIP software
-                "optimize": True,
-            }
-            if exif_data:
-                save_kwargs["exif"] = exif_data
+                save_kwargs = {
+                    "format": "JPEG",
+                    "quality": 98,
+                    "subsampling": 0,  # 4:4:4 full color fidelity, eliminates chroma bleeding
+                    "dpi": (300, 300),  # Explicit 300 DPI header for photo lab RIP software
+                    "optimize": True,
+                }
+                if exif_data:
+                    save_kwargs["exif"] = exif_data
 
-            img.save(temp_print, **save_kwargs)
+                img.save(temp_print, **save_kwargs)
+
+        await asyncio.to_thread(_write_studio_print)
 
         def cleanup_temp():
             try:
@@ -898,7 +904,17 @@ async def get_import_progress() -> Dict[str, Any]:
 
 @router.post("/import", response_model=ImportResponse, status_code=status.HTTP_201_CREATED)
 async def import_folder(payload: ImportRequest, background_tasks: BackgroundTasks) -> ImportResponse:
-    """Recursively ingests media files from a directory or specific file paths into the library."""
+    """Recursively ingests media files from a directory or specific file paths into the library.
+
+    Imports run one batch at a time (H7): a second import waits for the first.
+    """
+    from engine.services.work_queues import imports
+
+    async with imports():
+        return await _import_batch(payload, background_tasks)
+
+
+async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTasks) -> ImportResponse:
     files_to_process: List[Path] = []
 
     # 1. Add specific file paths if provided

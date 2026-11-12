@@ -125,7 +125,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - **Check while here (found in UI testing, confidence low):** the login cookie is `SameSite=Lax` and set by `127.0.0.1` for a page on another site (`tauri.localhost` in the app). In a browser on `localhost` it was rejected and every thumbnail got 403. Verify how WebView2 behaves; the redesign should not depend on cross-site cookies.
 - `auth_middleware.py`: remove the `?token=` fallback; with no secret set, refuse requests in a frozen build. `auth.py`: the cookie holds the raw secret for 30 days, so issue a separate random session value instead. Covers M6.
 
-### H7 · Move CPU-heavy work off the event loop — `todo`
+### H7 · Move CPU-heavy work off the event loop — `review` (branch `fix/h7-offload-blocking-work`, history §117; owner: queue overlapping work)
 - Argon2, whole-file encryption and decryption, PIL and ONNX run synchronously inside `async` routes. Locking a large video stalls every request. Use `asyncio.to_thread` or a process pool. Touches the same code as C5; do it after C5.
 
 ### H8 · Pin model downloads and correct the offline wording — `todo`

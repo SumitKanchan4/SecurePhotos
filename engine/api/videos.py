@@ -447,7 +447,7 @@ async def stream_video_endpoint(photo_id: int):
 
     # Probe codec to determine if it is natively decodable in Chromium / WebView2
     try:
-        meta = extract_video_metadata(str(src_file))
+        meta = await asyncio.to_thread(extract_video_metadata, str(src_file))  # H7: runs ffprobe
         codec = (meta.get("codec") or "").lower()
     except Exception as err:
         logger.warning("Failed to extract metadata for video %s: %s", photo_id, err)
