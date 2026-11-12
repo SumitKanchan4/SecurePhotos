@@ -87,9 +87,9 @@ export const SettingsView: React.FC = () => {
               borderRadius: "var(--radius-full)",
               fontSize: "11px",
               fontWeight: 600,
-              backgroundColor: "rgba(59, 130, 246, 0.12)",
+              backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
               color: "var(--accent-primary)",
-              border: "1px solid rgba(59, 130, 246, 0.25)",
+              border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
             }}
           >
             <Settings size={12} style={{ color: "var(--accent-primary)" }} />
@@ -114,7 +114,7 @@ export const SettingsView: React.FC = () => {
               letterSpacing: "-0.03em", 
               margin: 0,
               color: "var(--text-primary)",
-              fontFamily: "Plus Jakarta Sans, sans-serif",
+              fontFamily: "var(--font-display)",
               whiteSpace: "nowrap",
             }}
           >
@@ -143,7 +143,7 @@ export const SettingsView: React.FC = () => {
               transition: "all 0.15s ease",
             }}
           >
-            {settings.theme === "dark" ? <Sun size={14} style={{ color: "#fbbf24" }} /> : <Moon size={14} style={{ color: "#818cf8" }} />}
+            {settings.theme === "dark" ? <Sun size={14} style={{ color: "#fbbf24" }} /> : <Moon size={14} style={{ color: "var(--accent-ink)" }} />}
             <span>{settings.theme === "dark" ? "Light Mode" : "Dark Mode"}</span>
           </button>
         </div>

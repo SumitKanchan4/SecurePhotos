@@ -43,7 +43,7 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
         width: "42px",
         height: "24px",
         borderRadius: "var(--radius-full)",
-        backgroundColor: checked ? "var(--accent-primary)" : "var(--glass-badge-bg)",
+        backgroundColor: checked ? "var(--accent-fill)" : "var(--glass-badge-bg)",
         border: `1px solid ${checked ? "var(--accent-primary)" : "var(--glass-border)"}`,
         display: "inline-flex",
         alignItems: "center",

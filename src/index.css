@@ -1,21 +1,24 @@
 /* ═════════════════════════════════════════════════════════════════════════
-   🎨 SecurePhotos 2.0 — Enterprise CSS Design Token System
+   🎨 SecurePhotos — Design Tokens: Mono + acid lime (redesign Step 0)
+   One neon only. Lime is a FILL (with black text on it) in both themes; as
+   text or icon colour use --accent-ink (lime on dark, near-black on light),
+   never lime on a light background.
    ═════════════════════════════════════════════════════════════════════════ */
 
-/* 🌙 DARK THEME (Default) — Deep Liquid Obsidian Glass */
+/* 🌙 DARK THEME (Default) */
 [data-theme="dark"], :root {
   /* Backgrounds */
-  --bg-app: #08090d;
-  --bg-sidebar: rgba(13, 15, 22, 0.85);
-  --bg-surface: #12151e;
-  --bg-surface-elevated: #171b26;
-  --bg-surface-glass: rgba(18, 21, 30, 0.72);
-  
-  /* Liquid Glass System */
-  --glass-surface: rgba(18, 21, 30, 0.75);
-  --glass-surface-solid: #12151e;
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-border-highlight: rgba(255, 255, 255, 0.14);
+  --bg-app: #0a0a0a;
+  --bg-sidebar: #0a0a0a;
+  --bg-surface: #171717;
+  --bg-surface-elevated: #1c1c1c;
+  --bg-surface-glass: rgba(23, 23, 23, 0.82);
+
+  /* Surfaces (kept under the old "glass" names used across components) */
+  --glass-surface: rgba(23, 23, 23, 0.86);
+  --glass-surface-solid: #171717;
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --glass-border-highlight: rgba(255, 255, 255, 0.16);
   --glass-pill-bg: rgba(255, 255, 255, 0.06);
   --glass-pill-hover: rgba(255, 255, 255, 0.11);
   --glass-pill-border: rgba(255, 255, 255, 0.10);
@@ -25,28 +28,32 @@
   --glass-action-bg: rgba(255, 255, 255, 0.10);
   --glass-action-hover: rgba(255, 255, 255, 0.16);
   --glass-action-border: rgba(255, 255, 255, 0.16);
-  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-  
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+
   /* Borders & Dividers */
-  --border-subtle: rgba(255, 255, 255, 0.07);
-  --border-highlight: rgba(255, 255, 255, 0.14);
-  --border-active: #3b82f6;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-highlight: rgba(255, 255, 255, 0.16);
+  --border-active: #c6ff00;
 
   /* Typography Colors */
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --text-inverse: #090a0f;
+  --text-primary: #f5f5f5;
+  --text-secondary: #a3a3a3;
+  --text-muted: #8a8a8a;
+  --text-inverse: #0a0a0a;
 
-  /* Accent Colors */
-  --accent-primary: #3b82f6;
-  --accent-primary-hover: #2563eb;
-  --accent-glow: rgba(59, 130, 246, 0.25);
-  --accent-success: #10b981;
-  --accent-warning: #f59e0b;
-  --accent-danger: #ef4444;
-  --accent-vault: #3b82f6;
-  --accent-vault-glow: rgba(59, 130, 246, 0.20);
+  /* Accent: one neon */
+  --accent-fill: #c6ff00;          /* buttons, active pills, progress, focus */
+  --accent-fill-hover: #d4ff3d;
+  --on-accent: #0a0a0a;            /* text and icons on --accent-fill */
+  --accent-ink: #c6ff00;           /* accent used as text/icon colour */
+  --accent-primary: var(--accent-ink);
+  --accent-primary-hover: #d4ff3d;
+  --accent-glow: rgba(198, 255, 0, 0.22);
+  --accent-success: #c6ff00;
+  --accent-warning: #f5a524;
+  --accent-danger: #ff6b6b;
+  --accent-vault: var(--accent-ink);
+  --accent-vault-glow: rgba(198, 255, 0, 0.18);
 
   /* Shadows & Elevation */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -54,72 +61,76 @@
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.65);
   --shadow-lightbox: 0 24px 64px rgba(0, 0, 0, 0.85);
 
-  /* Lightbox & Studio Viewer System */
-  --lightbox-backdrop: rgba(5, 6, 10, 0.96);
-  --lightbox-toolbar-bg: rgba(14, 16, 23, 0.85);
-  --lightbox-nav-bg: rgba(20, 23, 34, 0.75);
+  /* Viewer: dark surround in both themes so colours look true */
+  --lightbox-backdrop: rgba(10, 10, 10, 0.97);
+  --lightbox-toolbar-bg: rgba(23, 23, 23, 0.88);
+  --lightbox-nav-bg: rgba(0, 0, 0, 0.55);
   --lightbox-nav-border: rgba(255, 255, 255, 0.14);
-  --lightbox-nav-color: #f8fafc;
+  --lightbox-nav-color: #f5f5f5;
 }
 
-/* ☀️ LIGHT THEME — Crisp Titanium Alabaster Glass */
+/* ☀️ LIGHT THEME */
 [data-theme="light"] {
   /* Backgrounds */
-  --bg-app: #f1f3f8;
-  --bg-sidebar: rgba(243, 245, 249, 0.85);
+  --bg-app: #fafafa;
+  --bg-sidebar: #fafafa;
   --bg-surface: #ffffff;
   --bg-surface-elevated: #ffffff;
-  --bg-surface-glass: rgba(255, 255, 255, 0.75);
+  --bg-surface-glass: rgba(255, 255, 255, 0.86);
 
-  /* Liquid Glass System */
-  --glass-surface: rgba(255, 255, 255, 0.78);
+  /* Surfaces */
+  --glass-surface: rgba(255, 255, 255, 0.88);
   --glass-surface-solid: #ffffff;
-  --glass-border: rgba(0, 0, 0, 0.08);
-  --glass-border-highlight: rgba(0, 0, 0, 0.14);
-  --glass-pill-bg: rgba(0, 0, 0, 0.04);
-  --glass-pill-hover: rgba(0, 0, 0, 0.08);
-  --glass-pill-border: rgba(0, 0, 0, 0.08);
-  --glass-pill-active: rgba(0, 0, 0, 0.12);
-  --glass-badge-bg: rgba(0, 0, 0, 0.05);
-  --glass-badge-border: rgba(0, 0, 0, 0.08);
-  --glass-action-bg: rgba(0, 0, 0, 0.07);
-  --glass-action-hover: rgba(0, 0, 0, 0.11);
-  --glass-action-border: rgba(0, 0, 0, 0.12);
+  --glass-border: rgba(10, 10, 10, 0.12);
+  --glass-border-highlight: rgba(10, 10, 10, 0.18);
+  --glass-pill-bg: rgba(10, 10, 10, 0.04);
+  --glass-pill-hover: rgba(10, 10, 10, 0.08);
+  --glass-pill-border: rgba(10, 10, 10, 0.10);
+  --glass-pill-active: rgba(10, 10, 10, 0.12);
+  --glass-badge-bg: rgba(10, 10, 10, 0.05);
+  --glass-badge-border: rgba(10, 10, 10, 0.10);
+  --glass-action-bg: rgba(10, 10, 10, 0.07);
+  --glass-action-hover: rgba(10, 10, 10, 0.11);
+  --glass-action-border: rgba(10, 10, 10, 0.14);
   --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
 
   /* Borders & Dividers */
-  --border-subtle: rgba(15, 23, 42, 0.08);
-  --border-highlight: rgba(15, 23, 42, 0.16);
-  --border-active: #2563eb;
+  --border-subtle: rgba(10, 10, 10, 0.08);
+  --border-highlight: rgba(10, 10, 10, 0.16);
+  --border-active: #0a0a0a;
 
   /* Typography Colors */
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #64748b;
+  --text-primary: #0a0a0a;
+  --text-secondary: #525252;
+  --text-muted: #6b6b6b;
   --text-inverse: #ffffff;
 
-  /* Accent Colors */
-  --accent-primary: #2563eb;
-  --accent-primary-hover: #1d4ed8;
-  --accent-glow: rgba(37, 99, 235, 0.15);
-  --accent-success: #059669;
-  --accent-warning: #d97706;
-  --accent-danger: #dc2626;
-  --accent-vault: #2563eb;
-  --accent-vault-glow: rgba(37, 99, 235, 0.15);
+  /* Accent: lime stays a fill; accent text/icons are near-black */
+  --accent-fill: #c6ff00;
+  --accent-fill-hover: #b8f000;
+  --on-accent: #0a0a0a;
+  --accent-ink: #0a0a0a;
+  --accent-primary: var(--accent-ink);
+  --accent-primary-hover: #262626;
+  --accent-glow: rgba(10, 10, 10, 0.10);
+  --accent-success: #3d7a00;
+  --accent-warning: #b45309;
+  --accent-danger: #c42b2b;
+  --accent-vault: var(--accent-ink);
+  --accent-vault-glow: rgba(10, 10, 10, 0.08);
 
   /* Shadows & Elevation */
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
-  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
-  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
-  --shadow-lightbox: 0 24px 64px rgba(15, 23, 42, 0.25);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
+  --shadow-lightbox: 0 24px 64px rgba(0, 0, 0, 0.35);
 
-  /* Lightbox & Studio Viewer System */
-  --lightbox-backdrop: rgba(245, 247, 250, 0.96);
-  --lightbox-toolbar-bg: rgba(255, 255, 255, 0.88);
-  --lightbox-nav-bg: rgba(255, 255, 255, 0.85);
-  --lightbox-nav-border: rgba(0, 0, 0, 0.10);
-  --lightbox-nav-color: #0f172a;
+  /* Viewer: dark surround in both themes */
+  --lightbox-backdrop: rgba(10, 10, 10, 0.97);
+  --lightbox-toolbar-bg: rgba(23, 23, 23, 0.88);
+  --lightbox-nav-bg: rgba(0, 0, 0, 0.55);
+  --lightbox-nav-border: rgba(255, 255, 255, 0.14);
+  --lightbox-nav-color: #f5f5f5;
 }
 
 /* 📏 GEOMETRY & TYPOGRAPHY TOKENS (Universal) */
@@ -131,7 +142,7 @@
   --radius-full: 9999px;
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-display: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Archivo', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
 
   --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);

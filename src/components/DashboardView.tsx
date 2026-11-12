@@ -250,7 +250,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
       case "morning":
         return { icon: <Sun size={14} style={{ color: "#06b6d4" }} />, color: "#06b6d4", label: "Morning" };
       case "afternoon":
-        return { icon: <Sun size={14} style={{ color: "#3b82f6" }} />, color: "#3b82f6", label: "Afternoon" };
+        return { icon: <Sun size={14} style={{ color: "var(--accent-ink)" }} />, color: "var(--accent-ink)", label: "Afternoon" };
       case "night":
       default:
         return { icon: <Moon size={14} style={{ color: "#8b5cf6" }} />, color: "#8b5cf6", label: "Night & Twilight" };
@@ -318,7 +318,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
           </span>
         </div>
 
-        {/* Center Column (flex: 0 1 auto): 22px Plus Jakarta Sans Title + Baseline Capsule */}
+        {/* Center Column (flex: 0 1 auto): 22px display-font title + Baseline Capsule */}
         <div 
           style={{ 
             flex: "0 1 auto", 
@@ -335,7 +335,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
               letterSpacing: "-0.03em", 
               margin: 0,
               color: "var(--text-primary)",
-              fontFamily: "Plus Jakarta Sans, sans-serif"
+              fontFamily: "var(--font-display)"
             }}
           >
             Dashboard
@@ -498,7 +498,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                   cy="45"
                   r={radius}
                   fill="transparent"
-                  stroke="#3b82f6"
+                  stroke="var(--accent-ink)"
                   strokeWidth="8"
                   strokeDasharray={`${mediaDash} ${circumference}`}
                   strokeDashoffset={`-${freeDash + otherDash}`}
@@ -537,10 +537,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
               {/* 1. Media Content */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span style={{ width: "8px", height: "8px", borderRadius: "2px", backgroundColor: "#3b82f6" }} />
+                  <span style={{ width: "8px", height: "8px", borderRadius: "2px", backgroundColor: "var(--accent-fill)" }} />
                   <span style={{ color: "var(--text-secondary)" }}>Photos & Media:</span>
                 </div>
-                <strong style={{ color: "#60a5fa", fontFamily: "var(--font-mono)" }}>
+                <strong style={{ color: "var(--accent-ink)", fontFamily: "var(--font-mono)" }}>
                   {formatBytes(mediaBytes)}
                 </strong>
               </div>
@@ -625,7 +625,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                 fontWeight: 700,
                 color: "var(--accent-primary)",
                 fontFamily: "var(--font-mono)",
-                backgroundColor: "rgba(59, 130, 246, 0.1)",
+                backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
                 padding: "2px 8px",
                 borderRadius: "var(--radius-full)",
               }}
@@ -645,7 +645,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                 backgroundColor: "rgba(255, 255, 255, 0.08)",
               }}
             >
-              <div style={{ width: `${photosPct}%`, backgroundColor: "#3b82f6" }} title={`Photos: ${photosPct}%`} />
+              <div style={{ width: `${photosPct}%`, backgroundColor: "var(--accent-fill)" }} title={`Photos: ${photosPct}%`} />
               <div style={{ width: `${videosPct}%`, backgroundColor: "#f59e0b" }} title={`Videos: ${videosPct}%`} />
               <div style={{ width: `${cachePct}%`, backgroundColor: "#10b981" }} title={`Thumbnails & Display Cache: ${cachePct}%`} />
             </div>
@@ -654,7 +654,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "14px", fontSize: "11px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <Images size={13} style={{ color: "#3b82f6" }} />
+                  <Images size={13} style={{ color: "var(--accent-ink)" }} />
                   Photos & Images:
                 </span>
                 <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
@@ -929,9 +929,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                 gap: "6px",
                 padding: "7px 18px",
                 borderRadius: "var(--radius-full)",
-                backgroundColor: dupSummary && dupSummary.total_groups > 0 ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+                backgroundColor: dupSummary && dupSummary.total_groups > 0 ? "var(--accent-fill)" : "var(--glass-pill-bg)",
                 border: `1px solid ${dupSummary && dupSummary.total_groups > 0 ? "transparent" : "var(--glass-border)"}`,
-                color: dupSummary && dupSummary.total_groups > 0 ? "#ffffff" : "var(--text-primary)",
+                color: dupSummary && dupSummary.total_groups > 0 ? "var(--on-accent)" : "var(--text-primary)",
                 fontSize: "12px",
                 fontWeight: 700,
                 cursor: "pointer",
@@ -970,13 +970,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                   height: "36px",
                   borderRadius: "var(--radius-md)",
                   backgroundColor: optStatus?.service_status === "processing" 
-                    ? "rgba(59, 130, 246, 0.15)" 
+                    ? "color-mix(in srgb, var(--accent-ink) 15%, transparent)" 
                     : optStatus?.service_status === "paused"
                     ? "rgba(245, 158, 11, 0.15)"
                     : "rgba(16, 185, 129, 0.12)",
                   border: `1px solid ${
                     optStatus?.service_status === "processing"
-                      ? "rgba(59, 130, 246, 0.3)"
+                      ? "color-mix(in srgb, var(--accent-ink) 30%, transparent)"
                       : optStatus?.service_status === "paused"
                       ? "rgba(245, 158, 11, 0.3)"
                       : "rgba(16, 185, 129, 0.25)"
@@ -1008,16 +1008,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                   fontWeight: 700,
                   padding: "3px 10px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: "rgba(59, 130, 246, 0.15)",
+                  backgroundColor: "color-mix(in srgb, var(--accent-ink) 15%, transparent)",
                   color: "var(--accent-primary)",
-                  border: "1px solid rgba(59, 130, 246, 0.3)",
+                  border: "1px solid color-mix(in srgb, var(--accent-ink) 30%, transparent)",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "6px",
                   whiteSpace: "nowrap",
                 }}
               >
-                <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "var(--accent-primary)", boxShadow: "0 0 6px var(--accent-primary)" }} />
+                <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "var(--accent-fill)", boxShadow: "0 0 6px var(--accent-fill)" }} />
                 Optimizing in Background
               </span>
             ) : optStatus?.service_status === "paused" ? (
@@ -1071,7 +1071,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                   cy="40"
                   r={34}
                   fill="transparent"
-                  stroke={optStatus?.overall_progress_percent === 100 ? "#10b981" : "#3b82f6"}
+                  stroke={optStatus?.overall_progress_percent === 100 ? "#10b981" : "var(--accent-ink)"}
                   strokeWidth="7"
                   strokeDasharray={`${Math.max(8, ((optStatus?.overall_progress_percent ?? 100) / 100) * 213.6)} 213.6`}
                   strokeDashoffset="0"
@@ -1133,8 +1133,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                     </span>
                     <span>{optStatus.active_item_progress}%</span>
                   </div>
-                  <div style={{ height: "3px", width: "100%", backgroundColor: "rgba(59, 130, 246, 0.2)", borderRadius: "var(--radius-full)", overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${optStatus.active_item_progress}%`, backgroundColor: "var(--accent-primary)", transition: "width 0.3s ease" }} />
+                  <div style={{ height: "3px", width: "100%", backgroundColor: "color-mix(in srgb, var(--accent-ink) 20%, transparent)", borderRadius: "var(--radius-full)", overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${optStatus.active_item_progress}%`, backgroundColor: "var(--accent-fill)", transition: "width 0.3s ease" }} />
                   </div>
                 </div>
               )}
@@ -1175,9 +1175,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                   gap: "6px",
                   padding: "7px 16px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: "var(--accent-primary)",
+                  backgroundColor: "var(--accent-fill)",
                   border: "none",
-                  color: "#ffffff",
+                  color: "var(--on-accent)",
                   fontSize: "12px",
                   fontWeight: 700,
                   cursor: "pointer",
@@ -1255,7 +1255,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                 width: "34px", 
                 height: "34px", 
                 borderRadius: "var(--radius-sm)", 
-                backgroundColor: "rgba(59, 130, 246, 0.15)", 
+                backgroundColor: "color-mix(in srgb, var(--accent-ink) 15%, transparent)", 
                 color: "var(--accent-primary)",
                 display: "flex",
                 alignItems: "center",
@@ -1460,7 +1460,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                 width: "34px", 
                 height: "34px", 
                 borderRadius: "var(--radius-sm)", 
-                backgroundColor: "rgba(59, 130, 246, 0.15)", 
+                backgroundColor: "color-mix(in srgb, var(--accent-ink) 15%, transparent)", 
                 color: "var(--accent-primary)",
                 display: "flex",
                 alignItems: "center",
@@ -1594,7 +1594,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                           fontWeight: 700,
                           fontFamily: "var(--font-mono)",
                           color: "var(--accent-primary)",
-                          backgroundColor: "rgba(59, 130, 246, 0.1)",
+                          backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
                           padding: "2px 7px",
                           borderRadius: "var(--radius-full)",
                         }}

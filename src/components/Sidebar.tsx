@@ -115,10 +115,10 @@ export const Sidebar: React.FC = () => {
                 padding: "9px 14px",
                 borderRadius: "var(--radius-md)",
                 border: isActive 
-                  ? (item.isVault ? "1px solid rgba(59, 130, 246, 0.35)" : "1px solid var(--glass-border-highlight)")
+                  ? (item.isVault ? "1px solid color-mix(in srgb, var(--accent-ink) 35%, transparent)" : "1px solid var(--glass-border-highlight)")
                   : "1px solid transparent",
                 background: isActive 
-                  ? (item.isVault ? "rgba(59, 130, 246, 0.15)" : "var(--glass-pill-active)")
+                  ? (item.isVault ? "color-mix(in srgb, var(--accent-ink) 15%, transparent)" : "var(--glass-pill-active)")
                   : "transparent",
                 color: isActive 
                   ? (item.isVault ? "var(--accent-primary)" : "var(--text-primary)")
@@ -200,7 +200,7 @@ export const Sidebar: React.FC = () => {
                 ? "var(--accent-success)" 
                 : hasIssue 
                   ? "var(--accent-danger, #ef4444)" 
-                  : "var(--accent-primary, #3b82f6)";
+                  : "var(--accent-primary)";
               const textColor = isRunning 
                 ? "var(--text-secondary)" 
                 : hasIssue 

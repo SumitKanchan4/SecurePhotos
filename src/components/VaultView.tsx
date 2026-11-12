@@ -557,8 +557,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               style={{
                 padding: "4px 10px",
                 borderRadius: "var(--radius-full)",
-                backgroundColor: "rgba(59, 130, 246, 0.12)",
-                border: "1px solid rgba(59, 130, 246, 0.3)",
+                backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--accent-ink) 30%, transparent)",
                 color: "var(--accent-primary)",
                 fontSize: "11px",
                 fontWeight: 700,
@@ -575,8 +575,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               style={{
                 padding: "4px 10px",
                 borderRadius: "var(--radius-full)",
-                backgroundColor: "rgba(59, 130, 246, 0.10)",
-                border: "1px solid rgba(59, 130, 246, 0.25)",
+                backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                 color: "var(--accent-primary)",
                 fontSize: "11px",
                 fontWeight: 700,
@@ -608,7 +608,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               style={{
                 fontSize: "22px",
                 fontWeight: 800,
-                fontFamily: "Plus Jakarta Sans, sans-serif",
+                fontFamily: "var(--font-display)",
                 letterSpacing: "-0.03em",
                 color: "var(--text-primary)",
                 margin: 0,
@@ -686,9 +686,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                   gap: "6px",
                   padding: "6px 14px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: isPrivacyShieldActive ? "var(--accent-primary)" : "var(--glass-pill-bg)",
+                  backgroundColor: isPrivacyShieldActive ? "var(--accent-fill)" : "var(--glass-pill-bg)",
                   border: "1px solid var(--glass-border)",
-                  color: isPrivacyShieldActive ? "#ffffff" : "var(--text-secondary)",
+                  color: isPrivacyShieldActive ? "var(--on-accent)" : "var(--text-secondary)",
                   fontSize: "12px",
                   fontWeight: 600,
                   cursor: "pointer",
@@ -732,9 +732,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                 gap: "6px",
                 padding: "6px 16px",
                 borderRadius: "var(--radius-full)",
-                backgroundColor: "var(--accent-primary)",
+                backgroundColor: "var(--accent-fill)",
                 border: "none",
-                color: "#ffffff",
+                color: "var(--on-accent)",
                 fontSize: "12px",
                 fontWeight: 700,
                 cursor: "pointer",
@@ -825,7 +825,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                   style={{
                     padding: "1px 7px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: isSelected ? "rgba(59, 130, 246, 0.2)" : "var(--glass-badge-bg)",
+                    backgroundColor: isSelected ? "color-mix(in srgb, var(--accent-ink) 20%, transparent)" : "var(--glass-badge-bg)",
                     fontSize: "11px",
                     fontFamily: "var(--font-mono)",
                     fontWeight: 700,
@@ -910,9 +910,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               gap: "6px",
               padding: "7px 16px",
               borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--accent-primary)",
+              backgroundColor: "var(--accent-fill)",
               border: "none",
-              color: "#ffffff",
+              color: "var(--on-accent)",
               fontSize: "12px",
               fontWeight: 700,
               cursor: restoringAlbumId === activeVaultAlbumId ? "default" : "pointer",
@@ -960,8 +960,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               width: "64px",
               height: "64px",
               borderRadius: "var(--radius-full)",
-              backgroundColor: "rgba(59, 130, 246, 0.1)",
-              border: "1px solid rgba(59, 130, 246, 0.25)",
+              backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -971,7 +971,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
           >
             <Lock size={28} />
           </div>
-          <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+          <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "var(--font-display)" }}>
             Protect Your Sensitive Media
           </h2>
           <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "440px", lineHeight: "1.5", margin: "0 0 24px 0" }}>
@@ -986,13 +986,13 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               gap: "8px",
               padding: "10px 24px",
               borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--accent-primary)",
+              backgroundColor: "var(--accent-fill)",
               border: "none",
-              color: "#ffffff",
+              color: "var(--on-accent)",
               fontSize: "13px",
               fontWeight: 700,
               cursor: "pointer",
-              boxShadow: "0 4px 16px rgba(59, 130, 246, 0.3)",
+              boxShadow: "0 4px 16px color-mix(in srgb, var(--accent-ink) 30%, transparent)",
               transition: "all 0.15s ease",
             }}
           >
@@ -1021,8 +1021,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               width: "64px",
               height: "64px",
               borderRadius: "var(--radius-full)",
-              backgroundColor: "rgba(59, 130, 246, 0.1)",
-              border: "1px solid rgba(59, 130, 246, 0.25)",
+              backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -1033,7 +1033,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
             <Lock size={28} />
           </div>
 
-          <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+          <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "var(--font-display)" }}>
             Your Private Vault is Locked
           </h2>
 
@@ -1103,8 +1103,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                   width: "100%",
                   padding: "8px 14px",
                   borderRadius: "var(--radius-md)",
-                  backgroundColor: "rgba(59, 130, 246, 0.08)",
-                  border: "1px solid rgba(59, 130, 246, 0.2)",
+                  backgroundColor: "color-mix(in srgb, var(--accent-ink) 8%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--accent-ink) 20%, transparent)",
                   color: "var(--text-secondary)",
                   fontSize: "12px",
                   textAlign: "center",
@@ -1141,7 +1141,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                         fontWeight: 700,
                         textAlign: "center",
                         outline: "none",
-                        boxShadow: pin[idx] ? "0 0 12px rgba(59, 130, 246, 0.25)" : "var(--glass-shadow)",
+                        boxShadow: pin[idx] ? "0 0 12px color-mix(in srgb, var(--accent-ink) 25%, transparent)" : "var(--glass-shadow)",
                         transition: "all 0.15s ease",
                       }}
                     />
@@ -1238,9 +1238,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                     style={{
                       padding: "8px 18px",
                       borderRadius: "var(--radius-full)",
-                      backgroundColor: "var(--accent-primary)",
+                      backgroundColor: "var(--accent-fill)",
                       border: "none",
-                      color: "#ffffff",
+                      color: "var(--on-accent)",
                       fontSize: "12px",
                       fontWeight: 700,
                       cursor: isSubmitting || !password ? "default" : "pointer",
@@ -1249,7 +1249,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                       gap: "6px",
                       flexShrink: 0,
                       opacity: isSubmitting || !password ? 0.6 : 1,
-                      boxShadow: "0 2px 8px rgba(59, 130, 246, 0.25)",
+                      boxShadow: "0 2px 8px color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                       transition: "all 0.15s ease",
                     }}
                   >
@@ -1359,9 +1359,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                   marginTop: "16px",
                   padding: "8px 20px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: "var(--accent-primary)",
+                  backgroundColor: "var(--accent-fill)",
                   border: "none",
-                  color: "#ffffff",
+                  color: "var(--on-accent)",
                   fontSize: "12px",
                   fontWeight: 600,
                   cursor: "pointer",
@@ -1455,8 +1455,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                     width: "64px",
                     height: "64px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(59, 130, 246, 0.1)",
-                    border: "1px solid rgba(59, 130, 246, 0.25)",
+                    backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -1466,7 +1466,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                 >
                   <Lock size={28} />
                 </div>
-                <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+                <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "var(--font-display)" }}>
                   Your Private Vault is Empty
                 </h2>
                 <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "440px", lineHeight: "1.5", margin: "0 0 20px 0" }}>
@@ -1536,8 +1536,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                     width: "64px",
                     height: "64px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(59, 130, 246, 0.1)",
-                    border: "1px solid rgba(59, 130, 246, 0.25)",
+                    backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -1547,7 +1547,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                 >
                   <Folder size={28} />
                 </div>
-                <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+                <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "var(--font-display)" }}>
                   No Locked Albums
                 </h2>
                 <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "440px", lineHeight: "1.5", margin: "0 0 20px 0" }}>
@@ -1607,7 +1607,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                             <Folder size={40} style={{ color: "var(--accent-primary)", opacity: 0.5 }} />
                           </div>
                         )}
-                        <div style={{ position: "absolute", top: "10px", right: "10px", display: "flex", alignItems: "center", gap: "4px", padding: "3px 8px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(15, 23, 42, 0.75)", backdropFilter: "blur(12px)", border: "1px solid rgba(59, 130, 246, 0.4)", color: "var(--accent-primary)", fontSize: "10px", fontWeight: 700 }}>
+                        <div style={{ position: "absolute", top: "10px", right: "10px", display: "flex", alignItems: "center", gap: "4px", padding: "3px 8px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(15, 23, 42, 0.75)", backdropFilter: "blur(12px)", border: "1px solid color-mix(in srgb, var(--accent-ink) 40%, transparent)", color: "var(--accent-fill)", fontSize: "10px", fontWeight: 700 }}>
                           <Lock size={10} />
                           <span>LOCKED</span>
                         </div>
@@ -1693,8 +1693,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                     width: "64px",
                     height: "64px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(59, 130, 246, 0.1)",
-                    border: "1px solid rgba(59, 130, 246, 0.25)",
+                    backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -1704,7 +1704,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                 >
                   <FileText size={28} />
                 </div>
-                <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+                <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "var(--font-display)" }}>
                   No Encrypted Documents
                 </h2>
                 <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "440px", lineHeight: "1.5", margin: "0 0 20px 0" }}>
@@ -1736,8 +1736,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                               width: "38px",
                               height: "38px",
                               borderRadius: "var(--radius-md)",
-                              backgroundColor: "rgba(59, 130, 246, 0.12)",
-                              border: "1px solid rgba(59, 130, 246, 0.25)",
+                              backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
+                              border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                               color: "var(--accent-primary)",
                               display: "flex",
                               alignItems: "center",
@@ -1765,8 +1765,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                             gap: "4px",
                             padding: "2px 8px",
                             borderRadius: "var(--radius-full)",
-                            backgroundColor: "rgba(59, 130, 246, 0.12)",
-                            border: "1px solid rgba(59, 130, 246, 0.3)",
+                            backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
+                            border: "1px solid color-mix(in srgb, var(--accent-ink) 30%, transparent)",
                             color: "var(--accent-primary)",
                             fontSize: "10px",
                             fontWeight: 700,
@@ -1832,9 +1832,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                             gap: "5px",
                             padding: "6px 14px",
                             borderRadius: "var(--radius-full)",
-                            backgroundColor: "var(--accent-primary)",
+                            backgroundColor: "var(--accent-fill)",
                             border: "none",
-                            color: "#ffffff",
+                            color: "var(--on-accent)",
                             fontSize: "11px",
                             fontWeight: 600,
                             cursor: restoringDocId === doc.id ? "default" : "pointer",

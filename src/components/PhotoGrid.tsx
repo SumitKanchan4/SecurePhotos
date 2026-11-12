@@ -203,7 +203,7 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
             style={{
               height: "100%",
               width: `${optimizationProgress?.item_progress || 30}%`,
-              background: "linear-gradient(90deg, #3b82f6, #60a5fa)",
+              background: "var(--accent-fill)",
               borderRadius: "2px",
               transition: "width 0.3s ease",
             }}
@@ -288,16 +288,16 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
                 borderRadius: "var(--radius-full)",
                 background: "rgba(10, 12, 18, 0.85)",
                 backdropFilter: "blur(12px)",
-                border: "1px solid rgba(59, 130, 246, 0.6)",
-                color: "#60a5fa",
+                border: "1px solid color-mix(in srgb, var(--accent-ink) 60%, transparent)",
+                color: "var(--accent-ink)",
                 fontSize: "10px",
                 fontWeight: 700,
                 letterSpacing: "0.2px",
-                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.6), 0 0 10px rgba(59, 130, 246, 0.3)",
+                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.6), 0 0 10px color-mix(in srgb, var(--accent-ink) 30%, transparent)",
                 pointerEvents: "none",
               }}
             >
-              <Loader2 size={10} className="spin" style={{ color: "#60a5fa" }} />
+              <Loader2 size={10} className="spin" style={{ color: "var(--accent-ink)" }} />
               <span>Processing HD...</span>
             </div>
           );
@@ -482,12 +482,12 @@ const PhotoCard: React.FC<PhotoCardProps> = React.memo(({
           width: "18px",
           height: "18px",
           borderRadius: "var(--radius-xs)",
-          backgroundColor: isSelected ? "var(--accent-primary)" : "rgba(0, 0, 0, 0.45)",
+          backgroundColor: isSelected ? "var(--accent-fill)" : "rgba(0, 0, 0, 0.45)",
           border: isSelected ? "none" : "1px solid rgba(255, 255, 255, 0.5)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#ffffff",
+          color: "var(--on-accent)",
           zIndex: 3,
           opacity: isSelected || isHovered ? 1 : 0.4,
           transition: "opacity 0.15s ease, background-color 0.15s ease",
