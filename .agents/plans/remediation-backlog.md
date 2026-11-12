@@ -109,7 +109,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ### H2 · Encrypted file format v3: truncation protection and an authenticated header — `done` (merged 2026-11-12, history §109)
 - `crypto_vault.py:239-333`. Chunks have no final-chunk flag and no associated data, so trailing chunks can be dropped without detection. The header salt is unused. Fix: a STREAM-style construction (nonce/AAD includes the chunk index and a last-chunk flag, and the header is in the AAD). Must still read `SPENC02` files, with optional background re-encryption.
 
-### H3 · Remove TOTP leftovers — `review` (branch `fix/h3-remove-totp`, history §115)
+### H3 · Remove TOTP leftovers — `done` (merged 2026-11-12, PR #5, history §115)
 - The UI always sends `enable_totp: false` (`VaultSetupWizard.tsx:226`), but the backend still generates and verifies TOTP and stores the secret in plaintext in `totp_secret_encrypted`. Remove the backend code, `has_totp` and the store fields. Leave the DB column (migration safety).
 
 ### H4 · Make in-memory key handling honest — `todo`
