@@ -128,7 +128,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ### H7 · Move CPU-heavy work off the event loop — `done` (merged 2026-11-12, PR #7, history §117; owner: queue overlapping work)
 - Argon2, whole-file encryption and decryption, PIL and ONNX run synchronously inside `async` routes. Locking a large video stalls every request. Use `asyncio.to_thread` or a process pool. Touches the same code as C5; do it after C5.
 
-### H8 · Pin model downloads and correct the offline wording — `review` (branch `fix/h8-model-downloads`, history §118; owner: bundle the models in the installer)
+### H8 · Pin model downloads and correct the offline wording — `done` (merged 2026-11-12, PR #8, history §118; owner: bundle the models in the installer)
 - **Follow-ups found in H8:** (1) the bundled fonts (H5) are redistributed too, so their OFL-1.1 licence text and copyright lines should ship with the app (today `THIRD_PARTY_NOTICES.md` only points to `node_modules`). (2) The owner's real `data/models` still holds the retired models (CodeFormer, ArcFace, yoloface, ReFocus, about 630 MB); they are deleted automatically once the People migration finishes on that library (H9), worth confirming after the next app start.
 - `face_recognition_service.py:27-28`, `face_restore_service.py:25-26`, `neural_sr_service.py:25`, `deblur_service.py:25` download from HuggingFace `main` branches with no hash check. Rule §3.4 says models are bundled, but CI ships a placeholder. Pin the revision and SHA-256, verify before loading, and download into `data/models` only. Reword the README: "all photo processing is on-device; models download once, updates are checked online".
 
