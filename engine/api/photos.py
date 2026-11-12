@@ -349,7 +349,7 @@ async def run_background_thumbnail_regeneration():
 
                 try:
                     # Stored paths are relative to the data folder, not the working directory.
-                    from engine.services.media_paths import resolve_stored_path
+                    from engine.services.media_paths import resolve_stored_path, to_db_path
                     target_file = resolve_stored_path(filepath) or Path(filepath)
                     if target_file.exists() and target_file.suffix.lower() != ".enc":
                         is_video = bool(
@@ -377,7 +377,7 @@ async def run_background_thumbnail_regeneration():
                             try:
                                 await update_conn.execute(
                                     "UPDATE photos SET thumbnail_path = ? WHERE id = ?;",
-                                    (str(thumb_path), photo_id),
+                                    (to_db_path(Path(thumb_path)), photo_id),
                                 )
                                 await update_conn.commit()
                             finally:
