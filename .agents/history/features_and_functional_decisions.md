@@ -37,6 +37,7 @@ This document serves as the **central, living source of truth** for all function
 108. [Trash Really Deletes After 30 Days; Auto-Lock Follows Settings](#108-trash-really-deletes-after-30-days-auto-lock-follows-settings)
 109. [Vault File Format SPENC03 (Truncation-Proof, Per-File Keys)](#109-vault-file-format-spenc03-truncation-proof-per-file-keys)
 110. [Content Security Policy, Narrow Permissions, Bundled Fonts](#110-content-security-policy-narrow-permissions-bundled-fonts)
+111. [CI Quality Gate and Pinned Dependencies](#111-ci-quality-gate-and-pinned-dependencies)
 
 ---
 
@@ -5213,3 +5214,25 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `index.html` (Google Fonts removed), `src/main.tsx` (font imports), `package.json` (`@fontsource/*`).
 - Validated with Playwright on the production page origin (`http://tauri.localhost`): every screen and Settings tab, viewer, video (plays), vault viewer -> no CSP violations, no request leaving the computer, all media 200/206, `shell.execute` denied, bundled fonts loaded. Development mode: no CSP violations, Vite live reload connected.
 
+---
+
+## 111. CI Quality Gate and Pinned Dependencies
+
+### Functionality Overview
+- No visible change for users. Every pull request and every merge to `master` now runs an automatic check on GitHub (Windows): Python lint, the full Python test suite, an npm security audit, the TypeScript typecheck and frontend build, and a Rust compile check. A failing check shows a red cross on the PR before anything is merged.
+- The manual release pipeline still works the same way, but now installs exactly the pinned versions and runs the linter too.
+
+### Functional Decision Points & Rationale (owner decision 2026-11-12: run on pushes to master + PRs)
+- **Linter (ruff, error-level rules only: `E9`, `F`)**: catches real bugs (undefined names, unused imports/variables) without a style rewrite. It found one real bug: deleting a story with a cached video export crashed (`os` was never imported in `stories_service.py`); fixed to use the library path helpers, with a regression test. 84 unused imports / empty f-strings were auto-fixed; 3 dead variables removed.
+- **Pinned Python dependencies**: `engine/requirements.in` (what the app needs) is compiled with `uv pip compile` into `engine/requirements.txt` (exact versions, Python 3.12, Windows). Test and build tools (pytest, httpx, ruff, PyInstaller) moved to `engine/requirements-dev.in` / `requirements-dev.txt`, so they are no longer runtime requirements. `pillow-avif-plugin` dropped (Pillow 12 reads and writes AVIF natively).
+- **Python 3.12** everywhere in CI (was 3.11), matching the development environment.
+- **`npm ci`** instead of `npm install` (uses the lock file exactly). Vite updated to 6.4.6 and `npm audit fix` applied: 0 known vulnerabilities. CI fails on any high-severity advisory.
+- **Actions pinned to commit SHAs** (tag in a comment), so a re-tagged third-party action can't change what runs. The quality workflow has read-only repository permissions.
+- **Not included yet** (listed in the backlog as Q2 follow-ups): mypy, eslint and clippy would each need a first clean-up pass before they can gate merges.
+
+### Technical Touchpoints
+- `.github/workflows/quality.yml` (new), `.github/workflows/pipeline.yml` (pinned actions, Python 3.12, `npm ci`, dev requirements, ruff).
+- `ruff.toml`; `engine/requirements.in`, `engine/requirements.txt`, `engine/requirements-dev.in`, `engine/requirements-dev.txt`.
+- `engine/services/stories_service.py` (story export deletion fix); `engine/tests/test_story_cleanup.py`.
+- `package.json` / `package-lock.json` (Vite 6.4.6, audit fixes).
+- Validated locally: `ruff check .` clean, 195 tests pass, `tsc --noEmit` and `npm run build` pass, both workflow files are valid YAML.

@@ -10,7 +10,6 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
 from engine.services.document_service import (
-    classify_document,
     import_documents_direct,
     list_documents,
     scan_library_for_documents,

@@ -16,8 +16,6 @@ from engine.services.crypto_vault import (
     encrypt_file_chunked,
     decrypt_file_chunked_stream,
     decrypt_file_to_bytes,
-    generate_totp_secret,
-    verify_totp_code,
 )
 
 

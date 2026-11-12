@@ -7,7 +7,6 @@ Verifies:
 - People API routes (/api/people, /api/people/clusters, /api/people/tag-cluster, /api/people/scan-progress).
 """
 
-import json
 import shutil
 import tempfile
 from pathlib import Path

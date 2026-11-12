@@ -6,10 +6,7 @@ one-off event/party guests from story feeds.
 """
 
 import datetime
-import json
 import logging
-from typing import Dict, List, Optional
-import aiosqlite
 
 from engine.database import get_db_connection
 

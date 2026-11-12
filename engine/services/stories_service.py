@@ -12,10 +12,11 @@ Delivers Google Photos-grade temporal and semantic curation:
 import datetime
 import logging
 import struct
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, model_validator
 
 from engine.database import get_db_connection
+from engine.services.media_paths import resolve_stored_path
 from engine.services.music_service import get_track_for_mood
 
 logger = logging.getLogger("securephotos.stories_service")
@@ -96,7 +97,7 @@ def generate_punchy_title(
             templates = [
                 f"{years_ago} {plural} Ago Today",
                 f"Remember This Day? ({year})" if year else f"{years_ago} {plural} Ago Today",
-                f"A Day to Remember ({year})" if year else f"A Day to Remember",
+                f"A Day to Remember ({year})" if year else "A Day to Remember",
                 f"Flashback to {year}" if year else f"{years_ago} {plural} Ago Today",
             ]
             return templates[seed % len(templates)]
@@ -709,12 +710,10 @@ async def delete_story(story_id: int) -> bool:
             row = await cur.fetchone()
             if not row:
                 return False
-            v_path = row["rendered_video_path"]
-            if v_path and os.path.exists(v_path):
-                try:
-                    os.unlink(v_path)
-                except Exception:
-                    pass
+            # Cached export, if any (path relative to the data folder; safe lookup).
+            v_path = resolve_stored_path(row["rendered_video_path"])
+            if v_path is not None:
+                v_path.unlink(missing_ok=True)
 
         await conn.execute("DELETE FROM story_items WHERE story_id = ?;", (story_id,))
         await conn.execute("DELETE FROM stories WHERE id = ?;", (story_id,))
@@ -759,12 +758,9 @@ async def prune_ephemeral_stories(keep_cap: int = 15) -> int:
 
         stale_ids = [r["id"] for r in stale_rows]
         for r in stale_rows:
-            vp = r["rendered_video_path"]
-            if vp and os.path.exists(vp):
-                try:
-                    os.unlink(vp)
-                except Exception:
-                    pass
+            vp = resolve_stored_path(r["rendered_video_path"])
+            if vp is not None:
+                vp.unlink(missing_ok=True)
 
         placeholders = ",".join("?" * len(stale_ids))
         await conn.execute(f"DELETE FROM story_items WHERE story_id IN ({placeholders});", stale_ids)

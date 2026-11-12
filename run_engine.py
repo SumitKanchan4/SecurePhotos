@@ -1,6 +1,5 @@
 """Root entrypoint launcher for SecurePhotos Engine sidecar."""
 
-import os
 import sys
 from pathlib import Path
 

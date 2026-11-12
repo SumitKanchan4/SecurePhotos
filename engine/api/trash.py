@@ -6,9 +6,8 @@ active library, and permanently purging files from disk and SQLite.
 
 import datetime
 import logging
-from pathlib import Path
 from typing import List
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from pydantic import BaseModel, Field
 
 from engine.database import get_db_connection
