@@ -45,6 +45,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.critical(f"Database migration failed: {e}", exc_info=True)
         sys.exit(1)
 
+    # Apply the saved vault auto-lock timeout (M8).
+    try:
+        from engine.api.system import get_app_settings
+        from engine.api.vault import set_auto_lock_seconds
+        set_auto_lock_seconds((await get_app_settings())["settings"].get("auto_lock_duration"))
+    except Exception as e:
+        logger.warning(f"Could not load the auto-lock setting; using 5 minutes: {e}")
+
     # Finish or roll back any vault lock/unlock interrupted by a crash or unplug.
     # Runs before background workers so nothing else touches those files first.
     try:
@@ -56,6 +64,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Automatically trigger background 4K optimization pass if any unoptimized photos exist
     if not os.environ.get("PYTEST_CURRENT_TEST"):
         asyncio.create_task(photos.run_background_optimization())
+        # Permanently delete trash older than 30 days, now and every 6 hours (M7).
+        asyncio.create_task(trash.run_trash_purge_loop())
         from engine.services.face_scan_worker import start_background_scan
         start_background_scan()
         from engine.services.video_queue_service import start_video_queue_worker

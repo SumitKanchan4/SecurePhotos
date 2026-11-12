@@ -593,6 +593,8 @@ async def get_app_settings() -> Dict[str, Any]:
                     merged[key] = json.loads(raw_val)
                 except Exception:
                     merged[key] = raw_val
+        from engine.api.vault import normalize_auto_lock
+        merged["auto_lock_duration"] = normalize_auto_lock(merged.get("auto_lock_duration"))
         return {"settings": merged}
     finally:
         await conn.close()
@@ -623,7 +625,11 @@ async def update_app_settings(payload: SettingsUpdatePayload) -> Dict[str, Any]:
             );
             """
         )
+        from engine.api.vault import normalize_auto_lock, set_auto_lock_seconds
+
         for key, val in payload.settings.items():
+            if key == "auto_lock_duration":
+                val = set_auto_lock_seconds(val)  # Normalised and applied to the open vault now (M8).
             encoded = json.dumps(val)
             await conn.execute(
                 """
@@ -646,6 +652,7 @@ async def update_app_settings(payload: SettingsUpdatePayload) -> Dict[str, Any]:
                     merged[key] = json.loads(raw_val)
                 except Exception:
                     merged[key] = raw_val
+        merged["auto_lock_duration"] = normalize_auto_lock(merged.get("auto_lock_duration"))
 
         return {"status": "saved", "settings": merged}
     finally:

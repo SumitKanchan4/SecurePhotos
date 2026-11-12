@@ -127,7 +127,6 @@ export const VaultSettings: React.FC<VaultSettingsProps> = ({
               <option value={300}>5 Minutes (Recommended)</option>
               <option value={900}>15 Minutes</option>
               <option value={1800}>30 Minutes</option>
-              <option value={0}>Never Auto-Lock</option>
             </select>
           </div>
 

@@ -47,7 +47,26 @@ from engine.services.crypto_vault import (
 logger = logging.getLogger("securephotos.vault_api")
 router = APIRouter(prefix="/api/vault", tags=["Vault"])
 
-AUTO_LOCK_SECONDS = 300.0
+AUTO_LOCK_SECONDS = 300.0  # Current idle timeout; follows the auto_lock_duration setting (M8).
+AUTO_LOCK_CHOICES = (60, 300, 900, 1800)  # 1, 5, 15, 30 minutes; "Never" was removed (owner, 2026-11-12).
+
+
+def normalize_auto_lock(value: Any) -> int:
+    """Maps a stored setting to an allowed timeout: 0/"Never" -> 30 min, anything else unknown -> 5 min."""
+    try:
+        seconds = int(value)
+    except (TypeError, ValueError):
+        return 300
+    if seconds in AUTO_LOCK_CHOICES:
+        return seconds
+    return 1800 if seconds <= 0 else 300
+
+
+def set_auto_lock_seconds(value: Any) -> int:
+    """Applies the auto-lock setting to the running vault session immediately."""
+    global AUTO_LOCK_SECONDS
+    AUTO_LOCK_SECONDS = float(normalize_auto_lock(value))
+    return int(AUTO_LOCK_SECONDS)
 MAX_PIN_ATTEMPTS = 5
 
 # Ephemeral in-memory session. "mvk" may be present while is_unlocked is False:

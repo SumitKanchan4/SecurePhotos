@@ -118,7 +118,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ### H5 · Add a Content Security Policy and trim Tauri permissions — `todo`
 - `tauri.conf.json` has `"csp": null`, and `capabilities/default.json` grants `shell:default` on window `"*"`. Add a strict CSP (self + `http://127.0.0.1:*` for the engine, media from blob/engine), check whether the shell plugin is used at all, and limit capabilities to the `main` window.
 
-### H6 · Harden IPC token handling — `review` (branch `fix/h1-h6-engine-auth`, history §107)
+### H6 · Harden IPC token handling — `done` (merged 2026-11-11, history §107)
 - **Verified with Playwright on both page origins:** dev build (`http://localhost:1420`) and a production-style build (`http://tauri.localhost`, `tauri build --debug --no-bundle`): grid thumbnails, viewer, video (206, plays), vault thumbnail and vault viewer all load; no failed media requests. An NSIS installer run is still worth one manual check before release.
 - **Small follow-up:** the app polls the default engine address (`127.0.0.1:8000`) before the real port is known, producing a few harmless `ERR_CONNECTION_REFUSED` console errors at startup.
 - **Check while here (found in UI testing, confidence low):** the login cookie is `SameSite=Lax` and set by `127.0.0.1` for a page on another site (`tauri.localhost` in the app). In a browser on `localhost` it was rejected and every thumbnail got 403. Verify how WebView2 behaves; the redesign should not depend on cross-site cookies.
@@ -153,15 +153,17 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ### M5 · Token RNG must fail closed — `todo`
 - `lib.rs` `fallback_token()` uses time + PID. Use the `getrandom` crate and abort engine start if it fails.
 
-### M6 · Disable `/docs` and `/openapi.json` in frozen builds — `review` (done in H6, history §107)
+### M6 · Disable `/docs` and `/openapi.json` in frozen builds — `done` (merged with H6, history §107)
 
-### M8 · Auto-lock time setting is ignored — `todo` (found during C2)
+### M8 · Auto-lock time setting is ignored — `review` (branch `fix/m7-m8-trash-autolock`, history §108; owner removed the 'Never' option)
+- **Small follow-up:** the vault screen counts mouse movement as activity, the engine only counts requests, so the engine can lock slightly before the on-screen countdown ends (the next action then shows the lock screen).
 - Settings offers 1/5/15/30 min/never (`auto_lock_duration`), but the engine (`vault.py` `AUTO_LOCK_SECONDS = 300`) and `VaultView.tsx` (`AUTO_LOCK_SECONDS = 300`) hard-code 5 minutes. Either wire it up (engine is the authority) or remove the option.
 
 ### M9 · Engine auto-reload hangs in development — `todo` (found during H6)
 - With `tauri dev`, uvicorn `--reload` logged "Reloading..." after a Python change and never restarted; the old engine kept answering with old code. Likely a background task (face scan, video queue, enhancer) blocking shutdown on Windows. Development-only, but it makes code changes look ineffective. Fix: cancel background tasks in the lifespan shutdown, or drop `--reload` in the dev launcher.
 
-### M7 · Trash purge cannot find files with relative paths — `todo` (found during C5)
+### M7 · Trash purge cannot find files with relative paths — `review` (branch `fix/m7-m8-trash-autolock`, history §108)
+- **Also found:** no automatic 30-day purge existed at all (the Trash screen promised one); now implemented.
 - `trash.py:120` `_unlink_photo_files` uses `Path(path_str)` directly. Managed imports store relative paths, so after 30 days the row is deleted but the original, thumbnail and preview probably **stay on disk forever** (wasted space, and "deleted" photos remain). Resolve paths against the data folder using `vault_storage.resolve_stored_path`. Also add a one-off cleanup for files already orphaned this way.
 
 ---
