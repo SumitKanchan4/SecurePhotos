@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from engine.database import get_db_connection
 from engine.config import settings, resolve_media_path
 from engine.services import vault_storage
+from engine.services.work_queues import vault_files
 from engine.services.crypto_vault import (
     derive_key_from_card_cells,
     derive_key_from_password,
@@ -473,9 +474,10 @@ async def reset_vault(payload: VaultResetRequest) -> dict:
     purge_vault_key()
     conn = await get_db_connection()
     try:
-        erased = await vault_storage.erase_vault_contents(conn)
-        await conn.execute("DELETE FROM vault_configs WHERE vault_type = 'private';")
-        await conn.commit()
+        async with vault_files():  # H7: waits for a running lock/unlock/enhancement.
+            erased = await vault_storage.erase_vault_contents(conn)
+            await conn.execute("DELETE FROM vault_configs WHERE vault_type = 'private';")
+            await conn.commit()
     finally:
         await conn.close()
     logger.info("Vault reset: erased %d photos and %d albums.", erased["photo_count"], erased["album_count"])
@@ -862,10 +864,9 @@ async def get_vault_thumbnail(photo_id: int):
     if active_enc_thumb:
         try:
             if active_enc_thumb.suffix == ".enc":
-                data = decrypt_file_to_bytes(active_enc_thumb, mvk)
+                data = await asyncio.to_thread(decrypt_file_to_bytes, active_enc_thumb, mvk)  # H7
             else:
-                with open(active_enc_thumb, "rb") as f:
-                    data = f.read()
+                data = await asyncio.to_thread(active_enc_thumb.read_bytes)
             media_type = "image/webp" if ".webp" in active_enc_thumb.name else "image/jpeg"
             return Response(
                 content=data,
@@ -888,15 +889,18 @@ async def get_vault_thumbnail(photo_id: int):
         raise HTTPException(status_code=404, detail="Thumbnail not pre-generated for encrypted video.")
 
     try:
-        data = decrypt_file_to_bytes(orig_path, mvk)
         from PIL import Image, ImageOps
-        img = Image.open(io.BytesIO(data))
-        img = ImageOps.exif_transpose(img)
-        img.thumbnail((360, 360), Image.Resampling.LANCZOS)
-        out = io.BytesIO()
-        img.convert("RGB").save(out, format="JPEG", quality=85)
+
+        def _thumbnail_from_original() -> bytes:  # H7: decrypt + resize off the event loop.
+            img = Image.open(io.BytesIO(decrypt_file_to_bytes(orig_path, mvk)))
+            img = ImageOps.exif_transpose(img)
+            img.thumbnail((360, 360), Image.Resampling.LANCZOS)
+            out = io.BytesIO()
+            img.convert("RGB").save(out, format="JPEG", quality=85)
+            return out.getvalue()
+
         return Response(
-            content=out.getvalue(),
+            content=await asyncio.to_thread(_thumbnail_from_original),
             media_type="image/jpeg",
             headers={"Cache-Control": "private, no-store, max-age=0"},
         )

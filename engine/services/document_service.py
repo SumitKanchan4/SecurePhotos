@@ -4,6 +4,7 @@ Delivers local categorization, heuristic detection, and metadata management
 for receipts, invoices, passports, tax filings, medical records, and legal forms.
 """
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -77,13 +78,18 @@ async def extract_ocr_text_on_device(filepath: Path | str) -> str:
         from PIL import Image
         import winocr
 
-        with Image.open(path) as img:
-            max_side = 1600
-            if max(img.width, img.height) > max_side:
-                img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
-            res = await winocr.recognize_pil(img, "en-US")
-            if res and hasattr(res, "text") and res.text:
-                return res.text.strip()
+        def _load_scaled() -> "Image.Image":  # H7: decode + resize off the event loop.
+            with Image.open(path) as img:
+                img.load()
+                max_side = 1600
+                if max(img.width, img.height) > max_side:
+                    img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+                return img.copy()
+
+        img = await asyncio.to_thread(_load_scaled)
+        res = await winocr.recognize_pil(img, "en-US")
+        if res and hasattr(res, "text") and res.text:
+            return res.text.strip()
     except Exception as e:
         logger.debug("Local OCR extraction skipped for %s: %s", path.name, e)
 
@@ -409,6 +415,14 @@ async def toggle_document_pin(photo_id: int) -> bool:
 
 
 async def import_documents_direct(file_paths: List[str]) -> List[Dict[str, Any]]:
+    """Ingests documents one batch at a time with photo imports (H7); see ``_import_documents``."""
+    from engine.services.work_queues import imports
+
+    async with imports():
+        return await _import_documents(file_paths)
+
+
+async def _import_documents(file_paths: List[str]) -> List[Dict[str, Any]]:
     """Ingests external media/PDF files directly as documents into the library.
 
     Performs deduplicated file ingestion, flags new items as documents, runs

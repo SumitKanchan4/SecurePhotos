@@ -1,5 +1,6 @@
 """Creative Media & Collage Generation API Endpoints."""
 
+import asyncio
 import datetime
 import logging
 from typing import List, Optional
@@ -101,7 +102,9 @@ async def render_and_persist_collage(
     )
 
     # 2. Render 4K UHD composite canvas
-    canvas = render_collage(photo_paths, layout=layout, canvas_width=3840, canvas_height=2160)
+    canvas = await asyncio.to_thread(  # H7: 4K render runs off the event loop.
+        render_collage, photo_paths, layout=layout, canvas_width=3840, canvas_height=2160
+    )
 
     # 3. Save to dedicated collages directory (data/originals/collages)
     timestamp_str = collage_taken_at.strftime("%Y%m%d_%H%M%S")
@@ -114,7 +117,7 @@ async def render_and_persist_collage(
     collages_dir.mkdir(parents=True, exist_ok=True)
     dest_path = unique_path(collages_dir / filename)
 
-    canvas.save(dest_path, "WEBP", quality=92, method=4)
+    await asyncio.to_thread(canvas.save, dest_path, "WEBP", quality=92, method=4)  # H7
 
     # 4. Ingest into the SecurePhotos library
     new_photo_id = await ingest_single_photo(conn, dest_path, mode=IN_LIBRARY)

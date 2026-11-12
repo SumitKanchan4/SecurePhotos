@@ -21,6 +21,7 @@ Source files are never deleted before the row that replaces them is committed.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -34,6 +35,7 @@ import aiosqlite
 from engine.config import settings
 from engine.services.media_paths import ENC_SUFFIX, resolve_stored_path, to_db_path
 from engine.services.media_paths import unique_path as _unique_path
+from engine.services.work_queues import vault_files
 from engine.services.crypto_vault import (
     decrypt_file_chunked_stream,
     decrypt_file_to_bytes,
@@ -267,14 +269,15 @@ async def lock_photo(conn: aiosqlite.Connection, row: aiosqlite.Row, mvk: bytes)
     # C4: document text + GPS are sealed with the vault key; this photo's face
     # records are dropped (only this photo's; library faces are untouched).
     details, face_ids = await _read_sensitive_details(conn, photo_id)
-    sealed_details = encrypt_photo_metadata(details, mvk, photo_id)
+    sealed_details = await asyncio.to_thread(encrypt_photo_metadata, details, mvk, photo_id)
     face_crops = _face_crop_paths(face_ids)
 
     await _journal_start(conn, photo_id, "lock", pairs, face_crops)
     done: List[FilePair] = []
     try:
         for pair in pairs:
-            encrypt_and_verify(pair, mvk)
+            # H7: whole-file encryption runs off the event loop so the app stays responsive.
+            await asyncio.to_thread(encrypt_and_verify, pair, mvk)
             done.append(pair)
     except VaultAssetError:
         for pair in done:
@@ -358,7 +361,7 @@ async def unlock_photo(conn: aiosqlite.Connection, row: aiosqlite.Row, mvk: byte
     done: List[FilePair] = []
     try:
         for pair in pairs:
-            decrypt_to_file(pair, mvk)
+            await asyncio.to_thread(decrypt_to_file, pair, mvk)  # H7: off the event loop.
             done.append(pair)
     except VaultAssetError:
         for pair in done:
@@ -426,7 +429,6 @@ async def enhance_vault_photo(
     Raises:
         VaultAssetError: Decrypt/enhance/encrypt failed; the photo is unchanged.
     """
-    import asyncio
     import hashlib as _hashlib
 
     from engine.services.enhancement_service import render_enhanced_avif
@@ -493,15 +495,16 @@ async def lock_photos(conn: aiosqlite.Connection, rows: Iterable[aiosqlite.Row],
         (locked_ids, failed_ids). Photos whose original file is missing are in neither.
     """
     locked, failed = [], []
-    for row in rows:
-        try:
-            if await lock_photo(conn, row, mvk):
-                locked.append(row["id"])
-        except VaultAssetError as err:
-            logger.error("Vault lock failed for photo %s: %s", row["id"], err)
-            failed.append(row["id"])
-    if locked:
-        await flush_deleted_data(conn)
+    async with vault_files():  # H7: one vault operation at a time (a repeat becomes a no-op).
+        for row in rows:
+            try:
+                if await lock_photo(conn, row, mvk):
+                    locked.append(row["id"])
+            except VaultAssetError as err:
+                logger.error("Vault lock failed for photo %s: %s", row["id"], err)
+                failed.append(row["id"])
+        if locked:
+            await flush_deleted_data(conn)
     return locked, failed
 
 
@@ -512,15 +515,16 @@ async def unlock_photos(conn: aiosqlite.Connection, rows: Iterable[aiosqlite.Row
         (unlocked_ids, failed_ids). Photos whose encrypted file is missing are in neither.
     """
     unlocked, failed = [], []
-    for row in rows:
-        try:
-            if await unlock_photo(conn, row, mvk):
-                unlocked.append(row["id"])
-        except VaultAssetError as err:
-            logger.error("Vault unlock failed for photo %s: %s", row["id"], err)
-            failed.append(row["id"])
-    if unlocked:
-        await flush_deleted_data(conn)
+    async with vault_files():  # H7: one vault operation at a time.
+        for row in rows:
+            try:
+                if await unlock_photo(conn, row, mvk):
+                    unlocked.append(row["id"])
+            except VaultAssetError as err:
+                logger.error("Vault unlock failed for photo %s: %s", row["id"], err)
+                failed.append(row["id"])
+        if unlocked:
+            await flush_deleted_data(conn)
     return unlocked, failed
 
 

@@ -8,6 +8,7 @@ This module delivers high-speed ingestion (sub-10ms per photo) with:
 5. Transactional crash recovery tracking.
 """
 
+import asyncio
 import datetime
 import logging
 import os
@@ -406,6 +407,118 @@ def cleanup_orphaned_tmp_files(base_dir: Optional[Path] = None) -> int:
 
 
 
+def _copy_into_library(source_path: Path, dest_path: Path, file_hash: str, delete_source: bool) -> None:
+    """Copies a file into the library: temp file, checksum check, atomic rename (blocking)."""
+    # Atomic Two-Phase Commit (.tmp -> fsync -> os.replace)
+    temp_dest = dest_path.parent / f".{dest_path.name}.tmp"
+
+    # Pre-clean any existing .tmp file (and ensure write permissions if read-only flag was set)
+    if temp_dest.exists():
+        try:
+            os.chmod(temp_dest, stat.S_IWRITE)
+            temp_dest.unlink()
+        except OSError:
+            pass
+
+    try:
+        shutil.copy2(source_path, temp_dest)
+
+        # On Windows, copy2 copies FILE_ATTRIBUTE_READONLY. Ensure temp_dest has write permissions
+        try:
+            os.chmod(temp_dest, stat.S_IWRITE | stat.S_IREAD)
+        except OSError:
+            pass
+
+        # Verify copied file checksum before completing commit
+        copied_hash = calculate_file_hash(temp_dest)
+        if copied_hash != file_hash:
+            if temp_dest.exists():
+                try:
+                    os.chmod(temp_dest, stat.S_IWRITE)
+                    temp_dest.unlink()
+                except OSError:
+                    pass
+            raise IOError(f"Checksum mismatch during ingestion of {source_path.name}")
+
+        # Ensure dest_path is writable if it exists before atomic replacement
+        if dest_path.exists():
+            try:
+                os.chmod(dest_path, stat.S_IWRITE)
+            except OSError:
+                pass
+
+        # Atomic rename swap
+        os.replace(temp_dest, dest_path)
+
+        # Ensure final destination in originals is writable
+        try:
+            os.chmod(dest_path, stat.S_IWRITE | stat.S_IREAD)
+        except OSError:
+            pass
+
+        # If move & clean requested, verify target exists before unlinking source
+        if delete_source and source_path.resolve() != dest_path.resolve():
+            try:
+                os.chmod(source_path, stat.S_IWRITE)
+            except OSError:
+                pass
+            source_path.unlink()
+            logger.info(f"Cleaned source file after verified move: {source_path}")
+
+    except Exception:
+        if temp_dest.exists():
+            try:
+                os.chmod(temp_dest, stat.S_IWRITE)
+                temp_dest.unlink()
+            except OSError:
+                pass
+        raise
+
+
+def _make_thumbnails(source_path: Path, physical_filepath: str, file_hash: str) -> Tuple[Optional[str], Optional[str], str, bool]:
+    """Creates the grid thumbnail (and video preview). Blocking; returns (thumb, preview, mime, is_video)."""
+    # Branch media processing by type (Video vs Photo)
+    video_exts = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
+    is_video = source_path.suffix.lower() in video_exts
+
+    if is_video:
+        thumb_dest = get_sharded_thumbnail_path(file_hash)
+        preview_dest = get_sharded_preview_path(file_hash)
+        generate_video_thumbnail(physical_filepath, str(thumb_dest), str(preview_dest))
+        thumb_path = str(thumb_dest.relative_to(settings.data_dir)).replace("\\", "/")
+        preview_path = str(preview_dest.relative_to(settings.data_dir)).replace("\\", "/")
+
+        ext_clean = source_path.suffix.lstrip(".").lower()
+        if ext_clean in ("mp4", "m4v"):
+            mime_type = "video/mp4"
+        elif ext_clean in ("mov", "quicktime"):
+            mime_type = "video/quicktime"
+        elif ext_clean == "webm":
+            mime_type = "video/webm"
+        elif ext_clean == "mkv":
+            mime_type = "video/x-matroska"
+        else:
+            mime_type = f"video/{ext_clean}"
+    elif source_path.suffix.lower() == ".pdf":
+        mime_type = "application/pdf"
+        thumb_path = None
+        preview_path = None
+        try:
+            thumb_dest = get_sharded_thumbnail_path(file_hash)
+            with Image.open(physical_filepath) as img:
+                img.thumbnail((1024, 1024))
+                img.save(thumb_dest, "WEBP")
+                thumb_path = str(thumb_dest.relative_to(settings.data_dir)).replace("\\", "/")
+        except Exception:
+            thumb_path = None
+    else:
+        # Generate 1024px Retina micro-thumbnail for fast grid rendering
+        thumb_path, _, _ = generate_micro_thumbnail(physical_filepath, file_hash=file_hash, size=1024)
+        preview_path = None
+        mime_type = f"image/{source_path.suffix.lstrip('.').lower()}"
+    return thumb_path, preview_path, mime_type, is_video
+
+
 def _db_path_or_none(path) -> Optional[str]:
     """Library-relative path for the database (M2), or None (never the text "None")."""
     return to_db_path(Path(path)) if path else None
@@ -446,7 +559,7 @@ async def ingest_single_photo(
         return (None, False) if return_is_new else None
 
     file_size = source_path.stat().st_size
-    file_hash = calculate_file_hash(source_path)
+    file_hash = await asyncio.to_thread(calculate_file_hash, source_path)  # H7
 
     # Check for exact bitwise duplicate (matches current file_hash or immutable original_file_hash)
     async with conn.execute(
@@ -459,8 +572,8 @@ async def ingest_single_photo(
             return (existing[0], False) if return_is_new else existing[0]
 
     # Extract EXIF metadata
-    metadata = extract_exif_metadata(source_path)
-    volume_uuid = get_volume_serial(source_path)
+    metadata = await asyncio.to_thread(extract_exif_metadata, source_path)  # H7
+    volume_uuid = await asyncio.to_thread(get_volume_serial, source_path)
 
     # Determine final storage path
     if mode == MANAGED:
@@ -483,70 +596,8 @@ async def ingest_single_photo(
             suffix = source_path.suffix
             dest_path = dest_path.parent / f"{stem}_{file_hash[:8]}{suffix}"
 
-        # Atomic Two-Phase Commit (.tmp -> fsync -> os.replace)
-        temp_dest = dest_path.parent / f".{dest_path.name}.tmp"
-
-        # Pre-clean any existing .tmp file (and ensure write permissions if read-only flag was set)
-        if temp_dest.exists():
-            try:
-                os.chmod(temp_dest, stat.S_IWRITE)
-                temp_dest.unlink()
-            except OSError:
-                pass
-
-        try:
-            shutil.copy2(source_path, temp_dest)
-
-            # On Windows, copy2 copies FILE_ATTRIBUTE_READONLY. Ensure temp_dest has write permissions
-            try:
-                os.chmod(temp_dest, stat.S_IWRITE | stat.S_IREAD)
-            except OSError:
-                pass
-
-            # Verify copied file checksum before completing commit
-            copied_hash = calculate_file_hash(temp_dest)
-            if copied_hash != file_hash:
-                if temp_dest.exists():
-                    try:
-                        os.chmod(temp_dest, stat.S_IWRITE)
-                        temp_dest.unlink()
-                    except OSError:
-                        pass
-                raise IOError(f"Checksum mismatch during ingestion of {source_path.name}")
-
-            # Ensure dest_path is writable if it exists before atomic replacement
-            if dest_path.exists():
-                try:
-                    os.chmod(dest_path, stat.S_IWRITE)
-                except OSError:
-                    pass
-
-            # Atomic rename swap
-            os.replace(temp_dest, dest_path)
-
-            # Ensure final destination in originals is writable
-            try:
-                os.chmod(dest_path, stat.S_IWRITE | stat.S_IREAD)
-            except OSError:
-                pass
-
-            # If move & clean requested, verify target exists before unlinking source
-            if delete_source and source_path.resolve() != dest_path.resolve():
-                try:
-                    os.chmod(source_path, stat.S_IWRITE)
-                except OSError:
-                    pass
-                source_path.unlink()
-                logger.info(f"Cleaned source file after verified move: {source_path}")
-
-        except Exception:
-            if temp_dest.exists():
-                try:
-                    os.chmod(temp_dest, stat.S_IWRITE)
-                    temp_dest.unlink()
-                except OSError:
-                    pass
-            raise
+        # H7: copy + verify + optional source delete run off the event loop.
+        await asyncio.to_thread(_copy_into_library, source_path, dest_path, file_hash, delete_source)
 
         physical_filepath = str(dest_path.resolve())
         db_filepath = str(dest_path.relative_to(settings.data_dir)).replace("\\", "/")
@@ -556,45 +607,10 @@ async def ingest_single_photo(
         physical_filepath = str(source_path.resolve())
         db_filepath = source_path.resolve().relative_to(settings.data_dir.resolve()).as_posix()
 
-    # Branch media processing by type (Video vs Photo)
-    video_exts = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
-    is_video = source_path.suffix.lower() in video_exts
-
-    if is_video:
-        thumb_dest = get_sharded_thumbnail_path(file_hash)
-        preview_dest = get_sharded_preview_path(file_hash)
-        generate_video_thumbnail(physical_filepath, str(thumb_dest), str(preview_dest))
-        thumb_path = str(thumb_dest.relative_to(settings.data_dir)).replace("\\", "/")
-        preview_path = str(preview_dest.relative_to(settings.data_dir)).replace("\\", "/")
-
-        ext_clean = source_path.suffix.lstrip(".").lower()
-        if ext_clean in ("mp4", "m4v"):
-            mime_type = "video/mp4"
-        elif ext_clean in ("mov", "quicktime"):
-            mime_type = "video/quicktime"
-        elif ext_clean == "webm":
-            mime_type = "video/webm"
-        elif ext_clean == "mkv":
-            mime_type = "video/x-matroska"
-        else:
-            mime_type = f"video/{ext_clean}"
-    elif source_path.suffix.lower() == ".pdf":
-        mime_type = "application/pdf"
-        thumb_path = None
-        preview_path = None
-        try:
-            thumb_dest = get_sharded_thumbnail_path(file_hash)
-            with Image.open(physical_filepath) as img:
-                img.thumbnail((1024, 1024))
-                img.save(thumb_dest, "WEBP")
-                thumb_path = str(thumb_dest.relative_to(settings.data_dir)).replace("\\", "/")
-        except Exception:
-            thumb_path = None
-    else:
-        # Generate 1024px Retina micro-thumbnail for fast grid rendering
-        thumb_path, tw, th = generate_micro_thumbnail(physical_filepath, file_hash=file_hash, size=1024)
-        preview_path = None
-        mime_type = f"image/{source_path.suffix.lstrip('.').lower()}"
+    # H7: thumbnails (and ffmpeg for videos) run off the event loop.
+    thumb_path, preview_path, mime_type, is_video = await asyncio.to_thread(
+        _make_thumbnails, source_path, physical_filepath, file_hash
+    )
 
     # Insert into relational SQLite database
     cursor = await conn.execute(
