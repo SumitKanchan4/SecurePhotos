@@ -43,6 +43,62 @@ class PhotoResponse(BaseModel):
     preview_path: Optional[str] = None
 
 
+_PHOTO_COLUMNS = """
+    id, filename, filepath, file_size, original_file_size, mime_type, width, height,
+    taken_at, camera_make, camera_model,
+    latitude, longitude, iso, aperture, shutter_speed, focal_length,
+    is_favorite, is_encrypted,
+    is_optimized, is_enhanced, caption, thumbnail_path, preview_path
+"""
+
+
+def _photo_from_row(row) -> "PhotoResponse":
+    """Maps a photos row (selected with _PHOTO_COLUMNS) to the API response."""
+    return PhotoResponse(
+        id=row["id"],
+        filename=row["filename"],
+        filepath=row["filepath"],
+        file_size=row["file_size"],
+        original_file_size=row["original_file_size"] if row["original_file_size"] is not None else row["file_size"],
+        mime_type=row["mime_type"],
+        width=row["width"],
+        height=row["height"],
+        taken_at=row["taken_at"],
+        camera_make=row["camera_make"],
+        camera_model=row["camera_model"],
+        latitude=row["latitude"],
+        longitude=row["longitude"],
+        iso=row["iso"],
+        aperture=row["aperture"],
+        shutter_speed=row["shutter_speed"],
+        focal_length=row["focal_length"],
+        is_favorite=bool(row["is_favorite"]),
+        is_encrypted=bool(row["is_encrypted"]),
+        is_optimized=bool(row["is_optimized"]),
+        is_enhanced=bool(row["is_enhanced"]),
+        caption=row["caption"],
+        thumbnail_path=row["thumbnail_path"],
+        preview_path=row["preview_path"],
+    )
+
+
+# Timeline row flags (redesign R2): one small integer instead of three booleans per photo.
+TIMELINE_FAVORITE = 1
+TIMELINE_OPTIMIZED = 2
+TIMELINE_ENHANCED = 4
+DETAILS_MAX_IDS = 500
+
+
+class TimelineResponse(BaseModel):
+    """Every library photo in display order, as compact rows.
+
+    Each item is ``[id, taken_at or null, width, height, kind, flags]``: kind is
+    "v" for videos and "p" otherwise; flags combine TIMELINE_* bits.
+    """
+    total: int
+    items: List[List[Any]]
+
+
 class ImportRequest(BaseModel):
     """Payload to trigger batch ingestion."""
     source_directory: Optional[str] = None
@@ -406,12 +462,8 @@ async def list_photos(
     """Retrieves paginated photo items with optional year or favorite filtering."""
     conn = await get_db_connection()
     
-    query = """
-        SELECT id, filename, filepath, file_size, original_file_size, mime_type, width, height,
-               taken_at, camera_make, camera_model,
-               latitude, longitude, iso, aperture, shutter_speed, focal_length,
-               is_favorite, is_encrypted,
-               is_optimized, is_enhanced, caption, thumbnail_path, preview_path
+    query = f"""
+        SELECT {_PHOTO_COLUMNS}
         FROM photos
         WHERE is_encrypted = ? AND trashed_at IS NULL
     """
@@ -430,39 +482,70 @@ async def list_photos(
     params.extend([limit, offset])
 
     async with conn.execute(query, params) as cursor:
-        rows = await cursor.fetchall()
-        results = [
-            PhotoResponse(
-                id=row["id"],
-                filename=row["filename"],
-                filepath=row["filepath"],
-                file_size=row["file_size"],
-                original_file_size=row["original_file_size"] if "original_file_size" in row.keys() and row["original_file_size"] is not None else row["file_size"],
-                mime_type=row["mime_type"],
-                width=row["width"],
-                height=row["height"],
-                taken_at=row["taken_at"],
-                camera_make=row["camera_make"],
-                camera_model=row["camera_model"],
-                latitude=row["latitude"],
-                longitude=row["longitude"],
-                iso=row["iso"],
-                aperture=row["aperture"],
-                shutter_speed=row["shutter_speed"],
-                focal_length=row["focal_length"],
-                is_favorite=bool(row["is_favorite"]),
-                is_encrypted=bool(row["is_encrypted"]),
-                is_optimized=bool(row["is_optimized"]),
-                is_enhanced=bool(row["is_enhanced"]),
-                caption=row["caption"],
-                thumbnail_path=row["thumbnail_path"],
-                preview_path=row["preview_path"],
-            )
-            for row in rows
-        ]
+        results = [_photo_from_row(row) for row in await cursor.fetchall()]
 
     await conn.close()
     return results
+
+
+@router.get("/timeline", response_model=TimelineResponse, status_code=status.HTTP_200_OK)
+async def get_photo_timeline() -> TimelineResponse:
+    """Returns the whole library (not vault, not trash) as compact rows for the photo grid.
+
+    The grid needs only id, date, shape and type; full details are fetched with
+    ``/details`` when a photo is opened (redesign R2: the grid used to load only 500).
+    """
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(
+            """
+            SELECT id, taken_at, width, height, mime_type, is_favorite, is_optimized, is_enhanced
+            FROM photos
+            WHERE is_encrypted = 0 AND trashed_at IS NULL
+            ORDER BY taken_at DESC, id DESC;
+            """
+        ) as cursor:
+            rows = await cursor.fetchall()
+    finally:
+        await conn.close()
+    items = [
+        [
+            r["id"],
+            r["taken_at"],
+            r["width"] or 0,
+            r["height"] or 0,
+            "v" if (r["mime_type"] or "").startswith("video/") else "p",
+            (TIMELINE_FAVORITE if r["is_favorite"] else 0)
+            | (TIMELINE_OPTIMIZED if r["is_optimized"] else 0)
+            | (TIMELINE_ENHANCED if r["is_enhanced"] else 0),
+        ]
+        for r in rows
+    ]
+    return TimelineResponse(total=len(items), items=items)
+
+
+@router.get("/details", response_model=List[PhotoResponse], status_code=status.HTTP_200_OK)
+async def get_photo_details(ids: str = Query(..., description="Comma-separated photo ids, at most 500")) -> List[PhotoResponse]:
+    """Full records for the given library photos, in the order asked (vault and trash excluded)."""
+    try:
+        wanted = [int(part) for part in ids.split(",") if part.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ids must be comma-separated numbers")
+    if not wanted:
+        return []
+    if len(wanted) > DETAILS_MAX_IDS:
+        raise HTTPException(status_code=400, detail=f"At most {DETAILS_MAX_IDS} ids per request")
+    conn = await get_db_connection()
+    try:
+        placeholders = ",".join("?" for _ in wanted)
+        async with conn.execute(
+            f"SELECT {_PHOTO_COLUMNS} FROM photos WHERE id IN ({placeholders}) AND is_encrypted = 0 AND trashed_at IS NULL;",
+            wanted,
+        ) as cursor:
+            by_id = {row["id"]: _photo_from_row(row) for row in await cursor.fetchall()}
+    finally:
+        await conn.close()
+    return [by_id[i] for i in wanted if i in by_id]
 
 
 @router.get("/timeline-years", response_model=TimelineYearsResponse, status_code=status.HTTP_200_OK)
