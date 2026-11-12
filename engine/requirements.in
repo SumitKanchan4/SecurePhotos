@@ -1,0 +1,17 @@
+# Runtime dependencies of the engine (direct only). Edit this file, then run:
+#   uv pip compile engine/requirements.in --python-version 3.12 --python-platform windows -o engine/requirements.txt
+fastapi
+uvicorn
+pydantic
+pydantic-settings
+aiosqlite
+pillow
+piexif
+argon2-cffi
+cryptography
+pyotp
+psutil
+numpy
+onnxruntime
+python-multipart
+winocr; sys_platform == 'win32'

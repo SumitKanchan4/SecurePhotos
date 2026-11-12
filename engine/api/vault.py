@@ -13,13 +13,12 @@ Unlock model (backlog C2/C3, owner decisions 2026-11-11):
 
 import asyncio
 import io
-import json
 import logging
 import secrets
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Header, Response, status
+from fastapi import APIRouter, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 

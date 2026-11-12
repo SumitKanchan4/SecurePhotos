@@ -7,14 +7,11 @@ Validates:
 4. Database migration normalizing legacy absolute paths to relative paths.
 """
 
-import os
-import tempfile
 from pathlib import Path
 import pytest
 import aiosqlite
 
-from engine.config import AppConfig, resolve_media_path, resolve_default_data_dir
-from engine.database import run_migrations, get_db_connection
+from engine.config import AppConfig, resolve_default_data_dir
 
 
 def test_resolve_media_path_relative(tmp_path: Path):

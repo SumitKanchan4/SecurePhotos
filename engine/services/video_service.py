@@ -18,7 +18,7 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, Optional, Any
 
 import aiosqlite
 
@@ -307,7 +307,6 @@ def analyze_video_candidate(photo_record: Dict[str, Any]) -> Dict[str, Any]:
     # Extract metadata if needed
     meta = extract_video_metadata(filepath)
     codec = (meta.get("codec") or "").lower()
-    duration = meta.get("duration") or 0.0
     bitrate = meta.get("bitrate") or 0
 
     # 1. Vintage / Low-Resolution Enhancement Candidate (< 720p)

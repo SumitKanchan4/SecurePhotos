@@ -9,7 +9,6 @@ from PIL import Image
 from engine.api import photos
 from engine.config import settings
 from engine.database import get_db_connection, run_migrations
-from engine.services import enhancement_service
 from engine.services.enhancement_service import enhance_to_avif, slider_to_avif_quality
 from engine.services.media_paths import to_db_path
 

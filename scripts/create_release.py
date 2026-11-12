@@ -21,7 +21,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Tuple
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -278,13 +278,13 @@ def execute_git_release(new_ver: str, branch: str, dry_run: bool = False) -> boo
     subprocess.run(["git", "push", "origin", branch], cwd=str(ROOT_DIR), check=True)
     subprocess.run(["git", "push", "origin", tag_name], cwd=str(ROOT_DIR), check=True)
 
-    print(f"\n=======================================================")
+    print("\n=======================================================")
     print(f" [SUCCESS] SecurePhotos {tag_name} released successfully!")
-    print(f"=======================================================")
+    print("=======================================================")
     print(f"  - Branch: {branch}")
     print(f"  - Tag: {tag_name}")
-    print(f"  - Pipeline: Triggered exactly ONE release run via [skip branch-ci]")
-    print(f"  - GitHub: https://github.com/SumitKanchan4/SecurePhotos/actions")
+    print("  - Pipeline: Triggered exactly ONE release run via [skip branch-ci]")
+    print("  - GitHub: https://github.com/SumitKanchan4/SecurePhotos/actions")
     return True
 
 
@@ -299,9 +299,9 @@ def main():
     # Rule 0 Check: Never release from master or main
     branch = get_current_branch()
     if branch in ("master", "main"):
-        print(f"\n[!] ERROR: Enterprise Rule 0 Violation!")
+        print("\n[!] ERROR: Enterprise Rule 0 Violation!")
         print(f"    You are currently on branch '{branch}'.")
-        print(f"    Releases and modifications must originate from a topic branch (e.g. feature/* or fix/*).")
+        print("    Releases and modifications must originate from a topic branch (e.g. feature/* or fix/*).")
         sys.exit(1)
 
     current_ver = get_current_version()

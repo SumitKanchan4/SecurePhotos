@@ -5,11 +5,9 @@ composite covering indexes, FTS5 full-text search triggers, and provides
 an idempotent schema migration runner designed for 100,000+ media assets.
 """
 
-import asyncio
 import logging
-import sqlite3
 from pathlib import Path
-from typing import AsyncGenerator, Optional
+from typing import Optional
 import aiosqlite
 
 from engine.config import settings

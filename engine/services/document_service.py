@@ -4,16 +4,11 @@ Delivers local categorization, heuristic detection, and metadata management
 for receipts, invoices, passports, tax filings, medical records, and legal forms.
 """
 
-import datetime
 import logging
-import os
-import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-import aiosqlite
 
-from engine.config import settings
 from engine.database import get_db_connection
 
 logger = logging.getLogger("securephotos.document_service")

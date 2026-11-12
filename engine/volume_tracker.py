@@ -10,7 +10,7 @@ import logging
 import os
 import platform
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 from pydantic import BaseModel
 
 logger = logging.getLogger("securephotos.volume_tracker")
