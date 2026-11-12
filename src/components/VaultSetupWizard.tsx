@@ -33,7 +33,7 @@ interface VaultSetupWizardProps {
  * Streamlined 3-step first-time vault configuration:
  * Step 1: Master Password & Hint
  * Step 2: 4-Digit Quick PIN (daily rapid unlock)
- * Step 3: 24-Word Offline Recovery Phrase
+ * Step 3: Printed Emergency Card (resets a forgotten password)
  */
 export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({ 
   onComplete, 
