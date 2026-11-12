@@ -14,6 +14,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from engine.database import get_db_connection
+from engine.services.work_queues import vault_files
 
 logger = logging.getLogger("securephotos.vault_enhancer")
 
@@ -93,7 +94,9 @@ async def run_vault_enhancement() -> Dict[str, Any]:
             settings = await photos_api._load_enhancement_settings()
             quality = slider_to_avif_quality(settings.get("quality_crf", DEFAULT_QUALITY_SLIDER))
             try:
-                if await vault_storage.enhance_vault_photo(conn, row, key, quality, lambda: _key() is not None):
+                async with vault_files():  # H7: never overlaps a lock/unlock of the same files.
+                    was_enhanced = await vault_storage.enhance_vault_photo(conn, row, key, quality, lambda: _key() is not None)
+                if was_enhanced:
                     enhanced += 1
                 elif _key() is None:
                     break
