@@ -23,6 +23,7 @@ from typing import Dict, Optional, Any
 import aiosqlite
 
 from engine.config import settings, resolve_media_path
+from engine.services.media_paths import to_db_path
 from engine.database import get_db_connection
 from engine.services.video_runtime import (
     get_ffmpeg_path,
@@ -532,7 +533,7 @@ async def compress_video(
             # Check for UNIQUE filepath collision against soft-deleted/active records
             async with conn.execute(
                 "SELECT id, trashed_at FROM photos WHERE filepath = ? AND id != ?;",
-                (str(target_path), photo_id),
+                (to_db_path(target_path), photo_id),
             ) as cursor:
                 colliding = await cursor.fetchone()
 
@@ -553,10 +554,7 @@ async def compress_video(
             saved_bytes = orig_size - compressed_size
 
             # Atomic Step 1: Update database record FIRST
-            try:
-                db_filepath = str(target_path.relative_to(settings.data_dir)).replace("\\", "/")
-            except ValueError:
-                db_filepath = str(target_path)
+            db_filepath = to_db_path(target_path)
 
             await conn.execute(
                 """
@@ -736,7 +734,7 @@ async def enhance_old_video(
             # Check for UNIQUE filepath collision against soft-deleted/active records
             async with conn.execute(
                 "SELECT id, trashed_at FROM photos WHERE filepath = ? AND id != ?;",
-                (str(target_path), photo_id),
+                (to_db_path(target_path), photo_id),
             ) as cursor:
                 colliding = await cursor.fetchone()
 
@@ -758,10 +756,7 @@ async def enhance_old_video(
             new_size = target_path.stat().st_size
 
             # Atomic Step 1: Update database record FIRST before touching source file
-            try:
-                db_filepath = str(target_path.relative_to(settings.data_dir)).replace("\\", "/")
-            except ValueError:
-                db_filepath = str(target_path)
+            db_filepath = to_db_path(target_path)
 
             await conn.execute(
                 """

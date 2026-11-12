@@ -486,63 +486,6 @@ async def trigger_optimization():
         await conn.close()
 
 
-@router.post("/prune-orphans", status_code=status.HTTP_200_OK)
-async def prune_orphaned_originals() -> Dict[str, Any]:
-    """Detects and safely removes unreferenced media files in originals directory.
-
-    Reconciles all media files on disk with database records (active, trashed, and encrypted),
-    safely removing leftover orphaned files and reclaiming storage.
-
-    Returns:
-        Dict with pruned_files_count, reclaimed_bytes, and reclaimed_formatted.
-    """
-    global _cached_app_storage
-    conn = await get_db_connection()
-    try:
-        # Collect all referenced filesystem paths in the database
-        async with conn.execute("SELECT filepath, original_path FROM photos;") as cursor:
-            rows = await cursor.fetchall()
-            db_paths = set()
-            for r in rows:
-                if r[0]:
-                    try:
-                        db_paths.add(Path(r[0]).resolve())
-                    except Exception:
-                        pass
-                if r[1]:
-                    try:
-                        db_paths.add(Path(r[1]).resolve())
-                    except Exception:
-                        pass
-
-        pruned_count = 0
-        reclaimed_bytes = 0
-        originals_dir = settings.originals_dir.resolve()
-
-        if originals_dir.exists():
-            for root, _, files in os.walk(originals_dir):
-                for f in files:
-                    file_path = (Path(root) / f).resolve()
-                    if file_path.is_file() and file_path not in db_paths:
-                        try:
-                            f_size = file_path.stat().st_size
-                            file_path.unlink()
-                            pruned_count += 1
-                            reclaimed_bytes += f_size
-                        except Exception as err:
-                            logger.warning(f"Could not remove orphan file {file_path}: {err}")
-
-        # Invalidate storage cache so next read calculates fresh numbers
-        _cached_app_storage = None
-        return {
-            "pruned_files_count": pruned_count,
-            "reclaimed_bytes": reclaimed_bytes,
-            "reclaimed_formatted": f"{reclaimed_bytes / (1024 * 1024):.1f} MB",
-        }
-    finally:
-        await conn.close()
-
-
 # ── Persistent App Settings (Stored in SQLite for Portable Drives) ───────────
 
 DEFAULT_APP_SETTINGS: Dict[str, Any] = {

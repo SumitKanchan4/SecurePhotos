@@ -40,6 +40,7 @@ This document serves as the **central, living source of truth** for all function
 111. [CI Quality Gate and Pinned Dependencies](#111-ci-quality-gate-and-pinned-dependencies)
 112. [Missing Photos Stay Missing; Old Dev-Folder Migration Removed](#112-missing-photos-stay-missing-old-dev-folder-migration-removed)
 113. [Import Only Copies Into the Library; Collages in Dated Folders](#113-import-only-copies-into-the-library-collages-in-dated-folders)
+114. [Relative Paths Everywhere; Storage Clean-up Removed](#114-relative-paths-everywhere-storage-clean-up-removed)
 
 ---
 
@@ -5281,3 +5282,28 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `engine/api/creatives.py`: source photos via `resolve_stored_path`; `collages/YYYY/MM`; `unique_path`; `IN_LIBRARY`.
 - Tests: `engine/tests/test_import_modes.py` (4 tests; 3 fail on the old code); `test_collages.py` (new folder layout), `test_thumbnails.py` (used the undocumented `mode="copy"`). 205 tests pass.
 - Validated in the UI (Playwright, throwaway library): API import with `mode: "scan"` -> 422; two photos imported through the Import screen (copied into `originals/undated/..`, source files untouched); selected both, "Create Collage (2)" -> "Generate Collage" -> collage shown in the grid and saved as `originals/collages/2026/11/M4_check_....webp` (relative path). No console errors.
+
+---
+
+## 114. Relative Paths Everywhere; Storage Clean-up Removed
+
+### Functionality Overview
+- No visible change when everything works. Thumbnails and previews are now saved relative to the library folder, like photos already were, so moving the library to another drive or folder keeps working without recovery tricks. Existing full paths are converted automatically at startup.
+- **Video conversion can no longer destroy another video.** If the converted file's name (e.g. `clip_opt.mp4`) was already used by another video in the library, the old check never noticed (it compared a full path with the relative one in the database), deleted that video's file and wrote over it.
+- **The hidden "storage clean-up" (`POST /api/system/prune-orphans`) was removed.** It was meant to delete unused files in `originals`, but it read the saved paths against the engine's working folder, so a single call would have deleted every photo (vault files included). No screen used it.
+
+### Functional Decision Points & Rationale (owner decision 2026-11-12: remove the clean-up endpoint)
+- The 30-day trash purge already deletes files properly. A future clean-up button should list what it would delete and ask first.
+- Path conversion reuses the existing startup step (anchored on the `originals` / `vault` / `thumbnails` / `previews` folder names), so it also repairs paths from a library that moved. It runs at every start; it only touches full paths.
+- `original_path` (where a photo was imported from, outside the library) stays a full path on purpose: it is a record of the source, never opened.
+- Imports no longer save a missing preview as the text "None" (existing ones are cleared to empty).
+- Owner's library before the change: 50 of 51 thumbnail paths were full paths (all inside the library folder); photo and preview paths were already relative.
+
+### Technical Touchpoints
+- `engine/api/system.py`: `prune_orphaned_originals` removed.
+- `engine/services/ingestion_service.py`: `_db_path_or_none`, same-name check via `to_db_path`.
+- `engine/services/video_service.py`: same-name checks and saved path via `to_db_path` (compress and enhance).
+- `engine/api/photos.py`: regenerated thumbnails saved relative.
+- `engine/database.py`: startup path conversion for `thumbnail_path` / `preview_path`, "None" clean-up, vault-thumbnail self-heal resolves against the library folder.
+- Tests: `engine/tests/test_relative_paths.py` (4 tests, all fail on the old code; on the old code the video test shows the other video overwritten, then a database error). 209 tests pass.
+- Validated in the UI (Playwright, throwaway library): imported 2 photos through the Import screen (thumbnails saved as `thumbnails/..`), set one back to the old full-path form, restarted the engine: path converted to relative, both thumbnails load in the grid (200), clean-up endpoint returns 404, library files intact, no console errors.
