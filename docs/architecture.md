@@ -164,6 +164,12 @@ sequenceDiagram
     Auth-->>UI: Image/Video renders smoothly (Zero Disk Footprint)
 ```
 
+#### Vault key in memory (what is and isn't protected)
+
+- **Protected:** the master vault key is never written to disk by the app; the vault files on disk are useless without it. While the vault is open, the key lives in one session buffer. When the vault fully locks (no PIN set, or the PIN is locked out), that buffer is overwritten with zeros and dropped. With a PIN set, a normal lock keeps the key in memory so the PIN can reopen the vault until the app closes. When the app closes, the app shell ends the engine process and Windows clears that process's memory before reusing it; on a graceful engine shutdown (e.g. in development) the engine also overwrites the key itself first.
+- **Not guaranteed:** Python and the cryptography library make short-lived copies of the key (one per request, plus the cipher's own copy). Python cannot overwrite those; they stay in freed memory until it is reused. Windows may also write memory to the page file or hibernation file.
+- **So:** someone who can read this PC's memory or its page file while the app is running could find the key. Lock the vault when stepping away, and use full-disk encryption (e.g. BitLocker) so the page file and hibernation file are encrypted too.
+
 ---
 
 ### 3.3 Single-Version Photo Enhancement Pipeline

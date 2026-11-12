@@ -69,7 +69,7 @@ MAX_PIN_ATTEMPTS = 5
 # Ephemeral in-memory session. "mvk" may be present while is_unlocked is False:
 # that is the soft-locked state in which the PIN can re-unlock.
 ACTIVE_VAULT_SESSION: Dict[str, Any] = {
-    "mvk": None,                 # bytearray holding the 32-byte master vault key
+    "mvk": None,                 # bytearray holding the 32-byte master vault key (overwritten on purge; H4)
     "last_activity": 0.0,
     "is_unlocked": False,
     "batch_keepalive": False,    # True during active batch optimization
@@ -79,7 +79,7 @@ ACTIVE_VAULT_SESSION: Dict[str, Any] = {
 
 
 def get_active_mvk() -> bytes:
-    """Returns the master vault key if the vault is unlocked; soft-locks after 5 idle minutes.
+    """Returns a copy of the master vault key if the vault is unlocked; soft-locks after the idle timeout.
 
     Vault requests are protected by the engine login (IPC token or session cookie,
     see engine.middleware) plus the vault being unlocked. A separate per-unlock
@@ -93,10 +93,16 @@ def get_active_mvk() -> bytes:
     if not ACTIVE_VAULT_SESSION["batch_keepalive"]:
         if now - ACTIVE_VAULT_SESSION["last_activity"] > AUTO_LOCK_SECONDS:
             soft_lock_vault()
-            raise HTTPException(status_code=401, detail="Vault auto-locked due to 5 minutes of inactivity.")
+            raise HTTPException(status_code=401, detail=auto_lock_message())
 
     ACTIVE_VAULT_SESSION["last_activity"] = now
     return bytes(ACTIVE_VAULT_SESSION["mvk"])
+
+
+def auto_lock_message() -> str:
+    """The auto-lock notice, stating the user's actual setting (M8/H4)."""
+    minutes = max(1, round(AUTO_LOCK_SECONDS / 60))
+    return f"Vault locked automatically after {minutes} minute{'s' if minutes != 1 else ''} of inactivity."
 
 
 def peek_active_mvk() -> Optional[bytes]:
@@ -151,7 +157,7 @@ def _pin_unlock_available() -> bool:
 
 
 def _open_session(mvk: bytes, pin_verifier: Optional[str]) -> None:
-    if ACTIVE_VAULT_SESSION["mvk"] and bytes(ACTIVE_VAULT_SESSION["mvk"]) != mvk:
+    if ACTIVE_VAULT_SESSION["mvk"] and ACTIVE_VAULT_SESSION["mvk"] != mvk:  # Compares without another copy.
         zero_memory(ACTIVE_VAULT_SESSION["mvk"])
     ACTIVE_VAULT_SESSION.update(
         mvk=bytearray(mvk), last_activity=time.time(),
