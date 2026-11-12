@@ -18,6 +18,8 @@ interface AppState {
   gridDensity: "compact" | "comfortable" | "spacious";
   activeTab: NavTab;
   searchQuery: string;
+  /** Global search palette (Ctrl+K) is open (redesign R1). */
+  isSearchOpen: boolean;
   selectedPhotoIds: Set<number>;
   activeVolume: VolumeInfo | null;
   isDriveConnected: boolean;
@@ -40,6 +42,7 @@ interface AppState {
   setGridDensity: (density: "compact" | "comfortable" | "spacious") => void;
   setActiveTab: (tab: NavTab) => void;
   setSearchQuery: (query: string) => void;
+  setSearchOpen: (open: boolean) => void;
   togglePhotoSelection: (id: number) => void;
   clearSelection: () => void;
   setActiveVolume: (vol: VolumeInfo | null) => void;
@@ -101,6 +104,7 @@ export const useAppStore = create<AppState>((set) => ({
   gridDensity: "comfortable",
   activeTab: "photos",
   searchQuery: "",
+  isSearchOpen: false,
   selectedPhotoIds: new Set<number>(),
   activeVolume: null,
   isDriveConnected: true,
@@ -144,6 +148,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   setActiveTab: (activeTab) => set({ activeTab }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
+  setSearchOpen: (isSearchOpen) => set({ isSearchOpen }),
 
   togglePhotoSelection: (id) =>
     set((state) => {
