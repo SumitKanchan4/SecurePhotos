@@ -152,7 +152,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ### M4 · Remove the unused in-place "scan" import mode — `done` (merged 2026-11-12, PR #3, history §113; owner: collages in collages/YYYY/MM)
 - The UI only sends `mode: "managed"` (`ImportModal.tsx:229`), but `ingestion_service.py:408` and `photos.py:50` still accept `"scan"` (in-place). Remove it so trash purge and the optimizer can never touch files outside the app folder.
 
-### M5 · Token RNG must fail closed — `todo`
+### M5 · Token RNG must fail closed — `done` (merged 2026-11-12, PR #6, history §116; owner: auto-retry, then one click)
 - `lib.rs` `fallback_token()` uses time + PID. Use the `getrandom` crate and abort engine start if it fails.
 
 ### M6 · Disable `/docs` and `/openapi.json` in frozen builds — `done` (merged with H6, history §107)

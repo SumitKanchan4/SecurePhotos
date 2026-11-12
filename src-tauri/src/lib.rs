@@ -4,6 +4,9 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
+
+mod token;
+use token::generate_secure_token;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{TrayIconBuilder, TrayIconEvent},
@@ -14,6 +17,8 @@ pub struct AppEngineState {
     pub port: AtomicU16,
     pub token: RwLock<String>,
     pub process: Arc<Mutex<Option<std::process::Child>>>,
+    /// Why the last engine start was refused (shown in the startup banner), if it was.
+    pub last_start_error: Mutex<Option<String>>,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -162,53 +167,6 @@ fn find_available_port() -> u16 {
         .unwrap_or(8000)
 }
 
-#[cfg(target_os = "windows")]
-fn generate_secure_token() -> String {
-    #[link(name = "bcrypt")]
-    extern "system" {
-        fn BCryptGenRandom(
-            h_algorithm: *mut std::ffi::c_void,
-            pb_buffer: *mut u8,
-            cb_buffer: u32,
-            dw_flags: u32,
-        ) -> i32;
-    }
-    let mut buf = [0u8; 32];
-    unsafe {
-        let status = BCryptGenRandom(
-            std::ptr::null_mut(),
-            buf.as_mut_ptr(),
-            buf.len() as u32,
-            0x00000002, // BCRYPT_USE_SYSTEM_PREFERRED_RNG
-        );
-        if status == 0 {
-            return buf.iter().map(|b| format!("{:02x}", b)).collect();
-        }
-    }
-    fallback_token()
-}
-
-#[cfg(not(target_os = "windows"))]
-fn generate_secure_token() -> String {
-    if let Ok(mut file) = std::fs::File::open("/dev/urandom") {
-        use std::io::Read;
-        let mut buf = [0u8; 32];
-        if file.read_exact(&mut buf).is_ok() {
-            return buf.iter().map(|b| format!("{:02x}", b)).collect();
-        }
-    }
-    fallback_token()
-}
-
-fn fallback_token() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let pid = std::process::id();
-    format!("{:032x}{:032x}", now, pid)
-}
-
 #[tauri::command]
 fn get_engine_status() -> serde_json::Value {
     serde_json::json!({
@@ -329,6 +287,11 @@ fn check_system_prerequisites(state: tauri::State<AppEngineState>) -> SystemPrer
                 }
             }
         }
+        if error_message.is_none() {
+            if let Ok(last) = state.last_start_error.lock() {
+                error_message = last.clone();
+            }
+        }
     }
 
     let all_ready = backend_running && vcredist_installed;
@@ -403,8 +366,21 @@ fn start_backend_engine(state: tauri::State<AppEngineState>) -> serde_json::Valu
         }
     }
 
+    let token = match generate_secure_token() {
+        Some(token) => token,
+        None => {
+            let reason = "Couldn't create a secure access key for the engine (Windows' random number service didn't respond). Click Start Engine to try again, or restart your PC if this keeps happening.".to_string();
+            eprintln!("Engine not started: {}", reason);
+            if let Ok(mut last) = state.last_start_error.lock() {
+                *last = Some(reason.clone());
+            }
+            return serde_json::json!({ "status": "error", "message": reason });
+        }
+    };
+    if let Ok(mut last) = state.last_start_error.lock() {
+        *last = None;
+    }
     let chosen_port = find_available_port();
-    let token = generate_secure_token();
 
     state.port.store(chosen_port, Ordering::SeqCst);
     if let Ok(mut t_lock) = state.token.write() {
@@ -714,6 +690,7 @@ pub fn run() {
         port: AtomicU16::new(0),
         token: RwLock::new(String::new()),
         process: Arc::new(Mutex::new(None)),
+        last_start_error: Mutex::new(None),
     };
 
     tauri::Builder::default()
