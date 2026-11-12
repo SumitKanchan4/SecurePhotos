@@ -1,6 +1,5 @@
 """Tests for the permissively licensed face pipeline and its migration (backlog H9)."""
 
-import io
 import json
 import secrets
 import shutil
@@ -98,32 +97,7 @@ def test_grouping_never_puts_two_faces_of_one_photo_together():
     assert sorted(len(g) for g in groups) == [1, 2]
 
 
-# ── Model integrity ───────────────────────────────────────────────────────────
-
-def test_model_download_with_wrong_hash_is_refused(monkeypatch, tmp_path):
-    monkeypatch.setattr(frs, "get_models_dir", lambda: tmp_path)
-
-    class FakeResponse(io.BytesIO):
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc):
-            return False
-
-    monkeypatch.setattr(frs.urllib.request, "urlopen", lambda *a, **k: FakeResponse(b"tampered model bytes"))
-    spec = {"file": "model.onnx", "url": "https://example.invalid/model.onnx", "sha256": "0" * 64, "license": "MIT"}
-    with pytest.raises(IOError):
-        frs._ensure_model(spec)
-    assert list(tmp_path.iterdir()) == []  # No partial or tampered file left behind.
-
-
-def test_model_already_present_and_valid_is_not_downloaded(monkeypatch, tmp_path):
-    monkeypatch.setattr(frs, "get_models_dir", lambda: tmp_path)
-    (tmp_path / "model.onnx").write_bytes(b"good")
-    import hashlib
-    spec = {"file": "model.onnx", "url": "x", "sha256": hashlib.sha256(b"good").hexdigest(), "license": "MIT"}
-    monkeypatch.setattr(frs.urllib.request, "urlopen", lambda *a, **k: pytest.fail("should not download"))
-    assert frs._ensure_model(spec) == tmp_path / "model.onnx"
+# Model integrity (download, checksum, bundled copy) is tested in test_ai_models.py (H8).
 
 
 # ── Name-preserving face swap ─────────────────────────────────────────────────

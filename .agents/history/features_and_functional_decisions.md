@@ -44,6 +44,7 @@ This document serves as the **central, living source of truth** for all function
 115. [TOTP Removed From the Engine](#115-totp-removed-from-the-engine)
 116. [Engine Access Token Never Falls Back to a Guessable Value](#116-engine-access-token-never-falls-back-to-a-guessable-value)
 117. [App Stays Responsive During Heavy Work; Overlapping Work Queued](#117-app-stays-responsive-during-heavy-work-overlapping-work-queued)
+118. [AI Models Bundled, Pinned and Verified; Honest Offline Wording](#118-ai-models-bundled-pinned-and-verified-honest-offline-wording)
 
 ---
 
@@ -5382,3 +5383,26 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - Other: thumbnail rebuild and background regeneration, studio-print download, face crops, collage render/save, video stream probe, video conversion follow-up (metadata, thumbnail, backup copy).
 - Tests: `engine/tests/test_responsiveness.py` (engine answers while a photo is being encrypted; two simultaneous locks of one photo are safe; two simultaneous imports of one file add it once). All 3 fail on the old code (the old code also locked twice / imported twice). With the queues switched off, the two overlap tests fail every time. 214 tests pass.
 - Validated in the UI (Playwright, throwaway library): while a 300 MB video was being locked, navigating Albums -> Photos -> Dashboard -> Photos took 0.13-0.36 s per step with the lock still running; no engine request took over 250 ms.
+
+---
+
+## 118. AI Models Bundled, Pinned and Verified; Honest Offline Wording
+
+### Functionality Overview
+- The three AI models (face detection YuNet 0.2 MB, face recognition SFace 38.7 MB, upscaling Real-ESRGAN 4.9 MB) now ship inside the installer, so a fresh install recognises faces and enhances photos **without internet**. Before, they downloaded on first use, so the "100% offline" promise wasn't true on a fresh install.
+- If the library lives somewhere else (moved, external drive), the app copies the verified bundled models into the library's `data/models`. A download only happens if no verified copy exists (development, or a damaged install).
+- Every model is pinned to an exact upstream commit and SHA-256; a file that doesn't match is never loaded. Before, the addresses followed each repository's moving `main` branch, so an upstream change would have permanently broken face recognition/enhancement for new installs.
+- README wording corrected: everything works in airplane mode; the only automatic network use is the update check (GitHub's latest version file; nothing about the user or library is sent).
+
+### Functional Decision Points & Rationale (owner decision 2026-11-12: bundle the models in the installer)
+- The installer bundles `build/models`, filled only by `scripts/fetch_models.py`, never the live `data/models` folder: the owner's library folder still held the retired, non-redistributable models (CodeFormer, ArcFace and two others, about 630 MB), which a local installer build would otherwise have shipped.
+- Bundling means redistributing, so the full YuNet (MIT) and SFace (Apache 2.0) licence texts were added to `THIRD_PARTY_NOTICES.md` (Real-ESRGAN's BSD text was already there), and the notices file now ships with the app. Neither OpenCV Zoo folder has a NOTICE file.
+- Real-ESRGAN's ONNX file comes from a community mirror (`huggingworld/onnx-image-models`); the commit + SHA-256 pin guarantees the exact tested file. Converting and hosting it ourselves would be a separate task.
+- The three files on Hugging Face matched the already pinned SHA-256 values (checked 2026-11-12), so no bytes changed.
+
+### Technical Touchpoints
+- `engine/services/ai_models.py` (new: `MODELS`, `ensure_model`, `download_verified`, bundled lookup), `face_recognition_service.py` and `neural_sr_service.py` use it.
+- `scripts/fetch_models.py` (new), `.github/workflows/pipeline.yml` (release: "Bundle verified AI models"; placeholders only for check jobs), `.github/workflows/quality.yml`.
+- `src-tauri/tauri.conf.json` (`../build/models/*` -> `data/models/`, `THIRD_PARTY_NOTICES.md`), `THIRD_PARTY_NOTICES.md`, `README.md`, `.agents/rules/securephotos-app-rules.md` §3.4.
+- Tests: `engine/tests/test_ai_models.py` (7: pinned commits + checksums; tampered download refused; verified copy used; bundled copy used offline; damaged bundled copy not used; release script fetches and verifies all; installer bundles `build/models`, not the live library). Removing the bundled-copy step or putting an address back on `main` makes tests fail. 219 tests pass.
+- Validated: the release script downloaded all three models from the pinned addresses (checksums OK). Offline run (throwaway library, empty models folder, all downloads blocked by a dead proxy): imported a photo and ran the face scan; both face models were copied from the bundled folder, zero download attempts, scan completed.

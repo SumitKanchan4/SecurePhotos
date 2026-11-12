@@ -33,7 +33,7 @@ trigger: always_on
     1. **Standalone Engine Sidecar**: Frozen standalone executable (`securephotos-engine.exe`) containing the complete Python runtime, FastAPI, Uvicorn, ONNXRuntime, and dependencies.
     2. **Bundled Visual C++ Runtime DLLs**: The required MSVC runtime libraries (`vcruntime140.dll`, `msvcp140.dll`, `vcruntime140_1.dll`) must reside alongside the application executable on the drive. Because Windows checks the application folder first in its DLL search order, this guarantees the engine launches even on clean machines or Windows Server images lacking the system-wide VC++ Redistributable.
     3. **Bundled Media Binaries**: Standalone FFmpeg and FFprobe binaries in `<drive>/bin/` for transcoding, thumbnail extraction, and video streaming.
-    4. **Offline AI Models**: All facial embedding vectors, OCR models, and super-resolution weights bundled directly in `<drive>/data/models/`.
+    4. **Offline AI Models**: The face detection, face recognition and super-resolution models ship inside the installer (`<drive>/data/models/`). Each is pinned to an exact upstream commit and SHA-256 in `engine/services/ai_models.py`; the release build fetches them with `scripts/fetch_models.py`, and the app never loads a file whose checksum doesn't match. OCR uses the on-device Windows OCR engine (no model file).
     5. **Native GUI Runtime**: WebView2 loader bundled in `<drive>/WebView2Loader.dll`.
 
 ---

@@ -13,16 +13,16 @@ Replaced: YOLOv8-face (GPL-3.0/AGPL-3.0) and InsightFace ArcFace w600k_r50
 (non-commercial research only).
 """
 
-import hashlib
 import logging
 import math
 import os
-import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from PIL import Image
+
+from engine.services.ai_models import MODELS, ensure_model
 
 logger = logging.getLogger("securephotos.face_recognition")
 
@@ -31,20 +31,8 @@ logger = logging.getLogger("securephotos.face_recognition")
 EMBEDDING_MODEL = "sface-2021dec"
 EMBEDDING_DIM = 128
 
-FACE_MODELS = {
-    "yunet": {
-        "file": "face_detection_yunet_2023mar.onnx",
-        "url": "https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx",
-        "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
-        "license": "MIT",
-    },
-    "sface": {
-        "file": "face_recognition_sface_2021dec.onnx",
-        "url": "https://huggingface.co/opencv/face_recognition_sface/resolve/main/face_recognition_sface_2021dec.onnx",
-        "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
-        "license": "Apache-2.0",
-    },
-}
+# Pinned download addresses and checksums live in engine.services.ai_models (H8).
+FACE_MODELS = {"yunet": MODELS["yunet"], "sface": MODELS["sface"]}
 
 # Model files no longer used by the app (non-permissive licences); deleted once
 # the People migration has finished (see engine.services.face_model_migration).
@@ -88,40 +76,9 @@ def get_face_thumbnails_dir() -> Path:
     return faces_dir
 
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for block in iter(lambda: fh.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
-def _ensure_model(spec: Dict[str, str]) -> Path:
-    """Returns the verified model file, downloading it once if needed.
-
-    Raises:
-        IOError: If the downloaded file doesn't match the pinned SHA-256.
-    """
-    path = get_models_dir() / spec["file"]
-    if path.is_file() and _sha256(path) == spec["sha256"]:
-        return path
-    logger.info("Downloading %s (%s licence)...", spec["file"], spec["license"])
-    tmp = path.with_name(path.name + ".download")
-    req = urllib.request.Request(spec["url"], headers={"User-Agent": "SecurePhotos"})
-    with urllib.request.urlopen(req, timeout=120) as resp, open(tmp, "wb") as fh:
-        for block in iter(lambda: resp.read(1024 * 1024), b""):
-            fh.write(block)
-    actual = _sha256(tmp)
-    if actual != spec["sha256"]:
-        tmp.unlink(missing_ok=True)
-        raise IOError(f"{spec['file']} failed its integrity check (got {actual[:12]}..., expected {spec['sha256'][:12]}...).")
-    os.replace(tmp, path)
-    return path
-
-
 def ensure_face_models() -> Tuple[Path, Path]:
     """Returns verified paths to the YuNet and SFace model files."""
-    return _ensure_model(FACE_MODELS["yunet"]), _ensure_model(FACE_MODELS["sface"])
+    return ensure_model(FACE_MODELS["yunet"], get_models_dir()), ensure_model(FACE_MODELS["sface"], get_models_dir())
 
 
 def get_inference_sessions():
