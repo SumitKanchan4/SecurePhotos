@@ -25,7 +25,6 @@ interface AppState {
   isVaultUnlocked: boolean;
   isVaultConfigured: boolean;
   vaultPasswordHint: string | null;
-  hasVaultTotp: boolean;
   hasVaultPin: boolean;
   isVaultPinLocked: boolean;
   prerequisites: SystemPrerequisites | null;
@@ -49,7 +48,6 @@ interface AppState {
   setIsVaultUnlocked: (unlocked: boolean) => void;
   setIsVaultConfigured: (configured: boolean) => void;
   setVaultPasswordHint: (hint: string | null) => void;
-  setHasVaultTotp: (hasTotp: boolean) => void;
   setHasVaultPin: (hasPin: boolean) => void;
   setIsVaultPinLocked: (isPinLocked: boolean) => void;
   checkVaultStatus: () => Promise<void>;
@@ -110,7 +108,6 @@ export const useAppStore = create<AppState>((set) => ({
   isVaultUnlocked: false,
   isVaultConfigured: false,
   vaultPasswordHint: null,
-  hasVaultTotp: false,
   hasVaultPin: false,
   isVaultPinLocked: false,
   prerequisites: null,
@@ -166,7 +163,6 @@ export const useAppStore = create<AppState>((set) => ({
   setIsVaultUnlocked: (isVaultUnlocked) => set({ isVaultUnlocked }),
   setIsVaultConfigured: (isVaultConfigured) => set({ isVaultConfigured }),
   setVaultPasswordHint: (vaultPasswordHint) => set({ vaultPasswordHint }),
-  setHasVaultTotp: (hasVaultTotp) => set({ hasVaultTotp }),
   setHasVaultPin: (hasVaultPin) => set({ hasVaultPin }),
   setIsVaultPinLocked: (isVaultPinLocked) => set({ isVaultPinLocked }),
   checkVaultStatus: async () => {
@@ -186,7 +182,6 @@ export const useAppStore = create<AppState>((set) => ({
           isVaultConfigured: Boolean(data.is_configured),
           isVaultUnlocked: Boolean(data.is_unlocked),
           vaultPasswordHint: data.password_hint || null,
-          hasVaultTotp: Boolean(data.has_totp),
           hasVaultPin: Boolean(data.has_pin),
           isVaultPinLocked: Boolean(data.is_pin_locked),
         });

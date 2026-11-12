@@ -258,7 +258,7 @@ CREATE TABLE IF NOT EXISTS vault_configs (
     password_hint TEXT,
     pin_failed_attempts INTEGER DEFAULT 0,   -- Counter for brute-force rate-limiting
     has_pin BOOLEAN DEFAULT 0,               -- Flag indicating PIN is enrolled
-    totp_secret_encrypted TEXT,              -- Optional encrypted secret key for RFC 6238 TOTP
+    totp_secret_encrypted TEXT,              -- Unused since H3 (TOTP removed); always NULL
     has_biometrics BOOLEAN DEFAULT 0,
     grid_card_id TEXT,                       -- Emergency Grid Card ID (e.g. SP-8492-7104)
     grid_cells_hash TEXT,                    -- Salted JSON hashes of 16 card cells for challenge verification
@@ -514,6 +514,18 @@ async def _apply_one_time_migrations(conn: aiosqlite.Connection) -> None:
         await conn.commit()
         if cur.rowcount:
             logger.info("Re-queued %d photo(s) for enhancement that were skipped earlier.", cur.rowcount)
+
+    # H3: TOTP was removed. Its secret was stored unencrypted (despite the column name),
+    # so blank any that an older version may have written.
+    name = "2026_11_h3_blank_totp_secrets"
+    if not await already_applied(name):
+        cur = await conn.execute(
+            "UPDATE vault_configs SET totp_secret_encrypted = NULL WHERE totp_secret_encrypted IS NOT NULL;"
+        )
+        await conn.execute("INSERT INTO applied_migrations (name) VALUES (?);", (name,))
+        await conn.commit()
+        if cur.rowcount:
+            logger.info("Removed %d stored TOTP secret(s); TOTP is no longer used.", cur.rowcount)
 
     # H9: which model produced each face embedding. NULL = legacy ArcFace (512-D).
     async with conn.execute("PRAGMA table_info(faces);") as cursor:
