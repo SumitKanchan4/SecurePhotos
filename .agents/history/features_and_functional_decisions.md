@@ -47,6 +47,7 @@ This document serves as the **central, living source of truth** for all function
 118. [AI Models Bundled, Pinned and Verified; Honest Offline Wording](#118-ai-models-bundled-pinned-and-verified-honest-offline-wording)
 119. [Honest Vault Key Handling in Memory](#119-honest-vault-key-handling-in-memory)
 120. [Engineering Checklists; Skills and Docs Match the Code](#120-engineering-checklists-skills-and-docs-match-the-code)
+121. [Dead 24-Word Recovery Mode Removed From the Vault Unlock Screens](#121-dead-24-word-recovery-mode-removed-from-the-vault-unlock-screens)
 
 ---
 
@@ -5447,3 +5448,21 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `.agents/rules/engineering-checklists.md` (new), `.agents/rules/strict-approval-and-standards.md`, `.agents/skills/{zero-trust-crypto,local-slm-engineering,sqlite-vector-search}/SKILL.md`.
 - `README.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md`, `docs/architecture.md`, `docs/development.md`, `docs/database_schema.md`, `docs/design_system.md`; `engine/database.py` (stale schema comments only).
 - Tests: `engine/tests/test_docs_match_code.py` (7: the known false claims stay out of README / SECURITY / architecture / development; React version in docs matches `package.json`; every bundled model and font has its licence notice; the checklist only names helpers and files that exist). 6 of 7 fail on the old docs. 228 tests pass.
+
+---
+
+## 121. Dead 24-Word Recovery Mode Removed From the Vault Unlock Screens
+
+### Functionality Overview
+- The vault's locked screen and the unlock window contained a third mode, "Enter your 24-word recovery phrase", left over from before the emergency card (C3). Investigation showed **nothing ever switched to it**: it was unreachable code, not a visible option. It is removed from both screens.
+- The one place users could see the old wording, the unlock window's "no vault yet" message, now reads "Create your Master Password, a 4-digit quick PIN, and your printed Emergency Card to lock items."
+- Unchanged: PIN after a lock, "Unlock with Master Password instead", "Forgot your password? Use your Emergency Card" (card file, card numbers, or current password) and Factory Reset.
+
+### Functional Decision Points & Rationale (owner decision 2026-11-12: remove it)
+- Removing beats relabelling: the mode couldn't be opened, and recovery already has a proper flow.
+- The backend is unchanged: `/api/vault/unlock` still accepts a card code in its `recovery_phrase` field (no UI uses it now). Whether to drop that is a separate security decision.
+
+### Technical Touchpoints
+- `src/components/VaultView.tsx` and `src/components/VaultUnlockModal.tsx` (mode type, state, handler and form removed: about 170 lines), `src/components/VaultSetupWizard.tsx` (comment).
+- Tests: `test_docs_match_code.py::test_ui_does_not_offer_a_24_word_recovery_phrase` (fails on the old UI: all three files). 229 tests pass; `tsc` and the build pass.
+- Validated in the UI (Playwright, throwaway library): wizard (password, PIN, card) -> lock -> PIN pad, "Unlock with Master Password instead", Emergency Card link, Factory Reset; no "24-word" / "recovery phrase" text; PIN unlock works; the card link opens the reset dialog with Card file / Card numbers / Current password. No console errors.

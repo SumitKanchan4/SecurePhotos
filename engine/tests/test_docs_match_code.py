@@ -52,3 +52,10 @@ def test_checklist_points_at_helpers_that_exist():
         assert helper in rules and f"def {helper}" in code, helper
     for path in ("engine/services/ai_models.py", "scripts/fetch_models.py", "THIRD_PARTY_NOTICES.md"):
         assert path in rules and (ROOT / path).exists(), path
+
+
+def test_ui_does_not_offer_a_24_word_recovery_phrase():
+    """V1: setup creates an emergency card; the UI must not ask for a recovery phrase that never existed."""
+    sources = [p for p in (ROOT / "src").rglob("*.tsx")] + [p for p in (ROOT / "src").rglob("*.ts")]
+    offenders = [p.name for p in sources if re.search(r"24-word|recovery phrase", p.read_text(encoding="utf-8"), re.IGNORECASE)]
+    assert not offenders, offenders
