@@ -1,11 +1,15 @@
+/**
+ * SearchPalette: the global search (Ctrl+K), shown as a centred panel (redesign R1).
+ *
+ * The input and the live results (people, albums, photos, quick filters) are the
+ * former title-bar search, moved here unchanged. The query stays in the store's
+ * `searchQuery`, which also filters People, Albums, Documents and Trash; the
+ * window strip shows it as a chip while the palette is closed.
+ */
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { 
-  Search, 
-  Sun, 
-  Moon, 
-  Minus, 
-  Square, 
-  X, 
+import {
+  Search,
+  X,
   Star,
   Film,
   FileText,
@@ -18,27 +22,24 @@ import {
   User,
   Image as ImageIcon
 } from "lucide-react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useAppStore } from "../store/useAppStore";
-import { SearchResponse, SearchPhotoItem, SearchAlbumItem, SearchPersonItem } from "../types";
-import appIcon from "../assets/brand/app-icon-small.svg";
-import { apiFetch, getApiUrl } from "../services/api";
+import { useAppStore } from "../../store/useAppStore";
+import { SearchResponse, SearchPhotoItem, SearchAlbumItem, SearchPersonItem } from "../../types";
+import { apiFetch, getApiUrl } from "../../services/api";
 
-interface TitleBarProps {
+interface SearchPaletteProps {
   onSelectPhoto?: (photo: SearchPhotoItem, allPhotos: SearchPhotoItem[]) => void;
 }
 
-export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
-  const { 
-    theme, 
-    toggleTheme, 
-    activeTab, 
+export const SearchPalette: React.FC<SearchPaletteProps> = ({ onSelectPhoto }) => {
+  const {
+    activeTab,
     setActiveTab,
-    searchQuery, 
-    setSearchQuery 
+    searchQuery,
+    setSearchQuery,
+    isSearchOpen,
+    setSearchOpen,
   } = useAppStore();
 
-  const [isFlyoutOpen, setIsFlyoutOpen] = useState(false);
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -61,33 +62,30 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
     return "Search photos, people, tags, OCR documents... (Ctrl+K)";
   };
 
-  // Keyboard shortcut: Ctrl+K / Cmd+K to focus search, Escape to close
+  // Ctrl+K / Cmd+K opens the search palette; Escape closes it.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        inputRef.current?.focus();
-        inputRef.current?.select();
-        setIsFlyoutOpen(true);
-      } else if (e.key === "Escape") {
-        setIsFlyoutOpen(false);
-        inputRef.current?.blur();
+        setSearchOpen(true);
+      } else if (e.key === "Escape" && useAppStore.getState().isSearchOpen) {
+        setSearchOpen(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [setSearchOpen]);
 
-  // Click outside to dismiss the flyout
+  // Focus and select the query whenever the palette opens.
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
-        setIsFlyoutOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    if (isSearchOpen) {
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      });
+    }
+  }, [isSearchOpen]);
+
 
   // Debounced live search query execution
   const fetchSearchResults = useCallback(async (query: string) => {
@@ -126,19 +124,19 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
   const handleQuickFilterClick = (filterKeyword: string) => {
     setSearchQuery(filterKeyword);
     setActiveTab("photos");
-    setIsFlyoutOpen(false);
+    setSearchOpen(false);
   };
 
   const handlePersonClick = (person: SearchPersonItem) => {
     setActiveTab("people");
     setSearchQuery(person.name);
-    setIsFlyoutOpen(false);
+    setSearchOpen(false);
   };
 
   const handleAlbumClick = (album: SearchAlbumItem) => {
     setActiveTab("albums");
     setSearchQuery(album.name);
-    setIsFlyoutOpen(false);
+    setSearchOpen(false);
   };
 
   const handlePhotoClick = (photo: SearchPhotoItem) => {
@@ -146,117 +144,51 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
       onSelectPhoto(photo, results.photos);
     }
     setActiveTab("photos");
-    setIsFlyoutOpen(false);
+    setSearchOpen(false);
   };
 
   const handleViewAllPhotos = () => {
     setActiveTab("photos");
-    setIsFlyoutOpen(false);
+    setSearchOpen(false);
   };
 
-  const handleMinimize = async () => {
-    try {
-      const appWindow = getCurrentWindow();
-      await appWindow.minimize();
-    } catch (err) {
-      console.warn("Minimize error / browser mode:", err);
-    }
-  };
-
-  const handleMaximize = async () => {
-    try {
-      const appWindow = getCurrentWindow();
-      await appWindow.toggleMaximize();
-    } catch (err) {
-      console.warn("Maximize error / browser mode:", err);
-    }
-  };
-
-  const handleClose = async () => {
-    try {
-      const appWindow = getCurrentWindow();
-      await appWindow.close();
-    } catch (err) {
-      console.warn("Close error / browser mode:", err);
-    }
-  };
+  if (!isSearchOpen) return null;
 
   return (
-    <header 
-      data-tauri-drag-region 
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Search your library"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) setSearchOpen(false);
+      }}
       style={{
-        height: "44px",
+        position: "fixed",
+        inset: 0,
+        zIndex: 3000,
+        backgroundColor: "rgba(0, 0, 0, 0.45)",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0 14px",
-        backgroundColor: "var(--glass-surface)",
-        backdropFilter: "blur(24px)",
-        WebkitBackdropFilter: "blur(24px)",
-        borderBottom: "1px solid var(--glass-border)",
-        userSelect: "none",
-        zIndex: 200,
-        position: "relative",
+        justifyContent: "center",
+        alignItems: "flex-start",
+        paddingTop: "12vh",
       }}
     >
-      {/* Brand & App Title */}
-      <div style={{ display: "flex", alignItems: "center", gap: "10px" }} data-tauri-drag-region>
-        <img 
-          src={appIcon}
-          alt="SecurePhotos Logo"
-          style={{
-            width: "28px",
-            height: "28px",
-            flexShrink: 0,
-          }} 
-        />
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span 
-            style={{ 
-              fontFamily: "var(--font-display)", 
-              fontWeight: 800, 
-              fontSize: "14px", 
-              letterSpacing: "-0.035em",
-              color: "var(--text-primary)",
-            }}
-          >
-            SecurePhotos
-          </span>
-          <span 
-            style={{ 
-              fontSize: "10px", 
-              fontFamily: "var(--font-mono)", 
-              fontWeight: 600,
-              color: "var(--text-muted)",
-              backgroundColor: "var(--glass-pill-bg)",
-              border: "1px solid var(--glass-border)",
-              padding: "1px 6px",
-              borderRadius: "var(--radius-full)",
-              lineHeight: "1.4",
-            }}
-          >
-            v0.1.0
-          </span>
-        </div>
-      </div>
-
-      {/* Global Spotlight Hybrid Search (Ctrl + K) */}
-      <div 
+      <div
         ref={searchContainerRef}
-        style={{ flex: 1, maxWidth: "480px", margin: "0 20px", position: "relative" }}
+        style={{ width: "min(640px, 92vw)", display: "flex", flexDirection: "column", gap: "10px" }}
       >
         <div 
           style={{
             display: "flex",
             alignItems: "center",
-            backgroundColor: isFlyoutOpen ? "var(--bg-surface-elevated)" : "var(--glass-pill-bg)",
+            backgroundColor: isSearchOpen ? "var(--bg-surface-elevated)" : "var(--glass-pill-bg)",
             borderRadius: "var(--radius-full)",
-            border: isFlyoutOpen 
+            border: isSearchOpen 
               ? "1px solid var(--accent-primary)" 
               : "1px solid var(--glass-pill-border)",
             padding: "4px 12px",
             gap: "8px",
-            boxShadow: isFlyoutOpen ? "0 0 0 2px color-mix(in srgb, var(--accent-ink) 20%, transparent)" : "none",
+            boxShadow: isSearchOpen ? "0 0 0 2px color-mix(in srgb, var(--accent-ink) 20%, transparent)" : "none",
             transition: "all 0.15s ease",
           }}
         >
@@ -271,14 +203,14 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
             type="text"
             placeholder={getSearchPlaceholder()}
             value={searchQuery}
-            onFocus={() => setIsFlyoutOpen(true)}
+            onFocus={() => setSearchOpen(true)}
             onChange={(e) => {
               setSearchQuery(e.target.value);
-              if (!isFlyoutOpen) setIsFlyoutOpen(true);
+              if (!isSearchOpen) setSearchOpen(true);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
-                setIsFlyoutOpen(false);
+                setSearchOpen(false);
                 if (activeTab !== "people" && activeTab !== "albums" && activeTab !== "documents" && activeTab !== "trash") {
                   setActiveTab("photos");
                 }
@@ -333,26 +265,15 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
             </kbd>
           )}
         </div>
-
-        {/* ── Spotlight Live Dropdown Flyout ──────────────────────────────── */}
-        {isFlyoutOpen && (
           <div
             style={{
-              position: "absolute",
-              top: "calc(100% + 8px)",
-              left: "50%",
-              transform: "translateX(-50%)",
-              width: "min(560px, 92vw)",
-              backgroundColor: "var(--glass-surface)",
-              backdropFilter: "blur(28px)",
-              WebkitBackdropFilter: "blur(28px)",
+              backgroundColor: "var(--bg-surface-elevated)",
               border: "1px solid var(--glass-border)",
               borderRadius: "var(--radius-lg)",
               boxShadow: "0 18px 45px rgba(0, 0, 0, 0.35)",
               padding: "14px",
-              maxHeight: "480px",
+              maxHeight: "60vh",
               overflowY: "auto",
-              zIndex: 1000,
               display: "flex",
               flexDirection: "column",
               gap: "14px",
@@ -825,94 +746,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({ onSelectPhoto }) => {
               </>
             )}
           </div>
-        )}
       </div>
-
-      {/* Action Controls & Window Buttons */}
-      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-        {/* Theme Switcher */}
-        <button
-          onClick={toggleTheme}
-          title={`Switch to ${theme === "dark" ? "Light" : "Dark"} theme (T)`}
-          className="clickable"
-          style={{
-            width: "30px",
-            height: "30px",
-            borderRadius: "var(--radius-sm)",
-            background: "transparent",
-            border: "none",
-            color: "var(--text-secondary)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
-        </button>
-
-        <div style={{ width: "1px", height: "16px", backgroundColor: "var(--border-subtle)", margin: "0 4px" }} />
-
-        {/* Windows Native Control Buttons */}
-        <button
-          onClick={handleMinimize}
-          className="clickable"
-          title="Minimize Window"
-          style={{
-            width: "32px",
-            height: "28px",
-            background: "transparent",
-            border: "none",
-            color: "var(--text-secondary)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Minus size={14} />
-        </button>
-        <button
-          onClick={handleMaximize}
-          className="clickable"
-          title="Maximize / Restore Window"
-          style={{
-            width: "32px",
-            height: "28px",
-            background: "transparent",
-            border: "none",
-            color: "var(--text-secondary)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Square size={12} />
-        </button>
-        <button
-          onClick={handleClose}
-          className="clickable"
-          title="Close Window"
-          style={{
-            width: "32px",
-            height: "28px",
-            background: "transparent",
-            border: "none",
-            color: "var(--text-secondary)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = "var(--accent-danger)";
-            e.currentTarget.style.color = "#ffffff";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = "transparent";
-            e.currentTarget.style.color = "var(--text-secondary)";
-          }}
-        >
-          <X size={14} />
-        </button>
-      </div>
-    </header>
+    </div>
   );
 };

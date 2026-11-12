@@ -50,6 +50,7 @@ This document serves as the **central, living source of truth** for all function
 121. [Dead 24-Word Recovery Mode Removed From the Vault Unlock Screens](#121-dead-24-word-recovery-mode-removed-from-the-vault-unlock-screens)
 122. [Frontend Unit Tests (Vitest) in the Quality Gate](#122-frontend-unit-tests-vitest-in-the-quality-gate)
 123. [Redesign Step 0: Mono + Acid Lime Tokens, Archivo, New App Icon](#123-redesign-step-0-mono--acid-lime-tokens-archivo-new-app-icon)
+124. [Redesign Step 1: Icon Rail, Window Strip, Search Palette](#124-redesign-step-1-icon-rail-window-strip-search-palette)
 
 ---
 
@@ -5506,3 +5507,26 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 ### Technical Touchpoints
 - `src/index.css` (tokens), 33 component files (accent roles, blue literals, display font), `src/main.tsx` (Archivo), `src/utils/gridCardRenderer.ts` (font), `src/components/TitleBar.tsx`, `index.html`, `src/assets/brand/*`, `src-tauri/icons/*`, `scripts/render_app_icons.py`, `package.json` (+ `@fontsource/archivo`, - `@fontsource/plus-jakarta-sans`), `THIRD_PARTY_NOTICES.md`, `.github/workflows/quality.yml`.
 - Checks: `tsc` and build pass, 11 frontend + 229 Python tests pass, ruff clean, npm audit 0. Playwright on a throwaway library: all 8 screens and the import window in dark and light, with an automatic scan for light text on lime fills and lime text in the light theme: no problems found; no console errors.
+
+---
+
+## 124. Redesign Step 1: Icon Rail, Window Strip, Search Palette
+
+### Functionality Overview
+- The labelled sidebar and the full-width title bar are replaced by the approved shell: a **64 px icon rail** (logo, search, the nine sections, hover labels, a status dot) and a **32 px window strip** (drag area, active-search chip, theme toggle, window buttons).
+- **Search** moved from the title bar into a centred **search palette** (Ctrl+K, or the search icon at the top of the rail). Same live results (people, albums, photos, quick filters), same search API.
+- **Active search chip**: the search text also filters People, Albums, Documents and Trash, so while it is set the strip shows "Search: ... x" (click to edit, x to clear); a filter can no longer be invisible.
+- **Status dot** at the bottom of the rail replaces the drive/engine card: lime = library ready and engine running, amber = engine starting, red = drive missing or engine problem; the plain-language reason shows on hover; clicking opens Settings.
+
+### Functional Decision Points & Rationale (owner decision 2026-11-12: slim strip + Ctrl+K)
+- The window has no Windows frame, so a draggable strip with the window buttons must stay; 32 px is the minimum comfortable size.
+- A search icon sits at the top of the rail until each page header gets its own (later steps), so search is always one click away.
+- Active section: lime fill + black icon in dark, black fill + white icon in light (`--rail-active-*`); hover labels are CSS (`data-label`), so they need no extra JavaScript.
+- The search code was moved, not rewritten (title-bar input and results blocks copied into `SearchPalette`), to keep behaviour identical.
+- Known overlap until Step 2: the old Photos page header still shows its own "Search Active" pill and "Clear Search" button next to the chip; that header is replaced in R2.
+
+### Technical Touchpoints
+- New: `src/components/shell/IconRail.tsx`, `WindowStrip.tsx`, `SearchPalette.tsx`, `shell.test.tsx`; store: `isSearchOpen` / `setSearchOpen`; `src/index.css` (`.rail-btn`, hover labels, `--rail-active-*`, `.window-close`).
+- Removed: `src/components/TitleBar.tsx` (918 lines), `src/components/Sidebar.tsx`. `src/App.tsx` wires the new shell.
+- Tests: 7 new component tests (sections, current marker, navigation, search opening, status wording, chip edit/clear, window buttons, Ctrl+K/Escape/backdrop, typed search hits the API with the token and a person result opens People). Hiding the chip, dropping the current marker or breaking Escape each fail a test. 18 frontend tests pass; tsc and build pass.
+- Validated in the UI (Playwright, throwaway library, both themes switched with the real toggle): all nine sections open and are marked current, the theme survives navigation, hover labels show, Ctrl+K finds an imported photo by name, the chip appears after closing and clears; contrast scan: no problems; no console errors.

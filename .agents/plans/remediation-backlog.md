@@ -208,8 +208,8 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 Integration branch `feature/redesign` (master untouched until the end; owner decision). Concept board: https://claude.ai/artifact/XsadhwxNhBkakuUzyR8wPU. Chosen: Mono + acid lime (#C6FF00, black text on it), Archivo headings over Inter, icon rail + photo-first layout with a right-side month/year scrubber, 3D app icon "C · Frosted glass". Approved screens: Photos, Viewer, Private Vault, People, Import + Settings.
 
 ### R0 · Tokens, Archivo, app icon — `done` (merged into feature/redesign 2026-11-12, PR #13, history §123)
-### R1 · App shell: 64 px icon rail replaces sidebar + title bar — `todo`
-### R2 · Photos: justified rows (virtualised), big date headings, month/year scrubber — `todo` (expert note: free mosaic can't stay virtualised at 100k photos; justified rows instead, shown to owner first)
+### R1 · App shell: 64 px icon rail replaces sidebar + title bar — `done` (merged into feature/redesign 2026-11-12, PR #14, history §124; owner: slim strip + Ctrl+K)
+### R2 · Photos: justified rows (virtualised), big date headings, month/year scrubber — `todo` (also remove the old header's "Search Active" pill / "Clear Search" now that the strip shows the search chip) (expert note: free mosaic can't stay virtualised at 100k photos; justified rows instead, shown to owner first)
 ### R3 · Viewer: dark surround, details on demand, 8K chip by the title, lime lock = Move to Vault, Trash set apart — `todo` (+ split Lightbox.tsx; Q5)
 ### R4 · Private Vault: locked/unlocked designs; Factory reset moves to Settings — `todo`
 ### R5 · People: close ones, "Same person?", "Who is this?" — `todo` (+ split PeopleView.tsx; Q5)
