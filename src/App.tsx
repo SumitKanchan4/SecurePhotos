@@ -853,7 +853,6 @@ export const App: React.FC = () => {
                 setLightboxPhotos(photoItems);
                 setLightboxIndex(idx);
               }}
-              onTogglePin={handleTogglePin}
             />
           ) : activeTab === "trash" ? (
             /* 30-Day Trash & Soft-Delete Safe */
