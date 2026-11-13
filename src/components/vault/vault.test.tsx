@@ -157,13 +157,13 @@ describe("Factory reset in Settings", () => {
     mockEngine({});
     render(<VaultSettings settings={{ auto_lock_duration: 300 } as never} updateSetting={vi.fn()} />);
     expect(screen.getByRole("heading", { name: "Danger zone" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Erase vault/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Erase the vault" })).toBeEnabled();
   });
 
   it("can't be started without a vault", () => {
     useAppStore.setState({ isVaultConfigured: false });
     render(<VaultFactoryReset />);
-    expect(screen.getByRole("button", { name: /Erase vault/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Erase the vault" })).toBeDisabled();
   });
 
   it("shows what will be erased and only erases after the exact phrase", async () => {
@@ -172,7 +172,7 @@ describe("Factory reset in Settings", () => {
       "/api/vault/reset": { success: true },
     });
     render(<VaultFactoryReset />);
-    fireEvent.click(screen.getByRole("button", { name: /Erase vault/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Erase the vault" }));
     expect(await screen.findByText("12 photos and 2 albums")).toBeInTheDocument();
 
     const erase = screen.getByRole("button", { name: "Erase permanently" });

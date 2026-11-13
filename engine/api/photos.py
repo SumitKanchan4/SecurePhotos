@@ -1,4 +1,5 @@
 import asyncio
+import time
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
@@ -109,6 +110,25 @@ class ImportRequest(BaseModel):
     album_id: Optional[int] = None
 
 
+class ImportPreviewRequest(BaseModel):
+    """What the Import dialog is about to bring in (redesign R6)."""
+    source_directory: Optional[str] = None
+    file_paths: Optional[List[str]] = None
+
+
+class ImportPreviewResponse(BaseModel):
+    """'Goa trip: 48 photos, 3 videos (2.1 GB); 4 are already in your library'."""
+    name: str
+    is_folder: bool
+    photos: int
+    videos: int
+    documents: int
+    total_bytes: int
+    already_in_library: int
+    to_import: int
+    unsupported: int
+
+
 class ImportResponse(BaseModel):
     """Summary of batch ingestion."""
     total_found: int
@@ -117,6 +137,8 @@ class ImportResponse(BaseModel):
     failed: int = 0
     imported_photo_ids: List[int] = []
     album_linked_count: int = 0
+    cancelled: bool = False
+    unsupported: int = 0
 
 
 class OptimizationProgressResponse(BaseModel):
@@ -1032,9 +1054,90 @@ async def get_thumbnail_regeneration_progress() -> dict:
 
 
 
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
+DOCUMENT_EXTENSIONS = {".pdf"}
+
+
+def _collect_import_files(source_directory: Optional[str], file_paths: Optional[List[str]]) -> tuple[List[Path], int, bool]:
+    """(supported files, number of unsupported files, whether anything was found at all).
+
+    Shared by the import and its preview so both count the same files. Runs in a thread:
+    walking a large folder must not block the engine.
+    """
+    from engine.services.ingestion_service import SUPPORTED_EXTENSIONS
+
+    found: List[Path] = []
+    for fp in file_paths or []:
+        path = Path(fp)
+        if path.exists() and path.is_file():
+            found.append(path)
+        else:
+            logger.warning("Specified file path could not be located on disk: %s", fp)
+    if source_directory:
+        source_dir = Path(source_directory)
+        if source_dir.exists() and source_dir.is_dir():
+            found.extend(path for path in source_dir.rglob("*") if path.is_file())
+    supported = [path for path in found if path.suffix.lower() in SUPPORTED_EXTENSIONS]
+    return supported, len(found) - len(supported), bool(found)
+
+
+@router.post("/import-preview", response_model=ImportPreviewResponse, status_code=status.HTTP_200_OK)
+async def preview_import(payload: ImportPreviewRequest) -> ImportPreviewResponse:
+    """Counts what an import would bring in, and how many files are already in the library.
+
+    Only files whose size matches a library photo are hashed, so a folder of new photos
+    is counted without reading every byte.
+    """
+    from engine.services.thumbnail_service import calculate_file_hash
+
+    files, unsupported, found_any = await asyncio.to_thread(_collect_import_files, payload.source_directory, payload.file_paths)
+    if not found_any:
+        raise HTTPException(status_code=400, detail="Nothing was found at that location.")
+
+    sizes = await asyncio.to_thread(lambda: {path: path.stat().st_size for path in files})
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT DISTINCT file_size FROM photos UNION SELECT DISTINCT original_file_size FROM photos;") as cursor:
+            library_sizes = {row[0] for row in await cursor.fetchall() if row[0]}
+        already = 0
+        for path, size in sizes.items():
+            if size not in library_sizes:
+                continue
+            digest = await asyncio.to_thread(calculate_file_hash, path)
+            async with conn.execute(
+                "SELECT 1 FROM photos WHERE file_hash = ? OR original_file_hash = ? LIMIT 1;", (digest, digest)
+            ) as cursor:
+                if await cursor.fetchone():
+                    already += 1
+    finally:
+        await conn.close()
+
+    videos = sum(1 for path in files if path.suffix.lower() in VIDEO_EXTENSIONS)
+    documents = sum(1 for path in files if path.suffix.lower() in DOCUMENT_EXTENSIONS)
+    if payload.source_directory:
+        name, is_folder = Path(payload.source_directory).name or payload.source_directory, True
+    elif len(files) == 1:
+        name, is_folder = files[0].name, False
+    else:
+        name, is_folder = f"{len(files)} files", False
+    return ImportPreviewResponse(
+        name=name,
+        is_folder=is_folder,
+        photos=len(files) - videos - documents,
+        videos=videos,
+        documents=documents,
+        total_bytes=sum(sizes.values()),
+        already_in_library=already,
+        to_import=len(files) - already,
+        unsupported=unsupported,
+    )
+
+
 # Real-time background media ingestion progress state
 import_progress_state: Dict[str, Any] = {
     "is_active": False,
+    "started_at": None,
+    "cancel_requested": False,
     "total_count": 0,
     "completed_count": 0,
     "current_filename": "",
@@ -1052,6 +1155,19 @@ async def get_import_progress() -> Dict[str, Any]:
     return import_progress_state
 
 
+@router.post("/import/cancel", status_code=status.HTTP_200_OK)
+async def cancel_import() -> dict:
+    """Stop import: the running import finishes the file it is on and stops.
+
+    Photos already imported stay. When moving, each original is removed only after its copy
+    is verified, so stopping never loses a file.
+    """
+    if not import_progress_state["is_active"]:
+        return {"status": "idle"}
+    import_progress_state["cancel_requested"] = True
+    return {"status": "stopping"}
+
+
 @router.post("/import", response_model=ImportResponse, status_code=status.HTTP_201_CREATED)
 async def import_folder(payload: ImportRequest, background_tasks: BackgroundTasks) -> ImportResponse:
     """Recursively ingests media files from a directory or specific file paths into the library.
@@ -1065,32 +1181,19 @@ async def import_folder(payload: ImportRequest, background_tasks: BackgroundTask
 
 
 async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTasks) -> ImportResponse:
-    files_to_process: List[Path] = []
+    files_to_process, unsupported, found_any = await asyncio.to_thread(
+        _collect_import_files, payload.source_directory, payload.file_paths
+    )
 
-    # 1. Add specific file paths if provided
-    if payload.file_paths:
-        for fp in payload.file_paths:
-            p = Path(fp)
-            if p.exists() and p.is_file():
-                files_to_process.append(p)
-            else:
-                logger.warning("Specified file path could not be located on disk: %s", fp)
-
-    # 2. Add files from directory if provided
-    if payload.source_directory:
-        source_dir = Path(payload.source_directory)
-        if source_dir.exists() and source_dir.is_dir():
-            for file_path in source_dir.rglob("*"):
-                if file_path.is_file():
-                    files_to_process.append(file_path)
-
-    if not files_to_process:
+    if not found_any:
         if payload.file_paths and not payload.source_directory:
             raise HTTPException(
                 status_code=400,
                 detail="Selected file paths could not be located on disk. Ensure absolute filesystem paths are provided.",
             )
         raise HTTPException(status_code=400, detail="No valid media files or source directory provided")
+    if not files_to_process:
+        raise HTTPException(status_code=400, detail="No photos or videos were found there.")
 
     conn = await get_db_connection()
     total_found = len(files_to_process)
@@ -1113,6 +1216,8 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
     global import_progress_state
     import_progress_state.update({
         "is_active": True,
+        "started_at": time.time(),
+        "cancel_requested": False,
         "total_count": total_found,
         "completed_count": 0,
         "current_filename": files_to_process[0].name if files_to_process else "",
@@ -1124,8 +1229,13 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
     })
 
     album_linked_count = 0
+    cancelled = False
     try:
         for idx, file_path in enumerate(files_to_process):
+            if import_progress_state["cancel_requested"]:
+                cancelled = True
+                logger.info("Import stopped by the owner after %d of %d files.", idx, total_found)
+                break
             import_progress_state["current_filename"] = file_path.name
             try:
                 res = await ingest_single_photo(
@@ -1183,6 +1293,7 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
 
     finally:
         import_progress_state["is_active"] = False
+        import_progress_state["cancel_requested"] = False
         await conn.close()
 
     if imported > 0:
@@ -1195,4 +1306,6 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
         failed=failed,
         imported_photo_ids=imported_photo_ids,
         album_linked_count=album_linked_count,
+        cancelled=cancelled,
+        unsupported=unsupported,
     )
