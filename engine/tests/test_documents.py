@@ -289,3 +289,27 @@ async def test_direct_document_import(tmp_path):
                 finally:
                     await conn.close()
 
+
+
+@pytest.mark.asyncio
+async def test_vault_documents_are_never_listed_or_searchable_here():
+    """R7b: a document in the vault stays out of the public Documents screen and its search."""
+    await run_migrations()
+    tag = uuid.uuid4().hex[:8]
+    conn = await get_db_connection()
+    try:
+        for name, encrypted in ((f"passport_{tag}.jpg", 1), (f"receipt_{tag}.jpg", 0)):
+            await conn.execute(
+                "INSERT INTO photos (filename, filepath, file_hash, file_size, mime_type, is_document, content_tags, ocr_text, is_encrypted) "
+                "VALUES (?, ?, ?, 10, 'image/jpeg', 1, 'identity', ?, ?);",
+                (name, f"docs/{name}", uuid.uuid4().hex, f"secret words {tag}", encrypted),
+            )
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listed = [d["filename"] for d in (await client.get("/api/documents")).json()]
+        found = [d["filename"] for d in (await client.get("/api/documents", params={"q": tag})).json()]
+    assert f"receipt_{tag}.jpg" in listed and f"passport_{tag}.jpg" not in listed
+    assert found == [f"receipt_{tag}.jpg"]

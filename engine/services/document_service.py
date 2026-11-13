@@ -269,6 +269,8 @@ async def list_documents(
             FROM photos p
             WHERE (p.is_document = 1 OR p.mime_type = 'application/pdf' OR p.filename LIKE '%.pdf')
               AND p.trashed_at IS NULL
+              -- Vault documents live in Private Vault → Documents; never list or search them here (R7b).
+              AND p.is_encrypted = 0
         """
         params: List[Any] = []
 
