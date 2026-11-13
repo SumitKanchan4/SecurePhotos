@@ -295,7 +295,7 @@ export const TrashView: React.FC = () => {
                   transition: "border-color 0.15s ease, transform 0.15s ease",
                 }}
               >
-                {/* Select Checkbox (Top Left - Exactly matching PhotoGrid & Albums) */}
+                {/* Select Checkbox (Top Left) */}
                 <div 
                   onClick={(e) => {
                     e.stopPropagation();

@@ -842,3 +842,293 @@ html, body, #root {
   cursor: pointer;
 }
 .viewer-album:hover { border-color: var(--accent-ink); }
+
+/* ── Private Vault (redesign R4) ─────────────────────────────────────── */
+.vault-header { display: flex; align-items: center; gap: 14px; flex-shrink: 0; min-width: 0; padding-right: 52px; }
+.vault-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: -0.035em;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.vault-status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
+.vault-status-muted { color: var(--text-secondary); font-weight: 500; }
+.vault-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent-fill);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-ink) 22%, transparent);
+}
+.vault-status-dot.is-soon { background: var(--accent-warning); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-warning) 25%, transparent); }
+.vault-work {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: color-mix(in srgb, var(--accent-ink) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.vault-icon-btn {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-pill-bg);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.vault-icon-btn:hover { background: var(--glass-pill-hover); }
+.vault-icon-btn.is-on { background: var(--accent-fill); color: var(--on-accent); border-color: transparent; }
+.vault-lock-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--text-primary);
+  color: var(--bg-app);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.vault-lock-btn:hover { opacity: 0.88; }
+.vault-ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vault-icon-btn:focus-visible, .vault-lock-btn:focus-visible, .vault-ghost-btn:focus-visible, .vault-tab:focus-visible, .vault-link:focus-visible {
+  outline: 2px solid var(--accent-fill);
+  outline-offset: 2px;
+}
+
+.vault-tabs { display: flex; gap: 8px; flex-shrink: 0; }
+.vault-tab {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vault-tab-count { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); margin-left: 4px; }
+.vault-tab.is-active { background: var(--text-primary); color: var(--bg-app); border-color: var(--text-primary); }
+.vault-tab.is-active .vault-tab-count { color: inherit; opacity: 0.7; }
+
+.vault-timeline { flex: 1; min-height: 0; display: flex; margin: 0 -24px; }
+
+.vault-locked { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.vault-lock-card {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 36px 32px 28px;
+  border-radius: 24px;
+  background: var(--bg-surface);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
+  text-align: center;
+}
+.vault-lock-emblem {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-full);
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.vault-lock-title { margin: 0; font-family: var(--font-display); font-size: 24px; font-weight: 900; letter-spacing: -0.03em; color: var(--text-primary); }
+.vault-lock-sub { margin: 4px 0 0; font-size: 14px; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 6px; }
+.vault-note, .vault-error {
+  width: 100%;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+}
+.vault-note { background: var(--glass-pill-bg); color: var(--text-secondary); border: 1px solid var(--glass-border); }
+.vault-note strong { color: var(--text-primary); }
+.vault-note svg, .vault-error svg { flex-shrink: 0; }
+.vault-error { background: color-mix(in srgb, var(--accent-danger) 12%, transparent); color: var(--accent-danger); border: 1px solid color-mix(in srgb, var(--accent-danger) 30%, transparent); }
+.vault-pin { display: flex; gap: 12px; }
+.vault-pin-box {
+  width: 54px;
+  height: 62px;
+  border-radius: 14px;
+  border: 2px solid var(--glass-border-highlight);
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-size: 26px;
+  font-weight: 800;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.vault-pin-box:focus { border-color: var(--accent-fill); }
+.vault-pin-box.is-filled { border-color: var(--text-primary); }
+.vault-password {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 16px;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--glass-border-highlight);
+  background: var(--bg-app);
+  box-sizing: border-box;
+}
+.vault-password:focus-within { border-color: var(--accent-fill); }
+.vault-password input { flex: 1; min-width: 0; border: none; background: transparent; outline: none; color: var(--text-primary); font-size: 14px; padding: 8px 0; }
+.vault-password-eye { border: none; background: transparent; color: var(--text-muted); padding: 6px 8px; cursor: pointer; display: flex; }
+.vault-unlock-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.vault-unlock-btn:disabled { opacity: 0.55; cursor: default; }
+.vault-lock-links { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 2px; }
+.vault-link {
+  border: none;
+  background: none;
+  padding: 2px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.vault-link-muted { color: var(--text-secondary); font-weight: 500; }
+
+/* Danger zone rows (Settings) */
+.danger-zone {
+  border: 1px solid color-mix(in srgb, var(--accent-danger) 35%, transparent);
+  border-radius: var(--radius-xl);
+  background: var(--glass-surface);
+  overflow: hidden;
+}
+.danger-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; }
+.danger-row-title { margin: 0 0 2px; font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.danger-row-text { margin: 0; font-size: 12px; color: var(--text-secondary); max-width: 520px; }
+.danger-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in srgb, var(--accent-danger) 45%, transparent);
+  background: transparent;
+  color: var(--accent-danger);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.danger-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-danger) 10%, transparent); }
+.danger-btn:disabled { opacity: 0.45; cursor: default; }
+.danger-btn-solid { background: var(--accent-danger); color: #ffffff; border-color: transparent; }
+.danger-btn-solid:hover:not(:disabled) { background: var(--accent-danger); filter: brightness(1.08); }
+.danger-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3200;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.danger-dialog {
+  width: min(440px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  border-radius: 20px;
+  background: var(--bg-surface);
+  border: 1px solid color-mix(in srgb, var(--accent-danger) 40%, transparent);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+.danger-dialog-title { display: flex; align-items: center; gap: 10px; color: var(--accent-danger); }
+.danger-dialog-title h3 { margin: 0; font-family: var(--font-display); font-size: 18px; font-weight: 900; letter-spacing: -0.02em; }
+.danger-dialog-text { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
+.danger-dialog-text strong, .danger-dialog-label strong { color: var(--text-primary); }
+.danger-dialog-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.danger-dialog-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border-highlight);
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  outline: none;
+}
+.danger-dialog-input:focus { border-color: var(--accent-danger); }
+.danger-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+.danger-cancel {
+  padding: 7px 16px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}

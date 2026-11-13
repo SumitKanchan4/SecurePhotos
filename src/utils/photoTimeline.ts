@@ -4,7 +4,7 @@
  * scrubber marks and pick which photos the viewer loads. No React, so all of it is
  * unit-tested directly.
  */
-import type { TimelinePhoto, TimelineResponse } from "../types";
+import type { PhotoItem, TimelinePhoto, TimelineResponse } from "../types";
 
 /** Flag bits used by /api/photos/timeline (see engine/api/photos.py). */
 export const FLAG_FAVORITE = 1;
@@ -237,6 +237,37 @@ export function viewerWindow<T extends { id: number }>(photos: T[], index: numbe
   const start = Math.max(0, Math.min(index - half, photos.length - size));
   const ids = photos.slice(start, start + size).map((p) => p.id);
   return { ids, offset: index - start };
+}
+
+/** A full photo record as a timeline row (vault items arrive as full records). */
+export function fromPhotoItem(photo: PhotoItem): TimelinePhoto {
+  return {
+    id: photo.id,
+    taken_at: photo.taken_at ?? null,
+    width: photo.width ?? 0,
+    height: photo.height ?? 0,
+    is_video: Boolean(photo.mime_type?.startsWith("video/")),
+    is_favorite: photo.is_favorite,
+    is_optimized: photo.is_optimized,
+    is_enhanced: photo.is_enhanced,
+  };
+}
+
+/**
+ * Newest first, undated last, then by id (newest first): the order the engine uses for the
+ * library, applied to lists that arrive in another order (vault items, redesign R4).
+ */
+export function sortNewestFirst<T extends { id: number; taken_at?: string | null }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const ta = a.taken_at ?? "";
+    const tb = b.taken_at ?? "";
+    if (ta !== tb) {
+      if (!ta) return 1;
+      if (!tb) return -1;
+      return ta < tb ? 1 : -1;
+    }
+    return b.id - a.id;
+  });
 }
 
 /** Whether every id in the list is selected (false for an empty list). */
