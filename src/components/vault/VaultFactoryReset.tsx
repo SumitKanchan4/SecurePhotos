@@ -1,5 +1,5 @@
 /**
- * VaultFactoryReset: the "Erase vault" row of Settings → Private Vault → Danger zone (redesign R4).
+ * VaultFactoryReset: the "Erase the vault" row of Settings → Private Vault → Danger zone (redesign R4, R6).
  *
  * Moved off the vault lock screen, where a destructive action sat next to unlocking.
  * The guard is unchanged: the screen shows what will be erased (from /api/vault/reset-preview),
@@ -75,18 +75,20 @@ export const VaultFactoryReset: React.FC = () => {
   const ready = confirmText.trim() === RESET_PHRASE;
 
   return (
-    <div className="danger-row">
-      <div>
-        <p className="danger-row-title">Erase vault</p>
-        <p className="danger-row-text">
+    <div className="settings-row">
+      <div className="settings-row-text">
+        <p className="settings-row-title is-danger">Erase the vault</p>
+        <p className="settings-row-desc">
           {isVaultConfigured
-            ? "Permanently deletes every photo, album and document in your vault, with its password and PIN. Use this only if you can no longer open it."
+            ? "Permanently deletes every vault photo, album and document, with the password and PIN. This cannot be undone."
             : "You don't have a vault yet, so there is nothing to erase."}
         </p>
       </div>
-      <button type="button" className="danger-btn" disabled={!isVaultConfigured} onClick={() => setIsOpen(true)}>
-        <Trash2 size={14} /> Erase vault…
-      </button>
+      <div className="settings-row-control">
+        <button type="button" className="danger-btn" disabled={!isVaultConfigured} onClick={() => setIsOpen(true)} aria-label="Erase the vault">
+          <Trash2 size={14} /> Erase…
+        </button>
+      </div>
 
       {isOpen && (
         <div className="danger-dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && !isResetting && close()}>
