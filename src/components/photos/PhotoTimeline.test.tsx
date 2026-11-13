@@ -110,6 +110,15 @@ describe("PhotoTimeline", () => {
     expect(screen.getByText(/2024|2025/, { selector: ".timeline-scrub-label" })).toBeInTheDocument();
   });
 
+  it("shows the scrubber only when there are enough months (the vault asks for four)", () => {
+    // 3 months of 50 photos: tall enough to scroll, but only 3 sections.
+    const { unmount } = render(<PhotoTimeline photos={makeLibrary(150, 50)} onOpen={vi.fn()} vault minScrubberSections={4} />);
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+    unmount();
+    render(<PhotoTimeline photos={makeLibrary(200, 50)} onOpen={vi.fn()} vault minScrubberSections={4} />);
+    expect(screen.getByRole("slider", { name: "Jump to a month" })).toBeInTheDocument();
+  });
+
   it("shows the empty state for an empty library", () => {
     render(<PhotoTimeline photos={[]} onOpen={vi.fn()} empty={<p>Nothing here yet</p>} />);
     expect(screen.getByText("Nothing here yet")).toBeInTheDocument();

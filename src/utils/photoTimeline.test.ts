@@ -3,6 +3,8 @@ import {
   allSelected,
   aspectRatio,
   buildLayout,
+  fromPhotoItem,
+  sortNewestFirst,
   groupByMonth,
   monthKey,
   monthLabel,
@@ -130,6 +132,29 @@ describe("windowing and scrubber", () => {
 
     const crowded = scrubberMarks(mixedSections, mixedLayout.sectionTops, mixedLayout.totalHeight, 40);
     expect(crowded.filter((m) => m.yearLabel).length).toBeLessThan(3);
+  });
+});
+
+describe("vault helpers", () => {
+  it("orders newest first with undated items last", () => {
+    const items = [
+      { id: 1, taken_at: "2024-03-01 10:00:00" },
+      { id: 2, taken_at: "2026-05-01 10:00:00" },
+      { id: 3, taken_at: null },
+      { id: 4, taken_at: "2026-05-01 10:00:00" },
+      { id: 5, taken_at: undefined },
+    ];
+    expect(sortNewestFirst(items).map((i) => i.id)).toEqual([4, 2, 1, 5, 3]);
+    expect(items[0].id).toBe(1); // the input list is not changed
+  });
+
+  it("turns a full record into a timeline row", () => {
+    expect(
+      fromPhotoItem({
+        id: 9, filename: "a.mp4", filepath: "x", file_size: 1, mime_type: "video/mp4",
+        is_favorite: true, is_encrypted: true, is_optimized: false, is_enhanced: true,
+      }),
+    ).toEqual({ id: 9, taken_at: null, width: 0, height: 0, is_video: true, is_favorite: true, is_optimized: false, is_enhanced: true });
   });
 });
 
