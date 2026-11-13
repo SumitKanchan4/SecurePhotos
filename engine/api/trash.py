@@ -6,7 +6,7 @@ active library, and permanently purging files from disk and SQLite.
 
 import datetime
 import logging
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, status
 from pydantic import BaseModel, Field
 
@@ -30,6 +30,9 @@ class TrashedPhotoItem(BaseModel):
     formatted_size: str
     trashed_at: str
     days_remaining: int
+    # Vault items in the trash keep their privacy: no name, no path (redesign R7a).
+    is_vault_item: bool = False
+    mime_type: Optional[str] = None
 
 
 class RestorePhotosRequest(BaseModel):
@@ -57,7 +60,7 @@ async def list_trashed_photos() -> List[TrashedPhotoItem]:
     conn = await get_db_connection()
     try:
         query = """
-            SELECT id, filename, filepath, file_size, trashed_at
+            SELECT id, filename, filepath, file_size, trashed_at, is_encrypted, mime_type
             FROM photos
             WHERE trashed_at IS NOT NULL
             ORDER BY trashed_at DESC;
@@ -82,11 +85,14 @@ async def list_trashed_photos() -> List[TrashedPhotoItem]:
                 except Exception:
                     days_left = TRASH_RETENTION_DAYS
 
+            is_vault_item = bool(r["is_encrypted"])
             items.append(
                 TrashedPhotoItem(
                     id=r["id"],
-                    filename=r["filename"],
-                    filepath=r["filepath"],
+                    filename="Private Vault item" if is_vault_item else r["filename"],
+                    filepath="" if is_vault_item else r["filepath"],
+                    is_vault_item=is_vault_item,
+                    mime_type=None if is_vault_item else r["mime_type"],
                     file_size=r["file_size"],
                     formatted_size=_format_file_size(r["file_size"]),
                     trashed_at=trashed_raw or "",

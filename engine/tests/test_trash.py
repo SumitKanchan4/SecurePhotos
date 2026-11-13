@@ -1,6 +1,7 @@
 """Automated Tests for Photo Soft-Delete and Batch-Trash API Endpoints."""
 
 import tempfile
+import uuid
 from pathlib import Path
 from PIL import Image
 import pytest
@@ -187,3 +188,30 @@ async def test_trash_endpoints_lifecycle():
             await cleanup_photos(*ids_to_clean)
 
 
+
+
+@pytest.mark.asyncio
+async def test_trashed_vault_items_keep_their_name_private():
+    """R7a: the Trash list never shows a vault item's file name or path, but it can still be restored."""
+    await run_migrations()
+    conn = await get_db_connection()
+    try:
+        cur = await conn.execute(
+            "INSERT INTO photos (filename, filepath, file_hash, file_size, mime_type, is_encrypted, trashed_at) "
+            "VALUES ('secret_holiday.jpg', 'vault/abc.enc', ?, 10, 'image/jpeg', 1, CURRENT_TIMESTAMP) RETURNING id;",
+            (f"vaulttrash-{uuid.uuid4().hex}",),
+        )
+        vault_id = (await cur.fetchone())[0]
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        items = {i["id"]: i for i in (await client.get("/api/trash")).json()}
+        item = items[vault_id]
+        assert item["is_vault_item"] is True
+        assert item["filename"] == "Private Vault item" and item["filepath"] == ""
+        assert item["mime_type"] is None
+        assert "secret_holiday" not in str(items)
+        assert (await client.post("/api/trash/restore", json={"photo_ids": [vault_id]})).status_code == 200

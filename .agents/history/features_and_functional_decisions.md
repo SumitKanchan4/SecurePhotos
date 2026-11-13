@@ -5661,3 +5661,25 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - Frontend: `src/components/ImportModal.tsx` rewritten (two states, preview, switch, stop, hide/reconnect, guard against an early progress poll); `src/components/import/importFormat.ts`; `src/components/SettingsView.tsx` rewritten; `src/components/settings/SettingsKit.tsx` (group, row, pill choice); `AppearanceSettings.tsx`, `VaultSettings.tsx`, `AboutSettings.tsx` rewritten; new `PhotosAISettings.tsx` (replaces `AISettings.tsx` and `MemoriesSettings.tsx`) and `StorageSettings.tsx`; new `src/components/vault/EmergencyCardReplace.tsx`; `VaultFactoryReset.tsx` uses the row style; `src/components/ui/SegmentedPill.tsx` removed (no users); `.settings-*`, `.import-*`, `.card-dialog-*` styles, old `.danger-zone`/`.danger-row` styles removed.
 - Tests: `engine/tests/test_import_preview_and_cancel.py` (3: counts, sizes and duplicates; unsupported files not counted as skipped; Stop import keeps what was imported), `engine/tests/test_vault_card_replace.py` (locked and wrong password refused; old card stops working by file and numbers; new card works both ways); `src/components/import/import.test.tsx` (7), `src/components/settings/settings.test.tsx` (9), `vault.test.tsx` updated. Mutation checks: no password check for the card, Stop import ignored, no duplicate check, moving by default, no early-poll guard, and no unsaved-card warning each fail a test. Engine suite 245 passed; frontend 90 passed; tsc and build pass.
 - Validated in the UI (Playwright, throwaway library, both themes): a folder of 60 photos, a video, a text file and 2 library copies showed "62 photos, 1 video (1.8 MB)" with the duplicates counted and the switch off; "Copying 11 of 63 · less than a minute left"; Stop import reported the partial result and left all 60 originals in place (copy mode); all five Settings sections render in both themes; the 15 min pill saved `auto_lock_duration` = 900; a wrong password was refused with "Incorrect master password." and the right one showed the new card; contrast scan: no problems; the only console error is that deliberate 401.
+
+## 130. Redesign Step 7a: Trash
+
+Boards for the remaining screens (Albums, Stories, Documents, Dashboard, Duplicates, Big videos, Trash) were added to the redesign canvas and approved by the owner on 2026-11-13. R7 is built in five steps: R7a Trash, R7b Documents, R7c Dashboard + Duplicates + Big videos, R7d Albums, R7e Stories.
+
+### Functionality Overview
+- **Header**: "Trash", "18 items · deleted for good after 30 days", and **Empty trash…** as a red outline set apart on the right.
+- **Month sections** by when items were deleted ("Deleted this month", "Deleted in October 2026"). Every tile says how long it stays ("12 days left"); the last 3 days are amber.
+- **Selecting**: click tiles (a circle shows on hover); one floating bar: "3 selected · Select all · **Restore** · Delete forever… · ×". Escape clears the selection.
+- **Asking first**: Delete forever and Empty trash open an in-app confirmation ("Delete 3 items forever? They will be removed from this computer for good. This can't be undone.") instead of the browser's plain box; Escape or Cancel deletes nothing.
+- **Fixed (privacy)**: a vault photo moved to Trash showed its real file name (and the engine returned its path) while the vault was locked. Trash now lists it as "Private Vault item" with a lock tile, no name, path or picture; it can still be restored.
+
+### Functional Decision Points & Rationale (owner design approved on the redesign canvas: Trash board)
+- Restore is the strong action (lime); deleting for good is always an outline and always asks.
+- Clicking a tile selects it (Trash has no viewer), so selecting several items is quick.
+- `ConfirmDialog` is reusable for the other screens' irreversible actions.
+
+### Technical Touchpoints
+- Engine: `engine/api/trash.py` returns `is_vault_item` and `mime_type`, and masks the name and path of vault items.
+- Frontend: `src/components/TrashView.tsx` rewritten; new `src/components/trash/trashFormat.ts` and `src/components/ui/ConfirmDialog.tsx`; `.trash-*` styles in `src/index.css`.
+- Tests: `engine/tests/test_trash.py` (+1: vault item listed without name or path, still restorable); `src/components/trash/trash.test.tsx` (5: wording and month groups, amber near the end and vault tile without picture, restore, delete forever asks and Cancel deletes nothing, empty trash asks). Mutation checks: Cancel confirming, a vault picture shown, and the vault name not masked each fail a test. Engine suite 246 passed; frontend 95 passed; tsc and build pass.
+- Validated in the UI (Playwright, throwaway library, both themes): 18 trashed items in two month sections with 30 / 10 / 2 / 1 days left (2 and 1 in amber), the vault item as a lock tile without a picture; selecting three and Restore put them back ("Restored 3 items."); Delete forever showed the confirmation and Escape left everything in place; contrast scan: no problems; no console errors.
