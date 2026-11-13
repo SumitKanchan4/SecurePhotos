@@ -216,7 +216,7 @@ Integration branch `feature/redesign` (master untouched until the end; owner dec
 ### R6 · Import + Settings — `done` (merged into feature/redesign 2026-11-13, PR #19, history §129; import preview with duplicates, copy by default, Stop import, Hide; Settings sections Appearance / Photos & AI / Private Vault / Storage / About; Print a new Emergency Card)
 ### R7 · Remaining screens: Albums, Stories, Documents, Dashboard, Trash, Duplicates, Big videos — boards approved 2026-11-13; built in five steps
 ### R7a · Trash: days left, restore or delete forever (asks first), vault items kept private — `done` (merged into feature/redesign 2026-11-13, PR #20, history §130)
-### R7b · Documents: categories, pinned papers, find in photos — `todo`
+### R7b · Documents: categories, pinned papers, find in photos — `done` (history §131; vault documents no longer listed or searchable here; pinning fixed)
 ### R7c · Dashboard + Duplicates + Big videos — `todo`
 ### R7d · Albums: made for you, covers, album page — `todo`
 ### R7e · Stories: for you, saved, collage ideas — `todo`

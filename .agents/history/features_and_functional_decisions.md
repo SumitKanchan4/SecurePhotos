@@ -5683,3 +5683,23 @@ Boards for the remaining screens (Albums, Stories, Documents, Dashboard, Duplica
 - Frontend: `src/components/TrashView.tsx` rewritten; new `src/components/trash/trashFormat.ts` and `src/components/ui/ConfirmDialog.tsx`; `.trash-*` styles in `src/index.css`.
 - Tests: `engine/tests/test_trash.py` (+1: vault item listed without name or path, still restorable); `src/components/trash/trash.test.tsx` (5: wording and month groups, amber near the end and vault tile without picture, restore, delete forever asks and Cancel deletes nothing, empty trash asks). Mutation checks: Cancel confirming, a vault picture shown, and the vault name not masked each fail a test. Engine suite 246 passed; frontend 95 passed; tsc and build pass.
 - Validated in the UI (Playwright, throwaway library, both themes): 18 trashed items in two month sections with 30 / 10 / 2 / 1 days left (2 and 1 in amber), the vault item as a lock tile without a picture; selecting three and Restore put them back ("Restored 3 items."); Delete forever showed the confirmation and Escape left everything in place; contrast scan: no problems; no console errors.
+
+## 131. Redesign Step 7b: Documents
+
+### Functionality Overview
+- **Header**: "Documents", "214 documents", a search button (Ctrl+K), **Find in photos** (looks through the library for receipts and IDs already there) and a lime **+ Add** (bring in files directly).
+- **One row of category chips with counts**: All, Receipts & bills, IDs, Tax, Medical, Legal, Warranties (and Other only when something is in it). Choosing a chip filters on the screen; the counts always describe the whole collection.
+- **Pinned** papers sit on top, then the rest newest first ("All documents", or the chosen category's name).
+- **Paper-like cards**: the real page on a white sheet, title, "Receipts & bills · 9 Nov 2026"; a pin button (lime when pinned) and a "…" menu with the category list (current one marked) and Move to Trash. Clicking a card opens the viewer, in the order shown.
+- **Fixed (privacy)**: vault documents were listed here with their names and scanned text, and a search could match words inside them while the vault was locked. The public Documents screen now never lists or searches vault documents (they stay in Private Vault → Documents).
+- **Fixed (bug)**: pinning a document sent two toggles (the screen and the app each sent one), so the pin cancelled itself and never stuck. The screen now sends one.
+
+### Functional Decision Points & Rationale (owner design approved on the redesign canvas: Documents board)
+- Documents must never look like photos: white paper frames, no photo-style tiles.
+- The scanned-text snippet, inspect button and always-visible category switcher were dropped from the cards: the viewer shows the document, and the category lives in the "…" menu. Move to Trash doesn't ask first because Trash keeps it for 30 days.
+
+### Technical Touchpoints
+- Engine: `engine/services/document_service.py` `list_documents` excludes `is_encrypted = 1`.
+- Frontend: `src/components/DocumentsView.tsx` rewritten; new `src/components/documents/docsFormat.ts`; `App.tsx` no longer passes its pin handler to Documents; `.docs-*` / `.doc-*` styles in `src/index.css`.
+- Tests: `engine/tests/test_documents.py` (+1: vault document neither listed nor found by search); `src/components/documents/documents.test.tsx` (6: helpers, pinned first and chip filter, one pin request, category change and Move to Trash from the menu, Find in photos, viewer order). Mutation checks: listing vault documents and sending two pin requests each fail a test. Engine suite 247 passed; frontend 101 passed; tsc and build pass.
+- Validated in the UI (Playwright, throwaway library with seven documents, one of them in the vault, both themes): the vault document is absent; six paper cards with real page images, two pinned; pinning Croma Receipt stuck (one request, saved on the engine); the Medical chip shows only the blood test; the "…" menu lists the categories and closes with Escape; a card opens the viewer; contrast scan: no problems; no console errors.
