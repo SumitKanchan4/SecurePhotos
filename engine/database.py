@@ -399,6 +399,17 @@ CREATE TABLE IF NOT EXISTS vault_pending_ops (
     started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ── 21. "Not the same person" answers (redesign R5) ─────────────────────────
+-- Stored per face, not per cluster: cluster ids are renumbered on every re-cluster,
+-- face ids are stable. A merge suggestion is skipped while the group still holds a
+-- face the owner already said is not this person.
+CREATE TABLE IF NOT EXISTS person_face_rejections (
+    person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+    face_id INTEGER NOT NULL REFERENCES faces(id) ON DELETE CASCADE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (person_id, face_id)
+);
+
 -- ── 21. Self-Healing Relational Cascade Triggers ────────────────────────────
 -- Automatically purge video queue item when parent photo is deleted anywhere
 CREATE TRIGGER IF NOT EXISTS trg_photos_delete_purge_video_queue
