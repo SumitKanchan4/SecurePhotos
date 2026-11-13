@@ -214,7 +214,12 @@ Integration branch `feature/redesign` (master untouched until the end; owner dec
 ### R4 · Vault: calm header (countdown, privacy shield, Lock now), lock card, month timeline with scrubber from 4 months; factory reset moved to Settings → Private Vault → Danger zone — `done` (merged into feature/redesign 2026-11-13, PR #17, history §127; old PhotoGrid removed)
 ### R5 · People: close ones, "Same person?", "Who is this?" — `done` (merged into feature/redesign 2026-11-13, PR #18, history §128; new merge-suggestion endpoints; rename moved to the person page; vault faces no longer in unnamed groups; Q5 split partly done: overview moved to people/PeopleOverview.tsx, person page still in PeopleView.tsx)
 ### R6 · Import + Settings — `done` (merged into feature/redesign 2026-11-13, PR #19, history §129; import preview with duplicates, copy by default, Stop import, Hide; Settings sections Appearance / Photos & AI / Private Vault / Storage / About; Print a new Emergency Card)
-### R7 · Not yet designed: Albums, Stories, Documents, Dashboard, Trash, Duplicates, Video optimizer — `todo` (boards first)
+### R7 · Remaining screens: Albums, Stories, Documents, Dashboard, Trash, Duplicates, Big videos — boards approved 2026-11-13; built in five steps
+### R7a · Trash: days left, restore or delete forever (asks first), vault items kept private — `done` (history §130)
+### R7b · Documents: categories, pinned papers, find in photos — `todo`
+### R7c · Dashboard + Duplicates + Big videos — `todo`
+### R7d · Albums: made for you, covers, album page — `todo`
+### R7e · Stories: for you, saved, collage ideas — `todo`
 ### R8 · Refresh docs/design_system.md for the redesign (Mono + lime, icon rail, screens) before merging feature/redesign into master — `todo`
 - Each step: component tests (deferred from Q3), Playwright on a throwaway library, remaining hard-coded colours of that screen cleaned up.
 
