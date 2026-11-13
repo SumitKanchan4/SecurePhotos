@@ -46,6 +46,8 @@ interface TileProps {
   height: number;
   isSelected: boolean;
   selectionMode: boolean;
+  selectable: boolean;
+  isVault: boolean;
   processing: boolean;
   onActivate: (index: number, photo: TimelinePhoto, event: React.MouseEvent | React.KeyboardEvent) => void;
   onToggleSelect: (id: number) => void;
@@ -53,14 +55,14 @@ interface TileProps {
 }
 
 const Tile: React.FC<TileProps> = React.memo(
-  ({ photo, index, left, width, height, isSelected, selectionMode, processing, onActivate, onToggleSelect, onToggleFavorite }) => {
+  ({ photo, index, left, width, height, isSelected, selectionMode, selectable, isVault, processing, onActivate, onToggleSelect, onToggleFavorite }) => {
     const [loaded, setLoaded] = useState(false);
     return (
       <div
         role="button"
         tabIndex={0}
         aria-label={`${photo.is_video ? "Video" : "Photo"}${monthKey(photo.taken_at) !== UNDATED_KEY ? ` from ${shortMonthLabel(monthKey(photo.taken_at))}` : ""}`}
-        aria-pressed={selectionMode ? isSelected : undefined}
+        aria-pressed={selectable && selectionMode ? isSelected : undefined}
         data-photo-id={photo.id}
         className="timeline-tile"
         onClick={(e) => onActivate(index, photo, e)}
@@ -74,7 +76,7 @@ const Tile: React.FC<TileProps> = React.memo(
       >
         <div className={`timeline-tile-media${isSelected ? " is-selected" : ""}`}>
           <img
-            src={getThumbnailUrl(photo.id)}
+            src={getThumbnailUrl(photo.id, isVault)}
             alt=""
             loading="lazy"
             decoding="async"
@@ -90,17 +92,19 @@ const Tile: React.FC<TileProps> = React.memo(
           )}
         </div>
 
-        <button
-          type="button"
-          className={`timeline-select${isSelected ? " is-on" : ""}${selectionMode ? " is-visible" : ""}`}
-          aria-label={isSelected ? "Unselect" : "Select"}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleSelect(photo.id);
-          }}
-        >
-          {isSelected && <Check size={13} strokeWidth={3} />}
-        </button>
+        {selectable && (
+          <button
+            type="button"
+            className={`timeline-select${isSelected ? " is-on" : ""}${selectionMode ? " is-visible" : ""}`}
+            aria-label={isSelected ? "Unselect" : "Select"}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect(photo.id);
+            }}
+          >
+            {isSelected && <Check size={13} strokeWidth={3} />}
+          </button>
+        )}
 
         {onToggleFavorite && (
           <button
@@ -124,14 +128,16 @@ interface SectionHeaderProps {
   section: MonthSection;
   ids: number[];
   selected: Set<number>;
+  selectable: boolean;
 }
 
-const SectionHeader: React.FC<SectionHeaderProps> = ({ section, ids, selected }) => {
+const SectionHeader: React.FC<SectionHeaderProps> = ({ section, ids, selected, selectable }) => {
   const isAll = allSelected(ids, selected);
   return (
     <div className="timeline-header">
       <h2>{section.label}</h2>
       <span className="timeline-header-count">{section.count.toLocaleString()}</span>
+      {selectable && (
       <button
         type="button"
         className={`timeline-select timeline-select-month${isAll ? " is-on" : ""}${selected.size > 0 ? " is-visible" : ""}`}
@@ -144,6 +150,7 @@ const SectionHeader: React.FC<SectionHeaderProps> = ({ section, ids, selected })
       >
         {isAll && <Check size={13} strokeWidth={3} />}
       </button>
+      )}
     </div>
   );
 };
@@ -155,9 +162,22 @@ interface PhotoTimelineProps {
   activeVideoId?: number | null;
   /** Shown instead of the grid when there are no photos. */
   empty?: React.ReactNode;
+  /** Vault items (redesign R4): vault thumbnails, and no selection (the vault has no selection bar). */
+  vault?: boolean;
+  /** Show the month/year scrubber only when there are at least this many month sections. */
+  minScrubberSections?: number;
 }
 
-export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({ photos, onOpen, onToggleFavorite, activeVideoId, empty }) => {
+export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({
+  photos,
+  onOpen,
+  onToggleFavorite,
+  activeVideoId,
+  empty,
+  vault = false,
+  minScrubberSections = 2,
+}) => {
+  const selectable = !vault;
   const { selectedPhotoIds, togglePhotoSelection, gridDensity, showToast } = useAppStore();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -205,12 +225,12 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({ photos, onOpen, on
   const contentTop = Math.max(0, scrollTop - PAD_TOP);
   const [first, last] = visibleRange(layout.entries, contentTop, size.height);
   const visible: LayoutEntry[] = layout.entries.slice(first, last + 1);
-  const selectionMode = selectedPhotoIds.size > 0;
+  const selectionMode = selectable && selectedPhotoIds.size > 0;
 
   const handleActivate = useCallback(
     (index: number, photo: TimelinePhoto, event: React.MouseEvent | React.KeyboardEvent) => {
       const state = useAppStore.getState();
-      if (state.selectedPhotoIds.size > 0 || event.shiftKey || event.ctrlKey || event.metaKey) {
+      if (selectable && (state.selectedPhotoIds.size > 0 || event.shiftKey || event.ctrlKey || event.metaKey)) {
         state.togglePhotoSelection(photo.id);
       } else if (isVideoProcessing(photo, activeVideoId)) {
         showToast("This video is still being prepared. It will be ready to play in a moment.", "info");
@@ -218,7 +238,7 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({ photos, onOpen, on
         onOpen(index);
       }
     },
-    [activeVideoId, onOpen, showToast],
+    [activeVideoId, onOpen, showToast, selectable],
   );
 
   // ── Scrubber ──────────────────────────────────────────────────────────────
@@ -233,7 +253,7 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({ photos, onOpen, on
     () => scrubberMarks(sections, layout.sectionTops, layout.totalHeight, trackHeight),
     [sections, layout, trackHeight],
   );
-  const showScrubber = sections.length > 1 && layout.totalHeight > size.height;
+  const showScrubber = sections.length >= Math.max(2, minScrubberSections) && layout.totalHeight > size.height;
   const current = sectionAt(sections, layout.sectionTops, contentTop);
 
   const scrubTo = (clientY: number, jump: boolean) => {
@@ -264,7 +284,7 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({ photos, onOpen, on
           {visible.map((entry) =>
             entry.kind === "header" ? (
               <div key={entry.key} style={{ position: "absolute", top: entry.top, left: 0, right: 0, height: entry.height }}>
-                <SectionHeader section={entry.section} ids={sectionIds.get(entry.section.key) ?? []} selected={selectedPhotoIds} />
+                <SectionHeader section={entry.section} ids={sectionIds.get(entry.section.key) ?? []} selected={selectedPhotoIds} selectable={selectable} />
               </div>
             ) : (
               <div key={entry.key} style={{ position: "absolute", top: entry.top, left: 0, right: 0, height: entry.height }}>
@@ -278,8 +298,10 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({ photos, onOpen, on
                       left={tile.left}
                       width={tile.width}
                       height={entry.height}
-                      isSelected={selectedPhotoIds.has(p.id)}
+                      isSelected={selectable && selectedPhotoIds.has(p.id)}
                       selectionMode={selectionMode}
+                      selectable={selectable}
+                      isVault={vault}
                       processing={isVideoProcessing(p, activeVideoId)}
                       onActivate={handleActivate}
                       onToggleSelect={togglePhotoSelection}

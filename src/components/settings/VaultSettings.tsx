@@ -4,6 +4,7 @@ import { AppSettings } from "../../hooks/useAppSettings";
 import { VaultPasswordResetModal } from "../VaultPasswordResetModal";
 import { useAppStore } from "../../store/useAppStore";
 import { apiFetch } from "../../services/api";
+import { VaultFactoryReset } from "../vault/VaultFactoryReset";
 
 interface VaultSettingsProps {
   settings: AppSettings;
@@ -422,6 +423,19 @@ export const VaultSettings: React.FC<VaultSettingsProps> = ({
               Active
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* ── Section: Danger zone (factory reset moved here from the lock screen, redesign R4) ── */}
+      <div>
+        <div style={{ marginBottom: "10px" }}>
+          <h2 style={{ fontSize: "14px", fontWeight: 700, margin: 0, color: "var(--accent-danger)" }}>Danger zone</h2>
+          <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: "2px 0 0 0" }}>
+            Actions here can't be undone.
+          </p>
+        </div>
+        <div className="danger-zone">
+          <VaultFactoryReset />
         </div>
       </div>
 
