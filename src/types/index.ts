@@ -126,6 +126,18 @@ export interface UnlabeledClusterItem {
   anchor_face_ids: number[];
 }
 
+/** /api/people/merge-suggestions: "Same person?" (redesign R5). */
+export interface MergeSuggestion {
+  person_id: number;
+  person_name: string;
+  person_photo_count: number;
+  person_face_id: number | null;
+  cluster_id: string;
+  cluster_photo_count: number;
+  cluster_face_id: number | null;
+  similarity: number;
+}
+
 export interface FaceScanStatus {
   is_scanning: boolean;
   total_photos: number;
