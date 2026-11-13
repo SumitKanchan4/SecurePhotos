@@ -211,7 +211,7 @@ Integration branch `feature/redesign` (master untouched until the end; owner dec
 ### R1 · App shell: 64 px icon rail replaces sidebar + title bar — `done` (merged into feature/redesign 2026-11-12, PR #14, history §124; owner: slim strip + Ctrl+K)
 ### R2 · Photos: whole-library timeline, justified rows (virtualised), big month headings, month/year scrubber — `done` (merged into feature/redesign 2026-11-12, PR #15, history §125; owner: one compact timeline list; also removed the old header's "Search Active" pill / "Clear Search", the year ribbon, and fixed Escape not closing the viewer)
 ### R3 · Viewer: dark surround, details on demand, 8K chip by the title, lime lock = Move to Vault, Trash set apart — `done` (merged into feature/redesign 2026-11-13, PR #16, history §126; download menu, filmstrip, people/albums in details via new /context endpoint; Q5 split partly done: text helpers moved out, video player and details panel still inside Lightbox.tsx)
-### R4 · Vault: calm header (countdown, privacy shield, Lock now), lock card, month timeline with scrubber from 4 months; factory reset moved to Settings → Private Vault → Danger zone — `done` (history §127; old PhotoGrid removed)
+### R4 · Vault: calm header (countdown, privacy shield, Lock now), lock card, month timeline with scrubber from 4 months; factory reset moved to Settings → Private Vault → Danger zone — `done` (merged into feature/redesign 2026-11-13, PR #17, history §127; old PhotoGrid removed)
 ### R5 · People: close ones, "Same person?", "Who is this?" — `todo` (+ split PeopleView.tsx; Q5)
 ### R6 · Import + Settings — `todo`
 ### R7 · Not yet designed: Albums, Stories, Documents, Dashboard, Trash, Duplicates, Video optimizer — `todo` (boards first)
