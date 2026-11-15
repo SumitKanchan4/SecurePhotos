@@ -73,6 +73,16 @@ class SearchResponse(BaseModel):
     suggestions: List[str]
 
 
+# Words that only choose a filter (favourites, videos, documents, a year or a month).
+KEYWORD_RE = re.compile(
+    r"\b(?:favou?rites?|starred|liked|videos?|movies?|documents?|pdfs?|19\d\d|20\d\d|"
+    r"january|february|march|april|may|june|july|august|september|october|november|december)\b",
+    re.IGNORECASE,
+)
+# Filler words in natural queries ("photos of Rohan from 2025"); text matching works on the rest.
+FILLER_RE = re.compile(r"\b(?:photos?|pictures?|pics?|of|in|from|with|and|my|the)\b", re.IGNORECASE)
+
+
 def sanitize_fts_query(raw_query: str) -> str:
     """Sanitizes user input for safe SQLite FTS5 matching.
 
@@ -127,12 +137,19 @@ async def search_media(
 
         # Detect filter keywords
         q_lower = query_str.lower()
-        filter_favorites = type_filter == "favorites" or "favorite" in q_lower or "starred" in q_lower or "liked" in q_lower
+        filter_favorites = (
+            type_filter == "favorites" or "favorite" in q_lower or "favourite" in q_lower or "starred" in q_lower or "liked" in q_lower
+        )
         filter_videos = type_filter == "videos" or "video" in q_lower or "videos" in q_lower or "movie" in q_lower
         filter_documents = type_filter == "documents" or "document" in q_lower or "receipt" in q_lower or "invoice" in q_lower or "pdf" in q_lower
 
-        fts_pattern = sanitize_fts_query(query_str)
-        like_pattern = f"%{query_str}%"
+        # The words that only pick a filter ("videos", "favourites", "2025", "may") are not text to
+        # look for: "videos" means every video, not videos whose name contains "videos".
+        text_query = FILLER_RE.sub(" ", KEYWORD_RE.sub(" ", query_str))
+        text_query = re.sub(r"\s+", " ", text_query).strip()
+
+        fts_pattern = sanitize_fts_query(text_query)
+        like_pattern = f"%{text_query}%"
 
         # ── 1. Search Albums ──────────────────────────────────────────────────
         matching_albums: List[SearchAlbumItem] = []
@@ -142,11 +159,11 @@ async def search_media(
                    (SELECT p.thumbnail_path FROM photos p WHERE p.id = a.cover_photo_id) AS cover_thumbnail_path,
                    (SELECT COUNT(*) FROM photo_album pa JOIN photos p ON pa.photo_id = p.id WHERE pa.album_id = a.id AND p.trashed_at IS NULL AND p.is_encrypted = 0) AS photo_count
             FROM albums a
-            WHERE a.name LIKE ? AND a.is_vault = 0
+            WHERE ? != '%%' AND a.name LIKE ? AND a.is_vault = 0
             ORDER BY photo_count DESC, a.name ASC
             LIMIT 5;
             """,
-            (like_pattern,),
+            (like_pattern, like_pattern),
         ) as cursor:
             album_rows = await cursor.fetchall()
             for r in album_rows:
@@ -176,13 +193,13 @@ async def search_media(
             FROM persons p
             JOIN faces f ON f.person_id = p.id
             JOIN photos ph ON f.photo_id = ph.id AND ph.trashed_at IS NULL AND ph.is_encrypted = 0
-            WHERE p.name LIKE ?
+            WHERE ? != '%%' AND p.name LIKE ?
             GROUP BY p.id
             HAVING active_photo_count > 0
             ORDER BY active_photo_count DESC, p.name ASC
             LIMIT 5;
             """,
-            (like_pattern,),
+            (like_pattern, like_pattern),
         ) as cursor:
             people_rows = await cursor.fetchall()
             for r in people_rows:
@@ -229,8 +246,11 @@ async def search_media(
         """
         like_params = [like_pattern, like_pattern, like_pattern, like_pattern, like_pattern]
 
-        # Combine text match (FTS5 OR LIKE)
-        if fts_clause:
+        # Combine text match (FTS5 OR LIKE); only keywords typed means the filters alone decide.
+        if not text_query:
+            match_condition = "1 = 1"
+            search_params = []
+        elif fts_clause:
             match_condition = f"({fts_clause} OR {like_clause})"
             search_params = fts_params + like_params
         else:

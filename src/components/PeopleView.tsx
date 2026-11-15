@@ -281,6 +281,19 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
     }
   };
 
+  // A person opened from Search or the viewer (R9c): show their page once People has loaded.
+  const pendingOpen = useAppStore((st) => st.pendingOpen);
+  useEffect(() => {
+    if (pendingOpen?.kind !== "person") return;
+    const person = people.find((p) => p.id === pendingOpen.id);
+    if (person) {
+      useAppStore.getState().clearPendingOpen();
+      handleSelectPerson(person);
+    } else if (!isLoading) {
+      useAppStore.getState().clearPendingOpen();
+    }
+  }, [pendingOpen, people, isLoading]);
+
   // Update a person's relationship, name, or Close One status
   const handleUpdatePerson = async (personId: number, updates: { name?: string; relationship_type?: string; is_close_one?: boolean }) => {
     setUpdatingPerson(true);

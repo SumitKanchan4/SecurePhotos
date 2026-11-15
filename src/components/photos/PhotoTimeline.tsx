@@ -166,6 +166,8 @@ interface PhotoTimelineProps {
   vault?: boolean;
   /** Show the month/year scrubber only when there are at least this many month sections. */
   minScrubberSections?: number;
+  /** False where nothing acts on a selection (Search page, R9c): clicks always open. */
+  selectable?: boolean;
 }
 
 export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({
@@ -176,8 +178,9 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({
   empty,
   vault = false,
   minScrubberSections = 2,
+  selectable: allowSelection = true,
 }) => {
-  const selectable = !vault;
+  const selectable = !vault && allowSelection;
   const { selectedPhotoIds, togglePhotoSelection, gridDensity, showToast } = useAppStore();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });

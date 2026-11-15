@@ -1,12 +1,11 @@
 /**
  * WindowStrip: the slim 32 px top strip of the frameless window (redesign R1).
  *
- * Drag area for moving the window, the active search shown as a chip (the search
- * text also filters People, Albums, Documents and Trash, so it must stay visible
- * after the search palette closes), the theme toggle and the window buttons.
+ * Drag area for moving the window, the theme toggle and the window buttons. (The search
+ * chip is gone: search is its own page since R9c and never filters other pages.)
  */
 import React from "react";
-import { Minus, Moon, Search, Square, Sun, X } from "lucide-react";
+import { Minus, Moon, Square, Sun, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAppStore } from "../../store/useAppStore";
 
@@ -30,8 +29,7 @@ const controlStyle: React.CSSProperties = {
 };
 
 export const WindowStrip: React.FC = () => {
-  const { theme, toggleTheme, searchQuery, setSearchQuery, setSearchOpen } = useAppStore();
-  const activeQuery = searchQuery.trim();
+  const { theme, toggleTheme } = useAppStore();
 
   return (
     <header
@@ -50,44 +48,6 @@ export const WindowStrip: React.FC = () => {
     >
       <div data-tauri-drag-region style={{ flex: 1, height: "100%" }} />
 
-      {activeQuery && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            height: "24px",
-            padding: "0 4px 0 10px",
-            borderRadius: "var(--radius-full)",
-            backgroundColor: "var(--glass-pill-bg)",
-            border: "1px solid var(--glass-border)",
-            fontSize: "12px",
-            color: "var(--text-primary)",
-            maxWidth: "40vw",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setSearchOpen(true)}
-            title="Edit search (Ctrl+K)"
-            style={{ display: "flex", alignItems: "center", gap: "6px", border: "none", background: "transparent", color: "inherit", fontSize: "12px", padding: 0, minWidth: 0 }}
-          >
-            <Search size={12} aria-hidden="true" />
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              Search: <strong>{activeQuery}</strong>
-            </span>
-          </button>
-          <button
-            type="button"
-            aria-label="Clear search"
-            title="Clear search"
-            onClick={() => setSearchQuery("")}
-            style={{ width: "18px", height: "18px", borderRadius: "var(--radius-full)", border: "none", background: "transparent", color: "var(--text-secondary)", display: "flex", alignItems: "center", justifyContent: "center" }}
-          >
-            <X size={12} />
-          </button>
-        </div>
-      )}
 
       <div data-tauri-drag-region style={{ flex: 1, height: "100%", display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
         <button

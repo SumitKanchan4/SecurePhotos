@@ -2511,3 +2511,41 @@ html, body, #root {
 }
 .alb-cover-card:hover .alb-made-cover { border-color: var(--glass-border-highlight); }
 
+
+/* Search page (R9c): its own section with a big field, starting points and results */
+.search-page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.search-top { flex: none; display: flex; flex-direction: column; gap: 16px; padding: 14px 76px 10px 24px; max-height: 62%; overflow-y: auto; }
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  max-width: 760px;
+  padding: 0 8px 0 18px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--glass-border-highlight);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+.search-field:focus-within { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.search-field input { flex: 1; min-width: 0; height: 100%; border: none; background: transparent; color: var(--text-primary); font-size: 17px; font-family: var(--font-sans); outline: none; }
+.search-field input::placeholder { color: var(--text-muted); }
+.search-field input::-webkit-search-cancel-button { display: none; }
+.search-clear { width: 36px; height: 36px; border-radius: var(--radius-full); border: none; background: transparent; color: var(--text-secondary); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.search-clear:hover { background: var(--glass-pill-hover); color: var(--text-primary); }
+.search-section { display: flex; flex-direction: column; gap: 10px; }
+.search-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.search-chip { height: 34px; padding: 0 14px; border-radius: var(--radius-full); border: 1px solid var(--glass-border); background: var(--bg-surface); color: var(--text-primary); font-size: 13px; font-weight: 700; cursor: pointer; }
+.search-chip:hover { border-color: var(--glass-border-highlight); background: var(--glass-pill-hover); }
+.search-people { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 4px; }
+.search-person { flex: none; width: 84px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px 0; border: none; background: transparent; color: var(--text-primary); cursor: pointer; }
+.search-person-name { max-width: 100%; font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-albums { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+.search-album { flex: none; display: flex; align-items: center; gap: 10px; max-width: 260px; padding: 8px 16px 8px 8px; border-radius: 14px; border: 1px solid var(--glass-border); background: var(--bg-surface); color: var(--text-primary); text-align: left; cursor: pointer; }
+.search-album:hover { border-color: var(--glass-border-highlight); }
+.search-album-cover { flex: none; width: 48px; height: 48px; border-radius: 10px; overflow: hidden; background: var(--bg-surface-elevated); }
+.search-album-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.search-album-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.search-hint { max-width: 560px; }
+.search-results { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.search-chip:focus-visible, .search-person:focus-visible, .search-album:focus-visible, .search-clear:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }

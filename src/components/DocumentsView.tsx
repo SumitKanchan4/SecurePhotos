@@ -5,10 +5,11 @@
  * Vault documents never appear here (they live in Private Vault → Documents).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, MoreHorizontal, Pin, Plus, ScanSearch, Search } from "lucide-react";
+import { Loader2, MoreHorizontal, Pin, Plus, ScanSearch } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import type { DocumentItem } from "../types";
 import { useAppStore } from "../store/useAppStore";
+import { InlineSearch } from "./ui/InlineSearch";
 import { apiFetch, getThumbnailUrl } from "../services/api";
 import { categoryChips, categoryLabel, documentsLabel, DOCUMENT_CATEGORIES, inCategory, shortDate, sortByDate } from "./documents/docsFormat";
 
@@ -19,7 +20,9 @@ interface DocumentsViewProps {
 /* Pinning is done here only: the screen used to also call App's pin handler, so every pin was
    sent twice and cancelled itself out (fixed in R7b). */
 export const DocumentsView: React.FC<DocumentsViewProps> = ({ onDocumentClick }) => {
-  const { searchQuery, setSearchOpen, showToast } = useAppStore();
+  const { showToast } = useAppStore();
+  // Words to look for in the papers (R9c: a field in this page's header, not the global search).
+  const [query, setQuery] = useState("");
   const [docs, setDocs] = useState<DocumentItem[]>([]);
   const [category, setCategory] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
@@ -31,7 +34,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ onDocumentClick })
   const load = useCallback(async () => {
     try {
       const params = new URLSearchParams();
-      if (searchQuery.trim()) params.append("q", searchQuery.trim());
+      if (query.trim()) params.append("q", query.trim());
       const res = await apiFetch(`/api/documents?${params.toString()}`);
       if (res.ok) setDocs(await res.json());
     } catch (err) {
@@ -39,7 +42,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ onDocumentClick })
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery]);
+  }, [query]);
 
   useEffect(() => {
     load();
@@ -248,9 +251,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ onDocumentClick })
         <h1 className="docs-title">Documents</h1>
         <span className="docs-subtitle">{documentsLabel(docs.length)}</span>
         <div style={{ flex: 1 }} />
-        <button type="button" className="docs-icon-btn" aria-label="Search documents" title="Search (Ctrl+K)" onClick={() => setSearchOpen(true)}>
-          <Search size={16} />
-        </button>
+        <InlineSearch label="Search documents" placeholder="Words in a document" value={query} onChange={setQuery} />
         <button type="button" className="docs-btn" onClick={findInPhotos} disabled={isScanning}>
           {isScanning ? <Loader2 size={14} className="spin" /> : <ScanSearch size={14} />}
           {isScanning ? "Looking…" : "Find in photos"}
@@ -278,8 +279,12 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ onDocumentClick })
 
       {isLoading ? null : docs.length === 0 ? (
         <div className="docs-empty">
-          <h2>{searchQuery.trim() ? `No documents match "${searchQuery.trim()}"` : "No documents yet"}</h2>
-          <p>Add receipts, IDs and other papers, or let the app find the ones already in your photos.</p>
+          <h2>{query.trim() ? `No documents match "${query.trim()}"` : "No documents yet"}</h2>
+          <p>
+            {query.trim()
+              ? "Try another word, or a shorter one."
+              : "Add receipts, IDs and other papers, or let the app find the ones already in your photos."}
+          </p>
         </div>
       ) : (
         <>
