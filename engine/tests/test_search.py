@@ -199,3 +199,41 @@ async def test_search_matching_albums_and_people():
             await conn.execute("DELETE FROM persons WHERE id = ?;", (person_id,))
         await conn.commit()
         await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_keyword_searches_filter_instead_of_matching_text():
+    """'videos', 'favourites', a year or a month pick a filter; they are not text to find (R9c)."""
+    conn = await get_db_connection()
+    rows = [
+        ("r9c_clip_a.mp4", "video/mp4", 0, "2024-03-02 10:00:00", None),
+        ("r9c_clip_b.mp4", "video/mp4", 1, "2025-05-09 10:00:00", None),
+        ("r9c_goa_beach.jpg", "image/jpeg", 1, "2025-05-10 10:00:00", "Sunset at Goa beach"),
+        ("r9c_cat.jpg", "image/jpeg", 0, "2025-01-01 10:00:00", "A sleeping cat"),
+    ]
+    try:
+        for name, mime, fav, taken, caption in rows:
+            await conn.execute(
+                "INSERT INTO photos (filename, filepath, file_size, mime_type, is_favorite, taken_at, caption, is_encrypted) "
+                "VALUES (?, ?, 100, ?, ?, ?, ?, 0);",
+                (name, f"C:/dummy/{name}", mime, fav, taken, caption),
+            )
+        await conn.commit()
+
+        async def names(q):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                res = await client.get("/api/search", params={"q": q, "limit": 200})
+            assert res.status_code == 200
+            return sorted(p["filename"] for p in res.json()["photos"] if p["filename"].startswith("r9c_"))
+
+        assert await names("videos") == ["r9c_clip_a.mp4", "r9c_clip_b.mp4"]
+        assert await names("Favourites") == ["r9c_clip_b.mp4", "r9c_goa_beach.jpg"]
+        assert await names("favorites") == ["r9c_clip_b.mp4", "r9c_goa_beach.jpg"]
+        assert await names("2025") == ["r9c_cat.jpg", "r9c_clip_b.mp4", "r9c_goa_beach.jpg"]
+        assert await names("videos from 2024") == ["r9c_clip_a.mp4"]
+        assert await names("photos of goa in may") == ["r9c_goa_beach.jpg"]
+        assert await names("cat") == ["r9c_cat.jpg"]
+    finally:
+        await conn.execute("DELETE FROM photos WHERE filename LIKE 'r9c_%';")
+        await conn.commit()
+        await conn.close()

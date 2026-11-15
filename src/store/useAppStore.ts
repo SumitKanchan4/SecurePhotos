@@ -10,16 +10,22 @@ export type NavTab =
   | "stories" 
   | "vault" 
   | "trash" 
-  | "settings";
+  | "settings"
+  | "search";
+
+/** A person or album to open directly when its section shows (search and viewer links, R9c). */
+export type PendingOpen = { kind: "person" | "album"; id: number } | null;
 
 
 interface AppState {
   theme: "dark" | "light";
   gridDensity: "compact" | "comfortable" | "spacious";
   activeTab: NavTab;
+  /** What is typed on the Search page (R9c); kept while you look at other sections. */
   searchQuery: string;
-  /** Global search palette (Ctrl+K) is open (redesign R1). */
-  isSearchOpen: boolean;
+  /** Bumped by openSearch so the Search page focuses its field again. */
+  searchFocusKey: number;
+  pendingOpen: PendingOpen;
   selectedPhotoIds: Set<number>;
   activeVolume: VolumeInfo | null;
   isDriveConnected: boolean;
@@ -42,7 +48,12 @@ interface AppState {
   setGridDensity: (density: "compact" | "comfortable" | "spacious") => void;
   setActiveTab: (tab: NavTab) => void;
   setSearchQuery: (query: string) => void;
-  setSearchOpen: (open: boolean) => void;
+  /** Go to the Search page and focus its field (search icon, Ctrl+K, page search buttons). */
+  openSearch: () => void;
+  /** Open a person's page or an album directly. */
+  openPerson: (id: number) => void;
+  openAlbum: (id: number) => void;
+  clearPendingOpen: () => void;
   togglePhotoSelection: (id: number) => void;
   clearSelection: () => void;
   setActiveVolume: (vol: VolumeInfo | null) => void;
@@ -104,7 +115,8 @@ export const useAppStore = create<AppState>((set) => ({
   gridDensity: "comfortable",
   activeTab: "photos",
   searchQuery: "",
-  isSearchOpen: false,
+  searchFocusKey: 0,
+  pendingOpen: null,
   selectedPhotoIds: new Set<number>(),
   activeVolume: null,
   isDriveConnected: true,
@@ -148,7 +160,10 @@ export const useAppStore = create<AppState>((set) => ({
 
   setActiveTab: (activeTab) => set({ activeTab }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
-  setSearchOpen: (isSearchOpen) => set({ isSearchOpen }),
+  openSearch: () => set((state) => ({ activeTab: "search", searchFocusKey: state.searchFocusKey + 1 })),
+  openPerson: (id) => set({ activeTab: "people", pendingOpen: { kind: "person", id } }),
+  openAlbum: (id) => set({ activeTab: "albums", pendingOpen: { kind: "album", id } }),
+  clearPendingOpen: () => set({ pendingOpen: null }),
 
   togglePhotoSelection: (id) =>
     set((state) => {

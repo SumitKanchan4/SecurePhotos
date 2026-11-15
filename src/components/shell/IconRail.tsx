@@ -6,7 +6,7 @@
  * lime fill with a black icon in dark, black fill with a white icon in light
  * (see --rail-active-* in index.css).
  */
-import React from "react";
+import React, { useEffect } from "react";
 import {
   FileText,
   FolderHeart,
@@ -54,7 +54,19 @@ export function railStatus(
 }
 
 export const IconRail: React.FC = () => {
-  const { activeTab, setActiveTab, setSearchOpen, isDriveConnected, prerequisites } = useAppStore();
+  const { activeTab, setActiveTab, openSearch, isDriveConnected, prerequisites } = useAppStore();
+
+  // Ctrl+K (Cmd+K) opens the Search page from anywhere, even while typing in a field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        useAppStore.getState().openSearch();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const hasIssue = Boolean(
     prerequisites && (!prerequisites.vcredist?.installed || !prerequisites.python?.installed || !!prerequisites.error_message),
   );
@@ -85,10 +97,11 @@ export const IconRail: React.FC = () => {
 
       <button
         type="button"
-        className="rail-btn clickable"
+        className={`rail-btn clickable${activeTab === "search" ? " rail-btn-active" : ""}`}
         data-label="Search (Ctrl+K)"
         aria-label="Search"
-        onClick={() => setSearchOpen(true)}
+        aria-current={activeTab === "search" ? "page" : undefined}
+        onClick={openSearch}
       >
         <Search size={20} />
       </button>

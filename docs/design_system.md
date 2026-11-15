@@ -10,6 +10,7 @@ The look and behaviour of the SecurePhotos app, as built in the 2026 redesign (M
 - **One strong action per screen.** It is the lime button ("+ Import", "+ Add photos", "Restore"). Everything else is an outline or an icon.
 - **Rare actions behind "…".** Rename, cover, Move to Vault and Delete sit in one menu, so pages stay calm.
 - **Ask before anything that can't be undone.** Deleting for good, emptying Trash, erasing the vault, deleting an album, removing a song and compressing videos all open a `ConfirmDialog`. Actions that Trash can undo for 30 days don't ask.
+- **No hidden filters.** Whatever narrows a page is visible on that page. Search is its own page and never filters other screens.
 - **Plain words.** Say what will happen in the user's terms: "Remove 2 copies", "The original is in Trash for 30 days.", "some of its photos aren't on this computer". Avoid technical terms ("FastAPI sidecar", "Lanczos", "On-Device Vision") and features the app doesn't have.
 - **Say only what is true.** No badges or claims for things the app doesn't do (for example, nothing blurs the vault automatically when the window loses focus; the privacy shield is a button and the P key).
 - **Private stays private.** Vault items never show a name, path, picture or face outside the unlocked vault. Trash shows them as "Private Vault item" with a lock tile.
@@ -103,7 +104,7 @@ Motion:
 
 ```
 ┌────┬─────────────────────────────────────────────── 32 px window strip ──┐
-│logo│  (drag area)            [Search: goa ×]      ☾   _  □  ✕          │
+│logo│  (drag area)                                 ☾   _  □  ✕          │
 │ 🔍 ├───────────────────────────────────────────────────────────────────────┤
 │ ▣  │  Photos  1,218 photos  (Importing · 12 of 60)        🔍  [+ Import] │
 │ ✦  │                                                                   2026│
@@ -124,8 +125,12 @@ Motion:
 - **Icon rail** (`IconRail.tsx`, `.rail-*`), 64 px. From the top: logo, search, then Photos, Stories, Albums, People, Documents, Private Vault, a divider, then Dashboard, Trash and Settings.
   - Buttons are 44 × 44 with a 14 px radius. Hover labels come from `data-label` in pure CSS. The current section uses `--rail-active-*`.
   - The **status dot** at the bottom is lime when ready, amber while the engine starts, and red for a missing drive or an engine problem. Its reason shows on hover, and a click opens Settings.
-- **Window strip** (`WindowStrip.tsx`), 32 px: the drag area, the **active search chip** ("Search: goa ×"; click to edit, × to clear), the theme toggle and the window buttons. While the search chip is set it filters Photos, People, Albums, Documents and Trash, so a filter is never invisible.
-- **Search palette** (`SearchPalette.tsx`): Ctrl+K or the rail's search icon. It shows people, albums, photos and quick filters.
+- **Window strip** (`WindowStrip.tsx`), 32 px: the drag area, the theme toggle and the window buttons.
+- **Search page** (`search/SearchPage.tsx`, `.search-*`): the rail's search icon or Ctrl+K opens it as a section (it is marked current in the rail), with a big field on top.
+  - Before typing, it offers quick searches (Videos, Favourites, Documents, this year and last year), people and albums.
+  - After typing, it shows matching people and albums, then the photos and videos in the photo grid (no selection there). A person or album opens its page directly (`openPerson` / `openAlbum` in the store).
+  - The text is kept while you look elsewhere. Nothing pops up over other screens, and search never filters another page.
+- **Search inside a page** (`ui/InlineSearch.tsx`): Albums, People and Documents have a search icon in their header that opens a small field filtering only that page. Escape or × clears it.
 
 ---
 
@@ -154,6 +159,7 @@ Section title
 | Dialog | `.alb-dialog-backdrop`, `.alb-dialog`, `.alb-dialog-head` | `role="dialog"`, `aria-modal`, labelled by its heading. Escape and × close it; don't close it while it is saving or uploading |
 | Confirmation | `ConfirmDialog` (`src/components/ui/ConfirmDialog.tsx`) | `role="alertdialog"`. The title asks the question ("Delete 3 items forever?"), the message says the consequence, and the confirm label names the action ("Remove song"). Escape or Cancel does nothing |
 | Settings rows | `SettingsKit.tsx` (group, row, pill choice) | |
+| Page search | `InlineSearch` | Header icon that opens a field filtering only this page (names, words in documents) |
 | Toasts | `useAppStore().showToast(text, "success" \| "warning")` | One plain sentence; say what happened and what to do next |
 
 Every focusable control shows `outline: 2px solid var(--accent-fill); outline-offset: 2px` on `:focus-visible`.
@@ -190,7 +196,8 @@ When items are selected, one floating bar shows: "N selected · Select all · [a
 
 | Screen | File(s) | What defines it |
 |---|---|---|
-| Photos | `App.tsx`, `photos/PhotoTimeline.tsx` | Whole library in one timeline. Header: count, status pill, search and "+ Import" |
+| Photos | `App.tsx`, `photos/PhotoTimeline.tsx` | Whole library in one timeline. Header: count, status pill, search (opens the Search page) and "+ Import" |
+| Search | `search/SearchPage.tsx`, `search/searchFormat.ts` | Big field; before typing: Try chips, People, Albums; after: matching people and albums, then results in the photo grid. Keywords (videos, favourites, documents, a year or month) filter rather than match text |
 | Viewer | `Lightbox.tsx`, `viewer/viewerFormat.ts` | Dark surround. Top bar: Back, the title with an 8K / 4K / HD chip, and date · "41 of 12,480". Actions: Favourite, Download (menu: the file, or a print-ready 300 dpi copy), Details; then, after a divider, Trash and the lime lock (Move to Vault, or Restore for a vault photo). A filmstrip of nine. Details are hidden each time the viewer opens. Zoom with double-click, Ctrl + wheel or + / − / 0 |
 | Stories | `StoriesView.tsx`, `stories/*` | Header with Story music (icon) and Make new stories. Rows: For you, Saved, Collage ideas (6 first, then "Show more ideas") |
 | Albums | `AlbumsView.tsx`, `albums/*` | Made for you, then Your albums as covers. Album page: "← Albums", Slideshow, "+ Add photos", and a "…" menu (Rename, Choose cover photo, Move album to Vault, Delete album) |
@@ -212,10 +219,10 @@ Each screen's pure helpers (wording, dates, counts) live next to it in a `*Forma
 
 | Keys | Action | Where |
 |---|---|---|
-| Ctrl + K | Open search | Everywhere |
+| Ctrl + K | Open the Search page and focus its field | Everywhere, even while typing |
 | T | Switch light / dark | Everywhere (not while typing) |
 | L | Lock the vault | Everywhere while it is open |
-| Esc | Close the top menu or dialog, then clear the selection | Everywhere |
+| Esc | Close the top menu or dialog, then clear the selection (in a search field: clear it) | Everywhere |
 | ← / → or K / J | Previous / next photo | Viewer |
 | F | Favourite (P pins a document) | Viewer |
 | I or Ctrl + I | Show or hide details | Viewer |

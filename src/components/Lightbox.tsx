@@ -611,10 +611,11 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const [filmStart, filmEnd] = filmstripRange(currentIndex, photos.length);
   const filmIndexes = photos.length > 1 ? Array.from({ length: filmEnd - filmStart + 1 }, (_, i) => filmStart + i) : [];
   const importedDate = parseTakenAt(context?.imported_at);
-  const openInSection = (tab: "people" | "albums", name: string) => {
+  // Opens the person's page or the album itself (R9c; it used to set a hidden search filter).
+  const openInSection = (tab: "people" | "albums", id: number) => {
     const store = useAppStore.getState();
-    store.setActiveTab(tab);
-    store.setSearchQuery(name);
+    if (tab === "people") store.openPerson(id);
+    else store.openAlbum(id);
     onClose();
   };
 
@@ -1380,7 +1381,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
             <DetailSection label="People">
               <div className="viewer-faces">
                 {context.people.map((person) => (
-                  <button key={person.id} type="button" className="viewer-face" onClick={() => openInSection("people", person.name)} title={`See all photos of ${person.name}`}>
+                  <button key={person.id} type="button" className="viewer-face" onClick={() => openInSection("people", person.id)} title={`See all photos of ${person.name}`}>
                     {person.face_id ? (
                       <img src={getApiUrl(`/api/people/faces/${person.face_id}/crop`)} alt="" loading="lazy" />
                     ) : (
@@ -1397,7 +1398,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
             <DetailSection label="Albums">
               <div className="viewer-albums">
                 {context.albums.map((album) => (
-                  <button key={album.id} type="button" className="viewer-album" onClick={() => openInSection("albums", album.name)}>
+                  <button key={album.id} type="button" className="viewer-album" onClick={() => openInSection("albums", album.id)}>
                     {album.name}
                   </button>
                 ))}
