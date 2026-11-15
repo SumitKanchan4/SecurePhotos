@@ -205,6 +205,8 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 
 ## Frontend redesign (started 2026-11-12)
 
+**Status:** all steps R0–R9d done. Owner tested the app and approved merging `feature/redesign` into `master` on 2026-11-15. Open items carried over to master: R7f (Make new stories duplicates a saved story).
+
 Integration branch `feature/redesign` (master untouched until the end; owner decision). Concept board: https://claude.ai/artifact/XsadhwxNhBkakuUzyR8wPU. Chosen: Mono + acid lime (#C6FF00, black text on it), Archivo headings over Inter, icon rail + photo-first layout with a right-side month/year scrubber, 3D app icon "C · Frosted glass". Approved screens: Photos, Viewer, Private Vault, People, Import + Settings.
 
 ### R0 · Tokens, Archivo, app icon — `done` (merged into feature/redesign 2026-11-12, PR #13, history §123)
@@ -233,7 +235,7 @@ Found during R7e: running Make new stories again created a second "Remember This
 ### R9a · Library folder shown correctly; storage split by kind — `done` (merged into feature/redesign 2026-11-15, PR #27, history §137)
 ### R9b · Chosen app icon at every size; big covers for Favourites, Saved stories and Collages — `done` (merged into feature/redesign 2026-11-15, PR #28, history §138)
 ### R9c · Search page instead of the pop-up search (owner choice 2026-11-15) — `done` (merged into feature/redesign 2026-11-15, PR #29, history §139; keyword searches fixed; page-level search on Albums, People, Documents)
-### R9d · Search page polish (cut off, squashed field, no sideways rows, result shapes); month/year scrubber as on the board; rail in short windows — `done` (history §140)
+### R9d · Search page polish (cut off, squashed field, no sideways rows, result shapes); month/year scrubber as on the board; rail in short windows — `done` (merged into feature/redesign 2026-11-15, PR #30, history §140)
 - Each step: component tests (deferred from Q3), Playwright on a throwaway library, remaining hard-coded colours of that screen cleaned up.
 
 ### P12 · Windows Hello quick unlock — `todo`
