@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS stories (
     music_track_path TEXT,          -- Relative path to bundled or custom soundtrack
     rendered_video_path TEXT,       -- Optional cached 4K MP4 export
     is_saved BOOLEAN DEFAULT 0,     -- Google Photos-style bookmark / permanent keep
+    story_key TEXT,                 -- kind + subject, e.g. 'on_this_day:2021-11' (R7f)
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -744,6 +745,13 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
             await conn.execute("ALTER TABLE stories ADD COLUMN is_saved BOOLEAN DEFAULT 0;")
             logger.info("Migrated stories schema: added is_saved column.")
 
+        # R7f: a key per kind and subject, so making stories again never duplicates one.
+        if "story_key" not in existing_story_cols:
+            await conn.execute("ALTER TABLE stories ADD COLUMN story_key TEXT;")
+            logger.info("Migrated stories schema: added story_key column.")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_stories_key ON stories(story_key);")
+        await _remove_duplicate_stories(conn)
+
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_stories_saved_created ON stories(is_saved, created_at DESC);")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_story_items_story_id ON story_items(story_id, sort_order ASC);")
 
@@ -802,3 +810,40 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
         raise
     finally:
         await conn.close()
+
+
+async def _remove_duplicate_stories(conn: aiosqlite.Connection) -> int:
+    """Removes exact copies of a story left by older versions (R7f).
+
+    Before story keys, every "Make new stories" run added each story again, so a library can
+    hold two stories of the same kind with exactly the same photos (sometimes both saved).
+    One of each group is kept (the oldest saved one, else the oldest); the copies are removed.
+    Nothing unique is lost: the kept story has the same photos.
+
+    Returns:
+        How many copies were removed.
+    """
+    async with conn.execute(
+        """
+        SELECT s.id, s.story_type, COALESCE(s.person_id, 0) AS person_id, COALESCE(s.is_saved, 0) AS is_saved,
+               (SELECT group_concat(photo_id) FROM (SELECT photo_id FROM story_items WHERE story_id = s.id ORDER BY photo_id)) AS ids
+        FROM stories s
+        ORDER BY COALESCE(s.is_saved, 0) DESC, s.created_at ASC, s.id ASC;
+        """
+    ) as cursor:
+        rows = await cursor.fetchall()
+    seen = set()
+    copies = []
+    for row in rows:
+        if not row["ids"]:
+            continue
+        signature = (row["story_type"], row["person_id"], row["ids"])
+        if signature in seen:
+            copies.append(row["id"])
+        else:
+            seen.add(signature)
+    for story_id in copies:
+        await conn.execute("DELETE FROM stories WHERE id = ?;", (story_id,))
+    if copies:
+        logger.info("Removed %d duplicate stories left by older versions.", len(copies))
+    return len(copies)
