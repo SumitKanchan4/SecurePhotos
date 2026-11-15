@@ -30,3 +30,6 @@ Thumbs.db
 
 # IDE & Code Analysis
 .codegraph/
+
+# Owner's private test photos (read-only test material, never committed)
+/photos/
