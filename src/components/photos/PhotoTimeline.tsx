@@ -19,7 +19,7 @@ import {
   LayoutEntry,
   MonthSection,
   monthKey,
-  scrubberMarks,
+  scrubberEntries,
   sectionAt,
   shortMonthLabel,
   UNDATED_KEY,
@@ -30,6 +30,7 @@ const ROW_HEIGHT = { compact: 150, comfortable: 210, spacious: 300 } as const;
 const GAP = 4;
 const PAD_LEFT = 24;
 const PAD_RIGHT = 76; // room for the scrubber
+const SCRUB_ENTRY_HEIGHT = 30; // one scrubber entry and its gap
 const PAD_TOP = 8;
 const PAD_BOTTOM = 96; // room for the selection dock
 
@@ -244,36 +245,33 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({
     [activeVideoId, onOpen, showToast, selectable],
   );
 
-  // ── Scrubber ──────────────────────────────────────────────────────────────
-  const trackRef = useRef<HTMLDivElement>(null);
+  // ── Scrubber (approved Photos board, R9d) ───────────────────────────────
+  // The newest year's months, then one entry per older year, stacked from the top; the one
+  // you are looking at is the lime pill. Click to jump, or press and drag along the list.
+  const trackRef = useRef<HTMLElement>(null);
   const [trackHeight, setTrackHeight] = useState(0);
-  const [hover, setHover] = useState<{ y: number; label: string } | null>(null);
   const dragging = useRef(false);
   useEffect(() => {
     setTrackHeight(trackRef.current?.clientHeight ?? 0);
   }, [size.height]);
-  const marks = useMemo(
-    () => scrubberMarks(sections, layout.sectionTops, layout.totalHeight, trackHeight),
-    [sections, layout, trackHeight],
+  const entries = useMemo(
+    () => scrubberEntries(sections, trackHeight > 0 ? Math.max(1, Math.floor(trackHeight / SCRUB_ENTRY_HEIGHT)) : Infinity),
+    [sections, trackHeight],
   );
   const showScrubber = sections.length >= Math.max(2, minScrubberSections) && layout.totalHeight > size.height;
   const current = sectionAt(sections, layout.sectionTops, contentTop);
 
-  const scrubTo = (clientY: number, jump: boolean) => {
-    const track = trackRef.current;
+  const jumpTo = (key: string) => {
     const el = scrollRef.current;
-    if (!track || !el || !Number.isFinite(clientY)) return;
-    const rect = track.getBoundingClientRect();
-    const y = Math.min(rect.height, Math.max(0, clientY - rect.top));
-    const target = rect.height > 0 ? (y / rect.height) * layout.totalHeight : 0;
-    const section = sectionAt(sections, layout.sectionTops, target);
-    setHover({ y, label: section?.label ?? "" });
-    if (jump) el.scrollTop = target + PAD_TOP;
+    if (el) el.scrollTop = (layout.sectionTops.get(key) ?? 0) + PAD_TOP;
   };
+  useEffect(() => {
+    const stop = () => (dragging.current = false);
+    window.addEventListener("pointerup", stop);
+    return () => window.removeEventListener("pointerup", stop);
+  }, []);
 
   if (photos.length === 0) return <>{empty}</>;
-
-  const thumbY = layout.totalHeight > 0 ? Math.min(1, contentTop / layout.totalHeight) * trackHeight : 0;
 
   return (
     <div style={{ position: "relative", flex: 1, minHeight: 0, display: "flex" }}>
@@ -319,43 +317,31 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({
       </div>
 
       {showScrubber && (
-        <div
-          ref={trackRef}
-          className="timeline-scrubber"
-          role="slider"
-          aria-label="Jump to a month"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={layout.totalHeight > 0 ? Math.round((contentTop / layout.totalHeight) * 100) : 0}
-          aria-valuetext={current?.label}
-          onPointerDown={(e) => {
-            dragging.current = true;
-            e.currentTarget.setPointerCapture?.(e.pointerId);
-            scrubTo(e.clientY, true);
-          }}
-          onPointerMove={(e) => scrubTo(e.clientY, dragging.current)}
-          onPointerUp={() => (dragging.current = false)}
-          onPointerLeave={() => {
-            if (!dragging.current) setHover(null);
-          }}
-        >
-          {marks.map((mark) => (
-            <React.Fragment key={mark.key}>
-              <span className="timeline-tick" style={{ top: mark.position * trackHeight }} />
-              {mark.yearLabel && (
-                <span className="timeline-year" style={{ top: mark.position * trackHeight }}>
-                  {mark.yearLabel}
-                </span>
-              )}
-            </React.Fragment>
-          ))}
-          <span className="timeline-thumb" style={{ top: thumbY }} />
-          {(hover || dragging.current) && (
-            <span className="timeline-scrub-label" style={{ top: hover?.y ?? thumbY }}>
-              {hover?.label ?? current?.label}
-            </span>
-          )}
-        </div>
+        <nav ref={trackRef} className="timeline-scrubber" aria-label="Jump to date">
+          {entries.map((entry) => {
+            const isCurrent = current ? entry.keys.includes(current.key) : false;
+            return (
+              <button
+                key={entry.key}
+                type="button"
+                className={`timeline-scrub-entry${isCurrent ? " is-current" : ""}`}
+                aria-label={entry.name}
+                aria-current={isCurrent ? "true" : undefined}
+                title={entry.name}
+                onPointerDown={() => {
+                  dragging.current = true;
+                  jumpTo(entry.key);
+                }}
+                onPointerEnter={() => {
+                  if (dragging.current) jumpTo(entry.key);
+                }}
+                onClick={() => jumpTo(entry.key)}
+              >
+                {entry.label}
+              </button>
+            );
+          })}
+        </nav>
       )}
     </div>
   );

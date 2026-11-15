@@ -9,7 +9,7 @@ import {
   monthKey,
   monthLabel,
   parseTimeline,
-  scrubberMarks,
+  scrubberEntries,
   sectionAt,
   viewerWindow,
   visibleRange,
@@ -121,17 +121,16 @@ describe("windowing and scrubber", () => {
     expect(sectionAt(sections, layout.sectionTops, 0)?.key).toBe("2026-12");
   });
 
-  it("places one mark per month and labels each year once, skipping crowded labels", () => {
-    const mixed = [photo("2026-05-01"), photo("2026-04-01"), photo("2025-12-01"), photo(null)];
-    const mixedSections = groupByMonth(mixed);
-    const mixedLayout = buildLayout(mixed, mixedSections, { width: 2000, targetRowHeight: 200 });
-    const marks = scrubberMarks(mixedSections, mixedLayout.sectionTops, mixedLayout.totalHeight, 600);
-    expect(marks.map((m) => m.yearLabel)).toEqual(["2026", null, "2025", "No date"]);
-    expect(marks[0].position).toBe(0);
-    expect(marks.every((m, i) => i === 0 || m.position > marks[i - 1].position)).toBe(true);
-
-    const crowded = scrubberMarks(mixedSections, mixedLayout.sectionTops, mixedLayout.totalHeight, 40);
-    expect(crowded.filter((m) => m.yearLabel).length).toBeLessThan(3);
+  it("lists the newest year's months, then each older year once, then No date", () => {
+    const mixed = [photo("2026-11-01"), photo("2026-10-01"), photo("2026-08-01"), photo("2025-12-01"), photo("2025-03-01"), photo("2023-01-01"), photo(null)];
+    const sections = groupByMonth(mixed);
+    const entries = scrubberEntries(sections);
+    expect(entries.map((e) => e.label)).toEqual(["Nov", "Oct", "Aug", "2025", "2023", "No date"]);
+    expect(entries[0].name).toBe("November 2026");
+    expect(entries[3]).toMatchObject({ key: "2025-12", keys: ["2025-12", "2025-03"] });
+    // Not enough room: the newest year collapses to one entry.
+    expect(scrubberEntries(sections, 5).map((e) => e.label)).toEqual(["2026", "2025", "2023", "No date"]);
+    expect(scrubberEntries([])).toEqual([]);
   });
 });
 

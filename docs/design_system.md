@@ -127,6 +127,7 @@ Motion:
   - The **status dot** at the bottom is lime when ready, amber while the engine starts, and red for a missing drive or an engine problem. Its reason shows on hover, and a click opens Settings.
 - **Window strip** (`WindowStrip.tsx`), 32 px: the drag area, the theme toggle and the window buttons.
 - **Search page** (`search/SearchPage.tsx`, `.search-*`): the rail's search icon or Ctrl+K opens it as a section (it is marked current in the rail), with a big field on top.
+  - People and albums show as one row, never scrolling sideways. As many as fit the width are shown; when there are more, the last tile is "See all" and opens People or Albums. Results keep their real shapes (justified rows).
   - Before typing, it offers quick searches (Videos, Favourites, Documents, this year and last year), people and albums.
   - After typing, it shows matching people and albums, then the photos and videos in the photo grid (no selection there). A person or album opens its page directly (`openPerson` / `openAlbum` in the store).
   - The text is kept while you look elsewhere. Nothing pops up over other screens, and search never filters another page.
@@ -169,7 +170,7 @@ Every focusable control shows `outline: 2px solid var(--accent-fill); outline-of
 One component is used by Photos, the Vault, album pages and Favourites (`src/components/photos/PhotoTimeline.tsx`, layout maths in `src/utils/photoTimeline.ts`, `.timeline-*`):
 - **Month sections** with a big heading ("May 2026 · 412") and a circle to select the whole month. Undated photos come last under "No date".
 - **Justified rows.** Each full row is scaled to fill the width, and a month's last row is not stretched. Only rows near the screen are rendered (the component does its own windowing).
-- **Month/year scrubber** on the right instead of a scrollbar. It shows year labels and month ticks, a lime marker for where you are, and a label under the pointer. `minScrubberSections` hides it for short timelines (the Vault uses 4).
+- **Month/year scrubber** on the right instead of a scrollbar, as on the approved Photos board: a 64 px column with a divider, listing the newest year's months ("Nov", "Oct" …), then one entry per older year ("2025", "2024" …) and "No date", stacked from the top. The entry you are looking at is a lime pill. Click an entry, or press and drag along the list, to jump. When the list doesn't fit, the newest year collapses to one entry (`scrubberEntries`). `minScrubberSections` hides it for short timelines (the Vault uses 4).
 - **Tiles** show only a selection circle (on hover), a favourite heart and a "Video" or "Preparing" chip. There are no quality badges; background work shows in the header pill.
 - **Selection mode.** Once anything is selected, a click selects instead of opening. Ctrl or Shift + click also selects. Selection lives in `useAppStore` (`selectedPhotoIds`). Screens clear a leftover selection when they open.
 - The `vault` prop switches to vault thumbnails and turns selection off.
