@@ -136,6 +136,11 @@ async def generate_stories() -> List[StoryModel]:
     """Curates and synthesizes multi-dimensional stories, auto-pruning stale un-saved suggestions."""
     conn = await get_db_connection()
     try:
+        # Unsaved suggestions made before story keys existed (R7f) would sit next to their
+        # fresh, keyed copies; they are only suggestions, so drop them.
+        await conn.execute("DELETE FROM stories WHERE story_key IS NULL AND COALESCE(is_saved, 0) = 0;")
+        await conn.commit()
+
         # 1. Close people 'Through the Years' stories
         async with conn.execute(
             "SELECT id FROM persons ORDER BY is_close_one DESC, affinity_score DESC LIMIT 5;"
