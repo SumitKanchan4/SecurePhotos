@@ -12,6 +12,7 @@ crypto library make copies that cannot be overwritten (see docs/architecture.md,
 """
 
 import base64
+import binascii
 import hashlib
 import io
 import json
@@ -25,6 +26,7 @@ from typing import Any, Dict, Generator, Optional
 import argon2
 import argon2.exceptions
 import argon2.low_level
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 logger = logging.getLogger("securephotos.crypto_vault")
@@ -252,8 +254,10 @@ def unwrap_master_key(wrapped_b64: str, kek: bytes) -> Optional[bytes]:
         ciphertext_and_tag = raw[12:]
         aesgcm = AESGCM(kek)
         return aesgcm.decrypt(nonce, ciphertext_and_tag, None)
-    except Exception as e:
-        logger.warning(f"Key unwrapping failed: {e}")
+    except (InvalidTag, binascii.Error, ValueError) as e:
+        # Wrong key (authentication failed) or a damaged/short payload. Anything else is a bug
+        # and must not be reported to the user as "wrong password" (Q4).
+        logger.warning(f"Key unwrapping failed: {type(e).__name__}")
         return None
 
 
@@ -393,11 +397,11 @@ def decrypt_file_chunked_stream(
             try:
                 plaintext = aesgcm.decrypt(_chunk_nonce(index, False), sealed, header)
                 last = False
-            except Exception:
+            except InvalidTag:
                 try:
                     plaintext = aesgcm.decrypt(_chunk_nonce(index, True), sealed, header)
                     last = True
-                except Exception as err:
+                except InvalidTag as err:
                     raise ValueError("Vault file failed its integrity check (wrong key, damaged or tampered).") from err
 
             yield plaintext
