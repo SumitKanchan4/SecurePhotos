@@ -95,6 +95,9 @@ export interface AlbumItem {
   is_favorite: boolean;
   photo_count?: number;
   created_at?: string;
+  /** Oldest and newest photo dates in the album (album list only). */
+  first_taken_at?: string | null;
+  last_taken_at?: string | null;
 }
 
 export interface VaultAlbumItem {

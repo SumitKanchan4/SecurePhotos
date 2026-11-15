@@ -2196,3 +2196,222 @@ html, body, #root {
 }
 .dash-note-row { display: flex; align-items: center; gap: 12px; color: var(--text-primary); }
 .dash-note-row > span { flex: 1; }
+
+/* ── Albums (redesign R7d) ─────────────────────────────────────────── */
+.alb-page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 14px 76px 48px 24px;
+  position: relative;
+}
+.alb-page:has(.alb-grid) { overflow: hidden; padding-bottom: 0; }
+.alb-section { display: flex; flex-direction: column; gap: 10px; }
+.alb-foryou { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.alb-foryou-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 16px;
+  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+.alb-foryou-card:hover, .alb-cover-card:hover .alb-cover { border-color: var(--glass-border-highlight); }
+.alb-foryou-cover { width: 56px; height: 56px; flex: none; border-radius: 12px; overflow: hidden; background: var(--bg-surface-elevated); display: block; }
+.alb-foryou-cover img, .alb-cover img, .alb-story-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.alb-foryou-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.alb-cover-empty { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
+.alb-covers { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px 14px; }
+.alb-cover-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.alb-cover {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  margin-bottom: 4px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  background: var(--bg-surface-elevated);
+}
+.alb-cover-name { font-size: 14px; font-weight: 800; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alb-foryou-card:focus-visible, .alb-cover-card:focus-visible, .alb-story:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 3px; border-radius: 14px; }
+.alb-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 6px 0 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+.alb-search input { width: 180px; border: none; outline: none; background: transparent; color: var(--text-primary); font-size: 13px; }
+.alb-search button { border: none; background: transparent; color: var(--text-secondary); cursor: pointer; display: flex; padding: 4px; }
+.alb-new input, .alb-rename input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+.alb-rename { display: flex; align-items: center; gap: 8px; min-width: min(420px, 100%); }
+.alb-rename input { height: 40px; font-family: var(--font-display); font-size: 20px; font-weight: 800; }
+.alb-new input:focus-visible, .alb-rename input:focus-visible, .alb-search:focus-within { outline: 2px solid var(--accent-fill); outline-offset: 1px; }
+
+.alb-header { position: relative; }
+.alb-menu-wrap { position: relative; }
+.alb-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  width: 230px;
+  padding: 6px;
+  border-radius: 14px;
+  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+}
+.alb-menu button {
+  padding: 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.alb-menu button:hover:not(:disabled), .alb-menu button:focus-visible { background: var(--glass-pill-bg); outline: none; }
+.alb-menu button:disabled { opacity: 0.5; cursor: default; }
+.alb-menu button.is-danger { color: var(--accent-danger); font-weight: 700; }
+.alb-menu-divider { height: 1px; margin: 4px 0; background: var(--glass-border); }
+
+.alb-grid { flex: 1; min-height: 0; display: flex; margin: 0 -76px 0 -24px; }
+.alb-stories { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px 14px; }
+.alb-story { display: flex; flex-direction: column; gap: 4px; padding: 0; border: none; background: transparent; text-align: left; cursor: pointer; min-width: 0; }
+.alb-story-cover { position: relative; display: block; aspect-ratio: 3 / 4; margin-bottom: 4px; border-radius: 14px; overflow: hidden; background: var(--bg-surface-elevated); }
+.alb-story-play {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.alb-selbar {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  max-width: calc(100% - 40px);
+  overflow-x: auto;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+.alb-selbar-count { padding: 0 12px; font-size: 13px; font-weight: 800; color: var(--text-primary); white-space: nowrap; }
+.alb-selbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.alb-selbar-btn:hover, .alb-selbar-btn:focus-visible { background: var(--glass-pill-bg); outline: none; }
+.alb-selbar-close { padding: 0 10px; }
+.alb-selbar-divider { width: 1px; height: 20px; margin: 0 2px; background: var(--glass-border); flex: none; }
+
+.alb-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+}
+.alb-dialog {
+  width: min(920px, 100%);
+  max-height: min(720px, 100%);
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px;
+  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+.alb-dialog-head { display: flex; align-items: center; gap: 10px; padding: 16px 18px; border-bottom: 1px solid var(--glass-border); }
+.alb-dialog-head h2 { margin: 0 0 2px; font-family: var(--font-display); font-size: 20px; font-weight: 900; letter-spacing: -0.02em; }
+.alb-dialog-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--glass-border); }
+.alb-picker { flex: 1; min-height: 240px; overflow-y: auto; padding: 14px 18px; display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); grid-auto-rows: max-content; gap: 6px; align-content: start; }
+.alb-picker .dash-empty { grid-column: 1 / -1; }
+.alb-pick { position: relative; display: block; width: 100%; height: auto; aspect-ratio: 1 / 1; padding: 0; border: none; border-radius: 8px; overflow: hidden; background: var(--bg-surface-elevated); cursor: pointer; }
+.alb-pick img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.alb-pick.is-on { box-shadow: 0 0 0 3px var(--accent-fill); }
+.alb-pick:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.alb-pick-check {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 2px solid #ffffff;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.alb-pick.is-on .alb-pick-check { background: var(--accent-fill); border-color: var(--accent-fill); }
+.alb-pick-video { position: absolute; right: 6px; bottom: 6px; padding: 3px 5px; border-radius: var(--radius-full); background: rgba(10, 10, 10, 0.72); color: #ffffff; display: flex; }
