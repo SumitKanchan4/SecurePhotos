@@ -87,6 +87,7 @@ describe("DashboardView", () => {
       "GET /api/system/dashboard": OVERVIEW,
       "GET /api/duplicates/summary": { total_groups: 34, total_duplicate_photos: 80, reclaimable_bytes: 1.2 * GB },
       "GET /api/videos/summary": { runtime_available: true, total_videos: 342, total_video_bytes: 1, compressible_count: 12, enhanceable_count: 0, already_optimized_count: 0, projected_reclaimable_bytes: 3.4 * GB },
+      "GET /api/duplicates/groups": [GROUP],
       "GET /api/system/optimization-status": { service_status: "processing", images_total: 1218, images_optimized: 1204, images_pending: 14, videos_total: 0, videos_optimized: 0, videos_pending: 0, overall_progress_percent: 98, active_item_progress: 0, reclaimed_bytes: 18 * GB },
     });
     const onNavigate = vi.fn();
@@ -106,6 +107,16 @@ describe("DashboardView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Review duplicates" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Duplicates" })).toBeInTheDocument();
+    expect(await screen.findByText("1 group · about 16 MB can be freed")).toBeInTheDocument();
+  });
+});
+
+describe("DuplicatesView with an unexpected reply", () => {
+  it("shows nothing to review instead of crashing", async () => {
+    mockEngine({ "GET /api/duplicates/groups": { detail: "busy" } });
+    render(<DuplicatesView onBack={vi.fn()} />);
+    expect(await screen.findByRole("heading", { level: 1, name: "Duplicates" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Keep the best in all…" })).not.toBeInTheDocument();
   });
 });
 
