@@ -34,7 +34,7 @@ SecurePhotos is engineered as a local-first, zero-cloud desktop application comb
 - **Desktop Host**: Tauri 2.0 (Rust) using Windows WebView2 runtime.
 - **Backend Runtime**: Python 3.12, FastAPI, Uvicorn, SQLite 3 (WAL mode + FTS5 full-text indexing), `aiosqlite`.
 - **AI & Acceleration**: ONNX Runtime with DirectML hardware acceleration; YuNet (face finding, MIT), SFace (face recognition, Apache-2.0), Real-ESRGAN (upscaling, BSD-3). Only permissively licensed models; see `THIRD_PARTY_NOTICES.md`.
-- **Frontend Framework**: React 19, TypeScript, Vite, `@tanstack/react-virtual`, Lucide React icons.
+- **Frontend Framework**: React 19, TypeScript, Vite, Zustand, Lucide React icons.
 - **Cryptography**: AES-256-GCM chunked streaming, Argon2id key derivation, OS secure random source via the `getrandom` crate (no weaker fallback).
 
 ---
@@ -210,7 +210,7 @@ SecurePhotos/
 ├── docs/                         # Technical Documentation & Specifications
 │   ├── architecture.md           # System Architecture & Pipelines
 │   ├── database_schema.md        # SQLite WAL Schema & Indexing Model
-│   ├── design_system.md          # UI Tokens & Glassmorphism Design System
+│   ├── design_system.md          # Design system: tokens, shell, screens
 │   ├── development.md            # This Developer & Engineering Guide
 │   └── roadmap.md                # Community Product Roadmap
 ├── scripts/                      # Developer Helper & Build Scripts

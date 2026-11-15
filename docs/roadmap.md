@@ -80,7 +80,7 @@ A companion mobile application (iOS & Android) that enables users to securely br
 3. **Screen Capture & Recording Shield**:
    - Mobile client enables OS-level privacy protections (`FLAG_SECURE` on Android, `isCaptured` shielding on iOS) to prevent other malicious mobile apps from taking screenshots of unlocked vault photos.
 4. **Technology Stack**:
-   - **Tauri 2.0 Mobile (React + Rust)**: Enables 90% code reuse of existing UI design tokens, virtualized photo grids (`@tanstack/react-virtual`), and cryptographic Rust primitives.
+   - **Tauri 2.0 Mobile (React + Rust)**: Enables 90% code reuse of existing UI design tokens, the photo timeline, and cryptographic Rust primitives.
 
 ---
 

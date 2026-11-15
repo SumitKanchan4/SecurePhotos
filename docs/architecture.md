@@ -17,7 +17,7 @@ SecurePhotos is designed as an **offline-first, zero-cloud personal media vault*
 ```mermaid
 graph TB
     subgraph UI_Layer ["Presentation Tier (Tauri 2 / React 19)"]
-        ReactUI["React 19 SPA (Vite, TypeScript, Zustand)<br/>• Pure CSS Design Tokens<br/>• Virtualized Grids (@tanstack/react-virtual)<br/>• Lightbox & Keyboard Shortcuts"]
+        ReactUI["React 19 SPA (Vite, TypeScript, Zustand)<br/>• Pure CSS Design Tokens<br/>• Month timeline with its own windowing<br/>• Lightbox & Keyboard Shortcuts"]
         TauriShell["Tauri 2 Native Shell (Rust)<br/>• WebView2, strict CSP<br/>• Spawns the engine with a random token<br/>• Native dialogs, tray, updater"]
         TauriShell --> ReactUI
     end

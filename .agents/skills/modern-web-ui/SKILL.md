@@ -1,110 +1,33 @@
 ---
 name: modern-web-ui
 description: >-
-  Enterprise UI/UX design standards for high-scale media applications. Enforces 60fps virtualized scrolling (@tanstack/react-virtual), pure CSS design tokens, fluid lightboxes, zero layout shifts (CLS=0), keyboard navigation (J/K/Space), and sleek dark-mode aesthetics.
+  UI standards for SecurePhotos screens (Mono + acid lime redesign): CSS tokens only (lime as a fill with black text, --accent-ink as text), Archivo titles over Inter, the icon-rail shell, the shared page header and buttons, the PhotoTimeline grid for photos, ConfirmDialog for anything that can't be undone, plain wording, both themes and the contrast check. Use when building or changing any frontend screen.
 ---
 
-# 🎨 Modern Web UI & Virtualization Skill
+# Modern web UI (SecurePhotos)
 
-This skill enforces enterprise-grade UI/UX design, aesthetic excellence, and high-performance virtualization standards for high-scale photo/media desktop applications.
+The full specification is [`docs/design_system.md`](../../../docs/design_system.md). Read it before changing a screen. This skill holds the rules that are easiest to get wrong.
 
----
+## 1. Colour
+- Use the tokens in `src/index.css`; no hex values, gradients or new accent colours in components.
+- One neon: `--accent-fill` (lime) is a **fill** with `--on-accent` (black) text on it, in both themes. For the accent as text or an icon, use `--accent-ink` (lime in dark, near-black in light). Never put lime text on a light background, and never put white text on lime.
+- Tints are `color-mix(in srgb, var(--accent-ink) N%, transparent)`.
+- Red (`--accent-danger`) is for outline buttons and text on irreversible actions, never the main button. The viewer surround is dark in both themes.
 
-## 1. Core Performance & Virtualization Rules
+## 2. Layout and pieces
+- Every screen sits in the icon-rail shell (`src/components/shell/*`). Pages use `.dash-page` with a header row: Archivo title (`.dash-title`, 30 px / 900), a meta line, a status pill only while work runs, icon buttons, a "…" menu for rare actions, and **one** lime primary button (`.dash-btn .dash-btn-primary`).
+- Sub-pages get a `.dash-back` pill ("← Albums").
+- Photos are always shown with `PhotoTimeline` (month sections, justified rows, scrubber, own windowing). Don't add another photo grid or a virtual-list library.
+- Dialogs use `.alb-dialog*` with `role="dialog"`, `aria-modal` and a labelled heading. Irreversible actions use `ConfirmDialog` (`role="alertdialog"`; the title asks, the message says the consequence, and the button names the action). Actions that Trash can undo for 30 days don't ask.
+- Icon-only buttons need an `aria-label`. Every control shows the lime `:focus-visible` outline.
 
-### A. Mandatory Virtual Windowing for Media Grids
-- When rendering collections of photos, albums, or documents, **never render unbounded DOM elements**.
-- Always use `@tanstack/react-virtual` (or `react-window`) to ensure only the **~30 visible items** are mounted in the DOM.
-- Keep DOM node count flat, even when browsing 100,000+ items.
+## 3. Wording
+- Plain words that say what will happen ("Remove 2 copies", "The original is in Trash for 30 days."). No technical terms, and no claims about features the app doesn't have.
+- Each screen keeps its wording, date and count helpers in a tested `*Format.ts` next to it.
 
-```jsx
-// Example: High-Performance Virtualized Grid
-import { useVirtualizer } from '@tanstack/react-virtual';
+## 4. Keyboard
+- App-wide: Ctrl+K search, T theme, L lock the vault, Esc closes the top menu or dialog, then clears the selection. Viewer: arrows or J/K, F, I, L, Delete, + / − / 0. Guard new shortcuts so they don't fire while typing in an input.
 
-const rowVirtualizer = useVirtualizer({
-  count: rowCount,
-  getScrollElement: () => parentRef.current,
-  estimateSize: () => 220, // Row height in px
-  overscan: 5,
-});
-```
-
-### B. Zero Layout Shift (CLS = 0)
-- Always render an aspect-ratio placeholder skeleton (`background: var(--surface-secondary)`) while thumbnails load.
-- Thumbnails must load progressively with an instantaneous blur-up / CSS transition.
-
----
-
-## 2. Design System & CSS Tokens
-
-Avoid arbitrary Tailwind classes or inline styles. All styles must map to the CSS design token system:
-
-```css
-:root {
-  --bg-app: #090a0f;
-  --bg-surface: #12141c;
-  --bg-surface-elevated: #1a1d29;
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-highlight: rgba(255, 255, 255, 0.16);
-  --accent-primary: #3b82f6;
-  --accent-glow: rgba(59, 130, 246, 0.25);
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --radius-sm: 6px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
-}
-```
-
----
-
-## 3. Micro-Interactions & Keyboard Ergonomics
-
-- **Keyboard First**:
-  - `J` / `ArrowRight`: Next photo.
-  - `K` / `ArrowLeft`: Previous photo.
-  - `Space`: Quick Look / Preview overlay.
-  - `F`: Toggle favorite.
-  - `L`: Move to vault / lock.
-  - `Esc`: Close lightbox or modal.
-- **Micro-Animations**:
-  - Lightbox zoom in/out with CSS transform `scale(0.95) -> scale(1)` over `180ms ease-out`.
-  - Smooth card hover lift (`transform: translateY(-2px)`).
-
----
-
-## 4. Mandatory Unified Header & Drilldown Design Standard
-
-Whenever designing, building, or refactoring drill-down views (e.g. Album Detail, Person Detail, Category Detail, Vault views) or major view headers, **ALWAYS adhere strictly to this design standard**:
-
-### A. Balanced 3-Column Layout
-Never use a simple `justify-content: space-between` with asymmetrical items that causes the title to drift off-center. Always use a balanced 3-column flex layout:
-1. **Left Column (`flex: 1`, `justifyContent: "flex-start"`, `minWidth: "120px"`)**:
-   - Navigation / Back button styled as a frosted pill (`var(--radius-full)`):
-     - Background: `rgba(255, 255, 255, 0.06)`, border: `1px solid rgba(255, 255, 255, 0.1)`.
-     - Icon + label (e.g. `<ArrowLeft size={14} /> <span>All Albums</span>`).
-2. **Center Column (`flex: "0 1 auto"`, `display: "flex"`, `alignItems: "center"`, `justifyContent: "center"`, `gap: "10px"`)**:
-   - **Display Title**:
-     - Modern geometric font: `var(--font-display)` (**Plus Jakarta Sans**, fallback Inter).
-     - Size: `22px`–`24px`, weight: `800` (bold), tracking: `letterSpacing: "-0.03em"`.
-     - Color: `#ffffff` with subtle text shadow `0 2px 10px rgba(0, 0, 0, 0.35)`.
-   - **Inline Frosted Capsule Count Badge**:
-     - Placed on the **same horizontal baseline** right next to the title (never stacked as an awkward subtitle).
-     - Style: `padding: "3px 10px"`, `borderRadius: "var(--radius-full)"`, `backgroundColor: "rgba(255, 255, 255, 0.08)"`, `border: "1px solid rgba(255, 255, 255, 0.12)"`, `backdropFilter: "blur(8px)"`, `fontSize: "12px"`, `fontWeight: 600`, `color: "var(--text-secondary)"`.
-3. **Right Column (`flex: 1`, `display: "flex"`, `alignItems: "center"`, `justifyContent: "flex-end"`, `gap: "10px"`, `minWidth: "120px"`)**:
-   - Primary and secondary actions styled with pill geometry (`var(--radius-full)`).
-   - Slideshow trigger: Vibrant gradient `linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)` with ambient glow `0 3px 12px rgba(99, 102, 241, 0.35)`.
-   - Secondary actions (Add, Filter, Delete): Frosted glass or primary pills.
-
-### B. Glassmorphic Container Specifications (Dual-Theme macOS Pure Liquid Glass)
-- **Background**: `var(--glass-surface)` (Theme-reactive: `rgba(255, 255, 255, 0.78)` in Light mode / `rgba(18, 20, 29, 0.82)` in Dark mode). NEVER hardcode dark `rgba(23, 23, 23, ...)`.
-- **Backdrop Blur**: `backdropFilter: "blur(24px)"`, `WebkitBackdropFilter: "blur(24px)"`.
-- **Border**: `1px solid var(--glass-border)`.
-- **Corner Curvature**: `borderRadius: "var(--radius-lg)"` (18px floating bar).
-- **Elevation**: `boxShadow: "var(--glass-shadow)"`.
-- **Title Color**: `color: "var(--text-primary)"` (Crisp dark in Light mode / white in Dark mode).
-- **Badge**: `backgroundColor: "var(--glass-badge-bg)"`, `border: "1px solid var(--glass-badge-border)"`.
-- **Dimensions & Spacing**: `minHeight: "56px"`, `padding: "10px 20px"`.
-- **Positioning**: `position: "sticky"`, `top: 0`, `zIndex: 20`, `flexShrink: 0`.
-
+## 5. Checking
+- Look at every changed screen in dark **and** light on a throwaway library (`SECUREPHOTOS_DATA_DIR`), and run the contrast scan (no light text on lime, no lime text in light). Component tests sit next to the screen and must fail without the change.
+- Respect Reduce motion (`data-reduce-motion="true"` turns animation off).
