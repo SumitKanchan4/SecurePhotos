@@ -110,3 +110,16 @@ def test_old_format_files_are_refused(tmp_path):
 
 def test_wrong_key_is_rejected(tmp_path):
     _rejected(_encrypt(tmp_path), key=secrets.token_bytes(32))
+
+
+def test_only_a_failed_check_counts_as_a_wrong_key():
+    """Q4: wrong key or damaged payload -> None; a programming error is raised, not reported as a wrong key."""
+    from engine.services.crypto_vault import unwrap_master_key, wrap_master_key
+
+    master, kek = secrets.token_bytes(32), secrets.token_bytes(32)
+    wrapped = wrap_master_key(master, kek)
+    assert unwrap_master_key(wrapped, kek) == master
+    assert unwrap_master_key(wrapped, secrets.token_bytes(32)) is None  # wrong key
+    assert unwrap_master_key("not base64!!", kek) is None  # damaged payload
+    with pytest.raises(TypeError):
+        unwrap_master_key(wrapped, None)  # a bug in the caller must not look like a wrong password
