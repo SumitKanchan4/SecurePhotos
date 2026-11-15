@@ -20,7 +20,7 @@ import {
   Users,
 } from "lucide-react";
 import { NavTab, useAppStore } from "../../store/useAppStore";
-import appIcon from "../../assets/brand/app-icon-small.svg";
+import appIcon from "../../assets/brand/app-icon.svg";
 
 export interface RailItem {
   id: NavTab;
