@@ -2095,9 +2095,22 @@ html, body, #root {
 .dash-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .dash-jobs { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
 .dash-bar { display: flex; height: 14px; border-radius: var(--radius-full); overflow: hidden; background: var(--glass-pill-bg); }
-.dash-bar-media { background: var(--accent-fill); }
-.dash-bar-app { background: var(--text-secondary); }
-.dash-bar-other { background: var(--glass-border-highlight); }
+.dash-bar-library { background: var(--accent-fill); }
+.dash-bar-other { background: var(--text-secondary); }
+.dash-bar-free { background: var(--glass-pill-bg); border: 1px solid var(--glass-border-highlight); }
+/* What SecurePhotos uses (R9a): rows with a thin share bar */
+.dash-usage-title { margin: 6px 0 0; font-size: 13px; font-weight: 800; color: var(--text-primary); }
+.dash-usage { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.dash-usage-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: baseline; font-size: 13px; }
+.dash-usage-label { color: var(--text-primary); font-weight: 600; }
+.dash-usage-note { color: var(--text-secondary); font-weight: 400; }
+.dash-usage-size { font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); }
+.dash-usage-track { grid-column: 1 / -1; height: 6px; border-radius: var(--radius-full); background: var(--glass-pill-bg); overflow: hidden; }
+.dash-usage-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent-fill); }
+/* Thin lime on white is hard to see; in light the bars use the accent ink (near-black), like the rail. */
+[data-theme="light"] .dash-usage-fill { background: var(--accent-ink); }
+.settings-usage { padding: 0 18px 16px; }
+.settings-usage + .settings-row { border-top: 1px solid var(--glass-border); }
 .dash-legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12px; color: var(--text-secondary); }
 .dash-legend > span { display: inline-flex; align-items: center; gap: 6px; }
 .dash-swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }

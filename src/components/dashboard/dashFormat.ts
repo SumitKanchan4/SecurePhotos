@@ -1,7 +1,7 @@
 /**
  * Dashboard, Duplicates and Big videos helpers (redesign R7c). Pure functions, unit-tested.
  */
-import type { DashboardOverview, DuplicateGroupItem } from "../../types";
+import type { AppStorageStats, DashboardOverview, DuplicateGroupItem, StorageCategoryKey } from "../../types";
 import { formatSize } from "../import/importFormat";
 
 export { formatSize };
@@ -11,26 +11,56 @@ export function plural(n: number, one: string, many = `${one}s`): string {
 }
 
 export interface StorageSegment {
-  key: "media" | "app" | "other";
+  key: "library" | "other";
   label: string;
   bytes: number;
   percent: number;
 }
 
-/** Drive bar: photos and videos, app data, other files (free is what's left). */
+/** Drive bar: what SecurePhotos uses and other files on the drive (free is what's left). */
 export function storageSegments(overview: DashboardOverview): StorageSegment[] {
   const drive = overview.drive_storage;
   const total = drive?.total_bytes || 0;
   if (total <= 0) return [];
-  const media = overview.app_storage?.media_bytes || 0;
-  const app = Math.max(0, (overview.app_storage?.total_bytes || 0) - media);
-  const other = Math.max(0, total - drive.free_bytes - media - app);
+  const library = overview.app_storage?.total_bytes || 0;
+  const other = Math.max(0, total - drive.free_bytes - library);
   const pct = (b: number) => Math.min(100, Math.max(0, (b / total) * 100));
   return [
-    { key: "media", label: "Photos and videos", bytes: media, percent: pct(media) },
-    { key: "app", label: "App data", bytes: app, percent: pct(app) },
+    // A small library on a big drive would be invisible; keep it at least a sliver wide.
+    { key: "library", label: "SecurePhotos", bytes: library, percent: library > 0 ? Math.max(pct(library), 0.8) : 0 },
     { key: "other", label: "Other files", bytes: other, percent: pct(other) },
   ];
+}
+
+const CATEGORY_TEXT: Record<StorageCategoryKey, { label: string; note?: string }> = {
+  photos: { label: "Photos" },
+  videos: { label: "Videos" },
+  documents: { label: "Documents" },
+  vault: { label: "Private Vault", note: "encrypted" },
+  collages: { label: "Collages" },
+  music: { label: "Story music" },
+  trash: { label: "Trash", note: "deleted for good after 30 days" },
+  thumbnails: { label: "Thumbnails and previews", note: "keep scrolling fast" },
+  app: { label: "App data", note: "database and AI models" },
+};
+
+export interface StorageRow {
+  key: StorageCategoryKey;
+  label: string;
+  note?: string;
+  bytes: number;
+  /** Share of everything SecurePhotos uses, 0–100. */
+  percent: number;
+}
+
+/** "What SecurePhotos uses": one row per kind with something in it, biggest first. */
+export function storageRows(stats?: AppStorageStats | null): StorageRow[] {
+  const categories = (stats?.categories ?? []).filter((c) => c.bytes > 0 && c.key in CATEGORY_TEXT);
+  const total = categories.reduce((sum, c) => sum + c.bytes, 0);
+  if (total <= 0) return [];
+  return categories
+    .map((c) => ({ key: c.key, ...CATEGORY_TEXT[c.key], bytes: c.bytes, percent: (c.bytes / total) * 100 }))
+    .sort((a, b) => b.bytes - a.bytes);
 }
 
 /** Bytes freed if, in each group, every photo not chosen to keep goes to Trash. */

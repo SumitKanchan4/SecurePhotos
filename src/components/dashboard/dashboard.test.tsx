@@ -5,7 +5,7 @@ import type { DuplicateGroupItem, PhotoItem } from "../../types";
 import { DashboardView } from "../DashboardView";
 import { DuplicatesView } from "../DuplicatesView";
 import { VideoOptimizerView } from "../VideoOptimizerView";
-import { formatDuration, oldOriginalsNote, reclaimableBytes, resolveLabel, storageSegments } from "./dashFormat";
+import { formatDuration, oldOriginalsNote, reclaimableBytes, resolveLabel, storageRows, storageSegments } from "./dashFormat";
 
 const GB = 1024 ** 3;
 const MB = 1024 ** 2;
@@ -36,7 +36,7 @@ const GROUP: DuplicateGroupItem = {
 
 const OVERVIEW = {
   media_counts: { images: 12480, videos: 342, documents: 214, favorites: 3, albums: 12, people: 24, total_media: 13036 },
-  app_storage: { total_bytes: 447 * GB, media_bytes: 386 * GB, app_system_bytes: 61 * GB, originals_bytes: 0, thumbnails_bytes: 0, previews_bytes: 0, database_bytes: 0, models_bytes: 0 },
+  app_storage: { total_bytes: 447 * GB, media_bytes: 386 * GB, app_system_bytes: 61 * GB, originals_bytes: 0, thumbnails_bytes: 0, previews_bytes: 0, database_bytes: 0, models_bytes: 0, categories: [{ key: "photos", bytes: 380 * GB }, { key: "vault", bytes: 6 * GB }, { key: "app", bytes: 61 * GB }] },
   drive_storage: { drive_letter: "D:\\", volume_name: "Photos", drive_type: "external", is_internal: false, total_bytes: 1000 * GB, free_bytes: 412 * GB, app_consumed_bytes: 0, system_other_bytes: 0, other_files_bytes: 0, disclaimer: "" },
 };
 
@@ -64,9 +64,26 @@ afterEach(() => {
 });
 
 describe("dashboard helpers", () => {
-  it("splits the drive into photos, app data and other files", () => {
+  it("splits the drive into SecurePhotos and other files", () => {
     const segs = storageSegments(OVERVIEW as never);
-    expect(segs.map((s) => [s.key, Math.round(s.percent)])).toEqual([["media", 39], ["app", 6], ["other", 14]]);
+    expect(segs.map((s) => [s.key, Math.round(s.percent)])).toEqual([["library", 45], ["other", 14]]);
+  });
+
+  it("lists what SecurePhotos uses, biggest first, without empty kinds", () => {
+    const rows = storageRows({
+      categories: [
+        { key: "photos", bytes: 300 * GB },
+        { key: "vault", bytes: 20 * GB },
+        { key: "videos", bytes: 80 * GB },
+        { key: "music", bytes: 0 },
+        { key: "trash", bytes: 5 * GB },
+        { key: "app", bytes: 42 * GB },
+      ],
+    } as never);
+    expect(rows.map((r) => r.label)).toEqual(["Photos", "Videos", "App data", "Private Vault", "Trash"]);
+    expect(rows.find((r) => r.key === "trash")?.note).toBe("deleted for good after 30 days");
+    expect(Math.round(rows[0].percent)).toBe(67);
+    expect(storageRows(undefined)).toEqual([]);
   });
 
   it("counts what duplicates would free and says what the button does", () => {
@@ -106,7 +123,13 @@ describe("DashboardView", () => {
     const onNavigate = vi.fn();
     render(<DashboardView onNavigate={onNavigate} />);
     expect(await screen.findByText("Library on Photos (D:)")).toBeInTheDocument();
-    expect(screen.getByText("412.0 GB free of 1000.0 GB")).toBeInTheDocument();
+    expect(screen.getByText(/SecurePhotos uses 447\.0 GB · 412\.0 GB free of 1000\.0 GB/)).toBeInTheDocument();
+    const usage = screen.getByRole("list", { name: "What SecurePhotos uses" });
+    expect(Array.from(usage.querySelectorAll(".dash-usage-label")).map((el) => el.textContent)).toEqual([
+      "Photos",
+      "App data · database and AI models",
+      "Private Vault · encrypted",
+    ]);
     expect(screen.getByText("34 groups of copies and bursts. About 1.2 GB can be freed.")).toBeInTheDocument();
     expect(screen.getByText("12 videos can be made smaller without visible change. About 3.4 GB to save.")).toBeInTheDocument();
     expect(screen.getByText("1,204 of 1,218 photos enhanced · 18.0 GB saved so far")).toBeInTheDocument();
