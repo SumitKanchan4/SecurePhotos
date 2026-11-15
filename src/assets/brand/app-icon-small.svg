@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SecurePhotos">
-  <!-- Simplified SecurePhotos icon for 32 px and below (taskbar, title bar, tray):
-       same shield + lens, without the fine detail that blurs at small sizes. -->
-  <rect x="2" y="2" width="60" height="60" rx="15" fill="#0A0A0A"/>
-  <path d="M32 9 L50 15.5 V31 C50 42.5 42 50.5 32 55 C22 50.5 14 42.5 14 31 V15.5 Z" fill="#C6FF00" fill-opacity="0.18" stroke="#C6FF00" stroke-width="3.5" stroke-linejoin="round"/>
-  <circle cx="32" cy="32" r="10" fill="#C6FF00"/>
-  <circle cx="32" cy="32" r="4.2" fill="#0A0A0A"/>
-</svg>

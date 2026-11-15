@@ -2223,23 +2223,8 @@ html, body, #root {
 }
 .alb-page:has(.alb-grid) { overflow: hidden; padding-bottom: 0; }
 .alb-section { display: flex; flex-direction: column; gap: 10px; }
-.alb-foryou { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.alb-foryou-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px;
-  border-radius: 16px;
-  border: 1px solid var(--glass-border);
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  text-align: left;
-  cursor: pointer;
-}
-.alb-foryou-card:hover, .alb-cover-card:hover .alb-cover { border-color: var(--glass-border-highlight); }
-.alb-foryou-cover { width: 56px; height: 56px; flex: none; border-radius: 12px; overflow: hidden; background: var(--bg-surface-elevated); display: block; }
-.alb-foryou-cover img, .alb-cover img, .alb-story-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.alb-foryou-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.alb-cover-card:hover .alb-cover { border-color: var(--glass-border-highlight); }
+.alb-cover img, .alb-story-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .alb-cover-empty { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
 .alb-covers { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px 14px; }
 .alb-cover-card {
@@ -2265,7 +2250,7 @@ html, body, #root {
   background: var(--bg-surface-elevated);
 }
 .alb-cover-name { font-size: 14px; font-weight: 800; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.alb-foryou-card:focus-visible, .alb-cover-card:focus-visible, .alb-story:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 3px; border-radius: 14px; }
+.alb-cover-card:focus-visible, .alb-story:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 3px; border-radius: 14px; }
 .alb-search {
   display: inline-flex;
   align-items: center;
@@ -2486,3 +2471,43 @@ html, body, #root {
 .sto-track { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 14px; border: 1px solid var(--glass-border); background: var(--bg-app); }
 .sto-track-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .sto-track-text .dash-muted { font-size: 12px; }
+
+/* Albums made for you (R9b): big mosaic covers with a lime badge */
+.alb-made { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px 14px; }
+.alb-made-cover {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  margin-bottom: 4px;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  background: var(--bg-surface-elevated);
+}
+.alb-made-cover.is-2 { grid-template-columns: 1fr 1fr; }
+.alb-made-cover.is-3 { grid-template-columns: 2fr 1fr; grid-template-rows: 1fr 1fr; }
+.alb-made-cover.is-3 img:first-child { grid-row: 1 / 3; }
+.alb-made-cover img { width: 100%; height: 100%; min-height: 0; object-fit: cover; display: block; }
+.alb-made-empty { display: flex; align-items: center; justify-content: center; color: var(--accent-ink); }
+.alb-made-empty svg { width: 40px; height: 40px; }
+.alb-made-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: var(--radius-full);
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.alb-cover-card:hover .alb-made-cover { border-color: var(--glass-border-highlight); }
+
