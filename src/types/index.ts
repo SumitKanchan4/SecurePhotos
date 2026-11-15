@@ -264,6 +264,9 @@ export interface StoryModel {
   cover_photo_id?: number | null;
   is_saved?: boolean;
   slides_count?: number;
+  /** Oldest and newest photo dates in the story (story list only). */
+  first_taken_at?: string | null;
+  last_taken_at?: string | null;
   slides: StorySlide[];
 }
 
