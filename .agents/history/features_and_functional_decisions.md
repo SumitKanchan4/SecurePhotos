@@ -6067,5 +6067,5 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 
 ### Technical Touchpoints
 - `engine/database.py` (`db_connection`), `engine/api/vault.py` (`_VAULT_PHOTO_COLUMNS`, `_vault_photo_dict`, `list_vault_album_photos`, `list_vault_photos`).
-- Tests: `engine/tests/test_key_handling.py` (+1: a vault photo's sealed details are decrypted once and fill latitude, longitude and document text). Mutation check: going back to a second decryption fails it. Vault tests (49) and the engine suite pass; ruff passes.
+- Tests: `engine/tests/test_key_handling.py` (+1: a vault photo's sealed details are decrypted once and fill latitude, longitude and document text). Mutation check: going back to a second decryption fails it. Vault and key-handling tests (53) and the engine suite pass; ruff passes.
 
