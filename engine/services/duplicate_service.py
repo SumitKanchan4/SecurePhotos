@@ -6,6 +6,7 @@ evaluates and scores each photo to determine the AI-suggested "Best Pick",
 and safely orchestrates space reclamation via the 30-day soft-delete trash.
 """
 
+import asyncio
 import itertools
 import logging
 import struct
@@ -13,6 +14,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 from PIL import Image
 import aiosqlite
+
+from engine.config import resolve_media_path
 
 logger = logging.getLogger("securephotos.services.duplicates")
 
@@ -359,7 +362,10 @@ async def scan_and_cluster_duplicates(conn: aiosqlite.Connection) -> List[Dict[s
             computed_phash = None
             for cp in candidate_paths:
                 if cp:
-                    computed_phash = compute_image_dhash(cp)
+                    # Stored paths are relative to the library; resolve them first (R7c fix: the
+                    # raw relative path never opened, so near-duplicates were never found).
+                    # Image work runs off the event loop (H7).
+                    computed_phash = await asyncio.to_thread(compute_image_dhash, str(resolve_media_path(cp)))
                     if computed_phash:
                         break
             if computed_phash:
