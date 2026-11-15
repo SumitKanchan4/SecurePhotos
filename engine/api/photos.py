@@ -1210,8 +1210,9 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
                 a_row = await a_cur.fetchone()
                 if a_row:
                     album_name = a_row["name"]
-        except Exception:
-            pass
+        except Exception as e:
+            # Only the progress label needs the name; the import itself goes on.
+            logger.warning("Could not read the album name for import progress: %s", e)
 
     global import_progress_state
     import_progress_state.update({

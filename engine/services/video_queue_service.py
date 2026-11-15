@@ -195,8 +195,9 @@ async def cleanup_orphaned_video_temp_files() -> None:
             if enh_tmp.exists():
                 enh_tmp.unlink()
                 logger.info(f"Cleaned up orphaned enhancing temp file: {enh_tmp}")
-        except Exception:
-            pass
+        except OSError as e:
+            # A leftover temp file that can't be removed now is tried again next start.
+            logger.warning("Could not remove a leftover video temp file next to %s: %s", p, e)
 
 
 async def _process_next_video_job() -> bool:
