@@ -754,11 +754,8 @@ export const App: React.FC = () => {
             />
           ) : activeTab === "people" ? (
             /* People Management & Representative Medoid Tagging View */
-            <PeopleView 
-              onPhotoClick={(idx, personPhotos) => {
-                setLightboxPhotos(personPhotos);
-                setLightboxIndex(idx);
-              }}
+            <PeopleView
+              onOpenPhotos={openPhotoViewer}
               onToggleFavorite={handleToggleFavorite}
             />
           ) : activeTab === "documents" ? (
