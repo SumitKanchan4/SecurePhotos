@@ -37,7 +37,9 @@ jobs:
       - name: Set up FFmpeg
         uses: FedericoCarboni/setup-ffmpeg@36c6454b5a2348e7794ba2d82a21506605921e3d # v3
         with:
-          ffmpeg-version: release
+          # Pinned: "release" looks up the newest stable build among GitHub releases, and the newest
+          # page can hold only nightly builds, which failed every run on 2026-11-15.
+          ffmpeg-version: 9.0.2
 
       - name: Stage FFmpeg and resource folders
         shell: bash
