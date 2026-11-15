@@ -6032,3 +6032,29 @@ Owner review of R9c (2026-11-15, screenshot of the real app).
 - Tests: `vault.test.tsx` (+2: unlocking with the PIN, where a wrong PIN shows the engine's message and clears the boxes; unlocking with the master password); new `src/hooks/useBackgroundProgress.test.ts` (a finished photo is marked at once; one reload per finished batch). Mutation checks: not clearing the PIN after a wrong one, and reloading on every poll instead of once per batch, each fail a test. Frontend 143 passed; tsc and build pass.
 - Validated in the UI (Playwright, throwaway library, both themes): the lock card looks as before; the PIN reopens the vault after Lock now ("Unlocked · locks in 4:56"); the master password unlocks too. Startup connects and loads the library (1,242 photos) and the saved theme; progress for enhancing, videos and imports is polled every second; no console errors.
 
+## 147. Redesign Step 11: Vault Setup, Shield, Locked Albums and Documents; Albums Lock Only When Every Photo Can
+
+### Functionality Overview
+Built as on the approved **Private Vault · setup, shield, albums, documents** board (owner approval 2026-11-15). These were the vault screens R4 didn't cover.
+- **Not set up yet**: "Keep private photos here". Photos, videos and papers moved to the vault are locked on this computer, open only with the password or PIN, and never show in Photos, Search or People. Three steps (Choose a password · Add a 4-digit PIN · Print your Emergency Card) and **Set up the vault**. The old screen said "AES-256-GCM".
+- **Privacy shield** (button or P): "Hidden while you look away. The vault stays open behind this." **Show photos** brings it back.
+- **Locked albums**: covers with an **In vault** chip. A locked album uses the same album page as Albums: "← Albums", the name with **In vault** and "4 photos · 2024 – 2026", Slideshow, the month timeline, and a "…" menu with **Move album back to library…**. That asks first ("…will show in Photos and Albums again, and anyone using this computer can see them").
+- **Vault documents**: the same paper cards as Documents (page, title, date, lock badge), and a "…" menu with Open and **Move back to library…** (asks first). The scan-text snippet and "Open Scan" button are gone, as on the main Documents screen.
+- Plain messages throughout: "Moved Passport scans back to your library." instead of "Album decrypted and restored to public library."
+- **Fixed (privacy)**: moving an album to the vault marked it private even when its photos couldn't be locked (for example when a photo's file was missing). It disappeared from Albums and showed in the vault, while its photos stayed in the library unencrypted. Now an album becomes private only when every photo in it was locked; otherwise it stays in Albums. The app says so: "3 photos couldn't be moved to the vault (the file may be missing), so the album stays in your library." Photos that were locked stay in the vault. This mirrors the existing rule for moving an album back.
+- `VaultView.tsx` went from 1,142 to 486 lines (Q5).
+
+### Functional Decision Points & Rationale
+- Reuse the approved album page and document cards instead of vault-only designs: one way to look at an album or a paper everywhere.
+- "Move back to library" always asks, because it makes private things visible to anyone using the computer.
+
+### Technical Touchpoints
+- Engine (`engine/api/vault.py` `lock_album_to_vault`): marks the album private only when no photo failed or was skipped. The response gains `skipped_ids` (missing files) and `status: album_not_locked`.
+- Frontend: new `src/components/vault/VaultScreens.tsx` (`VaultIntro`, `VaultShield`, `VaultAlbumsGrid`, `VaultAlbumPage`, `VaultDocuments`, `vaultAlbumMeta`, `vaultDocMeta`); `VaultView.tsx` renders them; `App.tsx` reports albums that couldn't move; `.vault-intro`, `.vault-shield`, `.vault-lock-chip`, `.vault-album-*`, `.vault-doc*`, `.vault-section` styles.
+- Tests: `engine/tests/test_vault.py` (+1: an album with a missing photo file stays in the library and the response lists it). `vault.test.tsx` (+3: plain setup screen without jargon and with its three steps; locked album cover, page, and moving back only after asking; vault documents as cards, moving back only after asking; shield test updated). Mutation checks: marking the album private regardless, and moving an album or a document back without asking, each fail a test. Frontend 146 passed; engine 267 passed; tsc, build and ruff pass.
+- Validated in the UI (Playwright, throwaway library, both themes):
+  - The shield reads "Hidden while you look away" and Show photos brings the vault back.
+  - "Passport scans" shows as a cover with In vault; its page shows "4 photos · 2024 – 2026", Slideshow and the menu, and the scrubber shows in full.
+  - Documents shows its empty state. Contrast scan: no problems; no console errors.
+  - Locking the test library's albums whose photo files are missing now leaves them in Albums and lists the skipped photos. Before the fix, one such album had been wrongly marked private; moving it back repaired it.
+

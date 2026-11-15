@@ -1,20 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   Lock,
-  Unlock,
   EyeOff,
   Eye,
   Loader2,
   HelpCircle,
-  Sparkles,
-  ArrowRight,
-  ArrowLeft,
-  FileText,
-  Folder,
-  Receipt,
-  CreditCard,
-  FileCheck2,
-  ExternalLink
 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { PhotoTimeline } from "./photos/PhotoTimeline";
@@ -23,7 +13,8 @@ import { PhotoItem, VaultAlbumItem } from "../types";
 import { VaultSetupWizard } from "./VaultSetupWizard";
 import { VaultPasswordResetModal } from "./VaultPasswordResetModal";
 import { VaultLockCard } from "./vault/VaultLockCard";
-import { apiFetch, getApiUrl } from "../services/api";
+import { VaultAlbumPage, VaultAlbumsGrid, VaultDocuments, VaultIntro, VaultShield } from "./vault/VaultScreens";
+import { apiFetch } from "../services/api";
 
 interface VaultViewProps {
   onUnlockRequest?: () => void;
@@ -32,28 +23,6 @@ interface VaultViewProps {
 
 const DEFAULT_AUTO_LOCK_SECONDS = 300; // Used until the saved setting is loaded.
 
-const formatBytes = (bytes?: number) => {
-  if (!bytes || bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-};
-
-const getDocIcon = (doc: PhotoItem) => {
-  const name = (doc.filename || "").toLowerCase();
-  const text = (doc.ocr_text || "").toLowerCase();
-  if (name.includes("receipt") || text.includes("receipt") || text.includes("total") || text.includes("invoice")) {
-    return <Receipt size={18} />;
-  }
-  if (name.includes("passport") || name.includes("license") || name.includes("id") || text.includes("passport") || text.includes("identity")) {
-    return <CreditCard size={18} />;
-  }
-  if (name.includes("tax") || name.includes("w2") || name.includes("1040") || text.includes("internal revenue") || text.includes("tax")) {
-    return <FileCheck2 size={18} />;
-  }
-  return <FileText size={18} />;
-};
 
 /**
  * VaultView Component
@@ -125,13 +94,14 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   }, [vaultPhotos]);
   const visualTimeline = useMemo(() => visualPhotos.map(fromPhotoItem), [visualPhotos]);
   const sortedAlbumPhotos = useMemo(() => sortNewestFirst(vaultAlbumPhotos), [vaultAlbumPhotos]);
-  const albumTimeline = useMemo(() => sortedAlbumPhotos.map(fromPhotoItem), [sortedAlbumPhotos]);
 
   const documentPhotos = useMemo(() => {
     return vaultPhotos.filter((p) => Boolean(p.is_document) || p.mime_type?.includes("pdf") || p.filename?.toLowerCase().endsWith(".pdf") || p.vault_type === "documents");
   }, [vaultPhotos]);
 
   // Memoized photo click handlers to prevent child PhotoCard re-renders on auto-lock countdown ticks
+  const activeAlbum = vaultAlbums.find((a) => a.id === activeVaultAlbumId) ?? null;
+
   const handlePhotoClick = useCallback((idx: number) => {
     onPhotoClick?.(idx, visualPhotos);
   }, [onPhotoClick, visualPhotos]);
@@ -247,7 +217,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     try {
       const res = await apiFetch(`/api/vault/albums/${albumId}/unlock`, { method: "POST" });
       if (res.ok) {
-        showToast("Album decrypted and restored to public library.", "success");
+        showToast(`Moved ${vaultAlbums.find((a) => a.id === albumId)?.name ?? "the album"} back to your library.`, "success");
         setVaultAlbums((prev) => prev.filter((a) => a.id !== albumId));
         if (activeVaultAlbumId === albumId) {
           setActiveVaultAlbumId(null);
@@ -255,11 +225,11 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
         }
         fetchVaultPhotos();
       } else {
-        showToast("Failed to restore album.", "warning");
+        showToast("The album couldn't be moved back. Try again.", "warning");
       }
     } catch (err) {
       console.error("Error restoring vault album:", err);
-      showToast("Error restoring album.", "warning");
+      showToast("The album couldn't be moved back. Try again.", "warning");
     } finally {
       setRestoringAlbumId(null);
     }
@@ -275,15 +245,15 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
         body: JSON.stringify({ photo_ids: [photoId] }),
       });
       if (res.ok) {
-        showToast("Item decrypted and restored to library.", "success");
+        showToast("Moved back to your library.", "success");
         setVaultPhotos((prev) => prev.filter((p) => p.id !== photoId));
         fetchVaultAlbums();
       } else {
-        showToast("Failed to restore item.", "warning");
+        showToast("That couldn't be moved back. Try again.", "warning");
       }
     } catch (err) {
       console.error("Error restoring item:", err);
-      showToast("Error restoring item.", "warning");
+      showToast("That couldn't be moved back. Try again.", "warning");
     } finally {
       setRestoringDocId(null);
     }
@@ -431,166 +401,19 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
         </div>
       )}
 
-      {/* Album Drill-Down Subheader */}
-      {isVaultUnlocked && !isPrivacyShieldActive && activeVaultAlbumId && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "10px 18px",
-            backgroundColor: "var(--glass-surface)",
-            borderRadius: "var(--radius-lg)",
-            border: "1px solid var(--glass-border)",
-            backdropFilter: "blur(24px)",
-            WebkitBackdropFilter: "blur(24px)",
-            boxShadow: "var(--glass-shadow)",
-            flexShrink: 0,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <button
-              onClick={() => {
-                setActiveVaultAlbumId(null);
-                setVaultAlbumPhotos([]);
-              }}
-              className="clickable"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "6px 14px",
-                borderRadius: "var(--radius-full)",
-                backgroundColor: "var(--glass-pill-bg)",
-                border: "1px solid var(--glass-border)",
-                color: "var(--text-primary)",
-                fontSize: "12px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              <ArrowLeft size={13} />
-              <span>Back to Albums</span>
-            </button>
-            <h2 style={{ fontSize: "16px", fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
-              {vaultAlbums.find((a) => a.id === activeVaultAlbumId)?.name || "Album"}
-            </h2>
-            <span
-              style={{
-                padding: "2px 8px",
-                borderRadius: "var(--radius-full)",
-                backgroundColor: "var(--glass-badge-bg)",
-                border: "1px solid var(--glass-badge-border)",
-                fontFamily: "var(--font-mono)",
-                fontSize: "11px",
-                fontWeight: 700,
-                color: "var(--text-secondary)",
-              }}
-            >
-              {vaultAlbumPhotos.length} {vaultAlbumPhotos.length === 1 ? "photo" : "photos"}
-            </span>
-          </div>
-
-          <button
-            onClick={(e) => handleRestoreAlbum(activeVaultAlbumId, e)}
-            disabled={restoringAlbumId === activeVaultAlbumId}
-            className="clickable"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "7px 16px",
-              borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--accent-fill)",
-              border: "none",
-              color: "var(--on-accent)",
-              fontSize: "12px",
-              fontWeight: 700,
-              cursor: restoringAlbumId === activeVaultAlbumId ? "default" : "pointer",
-              opacity: restoringAlbumId === activeVaultAlbumId ? 0.7 : 1,
-            }}
-          >
-            {restoringAlbumId === activeVaultAlbumId ? (
-              <Loader2 size={13} className="spin-animation" />
-            ) : (
-              <Unlock size={13} />
-            )}
-            <span>Restore to Library</span>
-          </button>
-        </div>
-      )}
-
-      {/* ── Main Canvas ───────────────────────────────────────────────────── */}
+      {/* ── Main area: setup, lock card, shield, or the open vault (R4 + R11) ── */}
       {isSetupMode ? (
-        <VaultSetupWizard 
+        <VaultSetupWizard
           onComplete={() => {
             checkVaultStatus();
             setIsSetupMode(false);
             fetchVaultPhotos();
-          }} 
+          }}
           onSwitchToUnlock={isVaultConfigured ? () => setIsSetupMode(false) : undefined}
           onCancel={() => setIsSetupMode(false)}
         />
       ) : !isVaultConfigured ? (
-        /* First-Time Setup Landing Screen (Sleek, Minimalist) */
-        <div 
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--text-muted)",
-            textAlign: "center",
-            padding: "0 20px",
-            minHeight: "440px",
-          }}
-        >
-          <div 
-            style={{
-              width: "64px",
-              height: "64px",
-              borderRadius: "var(--radius-full)",
-              backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
-              border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--accent-primary)",
-              marginBottom: "16px",
-            }}
-          >
-            <Lock size={28} />
-          </div>
-          <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "var(--font-display)" }}>
-            Protect Your Sensitive Media
-          </h2>
-          <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "440px", lineHeight: "1.5", margin: "0 0 24px 0" }}>
-            Create a personal encrypted vault with on-device AES-256-GCM encryption. Everything stays 100% on this device, protected by your master password and quick PIN.
-          </p>
-          <button
-            onClick={() => setIsSetupMode(true)}
-            className="clickable"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "8px",
-              padding: "10px 24px",
-              borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--accent-fill)",
-              border: "none",
-              color: "var(--on-accent)",
-              fontSize: "13px",
-              fontWeight: 700,
-              cursor: "pointer",
-              boxShadow: "0 4px 16px color-mix(in srgb, var(--accent-ink) 30%, transparent)",
-              transition: "all 0.15s ease",
-            }}
-          >
-            <Sparkles size={15} />
-            <span>Set Up Encrypted Vault</span>
-          </button>
-        </div>
+        <VaultIntro onSetUp={() => setIsSetupMode(true)} />
       ) : !isVaultUnlocked ? (
         /* Locked: one card with the PIN (or password) and the Emergency Card link (redesign R4) */
         <VaultLockCard
@@ -599,532 +422,53 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
           showHint={showHint}
           onForgotPassword={() => setShowPasswordResetModal(true)}
         />
+      ) : isPrivacyShieldActive ? (
+        <VaultShield onShow={() => setIsPrivacyShieldActive(false)} />
+      ) : activeAlbum ? (
+        <VaultAlbumPage
+          album={activeAlbum}
+          photos={sortedAlbumPhotos}
+          loading={isLoadingAlbumPhotos}
+          moving={restoringAlbumId === activeAlbum.id}
+          onBack={() => {
+            setActiveVaultAlbumId(null);
+            setVaultAlbumPhotos([]);
+          }}
+          onOpenPhoto={handleAlbumPhotoClick}
+          onMoveOut={() => handleRestoreAlbum(activeAlbum.id)}
+        />
+      ) : activeVaultSection === "photos" ? (
+        isLoadingPhotos ? (
+          <div className="dash-empty">
+            <Loader2 size={22} className="spin" />
+          </div>
+        ) : visualPhotos.length === 0 ? (
+          <div className="dash-empty">
+            <Lock size={26} aria-hidden="true" />
+            <h2>Your vault is empty</h2>
+            <p>Open a photo or video and press the lock (or L) to move it here. It disappears from Photos until you move it back.</p>
+            <button type="button" className="dash-btn" onClick={() => setActiveTab("photos")}>
+              Go to Photos
+            </button>
+          </div>
+        ) : (
+          <div className="vault-timeline">
+            <PhotoTimeline photos={visualTimeline} onOpen={handlePhotoClick} vault minScrubberSections={4} />
+          </div>
+        )
+      ) : activeVaultSection === "albums" ? (
+        <div className="vault-section">
+          <VaultAlbumsGrid albums={vaultAlbums} loading={isLoadingAlbums} onOpen={(album) => setActiveVaultAlbumId(album.id)} />
+        </div>
       ) : (
-        /* Unlocked State: Gallery or Empty Screen */
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
-          
-          {/* Frosted Privacy Shield Screen Overlay */}
-          {isPrivacyShieldActive && (
-            <div 
-              style={{
-                position: "absolute",
-                inset: 0,
-                backgroundColor: "rgba(9, 10, 15, 0.88)",
-                backdropFilter: "blur(32px)",
-                WebkitBackdropFilter: "blur(32px)",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                zIndex: 50,
-              }}
-            >
-              <Lock size={48} style={{ color: "var(--accent-primary)", marginBottom: "16px" }} />
-              <h3 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>Privacy Shield Active</h3>
-              <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginTop: "6px" }}>
-                Vault contents are obscured for privacy while unlocked.
-              </p>
-              <button
-                onClick={() => setIsPrivacyShieldActive(false)}
-                className="clickable"
-                style={{
-                  marginTop: "16px",
-                  padding: "8px 20px",
-                  borderRadius: "var(--radius-full)",
-                  backgroundColor: "var(--accent-fill)",
-                  border: "none",
-                  color: "var(--on-accent)",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Dismiss Shield
-              </button>
-            </div>
-          )}
-
-          {/* ── Active Album Drill-Down Content ── */}
-          {activeVaultAlbumId ? (
-            isLoadingAlbumPhotos ? (
-              <div 
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "12px",
-                  color: "var(--text-secondary)",
-                  minHeight: "400px",
-                }}
-              >
-                <Loader2 size={24} className="spin-animation" style={{ color: "var(--accent-primary)" }} />
-                <span style={{ fontSize: "13px" }}>Decrypting Album Photos...</span>
-              </div>
-            ) : vaultAlbumPhotos.length === 0 ? (
-              <div 
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--text-muted)",
-                  textAlign: "center",
-                  padding: "40px 20px",
-                  minHeight: "400px",
-                }}
-              >
-                <Folder size={40} style={{ color: "var(--accent-primary)", marginBottom: "12px", opacity: 0.7 }} />
-                <h3 style={{ fontSize: "16px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px 0" }}>
-                  This Locked Album is Empty
-                </h3>
-                <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0 }}>
-                  No active photos found in this album.
-                </p>
-              </div>
-            ) : (
-              <div className="vault-timeline">
-                <PhotoTimeline photos={albumTimeline} onOpen={handleAlbumPhotoClick} vault minScrubberSections={4} />
-              </div>
-            )
-          ) : activeVaultSection === "photos" ? (
-            /* ── Section 1: Visual Photos ── */
-            isLoadingPhotos ? (
-              <div 
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "12px",
-                  color: "var(--text-secondary)",
-                  minHeight: "400px",
-                }}
-              >
-                <Loader2 size={24} className="spin-animation" style={{ color: "var(--accent-primary)" }} />
-                <span style={{ fontSize: "13px" }}>Decrypting Vault Gallery...</span>
-              </div>
-            ) : visualPhotos.length === 0 ? (
-              <div 
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--text-muted)",
-                  textAlign: "center",
-                  padding: "0 20px",
-                  minHeight: "440px",
-                }}
-              >
-                <div 
-                  style={{
-                    width: "64px",
-                    height: "64px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
-                    border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "var(--accent-primary)",
-                    marginBottom: "16px",
-                  }}
-                >
-                  <Lock size={28} />
-                </div>
-                <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "var(--font-display)" }}>
-                  Your vault is empty
-                </h2>
-                <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "440px", lineHeight: "1.5", margin: "0 0 20px 0" }}>
-                  Select any photo or video from your library and press <strong>"L"</strong> or choose <strong>"Move to Vault"</strong> to securely encrypt it on this device.
-                </p>
-                <button
-                  onClick={() => setActiveTab("photos")}
-                  className="clickable"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    padding: "8px 18px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "var(--glass-pill-bg)",
-                    border: "1px solid var(--glass-border)",
-                    color: "var(--text-primary)",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  <span>Browse Photos Library</span>
-                  <ArrowRight size={13} />
-                </button>
-              </div>
-            ) : (
-              <div className="vault-timeline">
-                <PhotoTimeline photos={visualTimeline} onOpen={handlePhotoClick} vault minScrubberSections={4} />
-              </div>
-            )
-          ) : activeVaultSection === "albums" ? (
-            /* ── Section 2: Locked Albums ── */
-            isLoadingAlbums ? (
-              <div 
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "12px",
-                  color: "var(--text-secondary)",
-                  minHeight: "400px",
-                }}
-              >
-                <Loader2 size={24} className="spin-animation" style={{ color: "var(--accent-primary)" }} />
-                <span style={{ fontSize: "13px" }}>Loading Locked Albums...</span>
-              </div>
-            ) : vaultAlbums.length === 0 ? (
-              <div 
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--text-muted)",
-                  textAlign: "center",
-                  padding: "0 20px",
-                  minHeight: "440px",
-                }}
-              >
-                <div 
-                  style={{
-                    width: "64px",
-                    height: "64px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
-                    border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "var(--accent-primary)",
-                    marginBottom: "16px",
-                  }}
-                >
-                  <Folder size={28} />
-                </div>
-                <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "var(--font-display)" }}>
-                  No Locked Albums
-                </h2>
-                <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "440px", lineHeight: "1.5", margin: "0 0 20px 0" }}>
-                  Lock any album from the Albums tab to encrypt all its member photos and isolate them inside the private vault.
-                </p>
-                <button
-                  onClick={() => setActiveTab("albums")}
-                  className="clickable"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    padding: "8px 18px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "var(--glass-pill-bg)",
-                    border: "1px solid var(--glass-border)",
-                    color: "var(--text-primary)",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  <span>Browse Albums</span>
-                  <ArrowRight size={13} />
-                </button>
-              </div>
-            ) : (
-              <div style={{ flex: 1, overflowY: "auto", padding: "4px 0" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
-                  {vaultAlbums.map((album) => (
-                    <div
-                      key={album.id}
-                      onClick={() => setActiveVaultAlbumId(album.id)}
-                      className="clickable glass-panel"
-                      style={{
-                        borderRadius: "var(--radius-lg)",
-                        backgroundColor: "var(--glass-surface)",
-                        border: "1px solid var(--glass-border)",
-                        overflow: "hidden",
-                        display: "flex",
-                        flexDirection: "column",
-                        boxShadow: "var(--glass-shadow)",
-                        cursor: "pointer",
-                        transition: "transform 0.18s ease, box-shadow 0.18s ease",
-                      }}
-                    >
-                      <div style={{ position: "relative", width: "100%", height: "170px", backgroundColor: "rgba(15, 23, 42, 0.6)", overflow: "hidden" }}>
-                        {album.cover_photo_id ? (
-                          <img
-                            src={getApiUrl(`/api/vault/thumbnail/${album.cover_photo_id}`)}
-                            alt={album.name}
-                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                            onError={(e) => { (e.currentTarget as HTMLElement).style.display = "none"; }}
-                          />
-                        ) : (
-                          <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)" }}>
-                            <Folder size={40} style={{ color: "var(--accent-primary)", opacity: 0.5 }} />
-                          </div>
-                        )}
-                        <div style={{ position: "absolute", top: "10px", right: "10px", display: "flex", alignItems: "center", gap: "4px", padding: "3px 8px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(15, 23, 42, 0.75)", backdropFilter: "blur(12px)", border: "1px solid color-mix(in srgb, var(--accent-ink) 40%, transparent)", color: "var(--accent-fill)", fontSize: "10px", fontWeight: 700 }}>
-                          <Lock size={10} />
-                          <span>LOCKED</span>
-                        </div>
-                      </div>
-
-                      <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {album.name}
-                          </h3>
-                          <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
-                            {album.photo_count} {album.photo_count === 1 ? "photo" : "photos"}
-                          </span>
-                        </div>
-
-                        <button
-                          onClick={(e) => handleRestoreAlbum(album.id, e)}
-                          disabled={restoringAlbumId === album.id}
-                          className="clickable"
-                          title="Restore album and all its photos to public library"
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "5px",
-                            padding: "6px 12px",
-                            borderRadius: "var(--radius-full)",
-                            backgroundColor: "var(--glass-pill-bg)",
-                            border: "1px solid var(--glass-border)",
-                            color: "var(--accent-primary)",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            cursor: restoringAlbumId === album.id ? "default" : "pointer",
-                            flexShrink: 0,
-                          }}
-                        >
-                          {restoringAlbumId === album.id ? (
-                            <Loader2 size={11} className="spin-animation" />
-                          ) : (
-                            <Unlock size={11} />
-                          )}
-                          <span>Restore</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          ) : (
-            /* ── Section 3: Encrypted Documents ── */
-            isLoadingPhotos ? (
-              <div 
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "12px",
-                  color: "var(--text-secondary)",
-                  minHeight: "400px",
-                }}
-              >
-                <Loader2 size={24} className="spin-animation" style={{ color: "var(--accent-primary)" }} />
-                <span style={{ fontSize: "13px" }}>Decrypting Documents...</span>
-              </div>
-            ) : documentPhotos.length === 0 ? (
-              <div 
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--text-muted)",
-                  textAlign: "center",
-                  padding: "0 20px",
-                  minHeight: "440px",
-                }}
-              >
-                <div 
-                  style={{
-                    width: "64px",
-                    height: "64px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
-                    border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "var(--accent-primary)",
-                    marginBottom: "16px",
-                  }}
-                >
-                  <FileText size={28} />
-                </div>
-                <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "var(--font-display)" }}>
-                  No Encrypted Documents
-                </h2>
-                <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "440px", lineHeight: "1.5", margin: "0 0 20px 0" }}>
-                  Passports, IDs, tax returns, receipts, and invoices moved to the vault appear here with on-device OCR text previews.
-                </p>
-              </div>
-            ) : (
-              <div style={{ flex: 1, overflowY: "auto", padding: "4px 0" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: "16px" }}>
-                  {documentPhotos.map((doc, idx) => (
-                    <div
-                      key={doc.id}
-                      className="glass-panel"
-                      style={{
-                        borderRadius: "var(--radius-lg)",
-                        backgroundColor: "var(--glass-surface)",
-                        border: "1px solid var(--glass-border)",
-                        padding: "16px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "12px",
-                        boxShadow: "var(--glass-shadow)",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
-                          <div
-                            style={{
-                              width: "38px",
-                              height: "38px",
-                              borderRadius: "var(--radius-md)",
-                              backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
-                              border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
-                              color: "var(--accent-primary)",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              flexShrink: 0,
-                            }}
-                          >
-                            {getDocIcon(doc)}
-                          </div>
-
-                          <div style={{ minWidth: 0 }}>
-                            <h3 style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {doc.caption || doc.filename}
-                            </h3>
-                            <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
-                              {doc.taken_at ? doc.taken_at.split("T")[0] : "Document"} • {formatBytes(doc.file_size)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "4px",
-                            padding: "2px 8px",
-                            borderRadius: "var(--radius-full)",
-                            backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
-                            border: "1px solid color-mix(in srgb, var(--accent-ink) 30%, transparent)",
-                            color: "var(--accent-primary)",
-                            fontSize: "10px",
-                            fontWeight: 700,
-                            flexShrink: 0,
-                          }}
-                        >
-                          <Lock size={10} /> ENCRYPTED
-                        </span>
-                      </div>
-
-                      {/* OCR Extracted Snippet Preview */}
-                      {doc.ocr_text ? (
-                        <div
-                          style={{
-                            backgroundColor: "rgba(15, 23, 42, 0.4)",
-                            padding: "10px 12px",
-                            borderRadius: "var(--radius-sm)",
-                            border: "1px solid var(--glass-border)",
-                            fontSize: "11px",
-                            fontFamily: "var(--font-mono)",
-                            color: "var(--text-secondary)",
-                            lineHeight: "1.4",
-                            maxHeight: "72px",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          <span style={{ color: "var(--accent-primary)", fontWeight: 600 }}>OCR Extracted: </span>
-                          {doc.ocr_text}
-                        </div>
-                      ) : null}
-
-                      {/* Document Action Row */}
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "auto" }}>
-                        <button
-                          onClick={() => onPhotoClick?.(idx, documentPhotos)}
-                          className="clickable"
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "5px",
-                            padding: "6px 14px",
-                            borderRadius: "var(--radius-full)",
-                            backgroundColor: "var(--glass-pill-bg)",
-                            border: "1px solid var(--glass-border)",
-                            color: "var(--text-primary)",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            cursor: "pointer",
-                          }}
-                        >
-                          <ExternalLink size={12} />
-                          <span>Open Scan</span>
-                        </button>
-
-                        <button
-                          onClick={(e) => handleRestoreItem(doc.id, e)}
-                          disabled={restoringDocId === doc.id}
-                          className="clickable"
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "5px",
-                            padding: "6px 14px",
-                            borderRadius: "var(--radius-full)",
-                            backgroundColor: "var(--accent-fill)",
-                            border: "none",
-                            color: "var(--on-accent)",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            cursor: restoringDocId === doc.id ? "default" : "pointer",
-                            opacity: restoringDocId === doc.id ? 0.7 : 1,
-                          }}
-                        >
-                          {restoringDocId === doc.id ? (
-                            <Loader2 size={12} className="spin-animation" />
-                          ) : (
-                            <Unlock size={12} />
-                          )}
-                          <span>Restore</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          )}
+        <div className="vault-section">
+          <VaultDocuments
+            docs={documentPhotos}
+            loading={isLoadingPhotos}
+            movingId={restoringDocId}
+            onOpen={(idx) => onPhotoClick?.(idx, documentPhotos)}
+            onMoveOut={(doc) => handleRestoreItem(doc.id)}
+          />
         </div>
       )}
 
