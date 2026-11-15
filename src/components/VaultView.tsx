@@ -1,29 +1,25 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { 
-  Lock, 
-  Unlock, 
-  ShieldCheck, 
-  Clock, 
-  EyeOff, 
-  Eye, 
-  ShieldAlert, 
-  Loader2, 
-  HelpCircle, 
-  Sparkles, 
-  KeyRound, 
+import {
+  Lock,
+  Unlock,
+  EyeOff,
+  Eye,
+  ShieldAlert,
+  Loader2,
+  HelpCircle,
+  Sparkles,
   ArrowRight,
   ArrowLeft,
-  AlertTriangle,
   FileText,
   Folder,
-  Image as ImageIcon,
   Receipt,
   CreditCard,
   FileCheck2,
   ExternalLink
 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
-import { PhotoGrid } from "./PhotoGrid";
+import { PhotoTimeline } from "./photos/PhotoTimeline";
+import { fromPhotoItem, sortNewestFirst } from "../utils/photoTimeline";
 import { PhotoItem, VaultAlbumItem } from "../types";
 import { VaultSetupWizard } from "./VaultSetupWizard";
 import { VaultPasswordResetModal } from "./VaultPasswordResetModal";
@@ -62,16 +58,16 @@ const getDocIcon = (doc: PhotoItem) => {
 /**
  * VaultView Component
  *
- * Flagship Zero-Trust Encrypted Vault with configurable auto-lock (1-30 minutes),
- * 4-digit quick PIN unlock with brute-force lock protection,
- * Master Password fallback, Emergency Card password reset, and guarded factory reset.
+ * Encrypted Private Vault (redesign R4): calm header with the auto-lock countdown, privacy
+ * shield (P) and Lock now; Photos / Albums / Documents tabs; photos in month sections with the
+ * month/year scrubber once the vault spans several months. Locked: one card with the PIN (or
+ * password) and the Emergency Card link. Factory reset lives in Settings → Private Vault.
  */
 export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   const { 
     isVaultUnlocked, 
     setIsVaultUnlocked,
     isVaultConfigured,
-    setIsVaultConfigured,
     vaultPasswordHint,
     hasVaultPin,
     isVaultPinLocked,
@@ -106,32 +102,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loginError, setLoginError] = useState("");
 
-  // Guarded factory reset modal
-  const [showResetModal, setShowResetModal] = useState(false);
   const [showPasswordResetModal, setShowPasswordResetModal] = useState(false);
-  const [resetConfirmText, setResetConfirmText] = useState("");
-  const [isResetting, setIsResetting] = useState(false);
-  // What a reset would erase; fetched only when the reset screen opens (not polled).
-  const [resetPreview, setResetPreview] = useState<{ photo_count: number; album_count: number } | null>(null);
-
-  useEffect(() => {
-    if (!showResetModal) {
-      setResetPreview(null);
-      return;
-    }
-    let cancelled = false;
-    apiFetch("/api/vault/reset-preview")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!cancelled && data) setResetPreview(data);
-      })
-      .catch(() => {
-        /* Count is informational; the generic warning still shows. */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [showResetModal]);
 
   // Auto-lock countdown timer (5 minutes = 300s)
   // Idle timeout from Settings (auto_lock_duration); the engine enforces the same value (M8).
@@ -156,8 +127,11 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
 
   // Derived content partitions
   const visualPhotos = useMemo(() => {
-    return vaultPhotos.filter((p) => !p.is_document && !p.mime_type?.includes("pdf") && !p.filename?.toLowerCase().endsWith(".pdf"));
+    return sortNewestFirst(vaultPhotos.filter((p) => !p.is_document && !p.mime_type?.includes("pdf") && !p.filename?.toLowerCase().endsWith(".pdf")));
   }, [vaultPhotos]);
+  const visualTimeline = useMemo(() => visualPhotos.map(fromPhotoItem), [visualPhotos]);
+  const sortedAlbumPhotos = useMemo(() => sortNewestFirst(vaultAlbumPhotos), [vaultAlbumPhotos]);
+  const albumTimeline = useMemo(() => sortedAlbumPhotos.map(fromPhotoItem), [sortedAlbumPhotos]);
 
   const documentPhotos = useMemo(() => {
     return vaultPhotos.filter((p) => Boolean(p.is_document) || p.mime_type?.includes("pdf") || p.filename?.toLowerCase().endsWith(".pdf") || p.vault_type === "documents");
@@ -169,8 +143,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   }, [onPhotoClick, visualPhotos]);
 
   const handleAlbumPhotoClick = useCallback((idx: number) => {
-    onPhotoClick?.(idx, vaultAlbumPhotos);
-  }, [onPhotoClick, vaultAlbumPhotos]);
+    onPhotoClick?.(idx, sortedAlbumPhotos);
+  }, [onPhotoClick, sortedAlbumPhotos]);
 
 
   // Check vault configuration on mount
@@ -448,395 +422,86 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     }
   };
 
-  // Guarded factory reset
-  const handleGuardedReset = async () => {
-    if (resetConfirmText.trim() !== "ERASE ALL DATA") {
-      setLoginError("Please type 'ERASE ALL DATA' exactly to confirm factory reset.");
-      return;
-    }
+  // Auto-lock countdown as m:ss ("locks in 4:58").
+  const formatTimeRemaining = (totalSec: number) => `${Math.floor(totalSec / 60)}:${String(totalSec % 60).padStart(2, "0")}`;
 
-    setIsResetting(true);
-    try {
-      const res = await apiFetch("/api/vault/reset", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // Send exactly what the user typed; the engine verifies the phrase itself.
-        body: JSON.stringify({ confirm_phrase: resetConfirmText.trim() }),
-      });
-
-      if (res.ok) {
-        setIsVaultConfigured(false);
-        setIsVaultUnlocked(false);
-        setShowResetModal(false);
-        setResetConfirmText("");
-        setIsSetupMode(true);
-        await checkVaultStatus();
-        showToast("Vault erased. You can now set up a new vault.", "info");
-      } else {
-        const data = await res.json().catch(() => ({}));
-        showToast(data.detail || "Reset failed.", "warning");
-      }
-    } catch (err) {
-      console.error("Reset vault error:", err);
-      showToast("Error resetting vault.", "warning");
-    } finally {
-      setIsResetting(false);
-    }
-  };
-
-  // Formatted auto-lock timer string
-  const formatTimeRemaining = (totalSec: number) => {
-    if (totalSec < 60) return `${totalSec}s`;
-    const m = Math.floor(totalSec / 60);
-    const s = totalSec % 60;
-    return `${m}m ${s < 10 ? "0" : ""}${s}s`;
-  };
+  // P toggles the privacy shield while the vault is open (not while typing).
+  useEffect(() => {
+    if (!isVaultUnlocked) return;
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "p" || e.key === "P") setIsPrivacyShieldActive((v) => !v);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isVaultUnlocked]);
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", padding: "16px 24px 0", gap: "16px" }}>
       
-      {/* ── Persistent 3-Column Liquid-Glass Header Toolbar ───────────────── */}
-      <div 
-        className="liquid-glass-toolbar"
-        style={{ 
-          display: "flex", 
-          alignItems: "center", 
-          justifyContent: "space-between", 
-          gap: "12px",
-          padding: "10px 20px",
-          minHeight: "56px",
-          backgroundColor: "var(--glass-surface)",
-          backdropFilter: "blur(24px)",
-          WebkitBackdropFilter: "blur(24px)",
-          borderRadius: "var(--radius-lg)",
-          border: "1px solid var(--glass-border)",
-          boxShadow: "var(--glass-shadow)",
-          position: "sticky",
-          top: 0,
-          zIndex: 20,
-          flexShrink: 0,
-        }}
-      >
-        {/* Left Column: Security Status Badge */}
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-start", gap: "10px", minWidth: "160px" }}>
-          {isVaultUnlocked ? (
-            <>
-              <div 
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: "var(--radius-full)",
-                  backgroundColor: "rgba(16, 185, 129, 0.12)",
-                  border: "1px solid rgba(16, 185, 129, 0.3)",
-                  color: "var(--accent-success)",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                }}
-              >
-                <ShieldCheck size={13} />
-                <span>UNLOCKED</span>
-              </div>
-
-              <span 
-                style={{ 
-                  fontSize: "11px", 
-                  color: secondsRemaining <= 30 ? "var(--accent-danger, #ef4444)" : "var(--text-muted)", 
-                  display: "flex", 
-                  alignItems: "center", 
-                  gap: "4px",
-                  fontFamily: "var(--font-mono)",
-                }}
-              >
-                <Clock size={12} /> Auto-locks in {formatTimeRemaining(secondsRemaining)}
-              </span>
-            </>
-          ) : !isVaultConfigured ? (
-            <div 
-              style={{
-                padding: "4px 10px",
-                borderRadius: "var(--radius-full)",
-                backgroundColor: "rgba(59, 130, 246, 0.12)",
-                border: "1px solid rgba(59, 130, 246, 0.3)",
-                color: "var(--accent-primary)",
-                fontSize: "11px",
-                fontWeight: 700,
-                display: "flex",
-                alignItems: "center",
-                gap: "5px",
-              }}
-            >
-              <KeyRound size={13} />
-              <span>SETUP REQUIRED</span>
-            </div>
-          ) : (
-            <div 
-              style={{
-                padding: "4px 10px",
-                borderRadius: "var(--radius-full)",
-                backgroundColor: "rgba(59, 130, 246, 0.10)",
-                border: "1px solid rgba(59, 130, 246, 0.25)",
-                color: "var(--accent-primary)",
-                fontSize: "11px",
-                fontWeight: 700,
-                display: "flex",
-                alignItems: "center",
-                gap: "5px",
-              }}
-            >
-              <Lock size={13} />
-              <span>LOCKED</span>
-            </div>
-          )}
-        </div>
-
-        {/* Center Column: Centered Display Title & Baseline Capsule Badge */}
-        <div 
-          style={{ 
-            flex: "0 1 auto", 
-            display: "flex", 
-            alignItems: "baseline", 
-            justifyContent: "center", 
-            gap: "10px", 
-            minWidth: 0 
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <Lock size={18} style={{ color: "var(--accent-primary)" }} />
-            <h1
-              style={{
-                fontSize: "22px",
-                fontWeight: 800,
-                fontFamily: "Plus Jakarta Sans, sans-serif",
-                letterSpacing: "-0.03em",
-                color: "var(--text-primary)",
-                margin: 0,
-                whiteSpace: "nowrap",
-              }}
-            >
-              Encrypted Vault
-            </h1>
-          </div>
-
-          {/* Inline Frosted Capsule Badge on same horizontal baseline */}
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              padding: "2px 8px",
-              borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--glass-badge-bg)",
-              border: "1px solid var(--glass-badge-border)",
-              fontFamily: "var(--font-mono)",
-              fontSize: "11px",
-              fontWeight: 700,
-              color: "var(--text-secondary)",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {isVaultUnlocked 
-              ? activeVaultAlbumId
-                ? `${vaultAlbumPhotos.length} ${vaultAlbumPhotos.length === 1 ? "photo" : "photos"}`
-                : activeVaultSection === "photos"
-                  ? `${visualPhotos.length} ${visualPhotos.length === 1 ? "photo" : "photos"}`
-                  : activeVaultSection === "albums"
-                    ? `${vaultAlbums.length} ${vaultAlbums.length === 1 ? "album" : "albums"}`
-                    : `${documentPhotos.length} ${documentPhotos.length === 1 ? "document" : "documents"}`
-              : !isVaultConfigured 
-                ? "Not Set Up" 
-                : "Locked"}
+      {/* ── Header (redesign R4): title, calm status, privacy shield, Lock now ── */}
+      <div className="vault-header">
+        <h1 className="vault-title">Private Vault</h1>
+        {isVaultUnlocked ? (
+          <span className="vault-status" role="status" aria-live="off">
+            <span className={`vault-status-dot${secondsRemaining <= 30 ? " is-soon" : ""}`} />
+            Unlocked · locks in {formatTimeRemaining(secondsRemaining)}
           </span>
-        </div>
-
-        {/* Right Column: Actions */}
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px", minWidth: "160px" }}>
-          {isVaultUnlocked ? (
-            <>
-              {vaultEnhancement?.is_active && vaultEnhancement.total_count > 0 && (
-                <span
-                  title="Vault photos are enhanced only while the vault is open. Nothing is ever stored unencrypted."
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    padding: "4px 10px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "var(--glass-badge-bg)",
-                    border: "1px solid var(--glass-badge-border)",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "var(--accent-primary)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  <Loader2 size={12} className="spin" />
-                  {vaultEnhancement.paused_reason === "on_battery"
-                    ? `Enhancing paused on battery (${vaultEnhancement.completed_count} of ${vaultEnhancement.total_count} done)`
-                    : `Enhancing vault photos (${Math.min(vaultEnhancement.completed_count + 1, vaultEnhancement.total_count)} of ${vaultEnhancement.total_count})`}
-                </span>
-              )}
-              <button
-                onClick={() => setIsPrivacyShieldActive(!isPrivacyShieldActive)}
-                className="clickable"
-                title="Conceal gallery view immediately"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "6px 14px",
-                  borderRadius: "var(--radius-full)",
-                  backgroundColor: isPrivacyShieldActive ? "var(--accent-primary)" : "var(--glass-pill-bg)",
-                  border: "1px solid var(--glass-border)",
-                  color: isPrivacyShieldActive ? "#ffffff" : "var(--text-secondary)",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <EyeOff size={13} />
-                <span>{isPrivacyShieldActive ? "Shield Active" : "Privacy Shield"}</span>
-              </button>
-
-              <button
-                onClick={handleManualLock}
-                className="clickable"
-                title="Lock the vault (L)"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "6px 16px",
-                  borderRadius: "var(--radius-full)",
-                  backgroundColor: "rgba(239, 68, 68, 0.14)",
-                  border: "1px solid rgba(239, 68, 68, 0.3)",
-                  color: "var(--accent-danger, #ef4444)",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <Lock size={13} />
-                <span>Lock (L)</span>
-              </button>
-            </>
-          ) : !isVaultConfigured ? (
+        ) : (
+          <span className="vault-status vault-status-muted">{isVaultConfigured ? "Locked" : "Not set up yet"}</span>
+        )}
+        {isVaultUnlocked && vaultEnhancement?.is_active && vaultEnhancement.total_count > 0 && (
+          <span className="vault-work" title="Vault photos are enhanced only while the vault is open. Nothing is ever stored unencrypted.">
+            <Loader2 size={12} className="spin" />
+            {vaultEnhancement.paused_reason === "on_battery"
+              ? `Enhancing paused on battery (${vaultEnhancement.completed_count} of ${vaultEnhancement.total_count} done)`
+              : `Enhancing vault photos · ${Math.min(vaultEnhancement.completed_count + 1, vaultEnhancement.total_count)} of ${vaultEnhancement.total_count}`}
+          </span>
+        )}
+        <div style={{ flex: 1 }} />
+        {isVaultUnlocked ? (
+          <>
             <button
-              onClick={() => setIsSetupMode(true)}
-              className="clickable"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "6px 16px",
-                borderRadius: "var(--radius-full)",
-                backgroundColor: "var(--accent-primary)",
-                border: "none",
-                color: "#ffffff",
-                fontSize: "12px",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
+              type="button"
+              className={`vault-icon-btn${isPrivacyShieldActive ? " is-on" : ""}`}
+              aria-label={isPrivacyShieldActive ? "Privacy shield: show photos" : "Privacy shield: blur photos"}
+              aria-pressed={isPrivacyShieldActive}
+              title="Privacy shield (P)"
+              onClick={() => setIsPrivacyShieldActive((v) => !v)}
             >
-              <Sparkles size={13} />
-              <span>Set Up Vault</span>
+              {isPrivacyShieldActive ? <Eye size={16} /> : <EyeOff size={16} />}
             </button>
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              {vaultPasswordHint && (
-                <button
-                  type="button"
-                  onClick={() => setShowHint(!showHint)}
-                  className="clickable"
-                  title="Show password hint"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "5px",
-                    padding: "6px 12px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "var(--glass-pill-bg)",
-                    border: "1px solid var(--glass-border)",
-                    color: "var(--text-secondary)",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  <HelpCircle size={12} />
-                  <span>Hint</span>
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+            <button type="button" className="vault-lock-btn" onClick={handleManualLock} title="Lock the vault now (L)">
+              <Lock size={14} strokeWidth={2.4} /> Lock now
+            </button>
+          </>
+        ) : !isVaultConfigured ? null : vaultPasswordHint ? (
+          <button type="button" className="vault-ghost-btn" onClick={() => setShowHint(!showHint)} title="Show your password hint">
+            <HelpCircle size={13} /> Hint
+          </button>
+        ) : null}
       </div>
 
-      {/* 3-Segment Content Switcher: Photos | Albums | Documents */}
+      {/* Photos | Albums | Documents */}
       {isVaultUnlocked && !isPrivacyShieldActive && !activeVaultAlbumId && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "2px 0",
-            flexShrink: 0,
-          }}
-        >
-          {[
-            { id: "photos", label: "Photos", count: visualPhotos.length, icon: ImageIcon },
-            { id: "albums", label: "Albums", count: vaultAlbums.length, icon: Folder },
-            { id: "documents", label: "Documents", count: documentPhotos.length, icon: FileText },
-          ].map((tab) => {
-            const isSelected = activeVaultSection === tab.id;
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveVaultSection(tab.id as any)}
-                className="clickable"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "7px",
-                  padding: "7px 16px",
-                  borderRadius: "var(--radius-full)",
-                  border: isSelected 
-                    ? "1px solid var(--glass-border-highlight)" 
-                    : "1px solid var(--glass-border)",
-                  backgroundColor: isSelected 
-                    ? "var(--glass-pill-active)" 
-                    : "var(--glass-pill-bg)",
-                  color: isSelected 
-                    ? "var(--text-primary)" 
-                    : "var(--text-secondary)",
-                  fontSize: "12px",
-                  fontWeight: isSelected ? 700 : 500,
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                  boxShadow: isSelected ? "var(--glass-shadow)" : "none",
-                }}
-              >
-                <Icon size={14} style={{ color: isSelected ? "var(--accent-primary)" : "var(--text-muted)" }} />
-                <span>{tab.label}</span>
-                <span
-                  style={{
-                    padding: "1px 7px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: isSelected ? "rgba(59, 130, 246, 0.2)" : "var(--glass-badge-bg)",
-                    fontSize: "11px",
-                    fontFamily: "var(--font-mono)",
-                    fontWeight: 700,
-                    color: isSelected ? "var(--accent-primary)" : "var(--text-muted)",
-                  }}
-                >
-                  {tab.count}
-                </span>
-              </button>
-            );
-          })}
+        <div className="vault-tabs" role="tablist" aria-label="Vault sections">
+          {([
+            { id: "photos", label: "Photos", count: visualPhotos.length },
+            { id: "albums", label: "Albums", count: vaultAlbums.length },
+            { id: "documents", label: "Documents", count: documentPhotos.length },
+          ] as const).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeVaultSection === tab.id}
+              className={`vault-tab${activeVaultSection === tab.id ? " is-active" : ""}`}
+              onClick={() => setActiveVaultSection(tab.id)}
+            >
+              {tab.label} <span className="vault-tab-count">{tab.count}</span>
+            </button>
+          ))}
         </div>
       )}
 
@@ -910,9 +575,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               gap: "6px",
               padding: "7px 16px",
               borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--accent-primary)",
+              backgroundColor: "var(--accent-fill)",
               border: "none",
-              color: "#ffffff",
+              color: "var(--on-accent)",
               fontSize: "12px",
               fontWeight: 700,
               cursor: restoringAlbumId === activeVaultAlbumId ? "default" : "pointer",
@@ -960,8 +625,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               width: "64px",
               height: "64px",
               borderRadius: "var(--radius-full)",
-              backgroundColor: "rgba(59, 130, 246, 0.1)",
-              border: "1px solid rgba(59, 130, 246, 0.25)",
+              backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -971,7 +636,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
           >
             <Lock size={28} />
           </div>
-          <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+          <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "var(--font-display)" }}>
             Protect Your Sensitive Media
           </h2>
           <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "440px", lineHeight: "1.5", margin: "0 0 24px 0" }}>
@@ -986,13 +651,13 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               gap: "8px",
               padding: "10px 24px",
               borderRadius: "var(--radius-full)",
-              backgroundColor: "var(--accent-primary)",
+              backgroundColor: "var(--accent-fill)",
               border: "none",
-              color: "#ffffff",
+              color: "var(--on-accent)",
               fontSize: "13px",
               fontWeight: 700,
               cursor: "pointer",
-              boxShadow: "0 4px 16px rgba(59, 130, 246, 0.3)",
+              boxShadow: "0 4px 16px color-mix(in srgb, var(--accent-ink) 30%, transparent)",
               transition: "all 0.15s ease",
             }}
           >
@@ -1001,330 +666,104 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
           </button>
         </div>
       ) : !isVaultUnlocked ? (
-        /* Locked Landing Screen with Quick PIN / Master Password (+ Emergency Card reset link) */
-        <div 
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--text-muted)",
-            textAlign: "center",
-            padding: "0 20px",
-            minHeight: "440px",
-          }}
-        >
-          {/* Circular Lock Emblem */}
-          <div 
-            style={{
-              width: "64px",
-              height: "64px",
-              borderRadius: "var(--radius-full)",
-              backgroundColor: "rgba(59, 130, 246, 0.1)",
-              border: "1px solid rgba(59, 130, 246, 0.25)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--accent-primary)",
-              marginBottom: "16px",
-            }}
-          >
-            <Lock size={28} />
-          </div>
+        /* Locked: one card with the PIN (or password) and the Emergency Card link (redesign R4) */
+        <div className="vault-locked">
+          <div className="vault-lock-card">
+            <div className="vault-lock-emblem">
+              <Lock size={26} strokeWidth={2.2} />
+            </div>
+            <div>
+              <h2 className="vault-lock-title">Your vault is locked</h2>
+              <p className="vault-lock-sub">
+                {authMode === "pin" && !isVaultPinLocked ? "Enter your 4-digit PIN" : "Enter your master password"}
+              </p>
+            </div>
 
-          <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-            Your Private Vault is Locked
-          </h2>
-
-          <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "440px", lineHeight: "1.5", margin: "0 0 24px 0" }}>
-            {authMode === "pin"
-              ? "Enter your 4-digit quick PIN to unlock instantly."
-              : "Enter your master password to decrypt and unlock."}
-          </p>
-
-          <div 
-            style={{
-              width: "100%",
-              maxWidth: "380px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "14px",
-            }}
-          >
-            {/* PIN not usable right now: first unlock since opening the app, or 5 wrong PINs */}
-            {isVaultPinLocked && (
-              <div
-                style={{
-                  width: "100%",
-                  padding: "10px 14px",
-                  borderRadius: "var(--radius-md)",
-                  backgroundColor: "var(--glass-pill-bg)",
-                  border: "1px solid var(--glass-border)",
-                  color: "var(--text-secondary)",
-                  fontSize: "12px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "6px",
-                  lineHeight: "1.4",
-                }}
-              >
-                <ShieldAlert size={14} style={{ flexShrink: 0 }} />
+            {isVaultPinLocked && hasVaultPin && (
+              <p className="vault-note">
+                <ShieldAlert size={14} />
                 <span>Enter your master password. After that, your PIN reopens the vault until you close the app.</span>
-              </div>
+              </p>
             )}
 
             {loginError && (
-              <div 
-                style={{
-                  width: "100%",
-                  padding: "8px 14px",
-                  borderRadius: "var(--radius-md)",
-                  backgroundColor: "rgba(239, 68, 68, 0.12)",
-                  border: "1px solid rgba(239, 68, 68, 0.3)",
-                  color: "var(--accent-danger, #ef4444)",
-                  fontSize: "12px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "6px",
-                }}
-              >
-                <ShieldAlert size={14} style={{ flexShrink: 0 }} />
+              <p className="vault-error" role="alert">
+                <ShieldAlert size={14} />
                 <span>{loginError}</span>
-              </div>
+              </p>
             )}
 
             {showHint && vaultPasswordHint && (
-              <div 
-                style={{
-                  width: "100%",
-                  padding: "8px 14px",
-                  borderRadius: "var(--radius-md)",
-                  backgroundColor: "rgba(59, 130, 246, 0.08)",
-                  border: "1px solid rgba(59, 130, 246, 0.2)",
-                  color: "var(--text-secondary)",
-                  fontSize: "12px",
-                  textAlign: "center",
-                }}
-              >
-                💡 Hint: <strong style={{ color: "var(--text-primary)" }}>{vaultPasswordHint}</strong>
-              </div>
+              <p className="vault-note">
+                Hint: <strong>{vaultPasswordHint}</strong>
+              </p>
             )}
 
-            {/* ── Mode 1: 4-Digit Quick PIN Input ── */}
-            {authMode === "pin" && !isVaultPinLocked && (
-              <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
-                <div style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
-                  {[0, 1, 2, 3].map((idx) => (
-                    <input
-                      key={`unlock-pin-${idx}`}
-                      ref={(el) => { pinInputRefs.current[idx] = el; }}
-                      type="password"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={pin[idx]}
-                      onChange={(e) => handlePinDigitChange(idx, e.target.value)}
-                      onKeyDown={(e) => handlePinDigitKeyDown(idx, e)}
-                      autoFocus={idx === 0}
-                      disabled={isSubmitting}
-                      style={{
-                        width: "50px",
-                        height: "56px",
-                        borderRadius: "var(--radius-md)",
-                        backgroundColor: "var(--glass-surface)",
-                        border: `1.5px solid ${pin[idx] ? "var(--accent-primary)" : "var(--glass-border)"}`,
-                        color: "var(--text-primary)",
-                        fontSize: "24px",
-                        fontWeight: 700,
-                        textAlign: "center",
-                        outline: "none",
-                        boxShadow: pin[idx] ? "0 0 12px rgba(59, 130, 246, 0.25)" : "var(--glass-shadow)",
-                        transition: "all 0.15s ease",
-                      }}
-                    />
-                  ))}
-                </div>
-
-                {isSubmitting && (
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--accent-primary)" }}>
-                    <Loader2 size={13} className="spin-animation" />
-                    <span>Verifying PIN...</span>
-                  </div>
-                )}
-
+            {authMode === "pin" && !isVaultPinLocked ? (
+              <div className="vault-pin" role="group" aria-label="4-digit PIN">
+                {[0, 1, 2, 3].map((idx) => (
+                  <input
+                    key={`unlock-pin-${idx}`}
+                    ref={(el) => { pinInputRefs.current[idx] = el; }}
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={1}
+                    aria-label={`PIN digit ${idx + 1}`}
+                    value={pin[idx]}
+                    onChange={(e) => handlePinDigitChange(idx, e.target.value)}
+                    onKeyDown={(e) => handlePinDigitKeyDown(idx, e)}
+                    autoFocus={idx === 0}
+                    disabled={isSubmitting}
+                    className={`vault-pin-box${pin[idx] ? " is-filled" : ""}`}
+                  />
+                ))}
+              </div>
+            ) : (
+              <form onSubmit={handlePasswordSubmit} className="vault-password">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Master Password..."
+                  aria-label="Master password"
+                  autoFocus
+                  disabled={isSubmitting}
+                />
                 <button
                   type="button"
-                  onClick={() => {
-                    setAuthMode("password");
-                    setLoginError("");
-                  }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--accent-primary)",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    padding: "4px",
-                  }}
+                  className="vault-password-eye"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
-                  Unlock with Master Password instead
+                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
-              </div>
-            )}
-
-            {/* ── Mode 2: Master Password Input ── */}
-            {authMode === "password" && (
-              <form onSubmit={handlePasswordSubmit} style={{ width: "100%", display: "flex", flexDirection: "column", gap: "12px" }}>
-                <div 
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    display: "flex",
-                    alignItems: "center",
-                    backgroundColor: "var(--glass-surface)",
-                    backdropFilter: "blur(20px)",
-                    WebkitBackdropFilter: "blur(20px)",
-                    border: "1px solid var(--glass-border)",
-                    borderRadius: "var(--radius-full)",
-                    boxShadow: "var(--glass-shadow)",
-                    padding: "4px 5px 4px 16px",
-                    transition: "border-color 0.2s ease, box-shadow 0.2s ease",
-                  }}
-                >
-                  <Lock size={15} style={{ color: "var(--text-muted)", marginRight: "10px", flexShrink: 0 }} />
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Master Password..."
-                    autoFocus
-                    disabled={isSubmitting}
-                    style={{
-                      flex: 1,
-                      background: "transparent",
-                      border: "none",
-                      outline: "none",
-                      color: "var(--text-primary)",
-                      fontSize: "13px",
-                      padding: "6px 0",
-                      minWidth: 0,
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    title={showPassword ? "Hide password" : "Show password"}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "var(--text-muted)",
-                      cursor: "pointer",
-                      padding: "6px 8px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting || !password}
-                    className="clickable"
-                    style={{
-                      padding: "8px 18px",
-                      borderRadius: "var(--radius-full)",
-                      backgroundColor: "var(--accent-primary)",
-                      border: "none",
-                      color: "#ffffff",
-                      fontSize: "12px",
-                      fontWeight: 700,
-                      cursor: isSubmitting || !password ? "default" : "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      flexShrink: 0,
-                      opacity: isSubmitting || !password ? 0.6 : 1,
-                      boxShadow: "0 2px 8px rgba(59, 130, 246, 0.25)",
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    {isSubmitting ? (
-                      <Loader2 size={13} className="spin-animation" />
-                    ) : (
-                      <Unlock size={13} />
-                    )}
-                    <span>{isSubmitting ? "Decrypting..." : "Unlock"}</span>
-                  </button>
-                </div>
-
-                {hasVaultPin && !isVaultPinLocked && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthMode("pin");
-                      setLoginError("");
-                    }}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "var(--accent-primary)",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      padding: "2px",
-                    }}
-                  >
-                    Unlock with 4-Digit PIN instead
-                  </button>
-                )}
+                <button type="submit" className="vault-unlock-btn" disabled={isSubmitting || !password}>
+                  {isSubmitting ? <Loader2 size={13} className="spin" /> : <Unlock size={13} />}
+                  {isSubmitting ? "Opening…" : "Unlock"}
+                </button>
               </form>
             )}
 
-            {/* Bottom Links: Emergency Card password reset & Guarded Reset */}
-            {(
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "center", marginTop: "4px" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowPasswordResetModal(true)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--accent-primary)",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    padding: "2px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
-                >
-                  <CreditCard size={13} />
-                  <span>Forgot your password? Use your Emergency Card</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowResetModal(true)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--text-muted)",
-                    fontSize: "10px",
-                    cursor: "pointer",
-                    marginTop: "8px",
-                    opacity: 0.7,
-                  }}
-                >
-                  Factory Reset Vault
-                </button>
-              </div>
+            {isSubmitting && authMode === "pin" && (
+              <p className="vault-lock-sub">
+                <Loader2 size={13} className="spin" /> Checking PIN…
+              </p>
             )}
+
+            <div className="vault-lock-links">
+              {authMode === "pin" && !isVaultPinLocked ? (
+                <button type="button" className="vault-link" onClick={() => { setAuthMode("password"); setLoginError(""); }}>
+                  Use master password instead
+                </button>
+              ) : hasVaultPin && !isVaultPinLocked ? (
+                <button type="button" className="vault-link" onClick={() => { setAuthMode("pin"); setLoginError(""); }}>
+                  Use your PIN instead
+                </button>
+              ) : null}
+              <button type="button" className="vault-link vault-link-muted" onClick={() => setShowPasswordResetModal(true)}>
+                <CreditCard size={13} /> Forgot your password? Use your Emergency Card
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -1359,9 +798,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                   marginTop: "16px",
                   padding: "8px 20px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: "var(--accent-primary)",
+                  backgroundColor: "var(--accent-fill)",
                   border: "none",
-                  color: "#ffffff",
+                  color: "var(--on-accent)",
                   fontSize: "12px",
                   fontWeight: 600,
                   cursor: "pointer",
@@ -1413,10 +852,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                 </p>
               </div>
             ) : (
-              <PhotoGrid 
-                photos={vaultAlbumPhotos} 
-                onPhotoClick={handleAlbumPhotoClick} 
-              />
+              <div className="vault-timeline">
+                <PhotoTimeline photos={albumTimeline} onOpen={handleAlbumPhotoClick} vault minScrubberSections={4} />
+              </div>
             )
           ) : activeVaultSection === "photos" ? (
             /* ── Section 1: Visual Photos ── */
@@ -1455,8 +893,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                     width: "64px",
                     height: "64px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(59, 130, 246, 0.1)",
-                    border: "1px solid rgba(59, 130, 246, 0.25)",
+                    backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -1466,8 +904,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                 >
                   <Lock size={28} />
                 </div>
-                <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                  Your Private Vault is Empty
+                <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "var(--font-display)" }}>
+                  Your vault is empty
                 </h2>
                 <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "440px", lineHeight: "1.5", margin: "0 0 20px 0" }}>
                   Select any photo or video from your library and press <strong>"L"</strong> or choose <strong>"Move to Vault"</strong> to securely encrypt it on this device.
@@ -1494,10 +932,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                 </button>
               </div>
             ) : (
-              <PhotoGrid 
-                photos={visualPhotos} 
-                onPhotoClick={handlePhotoClick} 
-              />
+              <div className="vault-timeline">
+                <PhotoTimeline photos={visualTimeline} onOpen={handlePhotoClick} vault minScrubberSections={4} />
+              </div>
             )
           ) : activeVaultSection === "albums" ? (
             /* ── Section 2: Locked Albums ── */
@@ -1536,8 +973,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                     width: "64px",
                     height: "64px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(59, 130, 246, 0.1)",
-                    border: "1px solid rgba(59, 130, 246, 0.25)",
+                    backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -1547,7 +984,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                 >
                   <Folder size={28} />
                 </div>
-                <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+                <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "var(--font-display)" }}>
                   No Locked Albums
                 </h2>
                 <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "440px", lineHeight: "1.5", margin: "0 0 20px 0" }}>
@@ -1607,7 +1044,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                             <Folder size={40} style={{ color: "var(--accent-primary)", opacity: 0.5 }} />
                           </div>
                         )}
-                        <div style={{ position: "absolute", top: "10px", right: "10px", display: "flex", alignItems: "center", gap: "4px", padding: "3px 8px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(15, 23, 42, 0.75)", backdropFilter: "blur(12px)", border: "1px solid rgba(59, 130, 246, 0.4)", color: "var(--accent-primary)", fontSize: "10px", fontWeight: 700 }}>
+                        <div style={{ position: "absolute", top: "10px", right: "10px", display: "flex", alignItems: "center", gap: "4px", padding: "3px 8px", borderRadius: "var(--radius-full)", backgroundColor: "rgba(15, 23, 42, 0.75)", backdropFilter: "blur(12px)", border: "1px solid color-mix(in srgb, var(--accent-ink) 40%, transparent)", color: "var(--accent-fill)", fontSize: "10px", fontWeight: 700 }}>
                           <Lock size={10} />
                           <span>LOCKED</span>
                         </div>
@@ -1693,8 +1130,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                     width: "64px",
                     height: "64px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(59, 130, 246, 0.1)",
-                    border: "1px solid rgba(59, 130, 246, 0.25)",
+                    backgroundColor: "color-mix(in srgb, var(--accent-ink) 10%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -1704,7 +1141,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                 >
                   <FileText size={28} />
                 </div>
-                <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+                <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0", fontFamily: "var(--font-display)" }}>
                   No Encrypted Documents
                 </h2>
                 <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "440px", lineHeight: "1.5", margin: "0 0 20px 0" }}>
@@ -1736,8 +1173,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                               width: "38px",
                               height: "38px",
                               borderRadius: "var(--radius-md)",
-                              backgroundColor: "rgba(59, 130, 246, 0.12)",
-                              border: "1px solid rgba(59, 130, 246, 0.25)",
+                              backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
+                              border: "1px solid color-mix(in srgb, var(--accent-ink) 25%, transparent)",
                               color: "var(--accent-primary)",
                               display: "flex",
                               alignItems: "center",
@@ -1765,8 +1202,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                             gap: "4px",
                             padding: "2px 8px",
                             borderRadius: "var(--radius-full)",
-                            backgroundColor: "rgba(59, 130, 246, 0.12)",
-                            border: "1px solid rgba(59, 130, 246, 0.3)",
+                            backgroundColor: "color-mix(in srgb, var(--accent-ink) 12%, transparent)",
+                            border: "1px solid color-mix(in srgb, var(--accent-ink) 30%, transparent)",
                             color: "var(--accent-primary)",
                             fontSize: "10px",
                             fontWeight: 700,
@@ -1832,9 +1269,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
                             gap: "5px",
                             padding: "6px 14px",
                             borderRadius: "var(--radius-full)",
-                            backgroundColor: "var(--accent-primary)",
+                            backgroundColor: "var(--accent-fill)",
                             border: "none",
-                            color: "#ffffff",
+                            color: "var(--on-accent)",
                             fontSize: "11px",
                             fontWeight: 600,
                             cursor: restoringDocId === doc.id ? "default" : "pointer",
@@ -1855,130 +1292,6 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
               </div>
             )
           )}
-        </div>
-      )}
-
-      {/* ── Guarded Factory Reset Modal ── */}
-      {showResetModal && (
-        <div 
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.75)",
-            backdropFilter: "blur(8px)",
-            WebkitBackdropFilter: "blur(8px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 100,
-            padding: "20px",
-          }}
-        >
-          <div 
-            style={{
-              width: "100%",
-              maxWidth: "440px",
-              backgroundColor: "var(--bg-surface)",
-              border: "1px solid rgba(239, 68, 68, 0.4)",
-              borderRadius: "var(--radius-lg)",
-              padding: "24px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "16px",
-              boxShadow: "0 16px 36px rgba(0, 0, 0, 0.5)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "var(--accent-danger, #ef4444)" }}>
-              <AlertTriangle size={24} />
-              <h3 style={{ fontSize: "16px", fontWeight: 700, margin: 0 }}>Erase Private Vault</h3>
-            </div>
-
-            <p style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: "1.5", margin: 0 }}>
-              {resetPreview && (resetPreview.photo_count > 0 || resetPreview.album_count > 0) ? (
-                <>
-                  This permanently erases{" "}
-                  <strong style={{ color: "var(--text-primary)" }}>
-                    {resetPreview.photo_count} {resetPreview.photo_count === 1 ? "photo" : "photos"}
-                    {resetPreview.album_count > 0 &&
-                      ` and ${resetPreview.album_count} ${resetPreview.album_count === 1 ? "album" : "albums"}`}
-                  </strong>{" "}
-                  from your vault, along with its password and PIN. This can't be undone.
-                </>
-              ) : (
-                "This permanently erases everything in your vault, along with its password and PIN. This can't be undone."
-              )}
-            </p>
-
-            <div>
-              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", marginBottom: "6px" }}>
-                Type <strong style={{ color: "var(--text-primary)" }}>ERASE ALL DATA</strong> to confirm:
-              </label>
-              <input 
-                type="text"
-                value={resetConfirmText}
-                onChange={(e) => setResetConfirmText(e.target.value)}
-                placeholder="ERASE ALL DATA"
-                autoFocus
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  backgroundColor: "var(--glass-pill-bg)",
-                  border: "1px solid var(--glass-border)",
-                  borderRadius: "var(--radius-sm)",
-                  padding: "10px 12px",
-                  color: "var(--text-primary)",
-                  fontSize: "13px",
-                  fontFamily: "var(--font-mono)",
-                  outline: "none",
-                }}
-              />
-            </div>
-
-            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: "4px" }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowResetModal(false);
-                  setResetConfirmText("");
-                }}
-                disabled={isResetting}
-                style={{
-                  padding: "8px 16px",
-                  borderRadius: "var(--radius-full)",
-                  backgroundColor: "var(--glass-pill-bg)",
-                  border: "1px solid var(--glass-border)",
-                  color: "var(--text-secondary)",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                onClick={handleGuardedReset}
-                disabled={resetConfirmText.trim() !== "ERASE ALL DATA" || isResetting}
-                style={{
-                  padding: "8px 18px",
-                  borderRadius: "var(--radius-full)",
-                  backgroundColor: resetConfirmText.trim() === "ERASE ALL DATA" ? "var(--accent-danger, #ef4444)" : "var(--glass-border)",
-                  border: "none",
-                  color: "#ffffff",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  cursor: resetConfirmText.trim() === "ERASE ALL DATA" && !isResetting ? "pointer" : "not-allowed",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-              >
-                {isResetting && <Loader2 size={13} className="spin-animation" />}
-                <span>Permanently Reset</span>
-              </button>
-            </div>
-          </div>
         </div>
       )}
 

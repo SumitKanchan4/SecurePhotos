@@ -127,11 +127,11 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ update, isOpen, onClos
                 width: "36px",
                 height: "36px",
                 borderRadius: "10px",
-                backgroundColor: "rgba(59, 130, 246, 0.15)",
+                backgroundColor: "color-mix(in srgb, var(--accent-ink) 15%, transparent)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "var(--accent-primary, #3b82f6)",
+                color: "var(--accent-primary, var(--accent-ink))",
               }}
             >
               <Sparkles size={20} />
@@ -195,7 +195,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ update, isOpen, onClos
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "8px" }}>
                 <span style={{ color: "var(--text-secondary, #94a3b8)" }}>{downloadStatusText}</span>
                 {downloadProgress !== null && (
-                  <span style={{ fontWeight: 600, color: "var(--accent-primary, #3b82f6)" }}>
+                  <span style={{ fontWeight: 600, color: "var(--accent-primary, var(--accent-ink))" }}>
                     {downloadProgress}%
                   </span>
                 )}
@@ -213,7 +213,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ update, isOpen, onClos
                   style={{
                     height: "100%",
                     width: downloadProgress !== null ? `${downloadProgress}%` : "30%",
-                    backgroundColor: isCompleted ? "#10b981" : "var(--accent-primary, #3b82f6)",
+                    backgroundColor: isCompleted ? "#10b981" : "var(--accent-fill)",
                     transition: "width 0.2s ease-out",
                     animation: downloadProgress === null ? "pulse 1.5s infinite" : undefined,
                   }}
@@ -273,14 +273,14 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ update, isOpen, onClos
                   gap: "8px",
                   padding: "10px 20px",
                   borderRadius: "var(--radius-sm, 6px)",
-                  backgroundColor: "var(--accent-primary, #3b82f6)",
+                  backgroundColor: "var(--accent-fill)",
                   border: "none",
-                  color: "#ffffff",
+                  color: "var(--on-accent)",
                   fontSize: "13px",
                   fontWeight: 600,
                   cursor: isDownloading ? "not-allowed" : "pointer",
                   opacity: isDownloading ? 0.7 : 1,
-                  boxShadow: "0 2px 10px rgba(59, 130, 246, 0.3)",
+                  boxShadow: "0 2px 10px color-mix(in srgb, var(--accent-ink) 30%, transparent)",
                 }}
               >
                 {isDownloading ? (

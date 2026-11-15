@@ -92,9 +92,12 @@ async def list_stories(
         query = f"""
             SELECT s.id, s.title, s.story_type, s.vibe_mood, s.music_track_path, s.cover_photo_id,
                    COALESCE(s.is_saved, 0) as is_saved, s.created_at,
-                   COUNT(si.id) as slides_count
+                   COUNT(si.id) as slides_count,
+                   MIN(sp.taken_at) as first_taken_at,
+                   MAX(sp.taken_at) as last_taken_at
             FROM stories s
             LEFT JOIN story_items si ON si.story_id = s.id
+            LEFT JOIN photos sp ON sp.id = si.photo_id
             {where_clause}
             GROUP BY s.id
             ORDER BY s.is_saved DESC, s.created_at DESC
@@ -117,6 +120,8 @@ async def list_stories(
                     cover_photo_id=r["cover_photo_id"],
                     is_saved=bool(r["is_saved"]),
                     slides_count=r["slides_count"],
+                    first_taken_at=str(r["first_taken_at"]) if r["first_taken_at"] else None,
+                    last_taken_at=str(r["last_taken_at"]) if r["last_taken_at"] else None,
                     slides=[],  # Lightweight summary: slides fetched on-demand via GET /api/stories/{id}
                 )
             )

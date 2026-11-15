@@ -72,7 +72,7 @@ export function useAppSettings() {
     fetchSettings();
   }, [fetchSettings]);
 
-  // Keep local settings in sync if store theme toggles externally (e.g. shortcut 'T', TitleBar)
+  // Keep local settings in sync if store theme toggles externally (e.g. shortcut "T", window strip)
   useEffect(() => {
     if (theme && theme !== settings.theme) {
       setSettings((prev) => ({ ...prev, theme }));

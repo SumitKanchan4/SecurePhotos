@@ -19,7 +19,7 @@ The app's fonts are bundled with it (no download at runtime) through the Fontsou
 | Font | Package | Licence |
 |---|---|---|
 | Inter | `@fontsource/inter` | OFL-1.1 |
-| Plus Jakarta Sans | `@fontsource/plus-jakarta-sans` | OFL-1.1 |
+| Archivo | `@fontsource/archivo` | OFL-1.1 |
 | JetBrains Mono | `@fontsource/jetbrains-mono` | OFL-1.1 |
 
 The copyright notices and the full licence text are reproduced below ("Fonts: SIL Open Font License 1.1").
@@ -27,7 +27,7 @@ The copyright notices and the full licence text are reproduced below ("Fonts: SI
 ## Fonts: SIL Open Font License 1.1
 
 - **Inter**: Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
-- **Plus Jakarta Sans**: Copyright 2020 The Plus Jakarta Sans Project Authors (https://github.com/tokotype/PlusJakartaSans)
+- **Archivo**: Copyright 2020 The Archivo Project Authors (https://github.com/Omnibus-Type/Archivo)
 - **JetBrains Mono**: Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
 
 All three fonts are licensed under the SIL Open Font License, Version 1.1:

@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from engine.database import get_db_connection
 from engine.config import resolve_media_path
 from engine.services.face_recognition_service import get_face_thumbnails_dir
+from engine.services.people_merge_service import load_merge_inputs, rank_merge_suggestions
 from engine.services.face_scan_worker import (
     get_scan_status,
     reset_scan_state,
@@ -143,8 +144,8 @@ async def list_unlabeled_clusters() -> List[UnlabeledClusterResponse]:
                    COUNT(f.id) AS face_count
             FROM faces f
             JOIN photos p ON f.photo_id = p.id
-            WHERE f.person_id IS NULL AND f.cluster_id IS NOT NULL 
-              AND p.trashed_at IS NULL AND f.quality_score >= 0.25
+            WHERE f.person_id IS NULL AND f.cluster_id IS NOT NULL
+              AND p.trashed_at IS NULL AND p.is_encrypted = 0 AND f.quality_score >= 0.25
             GROUP BY f.cluster_id
             ORDER BY photo_count DESC, face_count DESC;
             """
@@ -160,9 +161,11 @@ async def list_unlabeled_clusters() -> List[UnlabeledClusterResponse]:
             # Get anchor medoid face (high quality)
             async with conn.execute(
                 """
-                SELECT id FROM faces
-                WHERE cluster_id = ? AND person_id IS NULL AND quality_score >= 0.25
-                ORDER BY is_anchor_medoid DESC, quality_score DESC
+                SELECT f.id FROM faces f
+                JOIN photos p ON p.id = f.photo_id
+                WHERE f.cluster_id = ? AND f.person_id IS NULL AND f.quality_score >= 0.25
+                  AND p.trashed_at IS NULL AND p.is_encrypted = 0
+                ORDER BY f.is_anchor_medoid DESC, f.quality_score DESC
                 LIMIT 1;
                 """,
                 (cluster_id,),
@@ -173,10 +176,12 @@ async def list_unlabeled_clusters() -> List[UnlabeledClusterResponse]:
             # Get up to 4 diverse sample faces in cluster, drawn from distinct photos
             async with conn.execute(
                 """
-                SELECT id FROM faces
-                WHERE cluster_id = ? AND person_id IS NULL AND quality_score >= 0.25
-                GROUP BY photo_id
-                ORDER BY is_anchor_medoid DESC, quality_score DESC
+                SELECT f.id FROM faces f
+                JOIN photos p ON p.id = f.photo_id
+                WHERE f.cluster_id = ? AND f.person_id IS NULL AND f.quality_score >= 0.25
+                  AND p.trashed_at IS NULL AND p.is_encrypted = 0
+                GROUP BY f.photo_id
+                ORDER BY f.is_anchor_medoid DESC, f.quality_score DESC
                 LIMIT 4;
                 """,
                 (cluster_id,),
@@ -195,6 +200,126 @@ async def list_unlabeled_clusters() -> List[UnlabeledClusterResponse]:
             )
 
         return results
+    finally:
+        await conn.close()
+
+
+class MergeSuggestion(BaseModel):
+    """'Same person?': a named person and an unnamed group that look alike (redesign R5)."""
+    person_id: int
+    person_name: str
+    person_photo_count: int
+    person_face_id: Optional[int] = None
+    cluster_id: str
+    cluster_photo_count: int
+    cluster_face_id: Optional[int] = None
+    similarity: float
+
+
+class MergeAnswer(BaseModel):
+    person_id: int
+    cluster_id: str
+
+
+class MergeClusterRequest(BaseModel):
+    cluster_id: str
+
+
+async def _library_photo_count(conn, column: str, value) -> int:
+    async with conn.execute(
+        f"""
+        SELECT COUNT(DISTINCT f.photo_id) FROM faces f
+        JOIN photos p ON p.id = f.photo_id
+        WHERE f.{column} = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
+        {"AND f.person_id IS NULL" if column == "cluster_id" else ""};
+        """,
+        (value,),
+    ) as cursor:
+        row = await cursor.fetchone()
+    return int(row[0] or 0) if row else 0
+
+
+async def _best_face(conn, column: str, value) -> Optional[int]:
+    async with conn.execute(
+        f"""
+        SELECT f.id FROM faces f
+        JOIN photos p ON p.id = f.photo_id
+        WHERE f.{column} = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
+        {"AND f.person_id IS NULL" if column == "cluster_id" else ""}
+        ORDER BY f.is_anchor_medoid DESC, f.quality_score DESC, f.id
+        LIMIT 1;
+        """,
+        (value,),
+    ) as cursor:
+        row = await cursor.fetchone()
+    return row["id"] if row else None
+
+
+@router.get("/merge-suggestions", response_model=List[MergeSuggestion], status_code=status.HTTP_200_OK)
+async def list_merge_suggestions() -> List[MergeSuggestion]:
+    """Unnamed groups that probably belong to a named person, most alike first (at most 5)."""
+    conn = await get_db_connection()
+    try:
+        people, groups, rejected = await load_merge_inputs(conn)
+        ranked = await asyncio.to_thread(rank_merge_suggestions, people, groups, rejected)
+        results: List[MergeSuggestion] = []
+        for person_id, cluster_id, similarity in ranked:
+            async with conn.execute("SELECT name, cover_face_id FROM persons WHERE id = ?;", (person_id,)) as cursor:
+                person = await cursor.fetchone()
+            if not person:
+                continue
+            results.append(
+                MergeSuggestion(
+                    person_id=person_id,
+                    person_name=person["name"],
+                    person_photo_count=await _library_photo_count(conn, "person_id", person_id),
+                    person_face_id=person["cover_face_id"] or await _best_face(conn, "person_id", person_id),
+                    cluster_id=cluster_id,
+                    cluster_photo_count=await _library_photo_count(conn, "cluster_id", cluster_id),
+                    cluster_face_id=await _best_face(conn, "cluster_id", cluster_id),
+                    similarity=round(similarity, 3),
+                )
+            )
+        return results
+    finally:
+        await conn.close()
+
+
+@router.post("/merge-suggestions/reject", status_code=status.HTTP_200_OK)
+async def reject_merge_suggestion(payload: MergeAnswer) -> dict:
+    """'Not the same': remembers, per face, that this group is not this person."""
+    conn = await get_db_connection()
+    try:
+        cur = await conn.execute(
+            """
+            INSERT OR IGNORE INTO person_face_rejections (person_id, face_id)
+            SELECT ?, id FROM faces WHERE cluster_id = ? AND person_id IS NULL;
+            """,
+            (payload.person_id, payload.cluster_id),
+        )
+        await conn.commit()
+        return {"status": "rejected", "faces_remembered": cur.rowcount}
+    finally:
+        await conn.close()
+
+
+@router.post("/{person_id}/merge-cluster", status_code=status.HTTP_200_OK)
+async def merge_cluster_into_person(person_id: int, payload: MergeClusterRequest) -> dict:
+    """'Yes, merge': every unnamed face of the group joins this person. Name and settings are kept."""
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT id FROM persons WHERE id = ?;", (person_id,)) as cursor:
+            if not await cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Person not found")
+        cur = await conn.execute(
+            "UPDATE faces SET person_id = ? WHERE cluster_id = ? AND person_id IS NULL;",
+            (person_id, payload.cluster_id),
+        )
+        merged = cur.rowcount
+        photos = await _library_photo_count(conn, "person_id", person_id)
+        await conn.execute("UPDATE persons SET confirmed_count = ? WHERE id = ?;", (photos, person_id))
+        await conn.commit()
+        return {"status": "merged", "person_id": person_id, "faces_merged": merged, "photo_count": photos}
     finally:
         await conn.close()
 

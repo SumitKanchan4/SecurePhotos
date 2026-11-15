@@ -55,6 +55,35 @@ export interface PhotoItem {
   is_pinned?: boolean;
 }
 
+/**
+ * One photo in the Photos timeline (redesign R2): only what the grid needs.
+ * Full details come from /api/photos/details when the photo is opened.
+ */
+export interface TimelinePhoto {
+  id: number;
+  taken_at: string | null;
+  width: number;
+  height: number;
+  is_video: boolean;
+  is_favorite: boolean;
+  is_optimized: boolean;
+  is_enhanced: boolean;
+}
+
+/** /api/photos/timeline: rows are [id, taken_at, width, height, "p" | "v", flags]. */
+export interface TimelineResponse {
+  total: number;
+  items: [number, string | null, number, number, string, number][];
+}
+
+/** /api/photos/{id}/context: what the viewer's details panel shows besides EXIF (redesign R3). */
+export interface PhotoContext {
+  people: { id: number; name: string; face_id: number | null }[];
+  albums: { id: number; name: string }[];
+  imported_at: string | null;
+  copied_into_library: boolean;
+}
+
 export interface AlbumItem {
   id: number;
   name: string;
@@ -66,6 +95,9 @@ export interface AlbumItem {
   is_favorite: boolean;
   photo_count?: number;
   created_at?: string;
+  /** Oldest and newest photo dates in the album (album list only). */
+  first_taken_at?: string | null;
+  last_taken_at?: string | null;
 }
 
 export interface VaultAlbumItem {
@@ -95,6 +127,18 @@ export interface UnlabeledClusterItem {
   face_count: number;
   medoid_face_id?: number;
   anchor_face_ids: number[];
+}
+
+/** /api/people/merge-suggestions: "Same person?" (redesign R5). */
+export interface MergeSuggestion {
+  person_id: number;
+  person_name: string;
+  person_photo_count: number;
+  person_face_id: number | null;
+  cluster_id: string;
+  cluster_photo_count: number;
+  cluster_face_id: number | null;
+  similarity: number;
 }
 
 export interface FaceScanStatus {
@@ -177,6 +221,21 @@ export interface AppStorageStats {
   database_bytes: number;
   models_bytes: number;
   orphaned_bytes?: number;
+  /** What the space is used for (R9a); sizes sum to total_bytes. */
+  categories?: StorageCategory[];
+}
+
+export type StorageCategoryKey = "photos" | "videos" | "documents" | "vault" | "collages" | "music" | "trash" | "thumbnails" | "app";
+
+export interface StorageCategory {
+  key: StorageCategoryKey;
+  bytes: number;
+}
+
+/** The library folder the engine is actually using (GET /api/system/library). */
+export interface LibraryLocation {
+  path: string;
+  has_database: boolean;
 }
 
 export interface DriveStorageStats {
@@ -220,6 +279,9 @@ export interface StoryModel {
   cover_photo_id?: number | null;
   is_saved?: boolean;
   slides_count?: number;
+  /** Oldest and newest photo dates in the story (story list only). */
+  first_taken_at?: string | null;
+  last_taken_at?: string | null;
   slides: StorySlide[];
 }
 
@@ -375,11 +437,12 @@ export interface VideoSummary {
     default_preset?: string;
   };
   total_videos: number;
-  total_video_bytes: number;
+  total_bytes: number;
   compressible_count: number;
   enhanceable_count: number;
-  already_optimized_count: number;
-  potential_savings_bytes: number;
+  optimized_count: number;
+  /** What making the compressible videos smaller would free (the engine's field name). */
+  projected_reclaimable_bytes: number;
 }
 
 export interface VideoOptimizationProgress {
@@ -397,6 +460,10 @@ export interface SearchPhotoItem {
   filename: string;
   filepath: string;
   mime_type: string;
+  width?: number | null;
+  height?: number | null;
+  is_optimized?: boolean;
+  is_enhanced?: boolean;
   thumbnail_path?: string | null;
   taken_at?: string | null;
   is_favorite: boolean;

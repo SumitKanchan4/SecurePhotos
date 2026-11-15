@@ -70,6 +70,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         start_background_scan()
         from engine.services.video_queue_service import start_video_queue_worker
         start_video_queue_worker()
+        # One-off: handle video originals left in hidden .trash folders by older versions (R7c2).
+        from engine.services.video_leftovers import run_once as clean_up_old_video_originals
+        asyncio.create_task(clean_up_old_video_originals())
 
     yield
 

@@ -313,3 +313,41 @@ async def test_keep_both_and_persistent_dismissal():
             await conn.commit()
         await conn.close()
 
+
+
+@pytest.mark.asyncio
+async def test_near_duplicates_are_found_for_photos_stored_with_library_relative_paths():
+    """R7c fix: stored paths are relative to the library; the scan must resolve them to fingerprint."""
+    import uuid
+
+    from PIL import ImageDraw
+
+    from engine.config import settings
+
+    await run_migrations()
+    folder = settings.data_dir / "originals" / f"burst_{uuid.uuid4().hex[:6]}"
+    folder.mkdir(parents=True)
+    base = Image.new("RGB", (640, 480), (30, 60, 90))
+    draw = ImageDraw.Draw(base)
+    for i in range(0, 640, 40):
+        draw.rectangle((i, (i * 7) % 300, i + 25, (i * 7) % 300 + 150), fill=((i * 3) % 255, (i * 5) % 255, (i * 11) % 255))
+    ids = []
+    conn = await get_db_connection()
+    try:
+        for k, quality in enumerate((95, 80)):
+            path = folder / f"shot_{k}.jpg"
+            base.save(path, "JPEG", quality=quality)
+            relative = path.relative_to(settings.data_dir).as_posix()
+            cur = await conn.execute(
+                "INSERT INTO photos (filename, filepath, file_hash, file_size, mime_type) VALUES (?, ?, ?, ?, 'image/jpeg') RETURNING id;",
+                (path.name, relative, calculate_file_hash(path), path.stat().st_size),
+            )
+            ids.append((await cur.fetchone())[0])
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        groups = (await client.post("/api/duplicates/scan")).json()
+    grouped = [set(p["id"] for p in g["photos"]) for g in groups]
+    assert any(set(ids) <= members for members in grouped)

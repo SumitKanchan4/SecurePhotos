@@ -146,7 +146,7 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
 
   const strengthScore = getStrengthScore();
   const strengthLabels = ["Too short", "Weak", "Fair", "Strong", "Very Strong"];
-  const strengthColors = ["#ef4444", "#f97316", "#eab308", "#3b82f6", "#10b981"];
+  const strengthColors = ["#ef4444", "#f97316", "#eab308", "#c6ff00", "#10b981"];
 
   // Final Submit to Backend
   const handleFinalSubmit = async (e: React.FormEvent) => {
@@ -472,9 +472,9 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
                     gap: "6px",
                     padding: "10px 18px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "var(--accent-primary)",
+                    backgroundColor: "var(--accent-fill)",
                     border: "none",
-                    color: "#ffffff",
+                    color: "var(--on-accent)",
                     fontSize: "13px",
                     fontWeight: 700,
                     cursor: cardToken.trim() ? "pointer" : "default",
@@ -544,9 +544,9 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
                     gap: "6px",
                     padding: "10px 18px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "var(--accent-primary)",
+                    backgroundColor: "var(--accent-fill)",
                     border: "none",
-                    color: "#ffffff",
+                    color: "var(--on-accent)",
                     fontSize: "13px",
                     fontWeight: 700,
                     cursor: allCardNumbersFilled ? "pointer" : "default",
@@ -595,9 +595,9 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
                     gap: "6px",
                     padding: "10px 18px",
                     borderRadius: "var(--radius-full)",
-                    backgroundColor: "var(--accent-primary)",
+                    backgroundColor: "var(--accent-fill)",
                     border: "none",
-                    color: "#ffffff",
+                    color: "var(--on-accent)",
                     fontSize: "13px",
                     fontWeight: 700,
                     cursor: !!currentPassword ? "pointer" : "default",
@@ -782,9 +782,9 @@ export const VaultPasswordResetModal: React.FC<VaultPasswordResetModalProps> = (
                   gap: "6px",
                   padding: "10px 18px",
                   borderRadius: "var(--radius-full)",
-                  backgroundColor: "var(--accent-primary)",
+                  backgroundColor: "var(--accent-fill)",
                   border: "none",
-                  color: "#ffffff",
+                  color: "var(--on-accent)",
                   fontSize: "13px",
                   fontWeight: 700,
                   cursor: isSubmitting || newPassword.length < 8 || newPassword !== confirmPassword ? "default" : "pointer",

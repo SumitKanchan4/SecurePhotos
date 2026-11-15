@@ -179,11 +179,11 @@ export function renderGridCardCanvas(canvas: HTMLCanvasElement, card: GridCardDa
 
   // 2. Card Header
   ctx.fillStyle = "#38bdf8";
-  ctx.font = "bold 20px 'Plus Jakarta Sans', system-ui, sans-serif";
+  ctx.font = "bold 20px 'Archivo', system-ui, sans-serif";
   ctx.fillText("🛡️ SECUREPHOTOS", 50, 60);
 
   ctx.fillStyle = "#94a3b8";
-  ctx.font = "600 13px 'Plus Jakarta Sans', system-ui, sans-serif";
+  ctx.font = "600 13px 'Archivo', system-ui, sans-serif";
   ctx.fillText("ZERO-TRUST VAULT EMERGENCY GRID CARD", 50, 84);
 
   // Card Serial Badge on Top-Right
@@ -248,7 +248,7 @@ export function renderGridCardCanvas(canvas: HTMLCanvasElement, card: GridCardDa
 
       // Letter Tag (Top Left of cell)
       ctx.fillStyle = "#38bdf8";
-      ctx.font = "bold 15px 'Plus Jakarta Sans', system-ui, sans-serif";
+      ctx.font = "bold 15px 'Archivo', system-ui, sans-serif";
       ctx.fillText(letter, x + 16, y + 28);
 
       // Box Divider
@@ -269,7 +269,7 @@ export function renderGridCardCanvas(canvas: HTMLCanvasElement, card: GridCardDa
 
   // 4. Bottom Security Notice & Recovery Key Strip
   ctx.fillStyle = "rgba(148, 163, 184, 0.7)";
-  ctx.font = "12px 'Plus Jakarta Sans', system-ui, sans-serif";
+  ctx.font = "12px 'Archivo', system-ui, sans-serif";
   ctx.fillText(
     "To reset password: Upload this card image OR enter requested box numbers + your 4-digit PIN.",
     50,
