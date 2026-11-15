@@ -5965,3 +5965,18 @@ Owner review of R9c (2026-11-15, screenshot of the real app).
 - Tests: `engine/tests/test_key_handling.py` (+1: report keeps the vault open; refused and locked when idle too long; refused when locked); `src/components/vault/vault.test.tsx` (+1: at most one report per 15 s; lock card when the engine has locked). Mutation checks: reporting every movement, ignoring the engine's refusal, and an engine report that doesn't count as activity each fail a test.
 - Validated in the UI (Playwright, throwaway library): 20 seconds of mouse movement on the unlocked vault sent one report; locking the engine behind the screen's back showed the lock card on the next mouse move; no console errors.
 
+## 145. Backend: Narrower Error Handling in Crypto and Silent Spots (Q4, part 1)
+
+### Functionality Overview
+- **Crypto**: unwrapping the vault key and reading vault file chunks caught every error, so a programming error (for example a missing key) would have been reported as "wrong password" or "damaged or tampered file". They now catch only a failed authentication (`InvalidTag`) and, for the key, a damaged payload (bad base64, wrong length). Anything else surfaces as the bug it is. No behaviour change for real users: a wrong password or a tampered file reads exactly as before.
+- **No more silent failures**: four places swallowed every error without a trace. Each now logs a warning (or catches only the expected error) and goes on as before:
+  - the album name shown in import progress;
+  - trimming old story suggestions when listing stories;
+  - removing a leftover video temp file (now `OSError` only);
+  - guessing a video's date format (now `ValueError` only).
+- Q4 continues: 79 broad `except Exception` blocks were reviewed. The vault and crypto ones that log and clean up, or re-raise as `VaultAssetError`, are correct and stay. The repository layer and the `vault.py` duplication are left for a later step.
+
+### Technical Touchpoints
+- `engine/services/crypto_vault.py` (`unwrap_master_key`, `decrypt_file_chunked_stream`), `engine/api/photos.py`, `engine/api/stories.py` (gains a logger), `engine/services/video_queue_service.py`, `engine/services/video_service.py`.
+- Tests: `engine/tests/test_vault_file_format.py` (+1: the right key works, a wrong key or damaged payload gives None, and a caller bug raises instead of looking like a wrong password). Mutation check: going back to catching every error fails the test. Engine suite 263 passed; ruff passes.
+
