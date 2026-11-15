@@ -750,3 +750,63 @@ async def test_emergency_card_recovery_file_or_all_16_numbers():
         assert short.status_code == 400
 
         await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
+
+
+@pytest.mark.asyncio
+async def test_album_stays_in_the_library_when_a_photo_cannot_be_locked():
+    """R11: an album becomes private only when every photo in it is encrypted."""
+    from engine.database import get_db_connection
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
+        await client.post("/api/vault/setup", json={"password": "AlbumVaultPassword123!", "recovery_phrase": "test words phrase"})
+        await client.post("/api/vault/unlock", json={"password": "AlbumVaultPassword123!"})
+
+        test_dir = Path("data/tests_scratch")
+        test_dir.mkdir(parents=True, exist_ok=True)
+        present = test_dir / "r11_present.jpg"
+        present.write_bytes(b"R11_PRESENT_IMAGE")
+        missing = test_dir / "r11_missing.jpg"
+        missing.unlink(missing_ok=True)
+
+        conn = await get_db_connection()
+        try:
+            ids = []
+            for f in (present, missing):
+                cur = await conn.execute(
+                    "INSERT INTO photos (filename, filepath, file_size, mime_type, taken_at) VALUES (?, ?, 17, 'image/jpeg', '2023-01-01 12:00:00');",
+                    (f.name, str(f.resolve())),
+                )
+                ids.append(cur.lastrowid)
+            cur = await conn.execute("INSERT INTO albums (name, is_vault) VALUES ('R11 half missing', 0);")
+            album_id = cur.lastrowid
+            for pid in ids:
+                await conn.execute("INSERT INTO photo_album (photo_id, album_id) VALUES (?, ?);", (pid, album_id))
+            await conn.commit()
+        finally:
+            await conn.close()
+
+        try:
+            res = await client.post(f"/api/vault/albums/{album_id}/lock")
+            data = res.json()
+            assert res.status_code == 200
+            assert data["status"] == "album_not_locked"
+            assert data["photo_ids"] == [ids[0]]
+            assert data["skipped_ids"] == [ids[1]]  # its file is missing
+            conn = await get_db_connection()
+            try:
+                async with conn.execute("SELECT is_vault FROM albums WHERE id = ?;", (album_id,)) as c:
+                    assert (await c.fetchone())["is_vault"] == 0
+            finally:
+                await conn.close()
+        finally:
+            conn = await get_db_connection()
+            try:
+                await conn.execute("DELETE FROM photo_album WHERE album_id = ?;", (album_id,))
+                await conn.execute("DELETE FROM albums WHERE id = ?;", (album_id,))
+                await conn.execute(f"DELETE FROM photos WHERE id IN ({ids[0]}, {ids[1]});")
+                await conn.commit()
+            finally:
+                await conn.close()
+            await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
+
