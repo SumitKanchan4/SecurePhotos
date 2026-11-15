@@ -9,15 +9,11 @@
  */
 import React, { useState, useEffect, useRef } from "react";
 import {
-  X,
   ChevronLeft,
   ChevronRight,
   Heart,
   Info,
-  Copy,
-  Check,
   Loader2,
-  ExternalLink,
   Clock,
   Trash2,
   Download,
@@ -26,7 +22,6 @@ import {
   Unlock,
   Pin,
   Play,
-  Sparkles,
   Volume2,
   Volume1,
   VolumeX,
@@ -34,31 +29,15 @@ import {
 } from "lucide-react";
 import { PhotoItem, OptimizationProgress, PhotoContext } from "../types";
 import { useAppStore } from "../store/useAppStore";
-import { openExternal } from "../services/external";
 import { apiFetch, getApiUrl, getThumbnailUrl } from "../services/api";
 import {
-  cameraName,
-  coordinatesLine,
-  dimensionsLine,
-  exposureLine,
   filmstripRange,
-  formatDay,
   formatTakenLine,
-  formatTime,
-  parseTakenAt,
-  printLine,
   qualityChip,
-  storageLine,
   viewerTitle,
 } from "./viewer/viewerFormat";
-
-/** One labelled block in the details panel. */
-const DetailSection: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <section className="viewer-section">
-    <h4>{label}</h4>
-    {children}
-  </section>
-);
+import { ViewerDetails } from "./viewer/ViewerDetails";
+import { useVolumeBooster } from "./viewer/useVolumeBooster";
 
 interface LightboxProps {
   photos: PhotoItem[];
@@ -119,123 +98,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const currentPhoto = photos[currentIndex];
   const isVideo = Boolean(currentPhoto?.mime_type?.startsWith("video/"));
 
-  // ─── VLC-Style Audio Pre-Amp Booster (0% - 200%) ──────────────────────────────
-  const [volumeBoost, setVolumeBoost] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem("securephotos_video_volume");
-      return saved !== null ? Math.max(0, Math.min(200, parseInt(saved, 10))) : 100;
-    } catch {
-      return 100;
-    }
-  });
-  const [isMuted, setIsMuted] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem("securephotos_video_muted") === "true";
-    } catch {
-      return false;
-    }
-  });
-  const [showVolumeHud, setShowVolumeHud] = useState(false);
-  const volumeHudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const volumeBoostRef = useRef(volumeBoost);
-  const isMutedRef = useRef(isMuted);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
-  const videoElementRef = useRef<HTMLVideoElement | null>(null);
-
-  // Synchronize refs to avoid stale closures in window event listeners
-  useEffect(() => {
-    volumeBoostRef.current = volumeBoost;
-  }, [volumeBoost]);
-
-  useEffect(() => {
-    isMutedRef.current = isMuted;
-  }, [isMuted]);
-
-  const ensureAudioContext = () => {
-    try {
-      if (!audioContextRef.current) {
-        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        if (AudioCtx) {
-          const ctx = new AudioCtx();
-          const gain = ctx.createGain();
-          const initialGain = isMutedRef.current ? 0 : volumeBoostRef.current / 100;
-          gain.gain.setValueAtTime(initialGain, ctx.currentTime);
-          gain.connect(ctx.destination);
-          audioContextRef.current = ctx;
-          gainNodeRef.current = gain;
-        }
-      }
-      if (audioContextRef.current && audioContextRef.current.state === "suspended") {
-        audioContextRef.current.resume().catch(() => {});
-      }
-    } catch (err) {
-      console.warn("AudioContext initialization warning:", err);
-    }
-  };
-
-  const connectVideoToPreamp = (videoEl: HTMLVideoElement) => {
-    try {
-      ensureAudioContext();
-      if (!audioContextRef.current || !gainNodeRef.current) return;
-      const elWithFlag = videoEl as HTMLVideoElement & { __securephotos_preamp_connected?: boolean };
-      if (!elWithFlag.__securephotos_preamp_connected) {
-        const source = audioContextRef.current.createMediaElementSource(videoEl);
-        source.connect(gainNodeRef.current);
-        elWithFlag.__securephotos_preamp_connected = true;
-      }
-    } catch (err) {
-      console.warn("Could not attach Web Audio pre-amp node to video:", err);
-    }
-  };
-
-  const triggerVolumeHud = () => {
-    setShowVolumeHud(true);
-    if (volumeHudTimerRef.current) {
-      clearTimeout(volumeHudTimerRef.current);
-    }
-    volumeHudTimerRef.current = setTimeout(() => {
-      setShowVolumeHud(false);
-    }, 1800);
-  };
-
-  const applyVolume = (newVol: number, newMuted?: boolean) => {
-    const clamped = Math.max(0, Math.min(200, Math.round(newVol)));
-    const targetMuted = newMuted !== undefined ? newMuted : (clamped === 0 ? true : isMutedRef.current);
-
-    setVolumeBoost(clamped);
-    volumeBoostRef.current = clamped;
-    setIsMuted(targetMuted);
-    isMutedRef.current = targetMuted;
-
-    try {
-      localStorage.setItem("securephotos_video_volume", String(clamped));
-      localStorage.setItem("securephotos_video_muted", String(targetMuted));
-    } catch {
-      // Local storage unavailable or restricted
-    }
-
-    ensureAudioContext();
-    if (gainNodeRef.current && audioContextRef.current) {
-      const targetGain = targetMuted ? 0 : clamped / 100;
-      gainNodeRef.current.gain.setValueAtTime(targetGain, audioContextRef.current.currentTime);
-    }
-
-    triggerVolumeHud();
-  };
-
-  const toggleMute = () => {
-    const nextMuted = !isMutedRef.current;
-    applyVolume(volumeBoostRef.current, nextMuted);
-  };
-
-  useEffect(() => {
-    return () => {
-      if (volumeHudTimerRef.current) {
-        clearTimeout(volumeHudTimerRef.current);
-      }
-    };
-  }, []);
+  // VLC-style audio pre-amp (0% - 200%) for videos.
+  const { volumeBoost, isMuted, showVolumeHud, volumeBoostRef, isMutedRef, videoElementRef, ensureAudioContext, connectVideoToPreamp, applyVolume, toggleMute } =
+    useVolumeBooster();
 
   const isCompleted = Boolean(currentPhoto?.is_optimized || currentPhoto?.is_enhanced);
   const isOptimizingThis = Boolean(!isVideo && optimizationProgress?.is_active && optimizationProgress.active_photo_id === currentPhoto?.id);
@@ -599,10 +464,6 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
   const title = viewerTitle(currentPhoto);
   const chip = qualityChip(currentPhoto);
-  const takenDate = parseTakenAt(currentPhoto.taken_at);
-  const camera = cameraName(currentPhoto);
-  const exposure = exposureLine(currentPhoto);
-  const dimensions = dimensionsLine(currentPhoto);
   const statusText = isOptimizingThis
     ? `Enhancing to 8K · ${optimizationProgress?.item_progress ?? 0}%`
     : isQueued
@@ -610,7 +471,6 @@ export const Lightbox: React.FC<LightboxProps> = ({
     : null;
   const [filmStart, filmEnd] = filmstripRange(currentIndex, photos.length);
   const filmIndexes = photos.length > 1 ? Array.from({ length: filmEnd - filmStart + 1 }, (_, i) => filmStart + i) : [];
-  const importedDate = parseTakenAt(context?.imported_at);
   // Opens the person's page or the album itself (R9c; it used to set a hidden search filter).
   const openInSection = (tab: "people" | "albums", id: number) => {
     const store = useAppStore.getState();
@@ -1309,103 +1169,22 @@ export const Lightbox: React.FC<LightboxProps> = ({
       </div>
 
       {showInfo && (
-        <aside className="viewer-details" data-theme={appTheme} aria-label="Details">
-          <div className="viewer-details-head">
-            <h3>Details</h3>
-            <button type="button" className="viewer-close-details" aria-label="Close details" onClick={() => setShowInfo(false)}>
-              <X size={14} strokeWidth={2.4} />
-            </button>
-          </div>
-
-          <DetailSection label="Taken">
-            <p className="viewer-value">{takenDate ? formatDay(takenDate) : "Date unknown"}</p>
-            {takenDate && /[ T]\d{2}:\d{2}/.test(currentPhoto.taken_at ?? "") && <p className="viewer-sub">{formatTime(takenDate)}</p>}
-            {currentPhoto.latitude != null && currentPhoto.longitude != null && (
-              <p className="viewer-sub">
-                {coordinatesLine(currentPhoto.latitude, currentPhoto.longitude)}{" "}
-                <a
-                  className="viewer-link"
-                  href={`https://www.openstreetmap.org/?mlat=${currentPhoto.latitude}&mlon=${currentPhoto.longitude}#map=16/${currentPhoto.latitude}/${currentPhoto.longitude}`}
-                  onClick={(e) => {
-                    // Open in the default browser, never inside the app (H5).
-                    e.preventDefault();
-                    openExternal(e.currentTarget.href);
-                  }}
-                >
-                  Open map <ExternalLink size={11} />
-                </a>
-              </p>
-            )}
-          </DetailSection>
-
-          {(camera || exposure) && (
-            <DetailSection label="Camera">
-              {camera && <p className="viewer-value">{camera}</p>}
-              {exposure && <p className="viewer-sub">{exposure}</p>}
-            </DetailSection>
-          )}
-
-          <DetailSection label={isVideo ? "Video" : "Photo"}>
-            <p className="viewer-value">{dimensions ?? "Size unknown"}</p>
-            <p className="viewer-sub">{storageLine(currentPhoto)}</p>
-            {!isVideo && printLine(currentPhoto) && <p className="viewer-sub">{printLine(currentPhoto)}</p>}
-            {!isVideo && !isVaultItem && (
-              <button type="button" className="viewer-text-btn" onClick={() => handleDownload("studio_print")}>
-                <Printer size={13} /> Download print-ready copy
-              </button>
-            )}
-            {isVideo && chip?.label !== "4K" && !isVaultItem && (
-              <button type="button" className="viewer-text-btn" disabled={isEnhancing4K} onClick={handleEnhanceVideo}>
-                {isEnhancing4K ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
-                {isEnhancing4K ? "Enhancing to 4K…" : "Enhance to 4K"}
-              </button>
-            )}
-          </DetailSection>
-
-          <DetailSection label="File">
-            <p className="viewer-value viewer-break">{currentPhoto.filename}</p>
-            <button type="button" className="viewer-text-btn" onClick={copyStoragePath} title={currentPhoto.filepath}>
-              {isCopied ? <Check size={13} /> : <Copy size={13} />}
-              {isCopied ? "Location copied" : "Copy file location"}
-            </button>
-          </DetailSection>
-
-          {importedDate && (
-            <DetailSection label="Imported">
-              <p className="viewer-value">{formatDay(importedDate)}</p>
-              <p className="viewer-sub">{context?.copied_into_library ? "Copied into your library" : "Kept in its original folder"}</p>
-            </DetailSection>
-          )}
-
-          {context && context.people.length > 0 && (
-            <DetailSection label="People">
-              <div className="viewer-faces">
-                {context.people.map((person) => (
-                  <button key={person.id} type="button" className="viewer-face" onClick={() => openInSection("people", person.id)} title={`See all photos of ${person.name}`}>
-                    {person.face_id ? (
-                      <img src={getApiUrl(`/api/people/faces/${person.face_id}/crop`)} alt="" loading="lazy" />
-                    ) : (
-                      <span className="viewer-face-initial">{person.name.charAt(0).toUpperCase()}</span>
-                    )}
-                    <span>{person.name}</span>
-                  </button>
-                ))}
-              </div>
-            </DetailSection>
-          )}
-
-          {context && context.albums.length > 0 && (
-            <DetailSection label="Albums">
-              <div className="viewer-albums">
-                {context.albums.map((album) => (
-                  <button key={album.id} type="button" className="viewer-album" onClick={() => openInSection("albums", album.id)}>
-                    {album.name}
-                  </button>
-                ))}
-              </div>
-            </DetailSection>
-          )}
-        </aside>
+        <ViewerDetails
+          photo={currentPhoto}
+          context={context}
+          theme={appTheme}
+          isVideo={isVideo}
+          isVaultItem={isVaultItem}
+          chipLabel={chip?.label}
+          isEnhancing4K={isEnhancing4K}
+          isCopied={isCopied}
+          onClose={() => setShowInfo(false)}
+          onDownloadPrint={() => handleDownload("studio_print")}
+          onEnhanceVideo={handleEnhanceVideo}
+          onCopyPath={copyStoragePath}
+          onOpenPerson={(id) => openInSection("people", id)}
+          onOpenAlbum={(id) => openInSection("albums", id)}
+        />
       )}
     </div>
   );
