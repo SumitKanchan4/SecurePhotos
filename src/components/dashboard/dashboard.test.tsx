@@ -5,7 +5,7 @@ import type { DuplicateGroupItem, PhotoItem } from "../../types";
 import { DashboardView } from "../DashboardView";
 import { DuplicatesView } from "../DuplicatesView";
 import { VideoOptimizerView } from "../VideoOptimizerView";
-import { formatDuration, reclaimableBytes, resolveLabel, storageSegments } from "./dashFormat";
+import { formatDuration, oldOriginalsNote, reclaimableBytes, resolveLabel, storageSegments } from "./dashFormat";
 
 const GB = 1024 ** 3;
 const MB = 1024 ** 2;
@@ -81,6 +81,19 @@ describe("dashboard helpers", () => {
   });
 });
 
+describe("old video originals note", () => {
+  it("says what the one-off cleanup did, once", () => {
+    expect(oldOriginalsNote(null)).toBeNull();
+    expect(oldOriginalsNote({ status: "not_run" })).toBeNull();
+    expect(oldOriginalsNote({ removed: 0, moved_to_trash: 0, freed_bytes: 0, acknowledged: false })).toBeNull();
+    expect(oldOriginalsNote({ removed: 3, moved_to_trash: 0, freed_bytes: 4.2 * GB, acknowledged: true })).toBeNull();
+    expect(oldOriginalsNote({ removed: 3, moved_to_trash: 1, freed_bytes: 4.2 * GB, acknowledged: false })).toBe(
+      "Removed 3 full-size video copies an earlier version had kept hidden after making videos smaller. 4.2 GB freed. " +
+        "The originals of 1 enhanced video are now in Trash, where you can restore them for 30 days.",
+    );
+  });
+});
+
 describe("DashboardView", () => {
   it("shows the library, storage and the two jobs worth doing", async () => {
     mockEngine({
@@ -105,6 +118,7 @@ describe("DashboardView", () => {
     });
     expect(calls.some((c) => c.url.endsWith("/api/system/optimization/pause") && c.init?.method === "POST")).toBe(true);
 
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Review duplicates" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Duplicates" })).toBeInTheDocument();
     expect(await screen.findByText("1 group · about 16 MB can be freed")).toBeInTheDocument();
@@ -117,6 +131,23 @@ describe("DuplicatesView with an unexpected reply", () => {
     render(<DuplicatesView onBack={vi.fn()} />);
     expect(await screen.findByRole("heading", { level: 1, name: "Duplicates" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Keep the best in all…" })).not.toBeInTheDocument();
+  });
+});
+
+describe("DashboardView cleanup note", () => {
+  it("shows the space freed by the one-off cleanup until OK is pressed", async () => {
+    mockEngine({
+      "GET /api/system/dashboard": OVERVIEW,
+      "GET /api/videos/old-originals": { removed: 2, freed_bytes: 3 * GB, moved_to_trash: 0, kept: 1, acknowledged: false },
+    });
+    render(<DashboardView onNavigate={vi.fn()} />);
+    const note = await screen.findByRole("status");
+    expect(note).toHaveTextContent("Removed 2 full-size video copies an earlier version had kept hidden after making videos smaller. 3.0 GB freed.");
+    await act(async () => {
+      fireEvent.click(within(note).getByRole("button", { name: "OK" }));
+    });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(calls.some((c) => c.url.endsWith("/api/videos/old-originals/acknowledge") && c.init?.method === "POST")).toBe(true);
   });
 });
 
@@ -202,5 +233,23 @@ describe("VideoOptimizerView", () => {
       fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Make all smaller" }));
     });
     expect(useAppStore.getState().showToast).toHaveBeenCalledWith("Made 1 video smaller. 1.2 GB freed.", "success");
+  });
+
+  it("says the enhanced clip's original is in Trash", async () => {
+    const old = { ...video, id: 11, filename: "1998_birthday.avi", width: 640, height: 480, optimization_plan: { ...video.optimization_plan, action: "enhance" } };
+    mockEngine({
+      "GET /api/videos/summary": { runtime_available: true, compressible_count: 0, projected_reclaimable_bytes: 0 },
+      "GET /api/videos/candidates": [old],
+      "POST /api/videos/11/enhance": { success: true, height: 720 },
+    });
+    render(<VideoOptimizerView onBack={vi.fn()} />);
+    expect(await screen.findByText(/The original goes to Trash, so you can restore it for 30 days/)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Enhance" }));
+    });
+    expect(useAppStore.getState().showToast).toHaveBeenCalledWith(
+      "Enhanced 1998_birthday.avi to HD. The original is in Trash for 30 days.",
+      "success",
+    );
   });
 });

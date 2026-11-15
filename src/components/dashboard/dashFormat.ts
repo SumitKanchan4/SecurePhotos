@@ -60,3 +60,29 @@ export function formatDuration(seconds?: number | null): string {
   const rest = String(s % 60).padStart(2, "0");
   return h ? `${h}:${String(m).padStart(2, "0")}:${rest}` : `${m}:${rest}`;
 }
+
+export interface OldOriginalsCleanup {
+  removed?: number;
+  freed_bytes?: number;
+  moved_to_trash?: number;
+  kept?: number;
+  acknowledged?: boolean;
+  status?: string;
+}
+
+/** One-time note about the cleanup of video originals older versions left hidden (R7c2); null when there is nothing to say. */
+export function oldOriginalsNote(r: OldOriginalsCleanup | null): string | null {
+  if (!r || r.acknowledged || r.status) return null;
+  const removed = r.removed ?? 0;
+  const moved = r.moved_to_trash ?? 0;
+  const parts: string[] = [];
+  if (removed > 0) {
+    parts.push(
+      `Removed ${plural(removed, "full-size video copy", "full-size video copies")} an earlier version had kept hidden after making videos smaller. ${formatSize(r.freed_bytes ?? 0)} freed.`,
+    );
+  }
+  if (moved > 0) {
+    parts.push(`The originals of ${plural(moved, "enhanced video")} are now in Trash, where you can restore them for 30 days.`);
+  }
+  return parts.length ? parts.join(" ") : null;
+}

@@ -218,7 +218,7 @@ Integration branch `feature/redesign` (master untouched until the end; owner dec
 ### R7a · Trash: days left, restore or delete forever (asks first), vault items kept private — `done` (merged into feature/redesign 2026-11-13, PR #20, history §130)
 ### R7b · Documents: categories, pinned papers, find in photos — `done` (merged into feature/redesign 2026-11-13, PR #21, history §131; vault documents no longer listed or searchable here; pinning fixed)
 ### R7c · Dashboard + Duplicates + Big videos — `done` (merged into feature/redesign 2026-11-15, PR #22, history §132; video originals deleted once the smaller copy is checked; similar-photo detection and video savings fixed)
-### R7c2 · Video originals: clean up old hidden copies, enhanced originals go to Trash — `todo`
+### R7c2 · Video originals: clean up old hidden copies, enhanced originals go to Trash — `done` (history §133)
 Owner decisions 2026-11-15:
 - **Old hidden originals** (left in `.trash` folders by "Make smaller" before R7c): one-off cleanup. Each leftover is deleted only if its smaller video still exists and passes the same check (has a picture, same length); anything that fails is left alone. Report the space freed.
 - **Enhance (HD / Full HD / 4K)**: once the enhanced copy passes the check, the original goes to Trash (restorable for 30 days, then deleted for good) instead of a hidden `.trash` folder.

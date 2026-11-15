@@ -13,7 +13,6 @@ import datetime
 import json
 import logging
 import os
-import shutil
 import subprocess
 import sys
 import uuid
@@ -654,6 +653,73 @@ async def compress_video(
         return {"success": False, "error": str(e)}
 
 
+
+def _mime_for_video(path: Path) -> str:
+    ext = path.suffix.lstrip(".").lower()
+    return {
+        "mp4": "video/mp4", "m4v": "video/mp4", "mov": "video/quicktime",
+        "webm": "video/webm", "mkv": "video/x-matroska", "avi": "video/x-msvideo",
+    }.get(ext, "video/mp4")
+
+
+async def put_original_in_trash(conn, source: Any, original_file: Path, width: Optional[int], height: Optional[int]) -> int:
+    """Adds a replaced video original to Trash as its own item (owner decision R7c2).
+
+    The library item keeps the enhanced copy (and its albums, favourite and faces); the
+    original becomes a separate Trash entry that can be restored for 30 days and is then
+    deleted for good by the normal Trash purge. It gets its own thumbnail so purging it
+    never removes the enhanced copy's thumbnail.
+
+    Args:
+        conn: Open connection (committed by the caller).
+        source: The library row the original belonged to (copied for date, place, camera).
+        original_file: Where the original file now is (left in place, outside any hidden folder).
+        width: Original width, if known.
+        height: Original height, if known.
+
+    Returns:
+        The new Trash item's photo id.
+    """
+    from engine.services.thumbnail_service import get_sharded_preview_path, get_sharded_thumbnail_path
+
+    key = uuid.uuid4().hex
+    thumb = get_sharded_thumbnail_path(key)
+    preview = get_sharded_preview_path(key)
+    await asyncio.to_thread(generate_video_thumbnail, str(original_file), str(thumb), str(preview))
+    size = original_file.stat().st_size
+    cursor = await conn.execute(
+        """
+        INSERT INTO photos (
+            filename, filepath, file_size, original_file_size, mime_type, width, height,
+            taken_at, camera_make, camera_model, latitude, longitude,
+            thumbnail_path, preview_path, file_hash, is_managed, original_path, folder_name,
+            is_optimized, is_enhanced, trashed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, CURRENT_TIMESTAMP);
+        """,
+        (
+            original_file.name,
+            to_db_path(original_file),
+            size,
+            size,
+            _mime_for_video(original_file),
+            width,
+            height,
+            source["taken_at"],
+            source["camera_make"],
+            source["camera_model"],
+            source["latitude"],
+            source["longitude"],
+            to_db_path(thumb) if thumb.exists() else None,
+            to_db_path(preview) if preview.exists() else None,
+            source["file_hash"],
+            source["is_managed"],
+            source["original_path"],
+            source["folder_name"],
+        ),
+    )
+    return cursor.lastrowid
+
+
 async def enhance_old_video(
     photo_id: int,
     target_height: int = 720,
@@ -764,6 +830,16 @@ async def enhance_old_video(
             err_msg = proc.stderr[-400:] if proc.stderr else "Unknown enhancement error"
             return {"success": False, "error": f"Enhancement failed: {err_msg}"}
 
+        # R7c2: check the enhanced copy (has a picture, same length) before anything changes.
+        original_meta, copy_meta = await asyncio.gather(
+            asyncio.to_thread(extract_video_metadata, orig_path),
+            asyncio.to_thread(extract_video_metadata, str(temp_path)),
+        )
+        problem = verify_transcoded_copy(original_meta, copy_meta)
+        if problem:
+            temp_path.unlink(missing_ok=True)
+            return {"success": False, "error": f"The enhanced copy didn't pass the check ({problem}), so the original was kept."}
+
         conn = await get_db_connection()
         try:
             conn.row_factory = aiosqlite.Row
@@ -822,29 +898,20 @@ async def enhance_old_video(
         finally:
             await conn.close()
 
-        # Atomic Step 2: Move original to 30-Day Trash ONLY AFTER DB commit succeeds
-        if str(orig_path) != str(target_path):
-            trash_dir = Path(orig_path).parent / ".trash"
-            trash_dir.mkdir(parents=True, exist_ok=True)
-            trash_orig_path = trash_dir / f"{orig_p.name}.vintage_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
-            moved = False
-            for attempt in range(5):
-                try:
-                    shutil.move(orig_path, str(trash_orig_path))
-                    moved = True
-                    break
-                except (PermissionError, OSError):
-                    await asyncio.sleep(0.3)
-
-            if not moved:
-                try:
-                    await asyncio.to_thread(shutil.copy2, orig_path, str(trash_orig_path))  # H7
-                    try:
-                        os.unlink(orig_path)
-                    except OSError:
-                        pass
-                except Exception:
-                    pass
+        # Step 2 (owner decision R7c2): the original stays where it is and becomes its own Trash
+        # item, restorable for 30 days and then deleted by the Trash purge. It used to be moved
+        # into a hidden .trash folder that was never emptied.
+        original_trash_id = None
+        if str(orig_path) != str(target_path) and Path(orig_path).exists():
+            conn = await get_db_connection()
+            try:
+                conn.row_factory = aiosqlite.Row
+                original_trash_id = await put_original_in_trash(
+                    conn, photo, Path(orig_path), photo["width"], photo["height"]
+                )
+                await conn.commit()
+            finally:
+                await conn.close()
 
         if photo["thumbnail_path"]:
             await asyncio.to_thread(  # H7
@@ -858,6 +925,7 @@ async def enhance_old_video(
             "height": new_meta.get("height"),
             "file_size": new_size,
             "new_filepath": str(target_path),
+            "original_trash_id": original_trash_id,
         }
 
     except Exception as e:
