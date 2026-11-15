@@ -408,6 +408,18 @@ async def unlock_vault(payload: VaultUnlockRequest) -> dict:
     return {"status": "unlocked"}
 
 
+@router.post("/activity", status_code=status.HTTP_200_OK)
+async def vault_activity() -> dict:
+    """The user is active on the vault screen (mouse or keys), which counts as vault activity.
+
+    The screen counted mouse movement while the engine only counted requests, so the engine
+    could lock before the on-screen countdown ended (M8 follow-up). Locked or already idle
+    for too long: 401, and the screen shows the lock card.
+    """
+    get_active_mvk()
+    return {"status": "active"}
+
+
 @router.post("/lock", status_code=status.HTTP_200_OK)
 async def lock_vault() -> dict:
     """Locks the vault. With a PIN set, the PIN can re-open it until the app closes."""
