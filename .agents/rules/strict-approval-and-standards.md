@@ -58,12 +58,7 @@ trigger: always_on
 ## 3. Clean Architecture, Zero-Debt Policy & Design Standards
 - Keep code clean, decoupled, and modular. Do not mix presentation, business logic, and database operations in single files.
 - Adhere strictly to project skills (`modern-web-ui`, `zero-trust-crypto`, `enterprise-standards-and-docs`) and the checklists in `engineering-checklists.md`. `local-slm-engineering` and `sqlite-vector-search` describe future ideas only (not used today).
-- **CRITICAL UI/UX STANDARD (View Headers & Toolbars)**: Must comply strictly with Section 4 of `modern-web-ui`:
-  1. Balanced 3-Column flex layout (`flex: 1` Left / `flex: 0 1 auto` Center / `flex: 1` Right).
-  2. Centered modern display title (`22px` to `24px` Plus Jakarta Sans, `fontWeight: 800`, `letterSpacing: -0.03em`).
-  3. Inline frosted capsule count badge (`[ N photos ]`) on the exact same horizontal baseline (no stacked subtitles).
-  4. Dual-theme frosted liquid glass floating container (`backgroundColor: "var(--glass-surface)"`, `backdropFilter: "blur(24px)"`, `WebkitBackdropFilter: "blur(24px)"`, `border: "1px solid var(--glass-border)"`, `borderRadius: "var(--radius-lg)"`, `boxShadow: "var(--glass-shadow)"`, `color: "var(--text-primary)"`). STRICTLY FORBIDDEN to hardcode dark `rgba(23, 23, 23, ...)` or static dark backgrounds.
-  5. Pill geometry (`var(--radius-full)`) on navigation, action, and filter buttons (`backgroundColor: "var(--glass-pill-bg)"`, `border: "1px solid var(--glass-border)"`).
+- **CRITICAL UI/UX STANDARD**: follow `docs/design_system.md` and the `modern-web-ui` skill (Mono + acid lime redesign): tokens only, lime as a fill with black text and `--accent-ink` for accent text, the `.dash-page` header (Archivo title, meta line, one lime primary button, rare actions behind "…"), `PhotoTimeline` for photos, `ConfirmDialog` for anything that can't be undone, plain wording, and both themes checked.
 
 ## 4. High Code Quality, Comments & Tests
 - Google-style docstrings (Python) / JSDoc (Frontend) across all code.
