@@ -1,9 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../store/useAppStore";
 import type { FaceScanStatus, PersonItem, UnlabeledClusterItem } from "../../types";
 import { PeopleView } from "../PeopleView";
 import { matchesSearch, PeopleOverview, photoCountLabel } from "./PeopleOverview";
+import { PersonPage, personMeta } from "./PersonPage";
 
 vi.mock("../../services/external", () => ({ openExternal: vi.fn() }));
 
@@ -197,7 +198,7 @@ describe("PeopleOverview", () => {
 });
 
 describe("Person page rename", () => {
-  it("renames a person, but not to a name someone else already has", async () => {
+  it("renames a person by clicking the name, but not to a name someone else already has", async () => {
     const calls = mockEngine({
       "GET /api/people": PEOPLE,
       "GET /api/people/clusters": [],
@@ -208,22 +209,125 @@ describe("Person page rename", () => {
     });
     render(<PeopleView />);
     fireEvent.click(await screen.findByRole("button", { name: /Rohan/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "Rename Rohan" }));
-
-    const input = screen.getByLabelText("Name");
-    fireEvent.change(input, { target: { value: "asha" } });
-    fireEvent.blur(input);
+    fireEvent.click(await screen.findByTitle("Click to rename"));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "asha" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(useAppStore.getState().showToast).toHaveBeenCalledWith("Someone else is already called Asha. Pick a different name.", "warning");
     expect(calls.some((c) => c.init?.method === "PATCH")).toBe(false);
 
-    fireEvent.click(screen.getByRole("button", { name: "Rename Rohan" }));
+    fireEvent.click(screen.getByTitle("Click to rename"));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Rohan K" } });
     await act(async () => {
-      fireEvent.keyDown(screen.getByLabelText("Name"), { key: "Enter" });
-      fireEvent.blur(screen.getByLabelText("Name"));
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
     });
     const patch = calls.find((c) => c.init?.method === "PATCH");
     expect(JSON.parse(String(patch?.init?.body))).toEqual({ name: "Rohan K" });
-    expect(await screen.findByRole("button", { name: "Rename Rohan K" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Rohan K" })).toBeInTheDocument();
+  });
+});
+
+describe("Person page (R10)", () => {
+  // jsdom has no layout: give elements a size so the photo grid lays out its rows.
+  const sizeProps = ["clientWidth", "clientHeight"] as const;
+  const originals = sizeProps.map((prop) => Object.getOwnPropertyDescriptor(HTMLElement.prototype, prop));
+  beforeAll(() => {
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 1100 });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => 800 });
+  });
+  afterAll(() => {
+    sizeProps.forEach((prop, i) => {
+      if (originals[i]) Object.defineProperty(HTMLElement.prototype, prop, originals[i]!);
+    });
+  });
+  const ROHAN = person(2, "Rohan", 3, false, "Friends");
+  const photosOf = [
+    { id: 71, filename: "a.jpg", filepath: "a.jpg", file_size: 1, mime_type: "image/jpeg", width: 4000, height: 3000, taken_at: "2026-11-02 10:00:00", is_favorite: false, is_encrypted: false, is_optimized: true, is_enhanced: false },
+    { id: 72, filename: "b.jpg", filepath: "b.jpg", file_size: 1, mime_type: "image/jpeg", width: 4000, height: 3000, taken_at: "2024-05-02 10:00:00", is_favorite: false, is_encrypted: false, is_optimized: true, is_enhanced: false },
+    { id: 73, filename: "c.jpg", filepath: "c.jpg", file_size: 1, mime_type: "image/jpeg", width: 4000, height: 3000, taken_at: "2019-01-02 10:00:00", is_favorite: false, is_encrypted: false, is_optimized: true, is_enhanced: false },
+  ];
+
+  function renderPage(overrides: Partial<React.ComponentProps<typeof PersonPage>> = {}) {
+    const props = {
+      person: ROHAN,
+      takenNames: ["Asha", "Rohan", "Kabir"],
+      onBack: vi.fn(),
+      onChanged: vi.fn(),
+      onDeleted: vi.fn(),
+      onOpenPhotos: vi.fn(),
+      ...overrides,
+    };
+    render(<PersonPage {...props} />);
+    return props;
+  }
+
+  it("says how many photos and over which years, and offers relationship and Close one", async () => {
+    expect(personMeta(photosOf)).toBe("3 photos · 2019 – 2026");
+    const calls = mockEngine({
+      "GET /api/people/2/photos": photosOf,
+      "PATCH /api/people/2": ({ init }: Call) => ({ ...ROHAN, ...JSON.parse(String(init?.body)) }),
+    });
+    const { onChanged } = renderPage();
+    expect(await screen.findByText("3 photos · 2019 – 2026")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Relationship: Friends" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "Family" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Close one/ }));
+    });
+    const bodies = calls.filter((c) => c.init?.method === "PATCH").map((c) => JSON.parse(String(c.init?.body)));
+    expect(bodies).toEqual([{ relationship_type: "Family" }, { is_close_one: true }]);
+    expect(onChanged).toHaveBeenCalledTimes(2);
+  });
+
+  it("takes selected photos off the person with \"Not Rohan\"; they stay in the library", async () => {
+    const calls = mockEngine({ "GET /api/people/2/photos": photosOf });
+    useAppStore.setState({ selectedPhotoIds: new Set<number>() });
+    const { onChanged } = renderPage();
+    await screen.findByText("3 photos · 2019 – 2026");
+    act(() => useAppStore.setState({ selectedPhotoIds: new Set([71, 73]) }));
+    const bar = await screen.findByRole("toolbar", { name: "Selected photos" });
+    await act(async () => {
+      fireEvent.click(within(bar).getByRole("button", { name: /Not Rohan/ }));
+    });
+    expect(calls.filter((c) => c.url.includes("/unlink-photo/")).map((c) => c.url.split("/").pop())).toEqual(["71", "73"]);
+    expect(useAppStore.getState().showToast).toHaveBeenCalledWith("Took 2 photos off Rohan. They stay in your library.", "success");
+    expect(onChanged).toHaveBeenCalledWith(expect.objectContaining({ confirmed_count: 1 }));
+    expect(screen.getByText("1 photo · 2 May 2024")).toBeInTheDocument();
+  });
+
+  it("chooses a profile photo by clicking it, and asks before deleting the person", async () => {
+    const calls = mockEngine({
+      "GET /api/people/2/photos": photosOf,
+      "POST /api/people/2/cover": { status: "ok", cover_face_id: 999 },
+      "DELETE /api/people/2": { status: "deleted" },
+    });
+    const { onChanged, onDeleted, onOpenPhotos } = renderPage();
+    await screen.findByText("3 photos · 2019 – 2026");
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Choose profile photo" }));
+    expect(screen.getByText("Click the photo you want as Rohan's profile photo.")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(document.querySelector('[data-photo-id="72"]') as HTMLElement);
+    });
+    expect(onOpenPhotos).not.toHaveBeenCalled();
+    expect(JSON.parse(String(calls.find((c) => c.url.endsWith("/cover"))?.init?.body))).toEqual({ photo_id: 72 });
+    expect(onChanged).toHaveBeenCalledWith(expect.objectContaining({ cover_face_id: 999 }));
+
+    // Outside "choose" mode a click opens the photo in the viewer.
+    fireEvent.click(document.querySelector('[data-photo-id="71"]') as HTMLElement);
+    expect(onOpenPhotos).toHaveBeenCalledWith(expect.any(Array), 0);
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete Rohan…" }));
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("every photo stays in your library");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(calls.some((c) => c.init?.method === "DELETE")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete Rohan…" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete Rohan" }));
+    });
+    expect(onDeleted).toHaveBeenCalledWith(2);
   });
 });
