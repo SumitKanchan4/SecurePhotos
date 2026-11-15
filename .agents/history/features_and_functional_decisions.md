@@ -5965,3 +5965,27 @@ Owner review of R9c (2026-11-15, screenshot of the real app).
 - Tests: `engine/tests/test_key_handling.py` (+1: report keeps the vault open; refused and locked when idle too long; refused when locked); `src/components/vault/vault.test.tsx` (+1: at most one report per 15 s; lock card when the engine has locked). Mutation checks: reporting every movement, ignoring the engine's refusal, and an engine report that doesn't count as activity each fail a test.
 - Validated in the UI (Playwright, throwaway library): 20 seconds of mouse movement on the unlocked vault sent one report; locking the engine behind the screen's back showed the lock card on the next mouse move; no console errors.
 
+## 144. Redesign Step 10: Person Page (one person's photos)
+
+### Functionality Overview
+- The person page (opened from People, Search or the viewer) is redesigned as on the approved **Person page** board (owner approval 2026-11-15). It still used the pre-redesign look: a glassy header, coloured pills, year chips with range filters, and a Remove button on every photo.
+  - **Header**: "← People"; a big face (lime ring for a close one); the name, which you click to rename (Save or Enter; a name someone else has is refused); "214 photos · 2012 – 2026".
+  - **Controls**: a relationship pill (Family, Friends, Relatives, Colleagues, Acquaintances) and a **Close one** toggle; **Slideshow**; a "…" menu with **Choose profile photo** and **Delete {name}…**, which asks first ("Only the name goes … every photo stays in your library").
+  - **Photos** use the same month timeline and scrubber as Photos (scrubber from four months), replacing the year chips and range filters. Clicking a photo opens the viewer with full details, stepping through this person's photos.
+  - **Wrong photos**: select them (Ctrl+click, then clicks) and press **Not {name}** in the selection bar: "Took 2 photos off Rohan. They stay in your library." The bar also has Add to album and Download. Escape clears the selection.
+  - **Choose profile photo** (new): "Click the photo you want as Rohan's profile photo." The person's face in that photo becomes their picture across the app.
+  - A photo trashed or moved to the vault from the viewer leaves the page.
+- **Fixed**: for a Family member (or another close relationship), turning Close one off was silently undone. The engine promoted them back on every change. Now that only happens when the relationship itself is changed to a close one (and Close one isn't set in the same change).
+- **Q5**: `PeopleView.tsx` went from 1,764 to 480 lines; the person page is `people/PersonPage.tsx`.
+
+### Functional Decision Points & Rationale
+- One timeline and scrubber everywhere instead of per-screen year filters: same navigation as Photos, Vault and albums, and less to learn.
+- "Not {name}" as a selection action (like Remove from album) instead of a Remove button on every tile: fewer controls on the photos, and several mistakes can be fixed at once.
+- Delete person asks with the in-app dialog (the old code used the browser's plain confirm box).
+
+### Technical Touchpoints
+- Engine (`engine/api/people.py`): `POST /api/people/{id}/cover` (the person's face in a library photo becomes the cover; 404 for a photo without them or a vault/trashed photo); `update_person` promotes to Close one only when the relationship changes; `/people/{id}/photos` also returns `is_optimized`, `is_enhanced`.
+- Frontend: new `src/components/people/PersonPage.tsx` (`personMeta`, `RELATIONSHIPS`); `PeopleView.tsx` renders it and drops the old page, its year filters and the unused relationship list; `App.tsx` opens person photos with `openPhotoViewer` (prop `onOpenPhotos`); `.person-*` and `.alb-selbar-btn.is-strong` styles.
+- Tests: `engine/tests/test_person_page.py` (3: profile photo, refused for a photo without them or in the vault; Close one stays off for Family, and changing the relationship back to Family promotes again; photo list says whether videos are ready). `src/components/people/people.test.tsx` (rename by clicking the name, updated; +3 person page: meta, relationship and Close one; Not Rohan on two selected photos; profile photo by clicking, a click opens otherwise, and Delete asks first). Mutation checks: opening instead of choosing the profile photo, unlinking only one of the selected photos, deleting without asking, always promoting family to Close one, and allowing a vault photo as profile photo each fail a test. Frontend 140 passed; tsc and build pass; ruff passes.
+- Validated in the UI (Playwright, throwaway library, both themes): Rohan's page shows "2 photos · Feb – Apr 2025", the Friends pill and Close one. The "…" menu lists Choose profile photo and Delete Rohan… (red), and the relationship menu lists five relationships. Ctrl+click showed "1 selected · Select all · Not Rohan · Add to album · Download" and Escape cleared it. Close one turned off and on again. Contrast scan: no problems; no console errors.
+
