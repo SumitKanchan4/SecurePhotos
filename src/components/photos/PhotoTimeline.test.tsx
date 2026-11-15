@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../store/useAppStore";
 import type { TimelinePhoto } from "../../types";
@@ -96,33 +96,52 @@ describe("PhotoTimeline", () => {
     expect(screen.getByText("Preparing")).toBeInTheDocument();
   });
 
-  it("jumps through the years with the scrubber", () => {
+  it("jumps by month or year from the scrubber and marks where you are", async () => {
     render(<PhotoTimeline photos={makeLibrary(3000)} onOpen={vi.fn()} />);
-    const scrubber = screen.getByRole("slider", { name: "Jump to a month" });
-    expect(screen.getByText("2026")).toBeInTheDocument();
+    const scrubber = screen.getByRole("navigation", { name: "Jump to date" });
+    // The newest year by month, older years once each (as on the approved board).
+    expect(within(scrubber).getByRole("button", { name: "December 2026" })).toHaveTextContent("Dec");
+    expect(within(scrubber).getByRole("button", { name: "December 2026" })).toHaveAttribute("aria-current", "true");
     const scroller = screen.getByTestId("photo-timeline");
     act(() => {
-      // jsdom has no PointerEvent; a MouseEvent named "pointerdown" carries the position.
-      fireEvent(scrubber, new MouseEvent("pointerdown", { bubbles: true, clientY: 400 }));
+      fireEvent.click(within(scrubber).getByRole("button", { name: "2024" }));
     });
     expect(scroller.scrollTop).toBeGreaterThan(1000);
-    // Halfway down the track lands roughly halfway through the library.
-    expect(screen.getByText(/2024|2025/, { selector: ".timeline-scrub-label" })).toBeInTheDocument();
+    // The grid follows the scroll position on the next animation frame.
+    await act(async () => {
+      fireEvent.scroll(scroller);
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    });
+    expect(within(scrubber).getByRole("button", { name: "2024" })).toHaveAttribute("aria-current", "true");
+    expect(within(scrubber).getByRole("button", { name: "December 2026" })).not.toHaveAttribute("aria-current");
+
+    // Further into 2024 (between its start and 2023's), the year entry stays current.
+    const top2024 = scroller.scrollTop;
+    act(() => {
+      fireEvent.click(within(scrubber).getByRole("button", { name: "2023" }));
+    });
+    const top2023 = scroller.scrollTop;
+    scroller.scrollTop = Math.round((top2024 + top2023) / 2);
+    await act(async () => {
+      fireEvent.scroll(scroller);
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    });
+    expect(within(scrubber).getByRole("button", { name: "2024" })).toHaveAttribute("aria-current", "true");
   });
 
   it("shows the scrubber only when there are enough months (the vault asks for four)", () => {
     // 3 months of 50 photos: tall enough to scroll, but only 3 sections.
     const { unmount } = render(<PhotoTimeline photos={makeLibrary(150, 50)} onOpen={vi.fn()} vault minScrubberSections={4} />);
-    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Jump to date" })).not.toBeInTheDocument();
     unmount();
     render(<PhotoTimeline photos={makeLibrary(200, 50)} onOpen={vi.fn()} vault minScrubberSections={4} />);
-    expect(screen.getByRole("slider", { name: "Jump to a month" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Jump to date" })).toBeInTheDocument();
   });
 
   it("shows the empty state for an empty library", () => {
     render(<PhotoTimeline photos={[]} onOpen={vi.fn()} empty={<p>Nothing here yet</p>} />);
     expect(screen.getByText("Nothing here yet")).toBeInTheDocument();
-    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Jump to date" })).not.toBeInTheDocument();
   });
 });
 

@@ -15,18 +15,18 @@ export function quickSearches(now = new Date()): { label: string; query: string 
   ];
 }
 
-/** Search results in the shape the photo grid uses (search reports no sizes, so tiles are square). */
+/** Search results in the shape the photo grid uses (with their sizes, so rows are justified like Photos). */
 export function toTimeline(photos: SearchPhotoItem[]): TimelinePhoto[] {
   return photos.map((p) => ({
     id: p.id,
     taken_at: p.taken_at || null,
-    width: 0,
-    height: 0,
+    width: p.width ?? 0,
+    height: p.height ?? 0,
     is_video: Boolean(p.mime_type?.startsWith("video/")),
     is_favorite: p.is_favorite,
-    // Search doesn't report these; they only decide whether a video can play yet.
-    is_optimized: true,
-    is_enhanced: true,
+    // Unknown counts as ready: these only decide whether a video can play yet.
+    is_optimized: p.is_optimized ?? true,
+    is_enhanced: p.is_enhanced ?? true,
   }));
 }
 
