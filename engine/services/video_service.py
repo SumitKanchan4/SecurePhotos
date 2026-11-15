@@ -423,6 +423,25 @@ def classify_video_for_ingestion(meta: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def verify_transcoded_copy(original: Dict[str, Any], copy: Dict[str, Any]) -> Optional[str]:
+    """Why a smaller copy can't replace the original, or None when it can (owner decision, R7c).
+
+    The original is deleted once the copy passes, so the copy must have a video picture and
+    the same length as the original: within one second, or 1 % for long videos.
+    """
+    if not copy.get("width") or not copy.get("height"):
+        return "the copy has no picture"
+    original_length = float(original.get("duration") or 0)
+    copy_length = float(copy.get("duration") or 0)
+    if original_length <= 0:
+        return "the original's length couldn't be read"
+    if copy_length <= 0:
+        return "the copy's length couldn't be read"
+    if abs(original_length - copy_length) > max(1.0, original_length * 0.01):
+        return f"the copy is {copy_length:.1f} s long but the original is {original_length:.1f} s"
+    return None
+
+
 async def compress_video(
     photo_id: int,
     crf: Optional[int] = None,
@@ -527,6 +546,22 @@ async def compress_video(
                 "compressed_bytes": compressed_size,
             }
 
+        # Check the copy before the original goes (R7c): a picture, and the same length.
+        original_meta, copy_meta = await asyncio.gather(
+            asyncio.to_thread(extract_video_metadata, orig_path),
+            asyncio.to_thread(extract_video_metadata, str(temp_path)),
+        )
+        problem = verify_transcoded_copy(original_meta, copy_meta)
+        if problem:
+            temp_path.unlink()
+            logger.warning(f"Smaller copy of video #{photo_id} failed the check ({problem}); original kept.")
+            return {
+                "success": False,
+                "error": f"The smaller copy didn't pass the check ({problem}), so the original was kept.",
+                "original_bytes": orig_size,
+                "compressed_bytes": compressed_size,
+            }
+
         conn = await get_db_connection()
         try:
             conn.row_factory = aiosqlite.Row
@@ -583,13 +618,12 @@ async def compress_video(
         finally:
             await conn.close()
 
-        # Atomic Step 2: Move original to 30-Day Trash ONLY AFTER DB commit succeeds
-        trash_dir = Path(orig_path).parent / ".trash"
-        trash_dir.mkdir(parents=True, exist_ok=True)
-        trash_orig_path = trash_dir / f"{orig_p.name}.orig_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+        # Atomic Step 2: delete the original ONLY AFTER the checked copy is in the DB (owner decision,
+        # R7c: "delete once checked"; it used to be kept forever in a hidden .trash folder, so no
+        # space was ever freed).
         for attempt in range(5):
             try:
-                shutil.move(orig_path, str(trash_orig_path))
+                Path(orig_path).unlink(missing_ok=True)
                 break
             except PermissionError:
                 if attempt == 4:
