@@ -5965,3 +5965,19 @@ Owner review of R9c (2026-11-15, screenshot of the real app).
 - Tests: `engine/tests/test_key_handling.py` (+1: report keeps the vault open; refused and locked when idle too long; refused when locked); `src/components/vault/vault.test.tsx` (+1: at most one report per 15 s; lock card when the engine has locked). Mutation checks: reporting every movement, ignoring the engine's refusal, and an engine report that doesn't count as activity each fail a test.
 - Validated in the UI (Playwright, throwaway library): 20 seconds of mouse movement on the unlocked vault sent one report; locking the engine behind the screen's back showed the lock card on the next mouse move; no console errors.
 
+## 143. Viewer Split (Q5); False Faces Checked on the Real Library (H11); Dev Reload (M9); Decisions on H10 and P12
+
+### Functionality Overview
+- **Q5, viewer split** (no change in behaviour): the photo viewer's video volume booster moved to `viewer/useVolumeBooster.ts` and its details panel to `viewer/ViewerDetails.tsx`; `Lightbox.tsx` went from 1,412 to 1,195 lines. The video player's markup stays in the viewer: it is interleaved with the locked-vault overlay, and splitting it further would be a tangled change for little gain.
+- **H11, false faces: closed without a code change.** With the owner's approval, the face detector was re-run read-only over the real library (a copy of the database and models in a scratch folder, photos only read; the copies and face crops were deleted afterwards).
+  - All 10 current "Who is this?" suggestions are real people (mostly guests in the background); no hand or ear remains (the ones seen in the H9 rehearsal were dismissed).
+  - A landmark-shape check (how well the eyes, nose and mouth fit the standard face template) can't separate them: real named faces range from 0.036 to 0.278, and the worst-fitting face is a real one (a profile). Any cut-off strict enough to hide a hand would hide real profile faces.
+  - Non-faces stay rare suggestions that can be dismissed with ×.
+- **M9, dev auto-reload: not reproducible in the normal setup.** On Windows, uvicorn restarts its worker with a console Ctrl+C. Started with no console at all, that never arrives and the reload hangs, which is what the H6 report saw. But both of the owner's running dev engines reloaded cleanly (new workers) when an engine file changed. No code change; kept as a low-priority item. Seen at the same time: two dev engines were running at once (since 16:42 and 18:02), either two app windows or an engine left behind by an earlier dev session; not investigated further without the owner.
+- **H10** (face restoration model): owner chose "decide later". **P12** (Windows Hello): owner chose "not now".
+- **Person page** (R10): the People person page was never redesigned (old glassy header, year chips); a board was added to the redesign canvas and approved by the owner. It is built in its own step.
+
+### Technical Touchpoints
+- `src/components/Lightbox.tsx`, new `src/components/viewer/useVolumeBooster.ts` and `src/components/viewer/ViewerDetails.tsx`.
+- Checks: tsc and build pass; frontend 137 passed (viewer tests unchanged and passing). Validated in the UI (Playwright, throwaway library, both themes): details panel shows Taken, Photo, File and Imported and closes; a video plays and the volume keys show "Volume: 110%"; contrast scan: no problems; no console errors.
+
