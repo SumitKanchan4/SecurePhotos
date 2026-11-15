@@ -5948,3 +5948,20 @@ Owner review of R9c (2026-11-15, screenshot of the real app).
 - Tests: `engine/tests/test_ai_stories.py` (+2: making stories again refreshes a suggestion, never copies a saved story, and recognises a story saved before keys; startup removes exact copies keeping the oldest saved). Mutation checks: skipping the saved check, keeping old unsaved copies, skipping the legacy match, choosing the oldest unsaved over a saved copy, and not running the cleanup each fail a test. Engine suite 261 passed; ruff passes.
 - Validated in the UI (Playwright, throwaway library that had the duplicates): the library started with 7 titles twice. After restarting the engine, the leftover saved copy was removed (7 stories, none repeated). Pressing Make new stories three times kept 7 stories and 4 saved, with no title repeated; no console errors.
 
+## 142. The Vault Never Locks Before Its Countdown Ends (M8 follow-up)
+
+### Functionality Overview
+- **Fixed**: the vault screen counted mouse movement and key presses as activity, but the engine only counted requests. While you looked at the vault and moved the mouse without loading anything, the engine's idle clock kept running. It could lock the vault while the screen still showed time left, and the next action then landed on the lock screen unexpectedly.
+- The vault screen now reports activity to the engine (`POST /api/vault/activity`), at most every 15 seconds, and restarts its countdown only when it does. Both clocks start together, so the engine never locks before the countdown ends (the countdown errs by at most 15 seconds on the early side).
+- If the engine has already locked (for example after the PC slept), the next mouse move or key press shows the lock card straight away.
+
+### Functional Decision Points & Rationale
+- The engine stays the authority on locking: the report is an ordinary vault request, so it is refused when the vault is locked or idle too long (and that request locks it).
+- Reporting every movement would flood the engine; 15 seconds keeps it to a handful of tiny requests per minute while active.
+
+### Technical Touchpoints
+- `engine/api/vault.py`: `POST /api/vault/activity` (calls `get_active_mvk`).
+- `src/components/VaultView.tsx`: `ACTIVITY_PING_MS`, activity handler reports and restarts the countdown, 401 shows the lock card.
+- Tests: `engine/tests/test_key_handling.py` (+1: report keeps the vault open; refused and locked when idle too long; refused when locked); `src/components/vault/vault.test.tsx` (+1: at most one report per 15 s; lock card when the engine has locked). Mutation checks: reporting every movement, ignoring the engine's refusal, and an engine report that doesn't count as activity each fail a test.
+- Validated in the UI (Playwright, throwaway library): 20 seconds of mouse movement on the unlocked vault sent one report; locking the engine behind the screen's back showed the lock card on the next mouse move; no console errors.
+

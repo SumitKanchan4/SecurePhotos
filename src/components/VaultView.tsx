@@ -63,6 +63,9 @@ const getDocIcon = (doc: PhotoItem) => {
  * month/year scrubber once the vault spans several months. Locked: one card with the PIN (or
  * password) and the Emergency Card link. Factory reset lives in Settings → Private Vault.
  */
+/** How often activity on the vault screen is reported to the engine at most. */
+export const ACTIVITY_PING_MS = 15_000;
+
 export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   const { 
     isVaultUnlocked, 
@@ -308,9 +311,19 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   useEffect(() => {
     if (!isVaultUnlocked) return;
 
+    // Activity on this screen is reported to the engine (at most every 15 s), and the countdown
+    // restarts only when it is: both clocks then agree, so the engine never locks before the
+    // countdown ends (M8 follow-up). If the engine has locked already, show the lock card.
     const resetActivity = () => {
-      lastActivityRef.current = Date.now();
+      const now = Date.now();
+      if (now - lastActivityRef.current < ACTIVITY_PING_MS) return;
+      lastActivityRef.current = now;
       setSecondsRemaining(autoLockSeconds);
+      apiFetch("/api/vault/activity", { method: "POST" })
+        .then((res) => {
+          if (res.status === 401) handleManualLock();
+        })
+        .catch(() => {});
     };
 
     window.addEventListener("mousemove", resetActivity);
