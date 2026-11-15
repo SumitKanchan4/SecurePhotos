@@ -30,7 +30,10 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({ onBack, onPhotoC
   const load = useCallback(async () => {
     try {
       const res = await apiFetch("/api/duplicates/groups");
-      if (res.ok) setGroups(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setGroups(Array.isArray(data) ? data : []);
+      }
     } catch (err) {
       console.error("Failed to load duplicates:", err);
     } finally {
@@ -60,7 +63,8 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({ onBack, onPhotoC
     try {
       const res = await apiFetch("/api/duplicates/scan", { method: "POST" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const found: DuplicateGroupItem[] = await res.json();
+      const data = await res.json();
+      const found: DuplicateGroupItem[] = Array.isArray(data) ? data : [];
       setGroups(found);
       setKeep({});
       showToast(found.length ? `Found ${plural(found.length, "group")} of duplicates.` : "No duplicates found.", "info");
