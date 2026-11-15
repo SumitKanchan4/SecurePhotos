@@ -340,3 +340,40 @@ async def test_ephemeral_stories_save_delete_and_lifecycle():
 
 
 
+
+
+@pytest.mark.asyncio
+async def test_story_list_gives_the_date_span_of_its_photos():
+    """R7e: story cards say when the photos were taken ("2019 – 2026")."""
+    await run_migrations()
+    conn = await get_db_connection()
+    try:
+        ids = []
+        for k, taken in enumerate(("2019-03-02 10:00:00", "2026-11-12 18:00:00")):
+            cur = await conn.execute(
+                "INSERT INTO photos (filepath, filename, file_size, taken_at, is_favorite, is_encrypted) VALUES (?, ?, 10, ?, 0, 0);",
+                (f"/dummy/span_{k}.jpg", f"span_{k}.jpg", taken),
+            )
+            ids.append(cur.lastrowid)
+        cur = await conn.execute(
+            "INSERT INTO stories (title, story_type, vibe_mood, is_saved, created_at) VALUES ('Through the years: Span', 'through_the_years', 'acoustic', 0, ?);",
+            (datetime.now(timezone.utc).isoformat(),),
+        )
+        story_id = cur.lastrowid
+        for order, pid in enumerate(ids):
+            await conn.execute("INSERT INTO story_items (story_id, photo_id, sort_order) VALUES (?, ?, ?);", (story_id, pid, order))
+        await conn.commit()
+    finally:
+        await conn.close()
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            listed = next(s for s in (await ac.get("/api/stories?ephemeral_only=true")).json() if s["id"] == story_id)
+        assert listed["slides_count"] == 2
+        assert listed["first_taken_at"].startswith("2019-03-02")
+        assert listed["last_taken_at"].startswith("2026-11-12")
+    finally:
+        conn = await get_db_connection()
+        await conn.execute("DELETE FROM stories WHERE id = ?;", (story_id,))
+        await conn.execute(f"DELETE FROM photos WHERE id IN ({','.join('?' for _ in ids)});", ids)
+        await conn.commit()
+        await conn.close()
