@@ -240,6 +240,8 @@ Found during R7e: running Make new stories again created a second "Remember This
 
 ### R10 · Person page redesigned (board approved 2026-11-15); Close one stays off for family — `done` (history §144)
 
+### R11 · Vault setup, shield, locked albums and documents redesigned (board approved 2026-11-15); albums lock only when every photo can — `done` (history §147)
+
 ### P12 · Windows Hello quick unlock — `todo` (owner 2026-11-15: not now)
 - Optional, per PC, on top of the portable master password. Design together with C2 (option B).
 

@@ -119,6 +119,18 @@ describe("Vault lock screen", () => {
     expect(useAppStore.getState().isVaultUnlocked).toBe(true);
   });
 
+  it("explains the vault in plain words before it is set up", () => {
+    mockEngine({});
+    useAppStore.setState({ isVaultConfigured: false });
+    render(<VaultView />);
+    expect(screen.getByRole("heading", { name: "Keep private photos here" })).toBeInTheDocument();
+    expect(screen.getByText(/never show in Photos, Search or People/)).toBeInTheDocument();
+    expect(screen.queryByText(/AES|GCM/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Choose a password", "Add a 4-digit PIN", "Print your Emergency Card"]);
+    fireEvent.click(screen.getByRole("button", { name: "Set up the vault" }));
+    expect(screen.queryByRole("heading", { name: "Keep private photos here" })).not.toBeInTheDocument();
+  });
+
   it("asks for the password when the PIN can't be used yet", () => {
     mockEngine({});
     useAppStore.setState({ isVaultPinLocked: true });
@@ -195,8 +207,66 @@ describe("Vault when unlocked", () => {
     fireEvent.keyDown(window, { key: "p" });
     expect(screen.getByRole("button", { name: "Privacy shield: show photos" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByRole("tab", { name: /Photos/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Privacy shield: show photos" }));
+    expect(screen.getByRole("heading", { name: "Hidden while you look away" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show photos" }));
     expect(screen.getByRole("tab", { name: /Photos 4/ })).toBeInTheDocument();
+  });
+
+  it("shows locked albums as covers, and moves one back to the library only after asking", async () => {
+    const calls = mockEngine({
+      "/api/vault/photos": photos,
+      "/api/vault/albums": [{ id: 9, name: "Passport scans", is_vault: true, is_favorite: false, photo_count: 2, cover_photo_id: 1 }],
+      "/api/vault/albums/9/photos": [vaultPhoto(1, "2019-03-01 10:00:00"), vaultPhoto(4, "2024-12-24 10:00:00")],
+      "/api/vault/albums/9/unlock": { status: "ok" },
+      "/api/vault/enhancement-progress": { is_active: false, completed_count: 0, total_count: 0, paused_reason: null },
+      "/api/system/settings": { settings: { auto_lock_duration: 300 } },
+    });
+    useAppStore.setState({ isVaultUnlocked: true });
+    render(<VaultView />);
+    fireEvent.click(await screen.findByRole("tab", { name: /Albums 1/ }));
+    const cover = await screen.findByRole("button", { name: /Passport scans/ });
+    expect(cover).toHaveTextContent("In vault");
+    fireEvent.click(cover);
+    expect(await screen.findByRole("heading", { level: 1, name: "Passport scans" })).toBeInTheDocument();
+    expect(await screen.findByText("2 photos · 2019 – 2024")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Move album back to library…" }));
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("anyone using this computer can see them");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(calls.some((c) => c.url.endsWith("/api/vault/albums/9/unlock"))).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Move album back to library…" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Move back to library" }));
+    });
+    expect(calls.filter((c) => c.url.endsWith("/api/vault/albums/9/unlock"))).toHaveLength(1);
+    expect(useAppStore.getState().showToast).toHaveBeenCalledWith("Moved Passport scans back to your library.", "success");
+  });
+
+  it("shows vault documents as paper cards; moving one back asks first", async () => {
+    const passport = { ...vaultPhoto(20, "2024-03-03 10:00:00"), filename: "passport_scan.pdf", is_document: true };
+    const calls = mockEngine({
+      "/api/vault/photos": [...photos, passport],
+      "/api/vault/albums": [],
+      "/api/vault/photos/unlock": { status: "ok" },
+      "/api/vault/enhancement-progress": { is_active: false, completed_count: 0, total_count: 0, paused_reason: null },
+      "/api/system/settings": { settings: { auto_lock_duration: 300 } },
+    });
+    useAppStore.setState({ isVaultUnlocked: true });
+    render(<VaultView />);
+    fireEvent.click(await screen.findByRole("tab", { name: /Documents 1/ }));
+    expect(await screen.findByRole("button", { name: "Open passport scan" })).toBeInTheDocument();
+    expect(screen.getByText("3 Mar 2024")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "More for passport scan" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Move back to library…" }));
+    expect(calls.some((c) => c.url.endsWith("/api/vault/photos/unlock"))).toBe(false);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Move back to library" }));
+    });
+    const unlock = calls.find((c) => c.url.endsWith("/api/vault/photos/unlock"));
+    expect(JSON.parse(String(unlock?.init?.body))).toEqual({ photo_ids: [20] });
   });
 
   it("opens vault photos newest first, with vault thumbnails and no selection, even with a selection left over from Photos", async () => {

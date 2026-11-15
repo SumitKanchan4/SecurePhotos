@@ -372,12 +372,16 @@ export const App: React.FC = () => {
           const lockedSet = new Set<number>(data.photo_ids);
           setPhotos((prev) => prev.filter((p) => !lockedSet.has(p.id)));
         }
-        showToast(
-          isVaultAlbum 
-            ? "Album decrypted and restored to public library." 
-            : "Album and its photos encrypted and moved to Private Vault.", 
-          "success"
-        );
+        const failed = (Array.isArray(data.failed_ids) ? data.failed_ids.length : 0) + (Array.isArray(data.skipped_ids) ? data.skipped_ids.length : 0);
+        if (!isVaultAlbum && failed > 0) {
+          // R11: the album only moves when every photo could be locked.
+          showToast(
+            `${failed} ${failed === 1 ? "photo" : "photos"} couldn't be moved to the vault (the file may be missing), so the album stays in your library.`,
+            "warning",
+          );
+        } else {
+          showToast(isVaultAlbum ? "Moved the album back to your library." : "Moved the album to the Private Vault.", "success");
+        }
         loadPhotos();
       } else if (res.status === 401) {
         setIsVaultUnlocked(false);

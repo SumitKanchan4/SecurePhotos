@@ -696,7 +696,14 @@ async def lock_album_to_vault(album_id: int) -> dict:
 
         locked_ids, failed_ids = await vault_storage.lock_photos(conn, rows, mvk)
 
-        await conn.execute("UPDATE albums SET is_vault = 1, vault_type = 'private' WHERE id = ?;", (album_id,))
+        # The album counts as private only when every photo in it is encrypted (the mirror of
+        # unlocking, R11). Before, it was marked private even when its photos failed (e.g. a
+        # missing file): it vanished from Albums while those photos stayed in the library.
+        # Photos whose file is missing are skipped by lock_photos (neither locked nor failed).
+        skipped_ids = [r["id"] for r in rows if r["id"] not in locked_ids and r["id"] not in failed_ids]
+        all_locked = not failed_ids and not skipped_ids
+        if all_locked:
+            await conn.execute("UPDATE albums SET is_vault = 1, vault_type = 'private' WHERE id = ?;", (album_id,))
         await conn.commit()
     finally:
         await conn.close()
@@ -704,10 +711,11 @@ async def lock_album_to_vault(album_id: int) -> dict:
         _start_vault_enhancement()
 
     return {
-        "status": "album_locked",
+        "status": "album_locked" if all_locked else "album_not_locked",
         "photos_encrypted": len(locked_ids),
         "photo_ids": locked_ids,
         "failed_ids": failed_ids,
+        "skipped_ids": skipped_ids,
     }
 
 
