@@ -5979,5 +5979,5 @@ Owner review of R9c (2026-11-15, screenshot of the real app).
 
 ### Technical Touchpoints
 - `src/components/Lightbox.tsx`, new `src/components/viewer/useVolumeBooster.ts` and `src/components/viewer/ViewerDetails.tsx`.
-- Checks: tsc and build pass; frontend 136 passed (viewer tests unchanged and passing). Validated in the UI (Playwright, throwaway library, both themes): details panel shows Taken, Photo, File and Imported and closes; a video plays and the volume keys show "Volume: 110%"; contrast scan: no problems; no console errors.
+- Checks: tsc and build pass; frontend 137 passed (viewer tests unchanged and passing). Validated in the UI (Playwright, throwaway library, both themes): details panel shows Taken, Photo, File and Imported and closes; a video plays and the volume keys show "Volume: 110%"; contrast scan: no problems; no console errors.
 
