@@ -228,6 +228,11 @@ Owner decisions 2026-11-15:
 ### R7f · Make new stories duplicates a story that is already saved — `todo`
 Found during R7e: running Make new stories again created a second "Remember This Day? (2021)" next to the saved one. The story makers should skip a story whose kind and photos match a saved (or existing) one.
 ### R8 · Refresh docs/design_system.md for the redesign (Mono + lime, icon rail, screens) before merging feature/redesign into master — `done` (merged into feature/redesign 2026-11-15, PR #26, history §136; skill, rule and other docs updated too; unused `@tanstack/react-virtual` removed)
+### R9 · Owner review after R8 (2026-11-15) — before the final merge into master
+- Library folder said "No library found here", storage breakdown was lost, the app icon at small sizes wasn't the chosen one, system albums lost their big covers, and search popped up over every screen (owner chose a Search page).
+### R9a · Library folder shown correctly; storage split by kind — `done` (history §137)
+### R9b · Chosen app icon at every size; big covers for Favourites, Saved stories and Collages — `todo`
+### R9c · Search page instead of the pop-up search (owner choice 2026-11-15) — `todo`
 - Each step: component tests (deferred from Q3), Playwright on a throwaway library, remaining hard-coded colours of that screen cleaned up.
 
 ### P12 · Windows Hello quick unlock — `todo`

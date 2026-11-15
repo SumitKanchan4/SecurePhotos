@@ -56,6 +56,21 @@ class AppStorageStats(BaseModel):
     database_bytes: int
     models_bytes: int
     orphaned_bytes: int = 0
+    # What the library's space is used for, largest share of the total (R9a). Keys: photos,
+    # videos, documents, vault, collages, music, trash, thumbnails, app. Sizes sum to total_bytes.
+    categories: List["StorageCategory"] = []
+
+
+class StorageCategory(BaseModel):
+    """One kind of content in the library and the space it takes."""
+    key: str
+    bytes: int
+
+
+class LibraryLocationResponse(BaseModel):
+    """The library folder the engine is actually using."""
+    path: str
+    has_database: bool
 
 
 class DriveStorageStats(BaseModel):
@@ -70,6 +85,9 @@ class DriveStorageStats(BaseModel):
     system_other_bytes: int
     other_files_bytes: int
     disclaimer: str
+
+
+AppStorageStats.model_rebuild()
 
 
 class DashboardOverviewResponse(BaseModel):
@@ -107,6 +125,45 @@ def _calc_directory_size(path: Path) -> int:
     return total
 
 
+_VIDEO_SQL = (
+    "(mime_type LIKE 'video/%' OR lower(filename) LIKE '%.mp4' OR lower(filename) LIKE '%.mov' "
+    "OR lower(filename) LIKE '%.mkv' OR lower(filename) LIKE '%.avi' OR lower(filename) LIKE '%.webm')"
+)
+
+_SIZES_BY_KIND_SQL = f"""
+    SELECT
+        CASE
+            WHEN trashed_at IS NOT NULL THEN 'trash'
+            WHEN is_encrypted = 1 THEN 'vault'
+            WHEN is_document = 1 THEN 'documents'
+            WHEN replace(filepath, '\', '/') LIKE 'originals/collages/%' THEN 'collages'
+            WHEN {_VIDEO_SQL} THEN 'videos'
+            ELSE 'photos'
+        END AS kind,
+        COALESCE(SUM(file_size), 0)
+    FROM photos
+    GROUP BY kind;
+"""
+
+
+def _media_sizes_by_kind() -> Dict[str, int]:
+    """Sums file sizes in the library by kind (each file counted once).
+
+    Returns:
+        Bytes for photos, videos, documents, vault, collages and trash (0 when absent).
+    """
+    sizes = {k: 0 for k in ("photos", "videos", "documents", "vault", "collages", "trash")}
+    try:
+        import sqlite3
+        if settings.database_path.exists():
+            with sqlite3.connect(settings.database_path) as sconn:
+                for kind, total in sconn.execute(_SIZES_BY_KIND_SQL):
+                    sizes[kind] = int(total or 0)
+    except Exception as e:
+        logger.warning(f"Failed to query media sizes from DB: {e}")
+    return sizes
+
+
 def calculate_app_storage_footprint(force_refresh: bool = False) -> AppStorageStats:
     """Measures disk space consumed across database, cache, models, and originals.
 
@@ -138,32 +195,12 @@ def calculate_app_storage_footprint(force_refresh: bool = False) -> AppStorageSt
         except (OSError, FileNotFoundError):
             pass
 
-    # Query active media sizes directly from SQLite
-    images_size = 0
-    videos_size = 0
-    active_originals_size = 0
-    try:
-        import sqlite3
-        if settings.database_path.exists():
-            with sqlite3.connect(settings.database_path) as sconn:
-                cur = sconn.cursor()
-                cur.execute(
-                    """
-                    SELECT 
-                        COALESCE(SUM(CASE WHEN (mime_type NOT LIKE 'video/%' AND lower(filename) NOT LIKE '%.mp4' AND lower(filename) NOT LIKE '%.mov' AND lower(filename) NOT LIKE '%.mkv' AND lower(filename) NOT LIKE '%.avi' AND lower(filename) NOT LIKE '%.webm') THEN file_size ELSE 0 END), 0),
-                        COALESCE(SUM(CASE WHEN (mime_type LIKE 'video/%' OR lower(filename) LIKE '%.mp4' OR lower(filename) LIKE '%.mov' OR lower(filename) LIKE '%.mkv' OR lower(filename) LIKE '%.avi' OR lower(filename) LIKE '%.webm') THEN file_size ELSE 0 END), 0),
-                        COALESCE(SUM(file_size), 0)
-                    FROM photos
-                    WHERE trashed_at IS NULL AND is_encrypted = 0;
-                    """
-                )
-                row = cur.fetchone()
-                if row:
-                    images_size = int(row[0] or 0)
-                    videos_size = int(row[1] or 0)
-                    active_originals_size = int(row[2] or 0)
-    except Exception as e:
-        logger.warning(f"Failed to query active media sizes from DB: {e}")
+    # Sizes by kind, straight from SQLite. Each file counts once, in the first kind that fits:
+    # Trash, Private Vault, documents, collages, videos, photos.
+    sizes = _media_sizes_by_kind()
+    images_size = sizes["photos"]
+    videos_size = sizes["videos"]
+    active_originals_size = sum(sizes.values())
 
     # 2. Managed original files
     disk_originals_size = _calc_directory_size(settings.originals_dir)
@@ -179,9 +216,28 @@ def calculate_app_storage_footprint(force_refresh: bool = False) -> AppStorageSt
     # 5. Onnx and GGUF neural models
     models_size = _calc_directory_size(settings.models_dir)
 
-    media_size = originals_size + thumbnails_size + previews_size
+    # 6. Story music
+    music_size = _calc_directory_size(settings.music_dir)
+
+    media_size = originals_size + thumbnails_size + previews_size + music_size
     app_sys_size = db_size + models_size
     total = media_size + app_sys_size
+
+    categories = [
+        StorageCategory(key=key, bytes=value)
+        for key, value in (
+            ("photos", sizes["photos"]),
+            ("videos", sizes["videos"]),
+            ("documents", sizes["documents"]),
+            ("vault", sizes["vault"]),
+            ("collages", sizes["collages"]),
+            ("music", music_size),
+            ("trash", sizes["trash"]),
+            ("thumbnails", thumbnails_size + previews_size),
+            ("app", app_sys_size),
+        )
+        if value > 0
+    ]
 
     _cached_app_storage = AppStorageStats(
         total_bytes=total,
@@ -195,10 +251,17 @@ def calculate_app_storage_footprint(force_refresh: bool = False) -> AppStorageSt
         database_bytes=db_size,
         models_bytes=models_size,
         orphaned_bytes=orphaned_bytes,
+        categories=categories,
     )
     _last_storage_scan_time = now
     return _cached_app_storage
 
+
+
+@router.get("/library", response_model=LibraryLocationResponse, status_code=status.HTTP_200_OK)
+async def get_library_location() -> LibraryLocationResponse:
+    """Returns the library folder this engine reads and writes (the source of truth for Settings)."""
+    return LibraryLocationResponse(path=str(settings.data_dir), has_database=settings.database_path.exists())
 
 
 @router.get("/volumes", response_model=List[VolumeInfo], status_code=status.HTTP_200_OK)
