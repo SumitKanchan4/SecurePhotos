@@ -5923,3 +5923,28 @@ Owner review of R9c (2026-11-15, screenshot of the real app).
   - Search results show in justified rows with "Preparing" on an unready video. The rail shows every section and the status dot at 560 px.
   - Contrast scan: no problems; no console errors.
 
+## 141. Making Stories Again Never Duplicates One (R7f)
+
+### Functionality Overview
+- **Fixed**: every "Make new stories" run added every story again. Unsaved copies were trimmed later (at most 15 suggestions), but a saved story got a fresh copy next to it each time (seen as two "Remember This Day? (2021)"). Now each story has a key for its kind and subject:
+  - On this day: the year and month;
+  - Through the years: the person;
+  - A trip: folder and month;
+  - A season: season and year;
+  - Year in review: the year;
+  - Highlights: the month of its newest photo.
+  When a story with that key is already saved, it is not made again. An unsaved suggestion with that key is replaced by the fresh one, so suggestions stay up to date without piling up.
+- Stories saved before this change have no key; a new story of the same kind with exactly the same photos counts as the same story and is not made again.
+- **One-off cleanup at startup**: exact copies already in a library (same kind, same photos) are removed. One is kept: the oldest saved one, otherwise the oldest. Unsaved suggestions made before keys existed are dropped on the next "Make new stories" (they are regenerated with keys).
+
+### Functional Decision Points & Rationale
+- **Key by kind and subject, not by photo list**: a saved "On this day, Nov 2021" stays the one story for that day even if a photo is added later; matching by photos alone would make a second story.
+- Hidden stories can still come back with Make new stories (as accepted in R7e); remembering hidden stories would need its own list and was not asked for.
+
+### Technical Touchpoints
+- `engine/services/stories_service.py`: `_store_story` (key check, legacy match, replace unsaved, insert) used by all six story makers; `_newest_month`.
+- `engine/database.py`: `stories.story_key` column + index (migration), `_remove_duplicate_stories` run on startup.
+- `engine/api/stories.py`: generate drops unsaved suggestions without a key before making stories.
+- Tests: `engine/tests/test_ai_stories.py` (+2: making stories again refreshes a suggestion, never copies a saved story, and recognises a story saved before keys; startup removes exact copies keeping the oldest saved). Mutation checks: skipping the saved check, keeping old unsaved copies, skipping the legacy match, choosing the oldest unsaved over a saved copy, and not running the cleanup each fail a test. Engine suite 261 passed; ruff passes.
+- Validated in the UI (Playwright, throwaway library that had the duplicates): the library started with 7 titles twice. After restarting the engine, the leftover saved copy was removed (7 stories, none repeated). Pressing Make new stories three times kept 7 stories and 4 saved, with no title repeated; no console errors.
+

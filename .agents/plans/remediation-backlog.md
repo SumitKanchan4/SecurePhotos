@@ -205,7 +205,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 
 ## Frontend redesign (started 2026-11-12)
 
-**Status:** all steps R0–R9d done. Owner tested the app and approved merging `feature/redesign` into `master` on 2026-11-15. Open items carried over to master: R7f (Make new stories duplicates a saved story).
+**Status:** all steps R0–R9d done. Owner tested the app and approved merging `feature/redesign` into `master` on 2026-11-15. Open item carried over to master: R7f (done after the merge, history §141).
 
 Integration branch `feature/redesign` (master untouched until the end; owner decision). Concept board: https://claude.ai/artifact/XsadhwxNhBkakuUzyR8wPU. Chosen: Mono + acid lime (#C6FF00, black text on it), Archivo headings over Inter, icon rail + photo-first layout with a right-side month/year scrubber, 3D app icon "C · Frosted glass". Approved screens: Photos, Viewer, Private Vault, People, Import + Settings.
 
@@ -227,7 +227,7 @@ Owner decisions 2026-11-15:
 
 ### R7d · Albums: made for you, covers, album page — `done` (merged into feature/redesign 2026-11-15, PR #24, history §134; Vault move from the selection bar fixed)
 ### R7e · Stories: for you, saved, collage ideas — `done` (merged into feature/redesign 2026-11-15, PR #25, history §135; saved stories no longer reappear under For you after Make new stories)
-### R7f · Make new stories duplicates a story that is already saved — `todo`
+### R7f · Make new stories duplicates a story that is already saved — `done` (history §141; story keys, one-off cleanup of existing copies)
 Found during R7e: running Make new stories again created a second "Remember This Day? (2021)" next to the saved one. The story makers should skip a story whose kind and photos match a saved (or existing) one.
 ### R8 · Refresh docs/design_system.md for the redesign (Mono + lime, icon rail, screens) before merging feature/redesign into master — `done` (merged into feature/redesign 2026-11-15, PR #26, history §136; skill, rule and other docs updated too; unused `@tanstack/react-virtual` removed)
 ### R9 · Owner review after R8 (2026-11-15) — before the final merge into master
