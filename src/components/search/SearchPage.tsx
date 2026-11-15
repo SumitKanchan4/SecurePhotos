@@ -4,8 +4,8 @@
  * after typing, matching people and albums, then the photos and videos in the photo grid.
  * Clicking a person or album opens their page directly.
  */
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Search, X } from "lucide-react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ChevronRight, Loader2, Search, X } from "lucide-react";
 import type { AlbumItem, PersonItem, SearchAlbumItem, SearchPersonItem, SearchResponse, TimelinePhoto } from "../../types";
 import { useAppStore } from "../../store/useAppStore";
 import { apiFetch, getThumbnailUrl } from "../../services/api";
@@ -24,34 +24,91 @@ interface SearchPageProps {
 type PersonChip = Pick<SearchPersonItem, "id" | "name" | "cover_face_id"> & { count: number };
 type AlbumChip = Pick<SearchAlbumItem, "id" | "name" | "cover_photo_id"> & { count: number };
 
-const PeopleRow: React.FC<{ people: PersonChip[]; onOpen: (id: number) => void }> = ({ people, onOpen }) => (
-  <div className="search-people">
-    {people.map((p) => (
-      <button key={p.id} type="button" className="search-person" onClick={() => onOpen(p.id)} title={`Open ${p.name}`}>
-        <Face faceId={p.cover_face_id} name={p.name} size={64} />
-        <span className="search-person-name">{p.name}</span>
-        <span className="dash-muted">{p.count === 1 ? "1 photo" : `${p.count.toLocaleString()} photos`}</span>
-      </button>
-    ))}
-  </div>
-);
+/**
+ * How many items of a given width fit on one row of the element (R9d): rows never scroll
+ * sideways; what doesn't fit is reached through a "See all" tile.
+ */
+function useFitCount(itemWidth: number, gap: number): [React.RefObject<HTMLDivElement | null>, number] {
+  const ref = useRef<HTMLDivElement>(null);
+  const [count, setCount] = useState(8);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const width = el.clientWidth;
+      if (width > 0) setCount(Math.max(1, Math.floor((width + gap) / (itemWidth + gap))));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [itemWidth, gap]);
+  return [ref, count];
+}
 
-const AlbumsRow: React.FC<{ albums: AlbumChip[]; onOpen: (id: number) => void }> = ({ albums, onOpen }) => (
-  <div className="search-albums">
-    {albums.map((a) => (
-      <button key={a.id} type="button" className="search-album" onClick={() => onOpen(a.id)}>
-        <span className="search-album-cover">{a.cover_photo_id ? <img src={getThumbnailUrl(a.cover_photo_id)} alt="" loading="lazy" draggable={false} /> : null}</span>
-        <span className="search-album-text">
-          <span className="alb-cover-name">{a.name}</span>
-          <span className="dash-muted">{a.count === 1 ? "1 photo" : `${a.count.toLocaleString()} photos`}</span>
-        </span>
-      </button>
-    ))}
-  </div>
-);
+/** The first items that fit on one row; the last slot becomes "See all" when there are more. */
+function fitRow<T>(items: T[], fit: number): { shown: T[]; more: boolean } {
+  if (items.length <= fit) return { shown: items, more: false };
+  return { shown: items.slice(0, Math.max(0, fit - 1)), more: true };
+}
+
+const PeopleRow: React.FC<{ people: PersonChip[]; onOpen: (id: number) => void; onSeeAll?: () => void }> = ({ people, onOpen, onSeeAll }) => {
+  const [ref, fit] = useFitCount(88, 12);
+  const { shown, more } = fitRow(people, fit);
+  return (
+    <div ref={ref} className="search-people">
+      {shown.map((p) => (
+        <button key={p.id} type="button" className="search-person" onClick={() => onOpen(p.id)} title={`Open ${p.name}`}>
+          <Face faceId={p.cover_face_id} name={p.name} size={64} />
+          <span className="search-person-name">{p.name}</span>
+          <span className="dash-muted">{p.count === 1 ? "1 photo" : `${p.count.toLocaleString()} photos`}</span>
+        </button>
+      ))}
+      {more && onSeeAll && (
+        <button type="button" className="search-person search-see-all" onClick={onSeeAll}>
+          <span className="search-see-all-icon" aria-hidden="true">
+            <ChevronRight size={22} />
+          </span>
+          <span className="search-person-name">See all</span>
+          <span className="dash-muted">{people.length.toLocaleString()} people</span>
+        </button>
+      )}
+    </div>
+  );
+};
+
+const AlbumsRow: React.FC<{ albums: AlbumChip[]; onOpen: (id: number) => void; onSeeAll?: () => void }> = ({ albums, onOpen, onSeeAll }) => {
+  const [ref, fit] = useFitCount(220, 10);
+  const { shown, more } = fitRow(albums, fit);
+  return (
+    <div ref={ref} className="search-albums">
+      {shown.map((a) => (
+        <button key={a.id} type="button" className="search-album" onClick={() => onOpen(a.id)}>
+          <span className="search-album-cover">{a.cover_photo_id ? <img src={getThumbnailUrl(a.cover_photo_id)} alt="" loading="lazy" draggable={false} /> : null}</span>
+          <span className="search-album-text">
+            <span className="alb-cover-name">{a.name}</span>
+            <span className="dash-muted">{a.count === 1 ? "1 photo" : `${a.count.toLocaleString()} photos`}</span>
+          </span>
+        </button>
+      ))}
+      {more && onSeeAll && (
+        <button type="button" className="search-album search-see-all" onClick={onSeeAll}>
+          <span className="search-album-cover search-see-all-icon" aria-hidden="true">
+            <ChevronRight size={20} />
+          </span>
+          <span className="search-album-text">
+            <span className="alb-cover-name">See all</span>
+            <span className="dash-muted">{albums.length.toLocaleString()} albums</span>
+          </span>
+        </button>
+      )}
+    </div>
+  );
+};
 
 export const SearchPage: React.FC<SearchPageProps> = ({ onOpenPhoto, onToggleFavorite }) => {
-  const { searchQuery, setSearchQuery, searchFocusKey, openPerson, openAlbum } = useAppStore();
+  const { searchQuery, setSearchQuery, searchFocusKey, openPerson, openAlbum, setActiveTab } = useAppStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const [results, setResults] = useState<{ query: string; data: SearchResponse; photos: TimelinePhoto[] } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -74,7 +131,6 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onOpenPhoto, onToggleFav
         setPeople(
           (Array.isArray(data) ? data : [])
             .filter((p) => p.name)
-            .slice(0, 12)
             .map((p) => ({ id: p.id, name: p.name, cover_face_id: p.cover_face_id, count: p.confirmed_count })),
         ),
       )
@@ -85,7 +141,6 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onOpenPhoto, onToggleFav
         setAlbums(
           (Array.isArray(data) ? data : [])
             .filter((a) => !a.is_vault && (a.photo_count ?? 0) > 0)
-            .slice(0, 8)
             .map((a) => ({ id: a.id, name: a.name, cover_photo_id: a.cover_photo_id, count: a.photo_count ?? 0 })),
         ),
       )
@@ -139,7 +194,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onOpenPhoto, onToggleFav
 
   return (
     <div className="search-page">
-      <div className="search-top">
+      <div className={query ? "search-top" : "search-top is-idle"}>
         <h1 className="dash-title">Search</h1>
         <label className="search-field">
           {loading ? <Loader2 size={18} className="spin" aria-hidden="true" /> : <Search size={18} aria-hidden="true" />}
@@ -183,7 +238,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onOpenPhoto, onToggleFav
                 <h2 id="search-people" className="dash-section-title">
                   People
                 </h2>
-                <PeopleRow people={people} onOpen={openPerson} />
+                <PeopleRow people={people} onOpen={openPerson} onSeeAll={() => setActiveTab("people")} />
               </section>
             )}
             {albums.length > 0 && (
@@ -191,7 +246,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onOpenPhoto, onToggleFav
                 <h2 id="search-albums" className="dash-section-title">
                   Albums
                 </h2>
-                <AlbumsRow albums={albums} onOpen={openAlbum} />
+                <AlbumsRow albums={albums} onOpen={openAlbum} onSeeAll={() => setActiveTab("albums")} />
               </section>
             )}
             <p className="dash-muted search-hint">Private Vault items and Trash are never searched.</p>

@@ -70,7 +70,14 @@ describe("search helpers", () => {
     expect(quickSearches(new Date(2026, 10, 15)).map((q) => q.label)).toEqual(["Videos", "Favourites", "Documents", "2026", "2025"]);
     expect(resultsLabel(1)).toBe("1 photo or video");
     expect(resultsLabel(1204)).toBe("1,204 photos and videos");
-    expect(toTimeline([photo(1, { mime_type: "video/mp4", is_favorite: true })] as never)[0]).toMatchObject({ id: 1, is_video: true, is_favorite: true });
+    expect(toTimeline([photo(1, { mime_type: "video/mp4", is_favorite: true, width: 1920, height: 1080, is_optimized: false })] as never)[0]).toMatchObject({
+      id: 1,
+      is_video: true,
+      is_favorite: true,
+      width: 1920,
+      height: 1080,
+      is_optimized: false,
+    });
   });
 });
 
@@ -89,6 +96,19 @@ describe("SearchPage", () => {
 
     fireEvent.click(within(screen.getByRole("region", { name: "Try" })).getByRole("button", { name: "Videos" }));
     expect(useAppStore.getState().searchQuery).toBe("videos");
+  });
+
+  it("never scrolls sideways: one row of people, then See all", async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: `Person ${i + 1}`, confirmed_count: 30 - i, is_close_one: false, affinity_score: 0 }));
+    mockEngine((path) => (path === "/api/people" ? many : START(path)));
+    render(<SearchPage onOpenPhoto={vi.fn()} />);
+    const people = await screen.findByRole("region", { name: "People" });
+    await screen.findByText("Person 1");
+    // 1,100 px wide fits 11 tiles: 10 people and See all.
+    expect(within(people).getAllByRole("button")).toHaveLength(11);
+    expect(within(people).queryByText("Person 11")).not.toBeInTheDocument();
+    fireEvent.click(within(people).getByRole("button", { name: /See all\s*30 people/ }));
+    expect(useAppStore.getState().activeTab).toBe("people");
   });
 
   it("searches as you type, loads every match and opens a photo instead of selecting it", async () => {

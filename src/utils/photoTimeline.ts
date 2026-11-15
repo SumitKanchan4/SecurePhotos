@@ -191,41 +191,51 @@ export function sectionAt(sections: MonthSection[], sectionTops: Map<string, num
   return current;
 }
 
-export interface ScrubberMark {
+export interface ScrubberEntry {
+  /** Section to jump to (the entry's first month). */
   key: string;
-  /** 0..1 position along the scrubber track. */
-  position: number;
-  /** Year text for the first month of each year (when there is room), else null. */
-  yearLabel: string | null;
+  /** "Nov" for a month of the newest year, "2025" for an older year, "No date". */
+  label: string;
+  /** Spoken / hover name: "November 2026", "2025", "No date". */
+  name: string;
+  /** Every section the entry stands for (to mark it current). */
+  keys: string[];
 }
 
 /**
- * One mark per month along the scrubber, placed where that month starts in the
- * scrolled content. Year labels are skipped where they would overlap the previous one.
+ * The month/year scrubber as on the approved Photos board (R9d): the newest year's months
+ * one by one, then one entry per older year, then "No date", stacked evenly from the top.
+ * When there are more entries than fit (`maxEntries`), the newest year collapses to one entry.
  */
-export function scrubberMarks(
-  sections: MonthSection[],
-  sectionTops: Map<string, number>,
-  totalHeight: number,
-  trackHeight: number,
-  minLabelSpacing = 18,
-): ScrubberMark[] {
-  let lastYear = "";
-  let lastLabelY = -Infinity;
-  return sections.map((section) => {
-    const position = totalHeight > 0 ? Math.min(1, (sectionTops.get(section.key) ?? 0) / totalHeight) : 0;
-    const year = section.key === UNDATED_KEY ? "No date" : section.key.slice(0, 4);
-    let yearLabel: string | null = null;
-    if (year !== lastYear) {
-      lastYear = year;
-      const y = position * trackHeight;
-      if (y - lastLabelY >= minLabelSpacing) {
-        yearLabel = year;
-        lastLabelY = y;
-      }
+export function scrubberEntries(sections: MonthSection[], maxEntries = Infinity): ScrubberEntry[] {
+  const years: { year: string; sections: MonthSection[] }[] = [];
+  let undated: MonthSection | null = null;
+  for (const section of sections) {
+    if (section.key === UNDATED_KEY) {
+      undated = section;
+      continue;
     }
-    return { key: section.key, position, yearLabel };
+    const year = section.key.slice(0, 4);
+    const last = years[years.length - 1];
+    if (last && last.year === year) last.sections.push(section);
+    else years.push({ year, sections: [section] });
+  }
+  const yearEntry = (y: { year: string; sections: MonthSection[] }): ScrubberEntry => ({
+    key: y.sections[0].key,
+    label: y.year,
+    name: y.year,
+    keys: y.sections.map((x) => x.key),
   });
+  const tail = years.slice(1).map(yearEntry);
+  if (undated) tail.push({ key: UNDATED_KEY, label: "No date", name: "No date", keys: [UNDATED_KEY] });
+  if (!years.length) return tail;
+  const months = years[0].sections.map((x) => ({
+    key: x.key,
+    label: shortMonthLabel(x.key).slice(0, 3),
+    name: monthLabel(x.key),
+    keys: [x.key],
+  }));
+  return months.length + tail.length <= maxEntries ? [...months, ...tail] : [yearEntry(years[0]), ...tail];
 }
 
 /**
