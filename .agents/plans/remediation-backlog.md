@@ -96,10 +96,10 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 
 ## High
 
-### H10 · Blurry-face restoration: choose a permissive model or drop the idea — `needs-decision` (from H9)
+### H10 · Blurry-face restoration: choose a permissive model or drop the idea — `needs-decision` (from H9; owner 2026-11-15: decide later)
 - CodeFormer (non-commercial) was removed in H9, together with C1's switched-off blurry-face step. Candidate: GFPGAN v1.4 (weights Apache-2.0, but trained on FFHQ, which is CC-BY-NC-SA; the same "permissive weights, research dataset" grey area as SFace). Needs an owner decision, then calibration of the blur threshold on real photos.
 
-### H11 · Rare false face detections — `todo` (found in H9 rehearsal)
+### H11 · Rare false face detections — `done` (closed 2026-11-15 without a code change, history §143; owner approved a read-only analysis of the real library)
 - YuNet finds ~15 more real background faces than the old pipeline, plus occasional non-faces (a hand, an ear/earring). Their detector score (0.67-0.84) overlaps named faces (lowest 0.68), so no safe score cut-off exists. Today they only appear as "who is this?" suggestions the user can dismiss. Possible fixes: a small face/non-face check on the crop, or hiding single-face suggestions below a quality level.
 
 ### H1 · Check the vault session token on every vault request — `done` (closed 2026-11-11 by removing the unused token; history §107)
@@ -162,7 +162,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - **Small follow-up — `done`** (history §142): the vault screen counted mouse movement as activity but the engine only counted requests, so the engine could lock before the countdown ended. The screen now reports activity (at most every 15 s) and restarts its countdown only then.
 - Settings offers 1/5/15/30 min/never (`auto_lock_duration`), but the engine (`vault.py` `AUTO_LOCK_SECONDS = 300`) and `VaultView.tsx` (`AUTO_LOCK_SECONDS = 300`) hard-code 5 minutes. Either wire it up (engine is the authority) or remove the option.
 
-### M9 · Engine auto-reload hangs in development — `todo` (found during H6)
+### M9 · Engine auto-reload hangs in development — `todo`, low (found during H6; not reproducible in the normal dev setup on 2026-11-15, history §143)
 - With `tauri dev`, uvicorn `--reload` logged "Reloading..." after a Python change and never restarted; the old engine kept answering with old code. Likely a background task (face scan, video queue, enhancer) blocking shutdown on Windows. Development-only, but it makes code changes look ineffective. Fix: cancel background tasks in the lifespan shutdown, or drop `--reload` in the dev launcher.
 
 ### M7 · Trash purge cannot find files with relative paths — `done` (merged 2026-11-12, history §108)
@@ -192,7 +192,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - The tests use `settings.database_path` (the developer's real `data/` library) and only back up and restore `vault_configs`. Tests insert and delete rows in the live DB. Give pytest its own temporary data folder (`SECUREPHOTOS_DATA_DIR` set in `conftest.py` before `engine.config` is imported).
 - Several vault tests call `/api/vault/reset` with no body; C6 makes the phrase required, so update those tests in C6.
 
-### Q5 · Split oversized frontend components — `todo` (= review item 15; owner plans a frontend redesign, fold this into it)
+### Q5 · Split oversized frontend components — `in-progress` (= review item 15; viewer split 2026-11-15, history §143; person page to be redesigned and split as R10, board approved 2026-11-15)
 - PeopleView (3.3k lines), AlbumsView (3.3k), StoriesView (2.2k), VaultView (2k), Lightbox and DashboardView (1.8k), App (1.7k). Split by feature with hooks.
 
 ---
@@ -238,7 +238,7 @@ Found during R7e: running Make new stories again created a second "Remember This
 ### R9d · Search page polish (cut off, squashed field, no sideways rows, result shapes); month/year scrubber as on the board; rail in short windows — `done` (merged into feature/redesign 2026-11-15, PR #30, history §140)
 - Each step: component tests (deferred from Q3), Playwright on a throwaway library, remaining hard-coded colours of that screen cleaned up.
 
-### P12 · Windows Hello quick unlock — `todo`
+### P12 · Windows Hello quick unlock — `todo` (owner 2026-11-15: not now)
 - Optional, per PC, on top of the portable master password. Design together with C2 (option B).
 
 ## Dropped (owner decision, 2026-11-10)
