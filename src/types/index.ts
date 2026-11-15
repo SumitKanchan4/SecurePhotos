@@ -416,11 +416,12 @@ export interface VideoSummary {
     default_preset?: string;
   };
   total_videos: number;
-  total_video_bytes: number;
+  total_bytes: number;
   compressible_count: number;
   enhanceable_count: number;
-  already_optimized_count: number;
-  potential_savings_bytes: number;
+  optimized_count: number;
+  /** What making the compressible videos smaller would free (the engine's field name). */
+  projected_reclaimable_bytes: number;
 }
 
 export interface VideoOptimizationProgress {

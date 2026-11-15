@@ -248,66 +248,101 @@ async def test_video_whatsapp_filename_date_extraction(tmp_path):
     assert meta["taken_at"].startswith("2026-08-16")
 
 
-@pytest.mark.asyncio
-async def test_video_compression_workflow(tmp_path):
-    """Verifies video compression and atomic trash backup."""
+async def _heavy_library_video(tmp_path):
+    """A 2-second high-bitrate clip imported into the library; returns (photo_id, library file path)."""
     ffmpeg = get_ffmpeg_path()
     if not ffmpeg:
         pytest.skip("FFmpeg not available")
-
-    # Generate a heavy 2-second clip with high bitrate (640x480 at ~15 Mbps)
     import time
     heavy_path = tmp_path / f"heavy_clip_{time.time_ns()}.mp4"
     cmd = [
-        ffmpeg,
-        "-y",
-        "-f", "lavfi",
-        "-i", "testsrc=duration=2.0:size=640x480:rate=30",
-        "-f", "lavfi",
-        "-i", f"sine=frequency={int(time.time()) % 1000 + 400}:duration=2.0",
+        ffmpeg, "-y",
+        "-f", "lavfi", "-i", "testsrc=duration=2.0:size=640x480:rate=30",
+        "-f", "lavfi", "-i", f"sine=frequency={int(time.time()) % 1000 + 400}:duration=2.0",
         "-metadata", f"title=heavy_test_{time.time_ns()}",
-        "-c:v", "libx264",
-        "-b:v", "15M",
-        "-minrate", "15M",
-        "-maxrate", "15M",
-        "-bufsize", "15M",
-        "-c:a", "aac",
-        "-pix_fmt", "yuv420p",
+        "-c:v", "libx264", "-b:v", "15M", "-minrate", "15M", "-maxrate", "15M", "-bufsize", "15M",
+        "-c:a", "aac", "-pix_fmt", "yuv420p",
         str(heavy_path),
     ]
     subprocess.run(cmd, capture_output=True, check=True)
-
     conn = await get_db_connection()
     try:
         photo_id = await ingest_single_photo(conn, heavy_path, mode="managed")
         await conn.execute("DELETE FROM video_processing_queue WHERE photo_id = ?;", (photo_id,))
         await conn.commit()
+        async with conn.execute("SELECT filepath FROM photos WHERE id = ?;", (photo_id,)) as cur:
+            stored = (await cur.fetchone())["filepath"]
     finally:
         await conn.close()
-
     assert photo_id is not None
+    from engine.config import resolve_media_path
+    return photo_id, resolve_media_path(stored)
 
-    # Run compression with CRF 28
+
+@pytest.mark.asyncio
+async def test_video_compression_deletes_the_original_once_checked(tmp_path):
+    """R7c (owner decision): the checked smaller copy replaces the original, which is deleted (space freed)."""
+    photo_id, original = await _heavy_library_video(tmp_path)
+    assert original.exists()
+
     res = await compress_video(photo_id, crf=28)
     assert res["success"] is True, f"Compress failed: {res}"
     assert res["saved_bytes"] > 0
     assert res["compressed_bytes"] < res["original_bytes"]
 
-    # Verify in DB: file_size is compressed size and original_file_size is preserved
     conn = await get_db_connection()
     try:
         async with conn.execute("SELECT file_size, original_file_size FROM photos WHERE id = ?;", (photo_id,)) as cur:
             row = await cur.fetchone()
             assert row["file_size"] == res["compressed_bytes"]
             assert row["original_file_size"] == res["original_bytes"]
-            assert row["original_file_size"] > row["file_size"]
     finally:
         await conn.close()
 
-    # Verify original is moved to .trash folder
-    trash_dir = Path(res["new_filepath"]).parent / ".trash"
-    assert trash_dir.exists()
-    assert len(list(trash_dir.glob("*.orig_*"))) >= 1
+    assert not original.exists()
+    assert Path(res["new_filepath"]).exists()
+    assert not (original.parent / ".trash").exists() or not list((original.parent / ".trash").glob(f"{original.name}.orig_*"))
+
+
+@pytest.mark.asyncio
+async def test_video_compression_keeps_the_original_when_the_copy_fails_the_check(tmp_path, monkeypatch):
+    """A copy with the wrong length is thrown away and nothing changes."""
+    photo_id, original = await _heavy_library_video(tmp_path)
+    import engine.services.video_service as vs
+
+    real = vs.extract_video_metadata
+
+    def short_copy(path):
+        meta = real(path)
+        if "_transcoding_" in str(path):
+            meta = {**meta, "duration": 0.5}
+        return meta
+
+    monkeypatch.setattr(vs, "extract_video_metadata", short_copy)
+    res = await compress_video(photo_id, crf=28)
+    assert res["success"] is False
+    assert "original was kept" in res["error"]
+    assert original.exists()
+    assert not list(original.parent.glob("*_transcoding_*"))
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT filepath, is_optimized FROM photos WHERE id = ?;", (photo_id,)) as cur:
+            row = await cur.fetchone()
+    finally:
+        await conn.close()
+    assert not row["is_optimized"]
+
+
+def test_verify_transcoded_copy_rules():
+    from engine.services.video_service import verify_transcoded_copy
+
+    ok = {"width": 640, "height": 480, "duration": 120.0}
+    assert verify_transcoded_copy(ok, {**ok, "duration": 119.4}) is None
+    assert verify_transcoded_copy({**ok, "duration": 3600.0}, {**ok, "duration": 3590.0}) is None  # within 1 %
+    assert "long" in verify_transcoded_copy(ok, {**ok, "duration": 100.0})
+    assert verify_transcoded_copy(ok, {**ok, "width": None}) == "the copy has no picture"
+    assert verify_transcoded_copy({**ok, "duration": 0}, ok) == "the original's length couldn't be read"
+    assert verify_transcoded_copy(ok, {**ok, "duration": 0}) == "the copy's length couldn't be read"
 
 
 @pytest.mark.asyncio
