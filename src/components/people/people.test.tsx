@@ -66,7 +66,7 @@ function renderOverview(overrides: Partial<React.ComponentProps<typeof PeopleOve
 }
 
 beforeEach(() => {
-  useAppStore.setState({ apiBaseUrl: "http://127.0.0.1:50123", apiToken: "t", searchQuery: "", isSearchOpen: false, showToast: vi.fn() });
+  useAppStore.setState({ apiBaseUrl: "http://127.0.0.1:50123", apiToken: "t", searchQuery: "", showToast: vi.fn() });
 });
 
 afterEach(() => {
@@ -169,10 +169,14 @@ describe("PeopleOverview", () => {
     expect(onInspectFace).toHaveBeenCalledWith(400);
   });
 
-  it("filters by the search text and hides naming while searching", async () => {
+  it("filters by its own search field and hides naming while searching", async () => {
     mockEngine({ "GET /api/people/merge-suggestions": [SUGGESTION] });
-    useAppStore.setState({ searchQuery: "kab" });
+    // Text typed on the Search page never filters this page (no hidden filters, R9c).
+    useAppStore.setState({ searchQuery: "zzz" });
     renderOverview();
+    await waitFor(() => expect(screen.getByRole("button", { name: /Asha/ })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Search people" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Search people" }), { target: { value: "kab" } });
     await waitFor(() => expect(screen.getByRole("button", { name: /Kabir/ })).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /Asha/ })).not.toBeInTheDocument();
     expect(screen.queryByText("Same person?")).not.toBeInTheDocument();

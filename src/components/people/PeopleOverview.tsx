@@ -8,9 +8,10 @@
  * Split out of PeopleView.tsx (Q5); the person page stays there.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, MoreHorizontal, Search, Users, X } from "lucide-react";
+import { Loader2, MoreHorizontal, Users, X } from "lucide-react";
 import type { FaceScanStatus, MergeSuggestion, PersonItem, UnlabeledClusterItem } from "../../types";
 import { useAppStore } from "../../store/useAppStore";
+import { InlineSearch } from "../ui/InlineSearch";
 import { apiFetch, getApiUrl } from "../../services/api";
 
 const WHO_IS_THIS_PREVIEW = 6;
@@ -26,7 +27,7 @@ export function matchesSearch(person: PersonItem, query: string): boolean {
   return person.name.toLowerCase().includes(q) || (person.relationship_type ?? "").toLowerCase().includes(q);
 }
 
-const Face: React.FC<{ faceId?: number | null; name?: string; size: number; className?: string }> = ({ faceId, name, size, className }) => {
+export const Face: React.FC<{ faceId?: number | null; name?: string; size: number; className?: string }> = ({ faceId, name, size, className }) => {
   const [failed, setFailed] = useState(false);
   const style = { width: size, height: size };
   if (!faceId || failed) {
@@ -75,7 +76,9 @@ export const PeopleOverview: React.FC<PeopleOverviewProps> = ({
   onScan,
   onReset,
 }) => {
-  const { searchQuery, setSearchOpen, showToast } = useAppStore();
+  const { showToast } = useAppStore();
+  // Name filter for this page (R9c: a field in the header, not the global search).
+  const [searchQuery, setSearchQuery] = useState("");
   const [suggestions, setSuggestions] = useState<MergeSuggestion[]>([]);
   const [answering, setAnswering] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -192,9 +195,7 @@ export const PeopleOverview: React.FC<PeopleOverviewProps> = ({
           </span>
         )}
         <div style={{ flex: 1 }} />
-        <button type="button" className="people-icon-btn" aria-label="Search people" title="Search (Ctrl+K)" onClick={() => setSearchOpen(true)}>
-          <Search size={16} />
-        </button>
+        {people.length > 0 && <InlineSearch label="Search people" placeholder="Name or relationship" value={searchQuery} onChange={setSearchQuery} />}
         <div className="people-menu-anchor">
           <button
             type="button"

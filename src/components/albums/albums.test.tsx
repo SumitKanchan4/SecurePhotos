@@ -60,7 +60,7 @@ function mockEngine(routes: Record<string, unknown>) {
 const posted = (suffix: string) => calls.filter((c) => c.url.endsWith(suffix) && c.init?.method && c.init.method !== "GET");
 
 beforeEach(() => {
-  useAppStore.setState({ apiBaseUrl: "http://127.0.0.1:50123", apiToken: "t", showToast: vi.fn(), selectedPhotoIds: new Set<number>(), gridDensity: "comfortable" });
+  useAppStore.setState({ apiBaseUrl: "http://127.0.0.1:50123", apiToken: "t", showToast: vi.fn(), selectedPhotoIds: new Set<number>(), gridDensity: "comfortable", pendingOpen: null });
 });
 
 afterEach(() => {
@@ -118,6 +118,14 @@ describe("AlbumsView", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Search albums" }), { target: { value: "diw" } });
     expect(within(yours).queryByText("Goa 2026")).not.toBeInTheDocument();
     expect(within(yours).getByText("Diwali 2025")).toBeInTheDocument();
+  });
+
+  it("opens an album asked for from Search or the viewer", async () => {
+    mockEngine(routes);
+    useAppStore.setState({ pendingOpen: { kind: "album", id: 7 } });
+    render(<AlbumsView />);
+    expect(await screen.findByRole("heading", { level: 1, name: "Goa 2026" })).toBeInTheDocument();
+    expect(useAppStore.getState().pendingOpen).toBeNull();
   });
 
   it("creates an album and opens it", async () => {

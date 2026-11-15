@@ -2,7 +2,6 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../store/useAppStore";
 import { IconRail, RAIL_ITEMS, railStatus } from "./IconRail";
-import { SearchPalette } from "./SearchPalette";
 import { WindowStrip } from "./WindowStrip";
 
 const windowApi = vi.hoisted(() => ({ minimize: vi.fn(), toggleMaximize: vi.fn(), close: vi.fn() }));
@@ -13,7 +12,7 @@ beforeEach(() => {
   useAppStore.setState({
     activeTab: "photos",
     searchQuery: "",
-    isSearchOpen: false,
+    searchFocusKey: 0,
     isDriveConnected: true,
     prerequisites: null,
     apiBaseUrl: "http://127.0.0.1:50123",
@@ -40,7 +39,17 @@ describe("IconRail", () => {
     fireEvent.click(screen.getByRole("button", { name: "Private Vault" }));
     expect(useAppStore.getState().activeTab).toBe("vault");
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
-    expect(useAppStore.getState().isSearchOpen).toBe(true);
+    expect(useAppStore.getState().activeTab).toBe("search");
+    expect(useAppStore.getState().searchFocusKey).toBe(1);
+  });
+
+  it("opens the Search page with Ctrl+K from anywhere and marks it current", () => {
+    const { rerender } = render(<IconRail />);
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(useAppStore.getState().activeTab).toBe("search");
+    rerender(<IconRail />);
+    expect(screen.getByRole("button", { name: "Search" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Photos" })).not.toHaveAttribute("aria-current");
   });
 
   it("explains the status dot in plain language", () => {
@@ -52,18 +61,11 @@ describe("IconRail", () => {
 });
 
 describe("WindowStrip", () => {
-  it("shows the active search as a chip that can be cleared or edited", () => {
-    const { rerender } = render(<WindowStrip />);
-    expect(screen.queryByText("Search:")).not.toBeInTheDocument();
-
+  it("has no search chip: search lives on its own page now", () => {
     act(() => useAppStore.setState({ searchQuery: "Rohan" }));
-    rerender(<WindowStrip />);
-    expect(screen.getByText("Rohan")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByTitle("Edit search (Ctrl+K)"));
-    expect(useAppStore.getState().isSearchOpen).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
-    expect(useAppStore.getState().searchQuery).toBe("");
+    render(<WindowStrip />);
+    expect(screen.queryByText("Rohan")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear search" })).not.toBeInTheDocument();
   });
 
   it("drives the frameless window buttons", () => {
@@ -74,54 +76,5 @@ describe("WindowStrip", () => {
     expect(windowApi.minimize).toHaveBeenCalledOnce();
     expect(windowApi.toggleMaximize).toHaveBeenCalledOnce();
     expect(windowApi.close).toHaveBeenCalledOnce();
-  });
-});
-
-describe("SearchPalette", () => {
-  it("opens with Ctrl+K and closes with Escape or a click outside", () => {
-    render(<SearchPalette />);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-
-    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
-    expect(screen.getByRole("dialog", { name: "Search your library" })).toBeInTheDocument();
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-
-    act(() => useAppStore.setState({ isSearchOpen: true }));
-    fireEvent.mouseDown(screen.getByRole("dialog"));
-    expect(useAppStore.getState().isSearchOpen).toBe(false);
-  });
-
-  it("searches the engine as you type and opens a person from the results", async () => {
-    vi.useFakeTimers();
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          query: "ro",
-          total_photos: 0,
-          photos: [],
-          albums: [],
-          people: [{ id: 7, name: "Rohan", confirmed_count: 412 }],
-        }),
-        { status: 200 },
-      ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    act(() => useAppStore.setState({ isSearchOpen: true }));
-    render(<SearchPalette />);
-
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "ro" } });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
-    });
-
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("http://127.0.0.1:50123/api/search?q=ro");
-    expect(new Headers(init.headers).get("X-SecurePhotos-Token")).toBe("token-abc");
-
-    fireEvent.click(screen.getByText("Rohan"));
-    expect(useAppStore.getState().activeTab).toBe("people");
-    expect(useAppStore.getState().searchQuery).toBe("Rohan");
-    expect(useAppStore.getState().isSearchOpen).toBe(false);
   });
 });
