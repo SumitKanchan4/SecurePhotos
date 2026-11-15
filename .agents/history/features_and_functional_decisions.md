@@ -5795,3 +5795,28 @@ Boards for the remaining screens (Albums, Stories, Documents, Dashboard, Duplica
 - Tests: `engine/tests/test_ai_stories.py` (+1: date span); `src/components/stories/stories.test.tsx` (8: date and mood wording, cards and sections, save / unsave / hide, Make new stories keeps saved stories out of For you, one-click collage save, missing photos explained, six ideas then Show more, music mood change and asking before removing a song). Mutation checks: using the generate answer for For you, and leaving a saved story under For you, each fail a test. Engine suite 256 passed; frontend 128 passed; tsc, build and ruff pass.
 - Validated in the UI (Playwright, throwaway library, both themes): seven generated stories with month or year spans; saving one moved it to Saved (and the engine lists it as saved); a saved story plays in the story player; Story music listed the added song with "Picked for me: Acoustic" and closed with Escape; 6 of 110 collage ideas with Show more; a collage whose photos are missing from the test library explained why; contrast scan: no problems. Console errors were from the story player loading test photos whose files are missing (existing behaviour).
 - Noticed, not changed here: running Make new stories again created a second "Remember This Day? (2021)" next to the saved one (backlog R7f).
+
+## 136. Redesign Step 8: Design system documentation refreshed
+
+### Functionality Overview
+- `docs/design_system.md` is rewritten for the built redesign. It replaces the old blue "glassmorphism" specification, which described colours, fonts, screens and features that no longer exist (or never did).
+- It covers:
+  - the principles (photos first, one strong action, rare actions behind "…", ask before anything irreversible, plain and true wording, private stays private);
+  - the colour tokens for both themes, with the three accent roles (fill, on-accent, ink) and their rules;
+  - status colours, the viewer surround, type, shape and motion (including Reduce motion);
+  - the icon-rail shell, the shared page frame and pieces (header, buttons, dialogs, `ConfirmDialog`, toasts), `PhotoTimeline` and the selection bar, and card kinds;
+  - one row per screen;
+  - the keyboard shortcuts as the code has them;
+  - how to check a change.
+- The `modern-web-ui` skill and the UI rule in `strict-approval-and-standards.md` told agents to use Plus Jakarta Sans, blue/purple gradients, frosted blur headers and `@tanstack/react-virtual`. They now point at the design system and hold only the rules that are easiest to get wrong.
+- `architecture.md`, `development.md` and `roadmap.md` no longer mention the virtual-list library.
+
+### Functional Decision Points & Rationale
+- The code is the source of truth. The document names the token file and each screen's files instead of copying long style blocks that would go stale again.
+- Old claims removed because they aren't true: a 4K Ken-Burns video export, Treemap collage layouts with face-aware cropping, affinity scores on profiles, an automatic frosted privacy shield, drive banners that resume within 500 ms, and shortcuts the app doesn't have (Space quick look, E enhance, U, Ctrl+A).
+- `@tanstack/react-virtual` was removed from `package.json`: no code used it after R2 (the timeline does its own windowing).
+
+### Technical Touchpoints
+- `docs/design_system.md`, `docs/architecture.md`, `docs/development.md`, `docs/roadmap.md`, `.agents/skills/modern-web-ui/SKILL.md`, `.agents/rules/strict-approval-and-standards.md`, `package.json` and `package-lock.json`.
+- Checks: tsc and build pass; 128 frontend tests pass. No engine or UI code changed.
+
