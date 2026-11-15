@@ -12,6 +12,8 @@ import {
   Search,
 } from "lucide-react";
 import { SearchPage } from "./components/search/SearchPage";
+import { useBackgroundProgress } from "./hooks/useBackgroundProgress";
+import { useEngineConnection } from "./hooks/useEngineConnection";
 import { WindowStrip } from "./components/shell/WindowStrip";
 import { IconRail } from "./components/shell/IconRail";
 import { PrerequisitesBanner } from "./components/PrerequisitesBanner";
@@ -36,19 +38,17 @@ import { AddToAlbumModal } from "./components/AddToAlbumModal";
 import { UpdateModal } from "./components/UpdateModal";
 import { ToastNotification } from "./components/ToastNotification";
 import { useAppStore } from "./store/useAppStore";
-import { PhotoItem, SystemPrerequisites, OptimizationProgress, VideoOptimizationProgress, ImportProgressState, TimelinePhoto, TimelineResponse } from "./types";
+import { PhotoItem, TimelinePhoto, TimelineResponse } from "./types";
 import { parseTimeline, viewerWindow } from "./utils/photoTimeline";
 import { invoke } from "@tauri-apps/api/core";
 import { check, Update } from "@tauri-apps/plugin-updater";
-import { apiFetch, getApiUrl, performHandshake } from "./services/api";
+import { apiFetch, getApiUrl } from "./services/api";
 
 export const App: React.FC = () => {
   const { 
     activeTab, 
     setActiveTab,
     toggleTheme, 
-    setTheme,
-    setGridDensity,
     openSearch,
     selectedPhotoIds, 
     clearSelection,
@@ -57,12 +57,9 @@ export const App: React.FC = () => {
     setIsVaultUnlocked,
     isVaultConfigured,
     prerequisites,
-    setPrerequisites,
     setTotalPhotosCount,
     showToast,
     checkVaultStatus,
-    setEngineConfig,
-    setIsEngineReady,
   } = useAppStore();
 
   // Whole library as compact rows (redesign R2); full details load when a photo is opened.
@@ -84,9 +81,6 @@ export const App: React.FC = () => {
   const [viewerWindowStart, setViewerWindowStart] = useState<number | null>(null);
   // The list the open viewer steps through (Photos timeline or Search results), for paging.
   const [viewerSource, setViewerSource] = useState<TimelinePhoto[] | null>(null);
-  const [optimizationProgress, setOptimizationProgress] = useState<OptimizationProgress | null>(null);
-  const [videoProgress, setVideoProgress] = useState<VideoOptimizationProgress | null>(null);
-  const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null);
   const hasRegeneratedThumbnailsRef = useRef(false);
   // Load the whole library (not vault, not trash) as compact timeline rows.
   const loadPhotos = async () => {
@@ -122,226 +116,21 @@ export const App: React.FC = () => {
 
   const displayedPhotos = photos;
 
-  // Real-time polling for background photo 8K & video optimization progress
-  useEffect(() => {
-    let wasPhotoActive = false;
-    let wasVideoActive = false;
-    let wasImportActive = false;
-    let lastPhotoCompletedCount = 0;
-
-    const interval = setInterval(async () => {
-      try {
-        const [photoRes, videoRes, importRes] = await Promise.all([
-          apiFetch("/api/photos/optimization-progress").catch(() => null),
-          apiFetch("/api/videos/optimization-progress").catch(() => null),
-          apiFetch("/api/photos/import-progress").catch(() => null),
-        ]);
-
-        if (photoRes && photoRes.ok) {
-          const photoData: OptimizationProgress = await photoRes.json();
-          setOptimizationProgress(photoData);
-
-          // If an individual photo just finished optimizing, immediately update its badge locally
-          if (photoData.completed_count > lastPhotoCompletedCount) {
-            lastPhotoCompletedCount = photoData.completed_count;
-            if (photoData.last_completed_photo_id) {
-              setPhotos((prev) =>
-                prev.map((p) =>
-                  p.id === photoData.last_completed_photo_id
-                    ? { ...p, is_optimized: true, is_enhanced: true }
-                    : p
-                )
-              );
-            }
-          }
-
-          // If the entire active photo batch completed, do a single clean reload
-          if (wasPhotoActive && !photoData.is_active) {
-            loadPhotos();
-            lastPhotoCompletedCount = 0;
-          }
-          wasPhotoActive = photoData.is_active;
-        }
-
-        if (videoRes && videoRes.ok) {
-          const videoData: VideoOptimizationProgress = await videoRes.json();
-          setVideoProgress(videoData);
-
-          // When video batch completes, reload photos & timeline
-          if (wasVideoActive && !videoData.is_active) {
-            loadPhotos();
-          }
-          wasVideoActive = videoData.is_active;
-        }
-
-        if (importRes && importRes.ok) {
-          const importData: ImportProgressState = await importRes.json();
-          setImportProgress(importData);
-
-          // When media import batch completes, refresh library photos & timeline
-          if (wasImportActive && !importData.is_active) {
-            loadPhotos();
-          }
-          wasImportActive = importData.is_active;
-        }
-      } catch {}
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
+  // Background work for the Photos header (enhancing, preparing videos, importing).
+  const { optimizationProgress, videoProgress, importProgress } = useBackgroundProgress({
+    onPhotoEnhanced: (id) => setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, is_optimized: true, is_enhanced: true } : p))),
+    onBatchFinished: () => loadPhotos(),
+  });
 
   // Updater and diagnostics state
   const [activeUpdate, setActiveUpdate] = useState<Update | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
-  const [isRecheckingPrereqs, setIsRecheckingPrereqs] = useState(false);
 
-  // Manual engine launch helper
-  const handleStartEngine = async () => {
-    try {
-      const result = await invoke<{ status?: string; message?: string }>("start_backend_engine");
-      if (result?.status === "error") {
-        // M5: e.g. no secure access key could be made; the banner shows the same reason.
-        showToast?.(result.message || "The engine couldn't start. Please try again.", "warning");
-        await handleRecheckPrerequisites();
-        return;
-      }
-      showToast?.("Starting the engine…", "info");
-      // The engine needs a few seconds to boot; keep checking so one click is enough.
-      for (let attempt = 0; attempt < 30; attempt++) {
-        if (await handleRecheckPrerequisites()) return;
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-    } catch (err) {
-      console.error("Failed to start engine:", err);
-      showToast?.("Failed to launch background engine", "warning");
-    }
-  };
-
-  // Manual / button-triggered prerequisites re-check
-  const handleRecheckPrerequisites = async (): Promise<boolean> => {
-    setIsRecheckingPrereqs(true);
-    try {
-      const prereqs = await invoke<SystemPrerequisites>("check_system_prerequisites");
-      setPrerequisites(prereqs);
-      if (prereqs.backend.running) {
-        const config = await invoke<{ port: number; token: string; base_url: string }>("get_engine_config");
-        if (config && config.port > 0) {
-          setEngineConfig(config.base_url, config.token || null);
-          if (config.token && !(await performHandshake(config.base_url, config.token))) {
-            return false; // Port is open but the engine is still starting.
-          }
-          setIsEngineReady(true);
-          checkVaultStatus();
-          loadPhotos();
-          return true;
-        }
-      }
-      return false;
-    } catch (err) {
-      console.warn("Prerequisites check warning:", err);
-      return false;
-    } finally {
-      setIsRecheckingPrereqs(false);
-    }
-  };
-
-  // Resilient engine startup orchestration with polling, handshake retry, and passive heartbeat
-  useEffect(() => {
-    let isCancelled = false;
-    let pollInterval: ReturnType<typeof setInterval> | null = null;
-    let attempts = 0;
-    const MAX_BOOT_ATTEMPTS = 20; // 20 attempts * 1500ms = 30 seconds
-
-    const pollEngineLifecycle = async () => {
-      try {
-        const prereqs = await invoke<SystemPrerequisites>("check_system_prerequisites");
-        if (isCancelled) return;
-        setPrerequisites(prereqs);
-
-        // 1. If backend is running, retrieve engine config and perform handshake
-        if (prereqs.backend.running) {
-          const config = await invoke<{ port: number; token: string; base_url: string }>("get_engine_config");
-          if (isCancelled) return;
-
-          if (config && config.port > 0) {
-            setEngineConfig(config.base_url, config.token || null);
-            let handshakeOk = true;
-            if (config.token) {
-              handshakeOk = await performHandshake(config.base_url, config.token);
-            }
-
-            if (!handshakeOk && attempts < MAX_BOOT_ATTEMPTS) {
-              // Engine bound port but Uvicorn handshake endpoint is still initializing
-              attempts++;
-              return;
-            }
-
-            // Connection established successfully!
-            if (pollInterval) clearInterval(pollInterval);
-            setIsEngineReady(true);
-
-            // Hydrate persistent settings and initial photos
-            checkVaultStatus();
-            loadPhotos();
-
-            apiFetch("/api/system/settings")
-              .then((res) => (res.ok ? res.json() : null))
-              .then((data) => {
-                if (data?.settings) {
-                  if (data.settings.theme) setTheme(data.settings.theme);
-                  if (data.settings.grid_density) setGridDensity(data.settings.grid_density);
-                  if (data.settings.reduce_motion !== undefined) {
-                    document.documentElement.setAttribute("data-reduce-motion", String(data.settings.reduce_motion));
-                  }
-                }
-              })
-              .catch(() => {});
-
-            // Switch to lightweight passive heartbeat (every 15s)
-            pollInterval = setInterval(async () => {
-              try {
-                const health = await invoke<SystemPrerequisites>("check_system_prerequisites");
-                if (!isCancelled) setPrerequisites(health);
-              } catch {}
-            }, 15000);
-
-            return;
-          }
-        }
-
-        // 2. If engine not yet running on first check, ensure background auto-start was kicked off
-        if (prereqs.python.installed && !prereqs.backend.running && attempts === 0) {
-          invoke("start_backend_engine").catch(() => {});
-        }
-
-        // 3. Early halt on fatal blocker (missing VC++ runtime or premature child exit)
-        if (!prereqs.vcredist.installed || prereqs.error_message) {
-          if (pollInterval) clearInterval(pollInterval);
-          return;
-        }
-
-        attempts++;
-        if (attempts >= MAX_BOOT_ATTEMPTS) {
-          if (pollInterval) clearInterval(pollInterval);
-          console.warn("Engine connection polling timed out after 30 seconds.");
-        }
-      } catch (err) {
-        // Fallback for standard non-Tauri / browser dev environments
-        console.info("Running in standard non-Tauri mode:", err);
-        setIsEngineReady(true);
-        if (pollInterval) clearInterval(pollInterval);
-        loadPhotos();
-      }
-    };
-
-    pollEngineLifecycle();
-    pollInterval = setInterval(pollEngineLifecycle, 1500);
-
-    return () => {
-      isCancelled = true;
-      if (pollInterval) clearInterval(pollInterval);
-    };
-  }, []);
+  // Find, start and connect to the photo engine; reload what depends on it once reached.
+  const { isRecheckingPrereqs, startEngine: handleStartEngine, recheckPrerequisites: handleRecheckPrerequisites } = useEngineConnection(() => {
+    checkVaultStatus();
+    loadPhotos();
+  });
 
   // Check for desktop updates in background on mount
   useEffect(() => {
