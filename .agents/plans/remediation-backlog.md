@@ -224,7 +224,7 @@ Owner decisions 2026-11-15:
 - **Enhance (HD / Full HD / 4K)**: once the enhanced copy passes the check, the original goes to Trash (restorable for 30 days, then deleted for good) instead of a hidden `.trash` folder.
 
 ### R7d · Albums: made for you, covers, album page — `done` (merged into feature/redesign 2026-11-15, PR #24, history §134; Vault move from the selection bar fixed)
-### R7e · Stories: for you, saved, collage ideas — `done` (history §135; saved stories no longer reappear under For you after Make new stories)
+### R7e · Stories: for you, saved, collage ideas — `done` (merged into feature/redesign 2026-11-15, PR #25, history §135; saved stories no longer reappear under For you after Make new stories)
 ### R7f · Make new stories duplicates a story that is already saved — `todo`
 Found during R7e: running Make new stories again created a second "Remember This Day? (2021)" next to the saved one. The story makers should skip a story whose kind and photos match a saved (or existing) one.
 ### R8 · Refresh docs/design_system.md for the redesign (Mono + lime, icon rail, screens) before merging feature/redesign into master — `todo`
