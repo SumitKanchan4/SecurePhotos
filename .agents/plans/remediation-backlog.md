@@ -223,7 +223,7 @@ Owner decisions 2026-11-15:
 - **Old hidden originals** (left in `.trash` folders by "Make smaller" before R7c): one-off cleanup. Each leftover is deleted only if its smaller video still exists and passes the same check (has a picture, same length); anything that fails is left alone. Report the space freed.
 - **Enhance (HD / Full HD / 4K)**: once the enhanced copy passes the check, the original goes to Trash (restorable for 30 days, then deleted for good) instead of a hidden `.trash` folder.
 
-### R7d · Albums: made for you, covers, album page — `done` (history §134; Vault move from the selection bar fixed)
+### R7d · Albums: made for you, covers, album page — `done` (merged into feature/redesign 2026-11-15, PR #24, history §134; Vault move from the selection bar fixed)
 ### R7e · Stories: for you, saved, collage ideas — `todo`
 ### R8 · Refresh docs/design_system.md for the redesign (Mono + lime, icon rail, screens) before merging feature/redesign into master — `todo`
 - Each step: component tests (deferred from Q3), Playwright on a throwaway library, remaining hard-coded colours of that screen cleaned up.
