@@ -199,10 +199,10 @@ export const PrerequisitesBanner: React.FC<PrerequisitesBannerProps> = ({
                 alignItems: "center",
                 gap: "6px",
                 padding: "6px 12px",
-                backgroundColor: "rgba(59, 130, 246, 0.2)",
-                border: "1px solid rgba(59, 130, 246, 0.4)",
+                backgroundColor: "color-mix(in srgb, var(--accent-ink) 20%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--accent-ink) 40%, transparent)",
                 borderRadius: "var(--radius-sm, 6px)",
-                color: "#93c5fd",
+                color: "var(--accent-ink)",
                 fontSize: "12px",
                 fontWeight: 600,
                 cursor: isLoading ? "not-allowed" : "pointer",
@@ -315,7 +315,7 @@ export const PrerequisitesBanner: React.FC<PrerequisitesBannerProps> = ({
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <FileText size={18} style={{ color: "var(--accent-primary, #3b82f6)" }} />
+                <FileText size={18} style={{ color: "var(--accent-primary, var(--accent-ink))" }} />
                 <h3 style={{ fontSize: "16px", fontWeight: 700, margin: 0, color: "var(--text-primary, #f8fafc)" }}>
                   Backend Engine Startup Diagnostics
                 </h3>
@@ -392,10 +392,10 @@ export const PrerequisitesBanner: React.FC<PrerequisitesBannerProps> = ({
                   onClick={() => setIsLogModalOpen(false)}
                   style={{
                     padding: "6px 14px",
-                    backgroundColor: "var(--accent-primary, #3b82f6)",
+                    backgroundColor: "var(--accent-fill)",
                     border: "none",
                     borderRadius: "var(--radius-sm, 6px)",
-                    color: "#ffffff",
+                    color: "var(--on-accent)",
                     fontSize: "12px",
                     fontWeight: 600,
                     cursor: "pointer",

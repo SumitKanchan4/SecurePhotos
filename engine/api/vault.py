@@ -496,6 +496,59 @@ async def get_generated_grid_card() -> dict:
     return generate_grid_card()
 
 
+class GridCardReplaceRequest(BaseModel):
+    current_password: str
+
+
+@router.post("/grid-card/replace", status_code=status.HTTP_200_OK)
+async def replace_grid_card(payload: GridCardReplaceRequest) -> dict:
+    """Issues a new Emergency Card (redesign R6, Settings → Private Vault → "Print a new card").
+
+    Needs an open vault *and* the current master password: the card is the last-resort key,
+    so someone at an unlocked computer can't swap it. Both card slots (the card file's key and
+    the 16 printed numbers) are re-wrapped around the same vault key, so nothing is re-encrypted;
+    the old card stops working at once. The new card is returned only in this response.
+    """
+    mvk = get_active_mvk()
+    row = await _load_vault_config()
+    if not row:
+        raise HTTPException(status_code=400, detail="Vault is not configured yet.")
+
+    kek_current = await asyncio.to_thread(
+        derive_key_from_password, payload.current_password, bytes.fromhex(row["password_salt"])
+    )
+    if unwrap_master_key(row["mvk_wrapped_password"], kek_current) != mvk:
+        raise HTTPException(status_code=401, detail="Incorrect master password.")
+
+    card = generate_grid_card()
+    kek_recovery = await asyncio.to_thread(derive_key_from_grid_token, card["card_token"], bytes.fromhex(card["grid_salt"]))
+    cells_salt = secrets.token_bytes(16)
+    kek_cells = await asyncio.to_thread(derive_key_from_card_cells, card["cells"], cells_salt)
+
+    conn = await get_db_connection()
+    try:
+        await conn.execute(
+            """
+            UPDATE vault_configs
+            SET grid_card_id = ?, grid_salt = ?, mvk_wrapped_recovery = ?,
+                mvk_wrapped_card_cells = ?, card_cells_salt = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE vault_type = 'private';
+            """,
+            (
+                card["card_id"],
+                card["grid_salt"],
+                wrap_master_key(mvk, kek_recovery),
+                wrap_master_key(mvk, kek_cells),
+                cells_salt.hex(),
+            ),
+        )
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    return {"status": "replaced", "grid_card": card}
+
+
 @router.post("/reset-password", status_code=status.HTTP_200_OK)
 async def reset_vault_password(payload: VaultPasswordResetRequest) -> dict:
     """Sets a new master password, proven by one of:

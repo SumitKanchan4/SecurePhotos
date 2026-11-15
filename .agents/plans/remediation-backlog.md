@@ -203,6 +203,41 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - **Finding:** the mode was unreachable (nothing switched to it); only the "no vault yet" message showed the old wording.
 - `VaultView.tsx` (Mode 3, ~line 1299) and `VaultUnlockModal.tsx` (~line 574) offer "Enter your 24-word recovery phrase", and the wizard header comment still describes a 24-word step. Since C3, setup creates an emergency card (card file or 16 numbers) instead, and "Forgot your password? Use your Emergency Card" already covers recovery. Decide: remove the 24-word mode, or relabel it as "card code". Backend `/unlock` still accepts `recovery_phrase` (needed only for vaults created before C3; nobody has one).
 
+## Frontend redesign (started 2026-11-12)
+
+**Status:** all steps R0–R9d done. Owner tested the app and approved merging `feature/redesign` into `master` on 2026-11-15. Open items carried over to master: R7f (Make new stories duplicates a saved story).
+
+Integration branch `feature/redesign` (master untouched until the end; owner decision). Concept board: https://claude.ai/artifact/XsadhwxNhBkakuUzyR8wPU. Chosen: Mono + acid lime (#C6FF00, black text on it), Archivo headings over Inter, icon rail + photo-first layout with a right-side month/year scrubber, 3D app icon "C · Frosted glass". Approved screens: Photos, Viewer, Private Vault, People, Import + Settings.
+
+### R0 · Tokens, Archivo, app icon — `done` (merged into feature/redesign 2026-11-12, PR #13, history §123)
+### R1 · App shell: 64 px icon rail replaces sidebar + title bar — `done` (merged into feature/redesign 2026-11-12, PR #14, history §124; owner: slim strip + Ctrl+K)
+### R2 · Photos: whole-library timeline, justified rows (virtualised), big month headings, month/year scrubber — `done` (merged into feature/redesign 2026-11-12, PR #15, history §125; owner: one compact timeline list; also removed the old header's "Search Active" pill / "Clear Search", the year ribbon, and fixed Escape not closing the viewer)
+### R3 · Viewer: dark surround, details on demand, 8K chip by the title, lime lock = Move to Vault, Trash set apart — `done` (merged into feature/redesign 2026-11-13, PR #16, history §126; download menu, filmstrip, people/albums in details via new /context endpoint; Q5 split partly done: text helpers moved out, video player and details panel still inside Lightbox.tsx)
+### R4 · Vault: calm header (countdown, privacy shield, Lock now), lock card, month timeline with scrubber from 4 months; factory reset moved to Settings → Private Vault → Danger zone — `done` (merged into feature/redesign 2026-11-13, PR #17, history §127; old PhotoGrid removed)
+### R5 · People: close ones, "Same person?", "Who is this?" — `done` (merged into feature/redesign 2026-11-13, PR #18, history §128; new merge-suggestion endpoints; rename moved to the person page; vault faces no longer in unnamed groups; Q5 split partly done: overview moved to people/PeopleOverview.tsx, person page still in PeopleView.tsx)
+### R6 · Import + Settings — `done` (merged into feature/redesign 2026-11-13, PR #19, history §129; import preview with duplicates, copy by default, Stop import, Hide; Settings sections Appearance / Photos & AI / Private Vault / Storage / About; Print a new Emergency Card)
+### R7 · Remaining screens: Albums, Stories, Documents, Dashboard, Trash, Duplicates, Big videos — boards approved 2026-11-13; built in five steps
+### R7a · Trash: days left, restore or delete forever (asks first), vault items kept private — `done` (merged into feature/redesign 2026-11-13, PR #20, history §130)
+### R7b · Documents: categories, pinned papers, find in photos — `done` (merged into feature/redesign 2026-11-13, PR #21, history §131; vault documents no longer listed or searchable here; pinning fixed)
+### R7c · Dashboard + Duplicates + Big videos — `done` (merged into feature/redesign 2026-11-15, PR #22, history §132; video originals deleted once the smaller copy is checked; similar-photo detection and video savings fixed)
+### R7c2 · Video originals: clean up old hidden copies, enhanced originals go to Trash — `done` (merged into feature/redesign 2026-11-15, PR #23, history §133)
+Owner decisions 2026-11-15:
+- **Old hidden originals** (left in `.trash` folders by "Make smaller" before R7c): one-off cleanup. Each leftover is deleted only if its smaller video still exists and passes the same check (has a picture, same length); anything that fails is left alone. Report the space freed.
+- **Enhance (HD / Full HD / 4K)**: once the enhanced copy passes the check, the original goes to Trash (restorable for 30 days, then deleted for good) instead of a hidden `.trash` folder.
+
+### R7d · Albums: made for you, covers, album page — `done` (merged into feature/redesign 2026-11-15, PR #24, history §134; Vault move from the selection bar fixed)
+### R7e · Stories: for you, saved, collage ideas — `done` (merged into feature/redesign 2026-11-15, PR #25, history §135; saved stories no longer reappear under For you after Make new stories)
+### R7f · Make new stories duplicates a story that is already saved — `todo`
+Found during R7e: running Make new stories again created a second "Remember This Day? (2021)" next to the saved one. The story makers should skip a story whose kind and photos match a saved (or existing) one.
+### R8 · Refresh docs/design_system.md for the redesign (Mono + lime, icon rail, screens) before merging feature/redesign into master — `done` (merged into feature/redesign 2026-11-15, PR #26, history §136; skill, rule and other docs updated too; unused `@tanstack/react-virtual` removed)
+### R9 · Owner review after R8 (2026-11-15) — before the final merge into master
+- Library folder said "No library found here", storage breakdown was lost, the app icon at small sizes wasn't the chosen one, system albums lost their big covers, and search popped up over every screen (owner chose a Search page).
+### R9a · Library folder shown correctly; storage split by kind — `done` (merged into feature/redesign 2026-11-15, PR #27, history §137)
+### R9b · Chosen app icon at every size; big covers for Favourites, Saved stories and Collages — `done` (merged into feature/redesign 2026-11-15, PR #28, history §138)
+### R9c · Search page instead of the pop-up search (owner choice 2026-11-15) — `done` (merged into feature/redesign 2026-11-15, PR #29, history §139; keyword searches fixed; page-level search on Albums, People, Documents)
+### R9d · Search page polish (cut off, squashed field, no sideways rows, result shapes); month/year scrubber as on the board; rail in short windows — `done` (merged into feature/redesign 2026-11-15, PR #30, history §140)
+- Each step: component tests (deferred from Q3), Playwright on a throwaway library, remaining hard-coded colours of that screen cleaned up.
+
 ### P12 · Windows Hello quick unlock — `todo`
 - Optional, per PC, on top of the portable master password. Design together with C2 (option B).
 

@@ -1,4 +1,5 @@
 import asyncio
+import time
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
@@ -43,6 +44,62 @@ class PhotoResponse(BaseModel):
     preview_path: Optional[str] = None
 
 
+_PHOTO_COLUMNS = """
+    id, filename, filepath, file_size, original_file_size, mime_type, width, height,
+    taken_at, camera_make, camera_model,
+    latitude, longitude, iso, aperture, shutter_speed, focal_length,
+    is_favorite, is_encrypted,
+    is_optimized, is_enhanced, caption, thumbnail_path, preview_path
+"""
+
+
+def _photo_from_row(row) -> "PhotoResponse":
+    """Maps a photos row (selected with _PHOTO_COLUMNS) to the API response."""
+    return PhotoResponse(
+        id=row["id"],
+        filename=row["filename"],
+        filepath=row["filepath"],
+        file_size=row["file_size"],
+        original_file_size=row["original_file_size"] if row["original_file_size"] is not None else row["file_size"],
+        mime_type=row["mime_type"],
+        width=row["width"],
+        height=row["height"],
+        taken_at=row["taken_at"],
+        camera_make=row["camera_make"],
+        camera_model=row["camera_model"],
+        latitude=row["latitude"],
+        longitude=row["longitude"],
+        iso=row["iso"],
+        aperture=row["aperture"],
+        shutter_speed=row["shutter_speed"],
+        focal_length=row["focal_length"],
+        is_favorite=bool(row["is_favorite"]),
+        is_encrypted=bool(row["is_encrypted"]),
+        is_optimized=bool(row["is_optimized"]),
+        is_enhanced=bool(row["is_enhanced"]),
+        caption=row["caption"],
+        thumbnail_path=row["thumbnail_path"],
+        preview_path=row["preview_path"],
+    )
+
+
+# Timeline row flags (redesign R2): one small integer instead of three booleans per photo.
+TIMELINE_FAVORITE = 1
+TIMELINE_OPTIMIZED = 2
+TIMELINE_ENHANCED = 4
+DETAILS_MAX_IDS = 500
+
+
+class TimelineResponse(BaseModel):
+    """Every library photo in display order, as compact rows.
+
+    Each item is ``[id, taken_at or null, width, height, kind, flags]``: kind is
+    "v" for videos and "p" otherwise; flags combine TIMELINE_* bits.
+    """
+    total: int
+    items: List[List[Any]]
+
+
 class ImportRequest(BaseModel):
     """Payload to trigger batch ingestion."""
     source_directory: Optional[str] = None
@@ -53,6 +110,25 @@ class ImportRequest(BaseModel):
     album_id: Optional[int] = None
 
 
+class ImportPreviewRequest(BaseModel):
+    """What the Import dialog is about to bring in (redesign R6)."""
+    source_directory: Optional[str] = None
+    file_paths: Optional[List[str]] = None
+
+
+class ImportPreviewResponse(BaseModel):
+    """'Goa trip: 48 photos, 3 videos (2.1 GB); 4 are already in your library'."""
+    name: str
+    is_folder: bool
+    photos: int
+    videos: int
+    documents: int
+    total_bytes: int
+    already_in_library: int
+    to_import: int
+    unsupported: int
+
+
 class ImportResponse(BaseModel):
     """Summary of batch ingestion."""
     total_found: int
@@ -61,6 +137,8 @@ class ImportResponse(BaseModel):
     failed: int = 0
     imported_photo_ids: List[int] = []
     album_linked_count: int = 0
+    cancelled: bool = False
+    unsupported: int = 0
 
 
 class OptimizationProgressResponse(BaseModel):
@@ -406,12 +484,8 @@ async def list_photos(
     """Retrieves paginated photo items with optional year or favorite filtering."""
     conn = await get_db_connection()
     
-    query = """
-        SELECT id, filename, filepath, file_size, original_file_size, mime_type, width, height,
-               taken_at, camera_make, camera_model,
-               latitude, longitude, iso, aperture, shutter_speed, focal_length,
-               is_favorite, is_encrypted,
-               is_optimized, is_enhanced, caption, thumbnail_path, preview_path
+    query = f"""
+        SELECT {_PHOTO_COLUMNS}
         FROM photos
         WHERE is_encrypted = ? AND trashed_at IS NULL
     """
@@ -430,39 +504,70 @@ async def list_photos(
     params.extend([limit, offset])
 
     async with conn.execute(query, params) as cursor:
-        rows = await cursor.fetchall()
-        results = [
-            PhotoResponse(
-                id=row["id"],
-                filename=row["filename"],
-                filepath=row["filepath"],
-                file_size=row["file_size"],
-                original_file_size=row["original_file_size"] if "original_file_size" in row.keys() and row["original_file_size"] is not None else row["file_size"],
-                mime_type=row["mime_type"],
-                width=row["width"],
-                height=row["height"],
-                taken_at=row["taken_at"],
-                camera_make=row["camera_make"],
-                camera_model=row["camera_model"],
-                latitude=row["latitude"],
-                longitude=row["longitude"],
-                iso=row["iso"],
-                aperture=row["aperture"],
-                shutter_speed=row["shutter_speed"],
-                focal_length=row["focal_length"],
-                is_favorite=bool(row["is_favorite"]),
-                is_encrypted=bool(row["is_encrypted"]),
-                is_optimized=bool(row["is_optimized"]),
-                is_enhanced=bool(row["is_enhanced"]),
-                caption=row["caption"],
-                thumbnail_path=row["thumbnail_path"],
-                preview_path=row["preview_path"],
-            )
-            for row in rows
-        ]
+        results = [_photo_from_row(row) for row in await cursor.fetchall()]
 
     await conn.close()
     return results
+
+
+@router.get("/timeline", response_model=TimelineResponse, status_code=status.HTTP_200_OK)
+async def get_photo_timeline() -> TimelineResponse:
+    """Returns the whole library (not vault, not trash) as compact rows for the photo grid.
+
+    The grid needs only id, date, shape and type; full details are fetched with
+    ``/details`` when a photo is opened (redesign R2: the grid used to load only 500).
+    """
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(
+            """
+            SELECT id, taken_at, width, height, mime_type, is_favorite, is_optimized, is_enhanced
+            FROM photos
+            WHERE is_encrypted = 0 AND trashed_at IS NULL
+            ORDER BY taken_at DESC, id DESC;
+            """
+        ) as cursor:
+            rows = await cursor.fetchall()
+    finally:
+        await conn.close()
+    items = [
+        [
+            r["id"],
+            r["taken_at"],
+            r["width"] or 0,
+            r["height"] or 0,
+            "v" if (r["mime_type"] or "").startswith("video/") else "p",
+            (TIMELINE_FAVORITE if r["is_favorite"] else 0)
+            | (TIMELINE_OPTIMIZED if r["is_optimized"] else 0)
+            | (TIMELINE_ENHANCED if r["is_enhanced"] else 0),
+        ]
+        for r in rows
+    ]
+    return TimelineResponse(total=len(items), items=items)
+
+
+@router.get("/details", response_model=List[PhotoResponse], status_code=status.HTTP_200_OK)
+async def get_photo_details(ids: str = Query(..., description="Comma-separated photo ids, at most 500")) -> List[PhotoResponse]:
+    """Full records for the given library photos, in the order asked (vault and trash excluded)."""
+    try:
+        wanted = [int(part) for part in ids.split(",") if part.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ids must be comma-separated numbers")
+    if not wanted:
+        return []
+    if len(wanted) > DETAILS_MAX_IDS:
+        raise HTTPException(status_code=400, detail=f"At most {DETAILS_MAX_IDS} ids per request")
+    conn = await get_db_connection()
+    try:
+        placeholders = ",".join("?" for _ in wanted)
+        async with conn.execute(
+            f"SELECT {_PHOTO_COLUMNS} FROM photos WHERE id IN ({placeholders}) AND is_encrypted = 0 AND trashed_at IS NULL;",
+            wanted,
+        ) as cursor:
+            by_id = {row["id"]: _photo_from_row(row) for row in await cursor.fetchall()}
+    finally:
+        await conn.close()
+    return [by_id[i] for i in wanted if i in by_id]
 
 
 @router.get("/timeline-years", response_model=TimelineYearsResponse, status_code=status.HTTP_200_OK)
@@ -503,6 +608,73 @@ async def get_timeline_years() -> TimelineYearsResponse:
         await conn.close()
 
     return TimelineYearsResponse(total_count=total_count, years=years)
+
+
+class ContextPerson(BaseModel):
+    id: int
+    name: str
+    face_id: Optional[int] = None
+
+
+class ContextAlbum(BaseModel):
+    id: int
+    name: str
+
+
+class PhotoContextResponse(BaseModel):
+    """What the viewer's details panel shows besides EXIF: who is in it, where it is, when it came in."""
+    people: List[ContextPerson]
+    albums: List[ContextAlbum]
+    imported_at: Optional[str] = None
+    copied_into_library: bool = False
+
+
+@router.get("/{photo_id}/context", response_model=PhotoContextResponse, status_code=status.HTTP_200_OK)
+async def get_photo_context(photo_id: int) -> PhotoContextResponse:
+    """Named people (with their best face crop in this photo) and library albums for one library photo.
+
+    Vault and trashed photos are refused: their people and albums are not shown outside the vault.
+    """
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(
+            "SELECT created_at, is_managed FROM photos WHERE id = ? AND is_encrypted = 0 AND trashed_at IS NULL;",
+            (photo_id,),
+        ) as cursor:
+            photo = await cursor.fetchone()
+        if not photo:
+            raise HTTPException(status_code=404, detail="Photo not found")
+        async with conn.execute(
+            """
+            SELECT p.id, p.name,
+                   (SELECT f2.id FROM faces f2
+                     WHERE f2.photo_id = ? AND f2.person_id = p.id
+                     ORDER BY f2.quality_score DESC, f2.id LIMIT 1) AS face_id
+            FROM persons p
+            WHERE p.id IN (SELECT person_id FROM faces WHERE photo_id = ? AND person_id IS NOT NULL)
+            ORDER BY p.name COLLATE NOCASE;
+            """,
+            (photo_id, photo_id),
+        ) as cursor:
+            people = [ContextPerson(id=r["id"], name=r["name"], face_id=r["face_id"]) for r in await cursor.fetchall()]
+        async with conn.execute(
+            """
+            SELECT a.id, a.name FROM albums a
+            JOIN photo_album pa ON pa.album_id = a.id
+            WHERE pa.photo_id = ? AND COALESCE(a.is_vault, 0) = 0
+            ORDER BY a.name COLLATE NOCASE;
+            """,
+            (photo_id,),
+        ) as cursor:
+            albums = [ContextAlbum(id=r["id"], name=r["name"]) for r in await cursor.fetchall()]
+    finally:
+        await conn.close()
+    return PhotoContextResponse(
+        people=people,
+        albums=albums,
+        imported_at=photo["created_at"],
+        copied_into_library=bool(photo["is_managed"]),
+    )
 
 
 @router.get("/{photo_id}/thumbnail")
@@ -882,9 +1054,90 @@ async def get_thumbnail_regeneration_progress() -> dict:
 
 
 
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
+DOCUMENT_EXTENSIONS = {".pdf"}
+
+
+def _collect_import_files(source_directory: Optional[str], file_paths: Optional[List[str]]) -> tuple[List[Path], int, bool]:
+    """(supported files, number of unsupported files, whether anything was found at all).
+
+    Shared by the import and its preview so both count the same files. Runs in a thread:
+    walking a large folder must not block the engine.
+    """
+    from engine.services.ingestion_service import SUPPORTED_EXTENSIONS
+
+    found: List[Path] = []
+    for fp in file_paths or []:
+        path = Path(fp)
+        if path.exists() and path.is_file():
+            found.append(path)
+        else:
+            logger.warning("Specified file path could not be located on disk: %s", fp)
+    if source_directory:
+        source_dir = Path(source_directory)
+        if source_dir.exists() and source_dir.is_dir():
+            found.extend(path for path in source_dir.rglob("*") if path.is_file())
+    supported = [path for path in found if path.suffix.lower() in SUPPORTED_EXTENSIONS]
+    return supported, len(found) - len(supported), bool(found)
+
+
+@router.post("/import-preview", response_model=ImportPreviewResponse, status_code=status.HTTP_200_OK)
+async def preview_import(payload: ImportPreviewRequest) -> ImportPreviewResponse:
+    """Counts what an import would bring in, and how many files are already in the library.
+
+    Only files whose size matches a library photo are hashed, so a folder of new photos
+    is counted without reading every byte.
+    """
+    from engine.services.thumbnail_service import calculate_file_hash
+
+    files, unsupported, found_any = await asyncio.to_thread(_collect_import_files, payload.source_directory, payload.file_paths)
+    if not found_any:
+        raise HTTPException(status_code=400, detail="Nothing was found at that location.")
+
+    sizes = await asyncio.to_thread(lambda: {path: path.stat().st_size for path in files})
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT DISTINCT file_size FROM photos UNION SELECT DISTINCT original_file_size FROM photos;") as cursor:
+            library_sizes = {row[0] for row in await cursor.fetchall() if row[0]}
+        already = 0
+        for path, size in sizes.items():
+            if size not in library_sizes:
+                continue
+            digest = await asyncio.to_thread(calculate_file_hash, path)
+            async with conn.execute(
+                "SELECT 1 FROM photos WHERE file_hash = ? OR original_file_hash = ? LIMIT 1;", (digest, digest)
+            ) as cursor:
+                if await cursor.fetchone():
+                    already += 1
+    finally:
+        await conn.close()
+
+    videos = sum(1 for path in files if path.suffix.lower() in VIDEO_EXTENSIONS)
+    documents = sum(1 for path in files if path.suffix.lower() in DOCUMENT_EXTENSIONS)
+    if payload.source_directory:
+        name, is_folder = Path(payload.source_directory).name or payload.source_directory, True
+    elif len(files) == 1:
+        name, is_folder = files[0].name, False
+    else:
+        name, is_folder = f"{len(files)} files", False
+    return ImportPreviewResponse(
+        name=name,
+        is_folder=is_folder,
+        photos=len(files) - videos - documents,
+        videos=videos,
+        documents=documents,
+        total_bytes=sum(sizes.values()),
+        already_in_library=already,
+        to_import=len(files) - already,
+        unsupported=unsupported,
+    )
+
+
 # Real-time background media ingestion progress state
 import_progress_state: Dict[str, Any] = {
     "is_active": False,
+    "started_at": None,
+    "cancel_requested": False,
     "total_count": 0,
     "completed_count": 0,
     "current_filename": "",
@@ -902,6 +1155,19 @@ async def get_import_progress() -> Dict[str, Any]:
     return import_progress_state
 
 
+@router.post("/import/cancel", status_code=status.HTTP_200_OK)
+async def cancel_import() -> dict:
+    """Stop import: the running import finishes the file it is on and stops.
+
+    Photos already imported stay. When moving, each original is removed only after its copy
+    is verified, so stopping never loses a file.
+    """
+    if not import_progress_state["is_active"]:
+        return {"status": "idle"}
+    import_progress_state["cancel_requested"] = True
+    return {"status": "stopping"}
+
+
 @router.post("/import", response_model=ImportResponse, status_code=status.HTTP_201_CREATED)
 async def import_folder(payload: ImportRequest, background_tasks: BackgroundTasks) -> ImportResponse:
     """Recursively ingests media files from a directory or specific file paths into the library.
@@ -915,32 +1181,19 @@ async def import_folder(payload: ImportRequest, background_tasks: BackgroundTask
 
 
 async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTasks) -> ImportResponse:
-    files_to_process: List[Path] = []
+    files_to_process, unsupported, found_any = await asyncio.to_thread(
+        _collect_import_files, payload.source_directory, payload.file_paths
+    )
 
-    # 1. Add specific file paths if provided
-    if payload.file_paths:
-        for fp in payload.file_paths:
-            p = Path(fp)
-            if p.exists() and p.is_file():
-                files_to_process.append(p)
-            else:
-                logger.warning("Specified file path could not be located on disk: %s", fp)
-
-    # 2. Add files from directory if provided
-    if payload.source_directory:
-        source_dir = Path(payload.source_directory)
-        if source_dir.exists() and source_dir.is_dir():
-            for file_path in source_dir.rglob("*"):
-                if file_path.is_file():
-                    files_to_process.append(file_path)
-
-    if not files_to_process:
+    if not found_any:
         if payload.file_paths and not payload.source_directory:
             raise HTTPException(
                 status_code=400,
                 detail="Selected file paths could not be located on disk. Ensure absolute filesystem paths are provided.",
             )
         raise HTTPException(status_code=400, detail="No valid media files or source directory provided")
+    if not files_to_process:
+        raise HTTPException(status_code=400, detail="No photos or videos were found there.")
 
     conn = await get_db_connection()
     total_found = len(files_to_process)
@@ -963,6 +1216,8 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
     global import_progress_state
     import_progress_state.update({
         "is_active": True,
+        "started_at": time.time(),
+        "cancel_requested": False,
         "total_count": total_found,
         "completed_count": 0,
         "current_filename": files_to_process[0].name if files_to_process else "",
@@ -974,8 +1229,13 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
     })
 
     album_linked_count = 0
+    cancelled = False
     try:
         for idx, file_path in enumerate(files_to_process):
+            if import_progress_state["cancel_requested"]:
+                cancelled = True
+                logger.info("Import stopped by the owner after %d of %d files.", idx, total_found)
+                break
             import_progress_state["current_filename"] = file_path.name
             try:
                 res = await ingest_single_photo(
@@ -1033,6 +1293,7 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
 
     finally:
         import_progress_state["is_active"] = False
+        import_progress_state["cancel_requested"] = False
         await conn.close()
 
     if imported > 0:
@@ -1045,4 +1306,6 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
         failed=failed,
         imported_photo_ids=imported_photo_ids,
         album_linked_count=album_linked_count,
+        cancelled=cancelled,
+        unsupported=unsupported,
     )

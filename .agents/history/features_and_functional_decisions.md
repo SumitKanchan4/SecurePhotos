@@ -49,6 +49,8 @@ This document serves as the **central, living source of truth** for all function
 120. [Engineering Checklists; Skills and Docs Match the Code](#120-engineering-checklists-skills-and-docs-match-the-code)
 121. [Dead 24-Word Recovery Mode Removed From the Vault Unlock Screens](#121-dead-24-word-recovery-mode-removed-from-the-vault-unlock-screens)
 122. [Frontend Unit Tests (Vitest) in the Quality Gate](#122-frontend-unit-tests-vitest-in-the-quality-gate)
+123. [Redesign Step 0: Mono + Acid Lime Tokens, Archivo, New App Icon](#123-redesign-step-0-mono--acid-lime-tokens-archivo-new-app-icon)
+124. [Redesign Step 1: Icon Rail, Window Strip, Search Palette](#124-redesign-step-1-icon-rail-window-strip-search-palette)
 
 ---
 
@@ -5486,3 +5488,438 @@ Eliminates installer process file locking (`ERROR_SHARING_VIOLATION` on `securep
 - `package.json` (`test` script; dev dependencies vitest 4.1.12, jsdom 26.1.0, @testing-library/react 16.3.3, @testing-library/dom 10.4.1, @testing-library/jest-dom 6.9.1, @testing-library/user-event 14.6.1), `package-lock.json`, `vite.config.ts` (`test` block), `scripts/run-vitest.mjs`, `src/test/setup.ts`.
 - Tests: `src/services/api.test.ts` (7), `src/store/useAppStore.test.ts` (4). Mutation checks: dropping the session cookie, dropping the token header, or letting a toast timer hide a newer toast each make tests fail.
 - `.github/workflows/quality.yml` and `pipeline.yml` (`npm test`), `.agents/rules/engineering-checklists.md` §7, `docs/development.md`.
+
+---
+
+## 123. Redesign Step 0: Mono + Acid Lime Tokens, Archivo, New App Icon
+
+### Functionality Overview
+- First step of the frontend redesign (owner decisions on the concept board, 2026-11-12: colour direction "F · Mono + Neon" with acid lime, icon-rail + photo-first layout, 3D icon "C · Frosted glass, photos + lens"). Board: https://claude.ai/artifact/XsadhwxNhBkakuUzyR8wPU.
+- The whole app switches to black/white/grey with a single acid-lime accent, Archivo headings and the new app icon, before any layout changes. Layouts change in later steps.
+
+### Functional Decision Points & Rationale
+- **Accent roles**: lime is unreadable as text on light backgrounds and white text on lime fails contrast, so the accent is split into `--accent-fill` (lime, both themes), `--on-accent` (black, on the fill) and `--accent-ink` (accent as text/icon: lime in dark, near-black in light). `--accent-primary` now points at `--accent-ink`. 83 accent backgrounds became the lime fill and 72 white text colours in the same style objects became black (one check-mark icon fixed by hand); 154 blue tints became `color-mix(in srgb, var(--accent-ink) N%, transparent)`; 23 solid blue text/border uses became `--accent-ink`; 2 blue gradients became the solid fill. Album placeholder gradients and a faint glow on the printed emergency card stay until their screens are redesigned.
+- **Viewer surround**: dark in both themes (approved viewer design).
+- **Fonts**: Archivo (OFL-1.1, bundled offline) replaces Plus Jakarta Sans for headings, including the 12 places that named the old font directly and the emergency-card renderer (recovery reads the PNG text chunk, not the drawn text). Plus Jakarta Sans removed.
+- **App icon**: `src/assets/brand/app-icon.svg` (full, 48 px and up) and `app-icon-small.svg` (simplified, 32 px and below); `scripts/render_app_icons.py` renders `src-tauri/icons/*` including a multi-size `icon.ico` with the simplified art at 16/24/32. Title bar and favicon use the small mark; the old 3D render files were removed.
+- **Branching**: the redesign lands on the long-lived `feature/redesign` branch; master keeps today's app until the whole redesign is done (owner decision). The quality check also runs on pull requests into `feature/redesign`.
+
+### Technical Touchpoints
+- `src/index.css` (tokens), 33 component files (accent roles, blue literals, display font), `src/main.tsx` (Archivo), `src/utils/gridCardRenderer.ts` (font), `src/components/TitleBar.tsx`, `index.html`, `src/assets/brand/*`, `src-tauri/icons/*`, `scripts/render_app_icons.py`, `package.json` (+ `@fontsource/archivo`, - `@fontsource/plus-jakarta-sans`), `THIRD_PARTY_NOTICES.md`, `.github/workflows/quality.yml`.
+- Checks: `tsc` and build pass, 11 frontend + 229 Python tests pass, ruff clean, npm audit 0. Playwright on a throwaway library: all 8 screens and the import window in dark and light, with an automatic scan for light text on lime fills and lime text in the light theme: no problems found; no console errors.
+
+---
+
+## 124. Redesign Step 1: Icon Rail, Window Strip, Search Palette
+
+### Functionality Overview
+- The labelled sidebar and the full-width title bar are replaced by the approved shell: a **64 px icon rail** (logo, search, the nine sections, hover labels, a status dot) and a **32 px window strip** (drag area, active-search chip, theme toggle, window buttons).
+- **Search** moved from the title bar into a centred **search palette** (Ctrl+K, or the search icon at the top of the rail). Same live results (people, albums, photos, quick filters), same search API.
+- **Active search chip**: the search text also filters People, Albums, Documents and Trash, so while it is set the strip shows "Search: ... x" (click to edit, x to clear); a filter can no longer be invisible.
+- **Status dot** at the bottom of the rail replaces the drive/engine card: lime = library ready and engine running, amber = engine starting, red = drive missing or engine problem; the plain-language reason shows on hover; clicking opens Settings.
+
+### Functional Decision Points & Rationale (owner decision 2026-11-12: slim strip + Ctrl+K)
+- The window has no Windows frame, so a draggable strip with the window buttons must stay; 32 px is the minimum comfortable size.
+- A search icon sits at the top of the rail until each page header gets its own (later steps), so search is always one click away.
+- Active section: lime fill + black icon in dark, black fill + white icon in light (`--rail-active-*`); hover labels are CSS (`data-label`), so they need no extra JavaScript.
+- The search code was moved, not rewritten (title-bar input and results blocks copied into `SearchPalette`), to keep behaviour identical.
+- Known overlap until Step 2: the old Photos page header still shows its own "Search Active" pill and "Clear Search" button next to the chip; that header is replaced in R2.
+
+### Technical Touchpoints
+- New: `src/components/shell/IconRail.tsx`, `WindowStrip.tsx`, `SearchPalette.tsx`, `shell.test.tsx`; store: `isSearchOpen` / `setSearchOpen`; `src/index.css` (`.rail-btn`, hover labels, `--rail-active-*`, `.window-close`).
+- Removed: `src/components/TitleBar.tsx` (918 lines), `src/components/Sidebar.tsx`. `src/App.tsx` wires the new shell.
+- Tests: 7 new component tests (sections, current marker, navigation, search opening, status wording, chip edit/clear, window buttons, Ctrl+K/Escape/backdrop, typed search hits the API with the token and a person result opens People). Hiding the chip, dropping the current marker or breaking Escape each fail a test. 18 frontend tests pass; tsc and build pass.
+- Validated in the UI (Playwright, throwaway library, both themes switched with the real toggle): all nine sections open and are marked current, the theme survives navigation, hover labels show, Ctrl+K finds an imported photo by name, the chip appears after closing and clears; contrast scan: no problems; no console errors.
+
+## 125. Redesign Step 2: Photos Timeline (Whole Library, Justified Rows, Month/Year Scrubber)
+
+### Functionality Overview
+- **The Photos screen now shows the whole library.** It used to load only the newest 500 photos (and its "photos" count said 500 for any bigger library). It now loads every library photo as small rows from a new endpoint and opens full details only when a photo is opened.
+- **Month sections with justified rows.** Photos are grouped under big month headings ("May 2026 · 412") and keep their shape: each full row is scaled to fill the width exactly; a month's last row is not stretched. Undated photos come last under "No date".
+- **Month/year scrubber** on the right replaces the scrollbar and the old year ribbon: year labels and month ticks placed where each month starts, a lime marker for the current position, and a lime label showing the month under the pointer; click or drag to jump.
+- **New header**: big "Photos" title, the count, a status pill only while something runs (importing, preparing videos, enhancing), a search button (opens Ctrl+K) and a lime "+ Import". The "Search Active" pill, "Library Collection" pill, header "Clear Search", year ribbon and the duplicate import banner are gone (the strip's search chip clears the search; the pill shows import progress).
+- **Selection**: a circle on each photo (on hover) and a circle next to each month heading (select the whole month). Once anything is selected, clicking a photo selects it instead of opening it. "Select All" now selects the whole library (or all search results), not just the 500 loaded photos.
+- **Viewer**: opening a photo loads full details for up to 300 photos around it; the counter shows the position in the whole library ("41 of 12,480"), and stepping near either end of the loaded window quietly loads the next window, so the arrow keys go through the whole library.
+- **Fixed (existing bug)**: Escape did not close the photo viewer. Escape also clears the selection, which re-rendered the app in the middle of the key press; the viewer removed and re-added its key listener during that event, so it never saw the key.
+
+### Functional Decision Points & Rationale (owner decision 2026-11-12: one compact timeline list)
+- One compact list instead of pages: the scrubber, month counts and "Select All" need to know the whole library up front. Each photo is a 6-value row (`[id, date, width, height, "p"|"v", flags]`, flags 1 favourite / 2 optimised / 4 enhanced), about 40 bytes, so 50,000 photos are about 2 MB.
+- Justified rows, not a free mosaic: rows have known heights, so only rows near the screen are rendered (tested: 1,218 photos, 5 to 60 tiles in the page at a time) and the scrubber can place every month exactly.
+- Tiles show only what helps choosing: selection circle, favourite heart, a "Video" chip (or "Preparing" while a video is converted; there is no duration in the database yet). Per-tile "Queued / Optimizing" and 8K badges are dropped: the header pill reports background work, and the viewer shows the 8K chip.
+- Selection mode (clicks select once something is selected) follows the common photo-app pattern, so selecting many photos doesn't need Ctrl held down.
+- Search results use the same timeline. The search API returns no photo sizes yet, so search results show as squares.
+- `PhotoGrid` stays for the Vault until Step 4 redesigns that screen.
+
+### Technical Touchpoints
+- Engine (`engine/api/photos.py`): `GET /api/photos/timeline` (whole library, vault and trash excluded, newest first, undated last) and `GET /api/photos/details?ids=` (full records in the order asked, at most 500 ids, vault and trash excluded, 400 for bad input). The list endpoint and `/details` share one column list and row mapping (`_PHOTO_COLUMNS`, `_photo_from_row`).
+- Frontend: new `src/utils/photoTimeline.ts` (parse rows, month grouping, justified layout, visible range, scrubber marks, viewer window), `src/components/photos/PhotoTimeline.tsx`, `.timeline-*` styles in `src/index.css`, `TimelinePhoto` / `TimelineResponse` types. `src/App.tsx`: library state is `TimelinePhoto[]` from `/timeline`, `openPhotoViewer` fetches `/details`, new header, year ribbon and `loadTimelineYears` removed. `Lightbox.tsx`: `indexOffset` / `totalCount` props for the counter; key listener registered once per open (latest handler via a ref). `useAppStore.clearSelection` does nothing when the selection is already empty.
+- Tests: `engine/tests/test_photo_timeline_api.py` (rows, order, flags, trash/vault excluded, more than 1,000 photos, details order and limits); `src/utils/photoTimeline.test.ts` (12), `src/components/photos/PhotoTimeline.test.tsx` (7: windowing, open vs select, month select, favourite, video not ready, scrubber jump, empty state), `src/components/Lightbox.test.tsx` (Escape with a selection, library-wide counter, arrows). Mutation checks: dropping the trash filter, losing the details order, opening while selecting, stretching a month's last row and the old Lightbox listener each fail a test. Engine suite 233 passed; frontend 40 passed; tsc and build pass.
+- Validated in the UI (Playwright, throwaway library of 1,218 photos, both themes): the count shows 1,218; month headings and justified rows render; the scrubber lists 2026 to 2019 plus "No date", hover shows the month, a click jumps to the bottom in about 0.5 s; opening a photo sends one details request for 300 ids and the counter reads "1 of 1,218"; Escape closes the viewer; favourite saves; circle and click selection, "Select All" (1,218) and month select work; search shows "Search results" in the same grid; contrast scan: no problems; no console errors.
+
+## 126. Redesign Step 3: Photo Viewer (Dark Surround, Details on Demand, Filmstrip)
+
+### Functionality Overview
+- **Dark surround in both themes** so colours look true; only the details panel follows the app theme. (Before, the light theme put dark text on the viewer's dark toolbar.)
+- **Top bar**: Back, then the title (a short caption when there is one, otherwise the file name) with a small lime **8K** chip beside it (4K / HD for videos) and a line under it with the date, the position in the library ("41 of 12,480") and, while it runs, "Enhancing to 8K · 40%" or "Waiting to be enhanced". Nothing sits on the photo any more.
+- **Actions as icons**: Favourite (Pin for documents), Download, Details; then, set apart after a divider, Trash and the lime lock that moves the photo to the Vault (Restore for a vault photo).
+- **Download menu**: "Photo / Video: the file as it is in your library" and, for photos, "Print-ready copy: 300 dpi JPEG for prints and posters" (replaces the separate Print Ready pill).
+- **Filmstrip** of up to nine neighbours under the photo, the current one larger with a lime ring; click to jump. Previous/next arrows sit on the photo edges.
+- **Details panel** (Details button or I), hidden every time the viewer opens: Taken (date, time, coordinates with Open map), Camera (model; aperture, shutter, ISO, focal length), Photo or Video (size and quality, stored size "Enhanced · 6.2 MB (was 9.8 MB)", largest sharp print, Download print-ready copy or Enhance to 4K), File (name, Copy file location), Imported (date; copied into the library or kept in its original folder), **People** (face crops; click opens People filtered to that person) and **Albums** (click opens Albums filtered to that album).
+- **Zoom**: double-click, Ctrl + wheel, or + / - / 0; a small "250%" pill appears only while zoomed and resets on click. The old zoom buttons are gone.
+
+### Functional Decision Points & Rationale (owner design approved on the redesign canvas: Viewer board)
+- People and albums need a new lookup because the viewer only had EXIF: `GET /api/photos/{id}/context`. Vault and trashed photos are refused, so a vault photo's people are never shown outside the vault; the panel doesn't ask for them.
+- "Share" on the approved board became Download: the app is offline and has nothing to share to. Download and print-ready were two pills; one menu is calmer and explains the difference.
+- The Escape key first closes the download menu, then the viewer.
+- Details stay open while stepping through photos (useful when comparing), but every new viewing starts with them hidden, as approved.
+- Plain-language toasts: the video upscale toast no longer mentions "Lanczos & 3D denoising".
+- Q5 (split Lightbox.tsx) is partly done: text helpers moved to `src/components/viewer/viewerFormat.ts` and the old drawer and toolbar code is gone (1,879 → about 1,420 lines). The video player and the details panel are still inside `Lightbox.tsx`; splitting them out is left open.
+
+### Technical Touchpoints
+- Engine: `engine/api/photos.py` adds `PhotoContextResponse` and `GET /{photo_id}/context` (named people with their best face in this photo, non-vault albums, `created_at`, `is_managed`).
+- Frontend: `src/components/Lightbox.tsx` new layout (root `data-theme="dark"`, panel `data-theme={theme}`), context fetch with a per-viewing cache, `handleEnhanceVideo`, Escape/menu and zoom keys; `src/components/viewer/viewerFormat.ts` (dates, title, camera, exposure, quality chip, sizes, print size, coordinates, filmstrip range); `PhotoContext` type; `.viewer-*` styles in `src/index.css`. Photo, video, volume booster and locked-vault blocks are unchanged apart from their maximum sizes.
+- Tests: `engine/tests/test_photo_context_api.py` (people order and best face, unnamed faces and other photos left out, vault albums left out, vault / trashed / missing refused); `src/components/viewer/viewerFormat.test.ts` (8); `src/components/Lightbox.test.tsx` (+8: dark surround and themed panel, details hidden on every opening, title / chip / date, button order with Trash and Vault last, download menu and Escape order, arrows and filmstrip, people/albums panel and People navigation, vault photo shows Restore and never fetches people). Mutation checks: removing the dark root, Escape closing the viewer before the menu, fetching context for vault photos, and the engine's vault filter each fail a test. Engine suite 235 passed; frontend 55 passed; tsc and build pass.
+- Validated in the UI (Playwright, throwaway library, both themes): surround rgb(10,10,10) in both themes, panel #171717 dark / #ffffff light; title "Baga beach, sunset" with the 8K chip; bar order Back, Favourite, Download, Details, Trash, Move to Vault; filmstrip of 9 with the current ringed; panel shows taken, camera, photo, file, imported, Rohan's face crop and "Goa 2026"; download menu offers both copies and Escape closes it first; filmstrip and arrows move ("4 of 1,218" then "3 of 1,218"); double-click shows 250%; clicking Rohan opens People with the search chip "Rohan"; contrast scan: no problems; no console errors.
+
+## 127. Redesign Step 4: Private Vault Screen; Factory Reset Moves to Settings
+
+### Functionality Overview
+- **Header**: big "Private Vault" title and a calm status: "● Unlocked · locks in 4:58" (the dot turns amber in the last 30 seconds), "Locked" or "Not set up yet". While unlocked: a privacy-shield icon button (or the P key) and a high-contrast **Lock now** button. Vault photo enhancement shows as a small pill ("Enhancing vault photos · 2 of 5").
+- **Tabs**: Photos / Albums / Documents with their counts; the active one is filled.
+- **Lock screen**: one centred card: lime lock emblem, "Your vault is locked", "Enter your 4-digit PIN" (or master password), the PIN boxes, "Use master password instead" / "Use your PIN instead", and "Forgot your password? Use your Emergency Card". The password hint stays in the header. **Factory reset is no longer on the lock screen.**
+- **Photos and locked-album contents** use the month-section grid from Photos (justified rows, newest first, undated last). The month/year scrubber appears only when the vault spans at least four months. Vault tiles have no selection circles or favourite hearts (the vault has no selection bar), and a selection left over from Photos can't change what a click does here.
+- **Factory reset moved to Settings → Private Vault → Danger zone** ("Erase vault…"). Same guard: it shows what will be erased ("18 photos and 2 albums"), the button stays disabled until ERASE ALL DATA is typed exactly, and the engine checks the phrase itself. The button is disabled when there is no vault.
+- The old square `PhotoGrid` is gone; the Vault was its last user.
+
+### Functional Decision Points & Rationale (owner design approved on the redesign canvas: Vault board)
+- A destructive "erase everything" link next to the unlock form invites mistakes and panic clicks; Settings is where people go deliberately.
+- Scrubber from four months: a vault with two or three months of photos doesn't need navigation; the board asked for it only "when the vault spans more than a few months".
+- Lock now is the strongest button on the screen (text colour on background colour, not red): locking is safe and should be easy, red reads as danger.
+- Vault items arrive in no particular order from the engine, so the screen sorts them the way the library is sorted; the viewer gets the same order.
+
+### Technical Touchpoints
+- `src/components/VaultView.tsx`: new header, tabs, lock card, `P` shortcut, `PhotoTimeline` with `vault` and `minScrubberSections={4}`; reset state, handler and modal removed.
+- New `src/components/vault/VaultFactoryReset.tsx` (moved reset logic), used in `src/components/settings/VaultSettings.tsx` under a Danger zone section.
+- `src/components/photos/PhotoTimeline.tsx`: `vault` (vault thumbnails, no selection) and `minScrubberSections` props.
+- `src/utils/photoTimeline.ts`: `fromPhotoItem`, `sortNewestFirst`.
+- `.vault-*` and `.danger-*` styles in `src/index.css`; `src/components/PhotoGrid.tsx` removed.
+- Tests: `src/components/vault/vault.test.tsx` (8: lock card without reset, password-only state, header and tabs, privacy shield by button and P, newest-first order with vault thumbnails and no selection even with a leftover selection, Danger zone in Settings, disabled without a vault, preview + exact phrase + POST), `PhotoTimeline.test.tsx` (+1: scrubber threshold), `photoTimeline.test.ts` (+2). Mutation checks: selectable vault tiles, ignoring the scrubber threshold, and unsorted vault photos each fail a test. Engine suite 235 passed; frontend 66 passed; tsc and build pass.
+- Validated in the UI (Playwright, throwaway library and vault of 18 photos over 2023-2026, both themes): lock card with PIN boxes and Emergency Card link, no reset on the lock screen; PIN unlock; header "Unlocked · locks in 4:55 | Lock now"; tabs "Photos 18 / Albums 0 / Documents 0"; scrubber shown; no selection circles; a vault photo opens in the viewer with Restore; P hides the tabs behind the shield; Lock now locks the engine; Settings Danger zone erase dialog shows "18 photos", stays disabled until the phrase, Cancel keeps the vault; contrast scan: no problems; no console errors.
+
+## 128. Redesign Step 5: People (Close Ones, "Same person?", "Who is this?")
+
+### Functionality Overview
+- **Header**: big "People" title, "24 named · 9 to name", a status pill while faces are being looked for ("Looking for faces · 120 of 1,218"), a search button (Ctrl+K) and a "…" menu with "Look for new faces" and "Start over…" (forgets every name and group; photos stay safe). The old header pills are gone.
+- **Close ones** pinned on top: large faces with a lime ring, name and "1,204 photos".
+- **"Same person?"**: one suggestion at a time: "Rohan (412 photos) and an unnamed group (37 photos) look alike." **Yes, merge** adds the group's photos to that person (name and settings kept); **Not the same** is remembered so the same pair isn't asked again.
+- **Everyone**: everyone else in a grid of faces with their photo counts.
+- **"Who is this?"**: one card per unnamed face group: the face (click to see it in its photo), the photo count, and an "Add a name" box with existing names offered as you type. A name that matches someone already named says "adds to Rohan" and adds the photos to that person. The × hides a group that isn't a person. Six cards show first, then "Show all N".
+- The search text (Ctrl+K) filters people by name or relationship; naming and suggestions hide while searching.
+- **Rename moved to the person page**: click the name to edit it (Enter saves, Escape cancels). A name someone else already has is refused with a plain explanation. It used to live only in the old "See all" dialog, which is gone.
+- **Fixed**: unnamed groups no longer include faces from vault photos (their crops couldn't load, and the counts were wrong).
+
+### Functional Decision Points & Rationale (owner design approved on the redesign canvas: People board)
+- Suggestions compare the average face of a named person with the average face of an unnamed group. 0.40 cosine similarity sits above OpenCV's published SFace match threshold (0.363) and below the stricter 0.45 the clustering uses to join faces on its own, so it finds groups that are probably the same person but weren't joined automatically. Only library photos count.
+- "Not the same" is stored per face, not per group: group ids are renumbered every time faces are re-clustered, face ids aren't. A "Start over" clears these answers with the faces.
+- Naming asks only for a name (as on the board). Relationship and close-one status are set on the person page; naming never changes an existing person's relationship (the old form sent "Friends" every time, which overwrote it).
+- "Start over" is behind the "…" menu: it is destructive and rarely needed, so it shouldn't sit next to everyday actions.
+- Q5 (split PeopleView.tsx) partly done: the overview is now `src/components/people/PeopleOverview.tsx`; `PeopleView.tsx` went from 3,305 to about 1,750 lines and still holds the person page and the face-inspection dialog.
+
+### Technical Touchpoints
+- Engine: new `engine/services/people_merge_service.py` (`centroid`, `rank_merge_suggestions`, `load_merge_inputs`); `engine/api/people.py` adds `GET /api/people/merge-suggestions`, `POST /api/people/merge-suggestions/reject`, `POST /api/people/{person_id}/merge-cluster`, and filters vault photos out of `/clusters`; `engine/database.py` adds `person_face_rejections` (per person and face, cascades with faces and persons).
+- Frontend: new `src/components/people/PeopleOverview.tsx` (`photoCountLabel`, `matchesSearch`); `PeopleView.tsx` uses it, drops the old overview, the "See all" dialog, the old naming form and their state, and adds rename on the person page; `MergeSuggestion` type; `.people-*` styles in `src/index.css`.
+- Tests: `engine/tests/test_people_merge.py` (6: centroid, one suggestion per group to the most alike person, turned-down person skipped for the next one, limit, suggest / reject / survive renumbering / merge / 404, vault-only group never suggested or listed, Start over clears answers); `src/components/people/people.test.tsx` (9: helpers, close ones and everyone, merge on yes, reject without merging, naming with "adds to" and no relationship sent, hide group and inspect face, search, empty state and Start over behind the menu, rename with duplicate refused). Mutation checks: ignoring answers, listing vault groups, sending a relationship when naming, dropping the duplicate-name guard, and "Not the same" merging each fail a test. Engine suite 241 passed; frontend 75 passed; tsc and build pass.
+- Validated in the UI (Playwright, throwaway library with seeded people and face groups, both themes): header "4 named · 3 to name"; close ones with lime rings and real face crops; "Same person?" for Rohan and the look-alike group; Yes, merge took Rohan from 3 to 5 photos and removed the card; naming a group "Meera" added her under Everyone; × hid a group; on the person page "Asha" was refused ("Someone else is already called Asha…") and "Kabir S" saved; contrast scan: no problems; no console errors.
+
+## 129. Redesign Step 6: Import Dialog and Settings
+
+### Functionality Overview
+- **Import ("Bring photos in")** has two states.
+  - **Before:** a drop area with Choose files / Choose a folder; a card for the selection: "Selected folder · Goa trip · 62 photos, 1 video (1.8 MB) · 17 are already in your library and will be skipped · Change"; a **Move instead of copy** switch that is **off by default** ("Off: your originals stay where they are. On: they are removed only after each copy is checked."); and a lime "Import 46 items" (or "Nothing new to import").
+  - **While importing:** "Copying 11 of 63 · less than a minute left", "You can close this window and keep using the app.", **Stop import** and **Hide**. Hide (or Escape, or ×) keeps the import going; the Photos header shows its progress, the result message still appears when it ends, and reopening the dialog reconnects to the running import.
+  - **Stop import** finishes the file it is on and stops: "Import stopped. Added 9 items (8 already in your library); nothing else was changed." Files already imported stay; when moving, each original is removed only after its copy is checked, so stopping never loses a file.
+  - Files the app can't import (e.g. .txt) are no longer counted as "already in your library".
+- **Settings** has a section list on the left (**Appearance, Photos & AI, Private Vault, Storage, About**) and plain rows on the right. The old header ("Preferences", Light/Dark button) is gone; the theme is in Appearance and the window strip.
+  - **Appearance:** Theme (Dark / Light pills, T to switch), Photo size (Small / Medium / Large), Reduce motion.
+  - **Photos & AI** (was "AI & 8K" and "Memories"): Photo quality slider with its plain label, Pause enhancing on battery, Recognise faces; Stories: Background music, Slow pan and zoom, Highlight stories (always on).
+  - **Private Vault** (approved board): Lock automatically after (1 / 5 / 15 / 30 min pills), Password (Change password), Quick PIN, **Emergency Card → Print a new card**, and a separate Danger zone with **Erase the vault → Erase…**. A short true note: vault photos are decrypted only in memory.
+  - **Storage** (new): Library folder with Connected status and Switch library… (moved from About), Space used (photos and videos · app data), Free space on the drive.
+  - **About:** SecurePhotos version with Check for updates, Licence (MIT), Photo engine Running / Not running with Check again.
+- **Print a new card**: needs an open vault and the master password; shows the new card once (Save card image / Save text copy; Done asks first if nothing was saved). The old card stops working immediately; nothing is re-encrypted.
+
+### Functional Decision Points & Rationale (owner design approved on the redesign canvas: Import + Settings board)
+- Copy by default, move as an explicit switch: losing originals is the worst failure an import can have.
+- The summary hashes only files whose size matches something already in the library, so a large folder of new photos is counted without reading every byte.
+- Replacing the Emergency Card asks for the master password even though the vault is open: the card is the last-resort key, so someone at an unlocked computer can't swap it. (Changing the password from Settings still only needs an open vault, as before.)
+- Removed the "Frosted Privacy Shields … when switching away … Active" claim from Settings: nothing blurs the vault when the app loses focus; the shield is the manual button / P key. Settings now states only what is true.
+- Wording is plain throughout ("Recognise faces", "Pause enhancing on battery", "Photo engine") instead of "On-Device Vision", "Thermal & Battery Guard", "FastAPI sidecar".
+- `docs/design_system.md` predates the redesign as a whole; it gets one full refresh at the end of the redesign (backlog R8) rather than piecemeal edits.
+
+### Technical Touchpoints
+- Engine (`engine/api/photos.py`): `_collect_import_files` (shared by import and preview, runs in a thread, supported files only); `POST /api/photos/import-preview`; `POST /api/photos/import/cancel`; `import_progress_state` gains `started_at` and `cancel_requested`; `ImportResponse` gains `cancelled` and `unsupported`.
+- Engine (`engine/api/vault.py`): `POST /api/vault/grid-card/replace` (open vault + current password; re-wraps both card slots around the same vault key).
+- Frontend: `src/components/ImportModal.tsx` rewritten (two states, preview, switch, stop, hide/reconnect, guard against an early progress poll); `src/components/import/importFormat.ts`; `src/components/SettingsView.tsx` rewritten; `src/components/settings/SettingsKit.tsx` (group, row, pill choice); `AppearanceSettings.tsx`, `VaultSettings.tsx`, `AboutSettings.tsx` rewritten; new `PhotosAISettings.tsx` (replaces `AISettings.tsx` and `MemoriesSettings.tsx`) and `StorageSettings.tsx`; new `src/components/vault/EmergencyCardReplace.tsx`; `VaultFactoryReset.tsx` uses the row style; `src/components/ui/SegmentedPill.tsx` removed (no users); `.settings-*`, `.import-*`, `.card-dialog-*` styles, old `.danger-zone`/`.danger-row` styles removed.
+- Tests: `engine/tests/test_import_preview_and_cancel.py` (3: counts, sizes and duplicates; unsupported files not counted as skipped; Stop import keeps what was imported), `engine/tests/test_vault_card_replace.py` (locked and wrong password refused; old card stops working by file and numbers; new card works both ways); `src/components/import/import.test.tsx` (7), `src/components/settings/settings.test.tsx` (9), `vault.test.tsx` updated. Mutation checks: no password check for the card, Stop import ignored, no duplicate check, moving by default, no early-poll guard, and no unsaved-card warning each fail a test. Engine suite 245 passed; frontend 90 passed; tsc and build pass.
+- Validated in the UI (Playwright, throwaway library, both themes): a folder of 60 photos, a video, a text file and 2 library copies showed "62 photos, 1 video (1.8 MB)" with the duplicates counted and the switch off; "Copying 11 of 63 · less than a minute left"; Stop import reported the partial result and left all 60 originals in place (copy mode); all five Settings sections render in both themes; the 15 min pill saved `auto_lock_duration` = 900; a wrong password was refused with "Incorrect master password." and the right one showed the new card; contrast scan: no problems; the only console error is that deliberate 401.
+
+## 130. Redesign Step 7a: Trash
+
+Boards for the remaining screens (Albums, Stories, Documents, Dashboard, Duplicates, Big videos, Trash) were added to the redesign canvas and approved by the owner on 2026-11-13. R7 is built in five steps: R7a Trash, R7b Documents, R7c Dashboard + Duplicates + Big videos, R7d Albums, R7e Stories.
+
+### Functionality Overview
+- **Header**: "Trash", "18 items · deleted for good after 30 days", and **Empty trash…** as a red outline set apart on the right.
+- **Month sections** by when items were deleted ("Deleted this month", "Deleted in October 2026"). Every tile says how long it stays ("12 days left"); the last 3 days are amber.
+- **Selecting**: click tiles (a circle shows on hover); one floating bar: "3 selected · Select all · **Restore** · Delete forever… · ×". Escape clears the selection.
+- **Asking first**: Delete forever and Empty trash open an in-app confirmation ("Delete 3 items forever? They will be removed from this computer for good. This can't be undone.") instead of the browser's plain box; Escape or Cancel deletes nothing.
+- **Fixed (privacy)**: a vault photo moved to Trash showed its real file name (and the engine returned its path) while the vault was locked. Trash now lists it as "Private Vault item" with a lock tile, no name, path or picture; it can still be restored.
+
+### Functional Decision Points & Rationale (owner design approved on the redesign canvas: Trash board)
+- Restore is the strong action (lime); deleting for good is always an outline and always asks.
+- Clicking a tile selects it (Trash has no viewer), so selecting several items is quick.
+- `ConfirmDialog` is reusable for the other screens' irreversible actions.
+
+### Technical Touchpoints
+- Engine: `engine/api/trash.py` returns `is_vault_item` and `mime_type`, and masks the name and path of vault items.
+- Frontend: `src/components/TrashView.tsx` rewritten; new `src/components/trash/trashFormat.ts` and `src/components/ui/ConfirmDialog.tsx`; `.trash-*` styles in `src/index.css`.
+- Tests: `engine/tests/test_trash.py` (+1: vault item listed without name or path, still restorable); `src/components/trash/trash.test.tsx` (5: wording and month groups, amber near the end and vault tile without picture, restore, delete forever asks and Cancel deletes nothing, empty trash asks). Mutation checks: Cancel confirming, a vault picture shown, and the vault name not masked each fail a test. Engine suite 246 passed; frontend 95 passed; tsc and build pass.
+- Validated in the UI (Playwright, throwaway library, both themes): 18 trashed items in two month sections with 30 / 10 / 2 / 1 days left (2 and 1 in amber), the vault item as a lock tile without a picture; selecting three and Restore put them back ("Restored 3 items."); Delete forever showed the confirmation and Escape left everything in place; contrast scan: no problems; no console errors.
+
+## 131. Redesign Step 7b: Documents
+
+### Functionality Overview
+- **Header**: "Documents", "214 documents", a search button (Ctrl+K), **Find in photos** (looks through the library for receipts and IDs already there) and a lime **+ Add** (bring in files directly).
+- **One row of category chips with counts**: All, Receipts & bills, IDs, Tax, Medical, Legal, Warranties (and Other only when something is in it). Choosing a chip filters on the screen; the counts always describe the whole collection.
+- **Pinned** papers sit on top, then the rest newest first ("All documents", or the chosen category's name).
+- **Paper-like cards**: the real page on a white sheet, title, "Receipts & bills · 9 Nov 2026"; a pin button (lime when pinned) and a "…" menu with the category list (current one marked) and Move to Trash. Clicking a card opens the viewer, in the order shown.
+- **Fixed (privacy)**: vault documents were listed here with their names and scanned text, and a search could match words inside them while the vault was locked. The public Documents screen now never lists or searches vault documents (they stay in Private Vault → Documents).
+- **Fixed (bug)**: pinning a document sent two toggles (the screen and the app each sent one), so the pin cancelled itself and never stuck. The screen now sends one.
+
+### Functional Decision Points & Rationale (owner design approved on the redesign canvas: Documents board)
+- Documents must never look like photos: white paper frames, no photo-style tiles.
+- The scanned-text snippet, inspect button and always-visible category switcher were dropped from the cards: the viewer shows the document, and the category lives in the "…" menu. Move to Trash doesn't ask first because Trash keeps it for 30 days.
+
+### Technical Touchpoints
+- Engine: `engine/services/document_service.py` `list_documents` excludes `is_encrypted = 1`.
+- Frontend: `src/components/DocumentsView.tsx` rewritten; new `src/components/documents/docsFormat.ts`; `App.tsx` no longer passes its pin handler to Documents; `.docs-*` / `.doc-*` styles in `src/index.css`.
+- Tests: `engine/tests/test_documents.py` (+1: vault document neither listed nor found by search); `src/components/documents/documents.test.tsx` (6: helpers, pinned first and chip filter, one pin request, category change and Move to Trash from the menu, Find in photos, viewer order). Mutation checks: listing vault documents and sending two pin requests each fail a test. Engine suite 247 passed; frontend 101 passed; tsc and build pass.
+- Validated in the UI (Playwright, throwaway library with seven documents, one of them in the vault, both themes): the vault document is absent; six paper cards with real page images, two pinned; pinning Croma Receipt stuck (one request, saved on the engine); the Medical chip shows only the blood test; the "…" menu lists the categories and closes with Escape; a card opens the viewer; contrast scan: no problems; no console errors.
+
+## 132. Redesign Step 7c: Dashboard, Duplicates and Big videos
+
+### Functionality Overview
+- **Dashboard**: "Dashboard · Library on Windows (C:)", five count tiles (Photos, Videos, Documents, People, Albums) that open their section, a **Storage** card (one bar: photos and videos in lime, app data, other files, free space, with a legend), and two cards for jobs worth doing: **Duplicates** ("34 groups of copies and bursts. About 1.2 GB can be freed." → Review duplicates) and **Big videos** ("12 videos can be made smaller without visible change. About 3.4 GB to save." → Review videos). **Photo enhancement** shows "1,204 of 1,218 photos enhanced · 18 GB saved so far" with a progress bar and Pause / Resume / Start now.
+- **Duplicates** (own page with "← Dashboard"): each group ("Exact copies" / "Similar shots") shows its photos; the best pick is ticked and ringed ("Keep · best pick"), unticked copies say "Goes to Trash". Tick more to keep more; at least one always stays. The group button says what it does ("Remove 2 copies" / "Keep all"); Skip hides a group for now. **Keep the best in all…** asks first ("1,101 copies (1.5 MB) will go to Trash…"). Removed copies go to Trash for 30 days.
+- **Big videos** (own page): "Can be made smaller" rows show the size now and after; **Make smaller** and **Make all smaller** ask first, since the original is deleted. "Old or low-quality clips" can be enhanced to HD, Full HD or 4K. A missing thumbnail is hidden instead of showing a broken image.
+- **Changed (owner decision)**: making a video smaller used to move the original into a hidden `.trash` folder that was never emptied, so no space was ever freed. Now the smaller copy is checked first (it has a picture and the same length, within 1 s or 1 %); only then is the original deleted. If the check fails, the copy is thrown away and the original kept ("The smaller copy didn't pass the check (…), so the original was kept.").
+- **Fixed (bug)**: similar-photo detection never found anything for photos stored inside the library (the scan used the stored relative path as-is). It now resolves the path first.
+- **Hardened**: an unexpected reply from the engine (not a list of groups) shows an empty Duplicates page instead of crashing it.
+- **Fixed (bug)**: the dashboard and video screen read video summary fields the engine doesn't send (`potential_savings_bytes` etc.), and "Make all smaller" read the wrong result fields, so the savings showed as zero.
+
+### Functional Decision Points & Rationale (owner design approved on the redesign canvas: Dashboard, Duplicates and Videos boards; video originals: owner chose "Delete once checked" on 2026-11-14)
+- Duplicates and Big videos are pages of the Dashboard, not top-level sections: they're occasional clean-up jobs.
+- Duplicates need no confirmation per group (Trash keeps them 30 days); the all-groups action and video compression ask first.
+- No Stop button for the video batch: the engine can't cancel it yet.
+
+### Technical Touchpoints
+- Engine: `engine/services/video_service.py` (`verify_transcoded_copy`, check before replacing, original deleted instead of moved to `.trash`); `engine/services/duplicate_service.py` (`resolve_media_path` before fingerprinting). The Enhance path is unchanged.
+- Frontend: `src/components/DashboardView.tsx`, `DuplicatesView.tsx`, `VideoOptimizerView.tsx` rewritten; new `src/components/dashboard/dashFormat.ts`; `VideoSummary` type aligned with the engine; `.dash-*`, `.dup-*`, `.vid-*` styles in `src/index.css`.
+- Tests: `engine/tests/test_videos.py` (+3: original deleted once checked, original kept when the copy fails, check rules); `engine/tests/test_duplicates.py` (+1: similar photos found with library-relative paths); `src/components/dashboard/dashboard.test.tsx` (8). Mutation checks: skipping the check, keeping the `.trash` move, not resolving the path, confirming without asking, and dropping the list guard each fail a test. Engine suite 250 passed; frontend 109 passed; tsc, build and ruff pass.
+- Validated in the UI (Playwright, throwaway library, both themes): dashboard counts, storage bar and both job cards with real numbers; Review duplicates showed the group with the best pick ringed and "Keep the best in all…" asked first; on Big videos, Make smaller asked, then the 587 MB original was deleted with no hidden `.trash` copy; contrast scan: no problems; no console errors.
+
+## 133. Redesign Step 7c2: Video originals (old hidden copies cleaned up, enhanced originals go to Trash)
+
+### Functionality Overview
+- **One-off cleanup**: older versions kept every original they replaced in a hidden `.trash` folder beside the video, which nothing ever emptied. The first time the engine starts with a library, it looks in those folders next to every library video:
+  - an old "Make smaller" original is deleted, but only if its smaller video is still in the library and passes the same check as new compressions (has a picture, same length);
+  - an old Enhance original goes to Trash (restorable for 30 days), but only if its enhanced video is still in the library and passes the check;
+  - anything else (no copy found, copy gone, or a length that doesn't match) is left alone.
+  The Dashboard then shows once: "Removed 3 full-size video copies an earlier version had kept hidden after making videos smaller. 4.2 GB freed." with **OK** to dismiss it. Nothing is shown when there was nothing to clean up.
+- **Enhance (HD / Full HD / 4K)**: the enhanced copy is now checked first (has a picture, same length); if it fails, it is thrown away and nothing changes ("The enhanced copy didn't pass the check (…), so the original was kept."). If it passes, the library item becomes the enhanced video (keeping its albums, favourite and faces) and the original becomes its own item in Trash, with its own thumbnail, restorable for 30 days and then deleted for good like anything else in Trash. The Big videos page and the toast say so ("Enhanced old_birthday.mp4 to HD. The original is in Trash for 30 days.").
+
+### Functional Decision Points & Rationale (owner decisions 2026-11-15)
+- Old "Make smaller" leftovers: "Clean up after checking". Matches the R7c rule for new compressions (delete once checked).
+- Enhanced originals: "Send original to Trash". Enhancing changes how the video looks, so the original stays recoverable for 30 days through the app's normal safety net instead of a hidden copy kept forever.
+- Old Enhance leftovers follow the same rule (Trash, not deletion), so nothing that might be wanted is deleted without the 30-day window.
+- The cleanup runs once per library and is remembered in `video_leftovers_cleanup.json` in the data folder; if the video tools are missing or it fails, it is tried again on the next start.
+
+### Technical Touchpoints
+- Engine: `engine/services/video_service.py` (`put_original_in_trash`, check before replacing in `enhance_old_video`, hidden `.trash` move removed); new `engine/services/video_leftovers.py` (`clean_up_old_video_originals`, `run_once`); `engine/main.py` starts it once in the background; `engine/api/videos.py` `GET /api/videos/old-originals` and `POST /api/videos/old-originals/acknowledge`.
+- Frontend: `src/components/DashboardView.tsx` (one-time note), `src/components/dashboard/dashFormat.ts` (`oldOriginalsNote`), `src/components/VideoOptimizerView.tsx` (Enhance wording), `.dash-note-row` in `src/index.css`.
+- Tests: `engine/tests/test_videos.py` (+4: enhanced original in Trash and purging it keeps the enhanced copy and its thumbnail; original kept when the enhanced copy fails; old leftovers removed / moved to Trash / left alone; runs once and the report can be dismissed); `src/components/dashboard/dashboard.test.tsx` (+3: note wording, note until OK, Enhance toast). Mutation checks: skipping either check, sharing the thumbnail, running more than once, and showing a dismissed note each fail a test. Engine suite 254 passed; frontend 112 passed; tsc, build and ruff pass.
+- Validated in the UI (Playwright, throwaway library with a 182 MB hidden leftover and a 320 × 240 clip): on start the leftover was deleted and the empty hidden folder removed; the Dashboard note read "…182 MB freed." in both themes and disappeared after OK; enhancing the clip to HD left the original on disk as a Trash item with its own thumbnail and "30 days left"; contrast scan: no problems; no console errors.
+
+## 134. Redesign Step 7d: Albums
+
+### Functionality Overview
+- **Albums page**: "Albums · 4 albums", a search button (filters albums by name; Escape closes it) and a lime **+ New album** (an inline name field; Create opens the new album).
+- **Made for you** on top as compact cards: **Favourites** ("248 photos"), **Saved stories** ("6 stories") and, once a collage has been saved, **Collages**.
+- **Your albums** as big 4:3 covers with the name and "86 photos · Nov 2026" (the months the photos were taken; "Empty" for an empty album). The automatic Collages album is no longer mixed in with your own albums.
+- **Album page**: "← Albums", the title, "86 photos · 8–12 Nov 2026", **Slideshow**, lime **+ Add photos**, and a "…" menu with Rename, Choose cover photo, Move album to Vault and (in red, set apart) Delete album (photos stay). The photos use the same grid as Photos (month sections, scrubber, hearts).
+  - **Rename** edits the title in place (Enter saves, Escape cancels).
+  - **Choose cover photo**: "Click the photo you want as the cover." Clicking a photo sets it ("Cover photo changed.") instead of opening it.
+  - **Move album to Vault** and **Delete album** ask first; Delete says the photos stay in your library.
+  - **Add photos** opens a picker of library photos not yet in the album (tick, then "Add 2 photos"), with **From this computer…** to bring new files straight into the album.
+- **Selecting photos** (Ctrl+click, or a click once one is selected) shows one bar: "2 selected · Select all · Remove from album · Add to album · Make collage (2–9 photos) · Download · Move to Trash · ×". Escape clears it. In Favourites the first action is "Remove from Favourites". A selection left over from Photos is cleared when an album opens.
+- **Saved stories** shows story covers that play when clicked; empty states explain what goes there.
+- **Fixed (bug)**: the old selection bar's "Move to Vault" said it moved the selected photos but encrypted the whole album without asking, and showed "moved" even when the vault was locked. Moving an album to the Vault is now only in the album menu, asks first, and the existing vault handler reports the result.
+- **Dropped**: starring albums as favourites (not on the approved board and easily confused with Favourites photos); the engine endpoint stays. The unused remove-from-album choice dialog and the old Collages placeholder image were removed.
+
+### Functional Decision Points & Rationale (owner design approved on the redesign canvas: Albums board)
+- Rare actions live behind one "…" menu so the album page stays calm; Add photos is the one strong (lime) action.
+- Remove from album needs no confirmation (the photos stay in the library); Move to Trash needs none either (Trash keeps them 30 days); deleting an album and moving it to the Vault always ask.
+
+### Technical Touchpoints
+- Engine: `engine/api/albums.py` album list returns `first_taken_at` / `last_taken_at` (trashed and vault photos excluded).
+- Frontend: `src/components/AlbumsView.tsx` rewritten (3,309 → about 280 lines); new `src/components/albums/AlbumPage.tsx`, `AddPhotosDialog.tsx`, `albumsFormat.ts`; `AlbumItem` gains the date fields; `.alb-*` styles in `src/index.css`; removed `src/components/RemoveFromAlbumModal.tsx` and `src/assets/covers/collages_default.jpg`.
+- Tests: `engine/tests/test_albums.py` (+1: date span, trashed photo not counted); `src/components/albums/albums.test.tsx` (8: date and count wording, made-for-you and own albums, search, create opens the album, menu and asking before delete, rename / cover by click / Vault after asking, selection bar remove and trash, Favourites, stale selection cleared). Mutation checks: deleting without asking, keeping a stale selection, opening the photo while choosing a cover, and listing Collages among your albums each fail a test. Engine suite 255 passed; frontend 120 passed; tsc, build and ruff pass.
+- Validated in the UI (Playwright, throwaway library, both themes): overview with Favourites (3 photos), Saved stories and four albums with covers and month spans; Goa 2026 page with "14 photos · 25 Oct 2022 – 9 Nov 2026", the menu as on the board; Ctrl+click selected two photos and Escape cleared the bar; Choose cover set the clicked photo without opening the viewer; the picker added two photos (16 photos after); Delete asked and Escape kept the album; Favourites has no album menu; contrast scan: no problems; no console errors. The picker's tiles first collapsed to 2 px rows (fixed with `grid-auto-rows: max-content`).
+
+## 135. Redesign Step 7e: Stories
+
+### Functionality Overview
+- **Header**: "Stories · 18 stories", a music icon (**Story music**) and **Make new stories** ("Making stories…" while it runs, then "Made 2 new stories." or "No new stories this time.").
+- **For you**: tall story cards (150 × 250) with the cover photo and the title on it, plus "Nov 2026 · 86 photos" (or "2019 – 2026" for a story across years). Clicking a card plays it. On hover or keyboard focus, **Save** (bookmark) and **Hide** (×) appear.
+- **Saved**: the same cards; the lime bookmark moves a story back to For you. Saving says it also stays in Albums → Saved stories.
+- **Collage ideas**: a 2 × 2 preview, the title and what it holds, and a single **Save** (then **Open**, which shows the collage in the viewer). The first 6 show, with "Show more ideas (104 more)". When a collage can't be made because its photos aren't on disk, the message says so in plain words.
+- **Story music** (dialog): the songs stories play, each with play/stop, artist, length and mood ("Picked for me: Upbeat"), a mood menu (Pick for me, Upbeat, Nostalgic, Acoustic, Cinematic) and Remove (asks first). **+ Add songs** or drop files on the dialog; search appears when there are more than 6 songs.
+- **Fixed (bug)**: Make new stories showed every story, saved ones included, under the suggestions; now For you and Saved are reloaded separately. The page also no longer reloads itself from its own save events.
+- **Dropped**: the All / Stories / Collages switcher, the coloured archetype badges, and the collage studio (choosing mosaic / hero / treemap layouts before saving, and its download button). The board asks for a single Save; the collage is saved in the layout the idea suggests, and the viewer downloads it.
+
+### Functional Decision Points & Rationale (owner design approved on the redesign canvas: Stories board)
+- Stories look like stories (tall cards, title on the photo); actions stay out of the way until hover or focus.
+- Hiding a suggested story needs no confirmation (it is a suggestion, and Make new stories can bring stories back); removing a song asks first because the file is deleted.
+
+### Technical Touchpoints
+- Engine: `engine/api/stories.py` story list returns `first_taken_at` / `last_taken_at`; `StoryModel` in `engine/services/stories_service.py` gains the fields.
+- Frontend: `src/components/StoriesView.tsx` rewritten (2,216 → about 330 lines); new `src/components/stories/StoryMusicDialog.tsx` and `storiesFormat.ts`; `StoryModel` type gains the date fields; `.sto-*` styles in `src/index.css`.
+- Tests: `engine/tests/test_ai_stories.py` (+1: date span); `src/components/stories/stories.test.tsx` (8: date and mood wording, cards and sections, save / unsave / hide, Make new stories keeps saved stories out of For you, one-click collage save, missing photos explained, six ideas then Show more, music mood change and asking before removing a song). Mutation checks: using the generate answer for For you, and leaving a saved story under For you, each fail a test. Engine suite 256 passed; frontend 128 passed; tsc, build and ruff pass.
+- Validated in the UI (Playwright, throwaway library, both themes): seven generated stories with month or year spans; saving one moved it to Saved (and the engine lists it as saved); a saved story plays in the story player; Story music listed the added song with "Picked for me: Acoustic" and closed with Escape; 6 of 110 collage ideas with Show more; a collage whose photos are missing from the test library explained why; contrast scan: no problems. Console errors were from the story player loading test photos whose files are missing (existing behaviour).
+- Noticed, not changed here: running Make new stories again created a second "Remember This Day? (2021)" next to the saved one (backlog R7f).
+
+## 136. Redesign Step 8: Design system documentation refreshed
+
+### Functionality Overview
+- `docs/design_system.md` is rewritten for the built redesign. It replaces the old blue "glassmorphism" specification, which described colours, fonts, screens and features that no longer exist (or never did).
+- It covers:
+  - the principles (photos first, one strong action, rare actions behind "…", ask before anything irreversible, plain and true wording, private stays private);
+  - the colour tokens for both themes, with the three accent roles (fill, on-accent, ink) and their rules;
+  - status colours, the viewer surround, type, shape and motion (including Reduce motion);
+  - the icon-rail shell, the shared page frame and pieces (header, buttons, dialogs, `ConfirmDialog`, toasts), `PhotoTimeline` and the selection bar, and card kinds;
+  - one row per screen;
+  - the keyboard shortcuts as the code has them;
+  - how to check a change.
+- The `modern-web-ui` skill and the UI rule in `strict-approval-and-standards.md` told agents to use Plus Jakarta Sans, blue/purple gradients, frosted blur headers and `@tanstack/react-virtual`. They now point at the design system and hold only the rules that are easiest to get wrong.
+- `architecture.md`, `development.md` and `roadmap.md` no longer mention the virtual-list library.
+
+### Functional Decision Points & Rationale
+- The code is the source of truth. The document names the token file and each screen's files instead of copying long style blocks that would go stale again.
+- Old claims removed because they aren't true: a 4K Ken-Burns video export, Treemap collage layouts with face-aware cropping, affinity scores on profiles, an automatic frosted privacy shield, drive banners that resume within 500 ms, and shortcuts the app doesn't have (Space quick look, E enhance, U, Ctrl+A).
+- `@tanstack/react-virtual` was removed from `package.json`: no code used it after R2 (the timeline does its own windowing).
+
+### Technical Touchpoints
+- `docs/design_system.md`, `docs/architecture.md`, `docs/development.md`, `docs/roadmap.md`, `.agents/skills/modern-web-ui/SKILL.md`, `.agents/rules/strict-approval-and-standards.md`, `package.json` and `package-lock.json`.
+- Checks: tsc and build pass; 128 frontend tests pass. No engine or UI code changed.
+
+## 137. Redesign Step 9a: Library Folder Shown Correctly; Storage Split by Kind
+
+Owner review after R8 (2026-11-15) raised five points: the library-folder warning, the lost storage breakdown, the app icon, the system album covers and the search pop-up. They are handled in R9a (this step), R9b (icon and covers) and R9c (a Search page; owner choice "Search page").
+
+### Functionality Overview
+- **Fixed: "No library found here"** in Settings → Storage while photos showed normally. Settings asked the window program where the library is. In a development build the program guesses the folder next to its own .exe (`…\target\debug\data`), while the engine uses the project's `data` folder. Settings now asks the engine (`GET /api/system/library`), which reports the folder it actually reads and writes. It falls back to the window program only if the engine can't be reached. The bug was older than the redesign (the old About section had it too).
+- **What SecurePhotos uses**: the Dashboard's Storage card keeps the drive bar (SecurePhotos, other files, free) and adds one row per kind, biggest first, each with its size and a thin bar. The kinds are:
+  - Photos, Videos, Documents;
+  - Private Vault (encrypted), Collages, Story music;
+  - Trash (deleted for good after 30 days);
+  - Thumbnails and previews (keep scrolling fast);
+  - App data (database and AI models).
+  Kinds with nothing in them are left out. Settings → Storage shows the same rows under "Space used". The old dashboard only split photos, videos and thumbnails; vault, Trash, documents, collages and music had no size of their own.
+
+### Functional Decision Points & Rationale
+- **The engine is the source of truth for the library folder**: it is the program that reads and writes it. The window program's guess stays as a fallback.
+- **Each file counts once**, in the first kind that fits: Trash, Private Vault, documents, collages, videos, photos. A trashed vault video is Trash, not Vault. The kinds add up to the total shown.
+- **Rows with thin bars instead of a coloured chart**, so the one-accent palette holds and every label is readable. In the light theme, thin lime bars on white are hard to see, so the bars use the accent ink (near-black), like the rail.
+- On the drive bar, a small library on a big drive keeps at least a sliver of width so it stays visible.
+
+### Technical Touchpoints
+- Engine (`engine/api/system.py`): `GET /api/system/library`; `_media_sizes_by_kind` (one grouped query); `AppStorageStats.categories`; Story music folder size counted.
+- Frontend: new `src/components/dashboard/StorageBreakdown.tsx`; `dashFormat.ts` (`storageRows`, drive segments `library` / `other`); `DashboardView.tsx`; `settings/StorageSettings.tsx` (asks the engine, falls back to Tauri); `StorageCategory` and `LibraryLocation` types; `.dash-usage-*` and `.settings-usage` styles.
+- Tests: `engine/tests/test_dashboard_api.py` (+2: each kind counted once, including Trash before Vault and Story music, and the kinds sum to the total; library endpoint returns the engine's folder); `dashboard.test.tsx` (+1, updated: rows biggest first without empty kinds; Dashboard shows the breakdown); `settings.test.tsx` (engine's folder wins over a wrong guess; fallback when the engine can't be asked).
+- Mutation checks: asking the window program instead of the engine, counting vault before Trash, listing empty kinds, and dropping Story music each fail a test. Engine suite 258 passed; frontend 130 passed; tsc, build and ruff pass.
+- Validated in the UI (Playwright, throwaway library, both themes): Settings shows the engine's folder as Connected and both screens list nine kinds (Videos 183 MB … Collages 5 KB) adding up to 224 MB. The drive bar shows the library sliver. Contrast scan: no problems; no console errors.
+
+## 138. Redesign Step 9b: The Chosen App Icon at Every Size; Big Covers for Albums Made for You
+
+### Functionality Overview
+- **App icon**: the owner chose "C · Frosted glass, photos + lens", and the approved board showed that art at every size, including the 36 px icon rail and the 32 px taskbar. R0 had instead put a simplified shield-and-dot mark of its own at 32 px and below and in the rail, so the app didn't show the chosen icon. The chosen art is now used everywhere: icon rail, favicon, and all icon files (`icon.ico` at 16 to 256 px, PNGs). The simplified mark is removed.
+- **Albums made for you** are big covers again, as before the redesign but in the new look:
+  - a 16:10 mosaic of up to three photos (one large, two small): your newest favourites for Favourites, the first saved stories' covers for Saved stories, the collage cover for Collages;
+  - a lime badge with the icon in the corner (Favourites, Stories, Collages);
+  - the name and count underneath, like your own albums.
+  With no photos, the badge's icon shows large instead.
+
+### Functional Decision Points & Rationale
+- **Follow the approved board**: the owner picked the full icon, so the small sizes use it too. At 16 px it is softer than a simplified mark, but it is recognisably the chosen icon.
+- **Name and count sit under the cover**, not on the photo, so they stay readable in both themes on any photo; the lime badge carries the "made for you" identity.
+
+### Technical Touchpoints
+- `src/assets/brand/app-icon.svg` used by `src/components/shell/IconRail.tsx` and `index.html`; `app-icon-small.svg` removed; `scripts/render_app_icons.py` renders every size from the one SVG; `src-tauri/icons/*` re-rendered.
+- `src/components/AlbumsView.tsx` (`SystemCover`, up to three favourite ids); `.alb-made*` styles (old `.alb-foryou*` removed).
+- Tests: `albums.test.tsx` (made-for-you mosaic and badges). Mutation check: showing only one favourite in the mosaic fails a test. Frontend 130 passed; tsc and build pass.
+- Validated in the UI (Playwright, throwaway library, both themes): the rail and favicon use the chosen icon; Favourites and Saved stories show three-photo mosaics, Collages one; badges read Favourites / Stories / Collages; contrast scan: no problems; no console errors.
+
+## 139. Redesign Step 9c: Search Is Its Own Page
+
+### Functionality Overview
+- **Search page** (owner choice 2026-11-15, replacing the box that popped up over every screen). The search icon at the top of the rail, Ctrl+K from anywhere, and the search button in the Photos header all open Search as a section; the rail marks it current. It has a big field on top.
+  - Before typing: **Try** (Videos, Favourites, Documents, this year, last year), **People** (faces with photo counts) and **Albums**; a note says Private Vault items and Trash are never searched.
+  - After typing (searches after a short pause): matching **People** and **Albums**, then "24 photos and videos" in the photo grid (all matches, loaded in pages of 200, up to 2,000). Clicking a photo opens the viewer, which counts and steps through the search results ("1 of 24"). When nothing matches, it says so and gives a hint.
+  - Clicking a person or album opens their page directly. The viewer's People and Albums links do the same; they used to set a hidden name filter.
+  - Escape in the field clears it; the text is kept while you look at other sections.
+- **Gone**: the pop-up search, the "Search: … ×" chip in the window strip, and the hidden filtering of Photos, People and Documents by the search text. Photos always shows the whole library.
+- **Search inside a page**: Albums, People and Documents each have a search icon in the header that opens a small field filtering only that page (album name; name or relationship; words in documents). One shared component.
+- **Fixed (search)**: typing a keyword such as "videos", "favourites" or "2025" applied the filter but also required the word itself in the file name or caption, so "videos" found only videos called "…videos…". Keywords (favourite(s)/favorite(s), starred, liked, video(s), movie(s), document(s), pdf(s), years, month names) now only pick the filter. Filler words (photos, pictures, of, in, from, with, and, my, the) are left out of the text to match, so "videos from 2024" finds every 2024 video and "photos of goa in may" finds Goa photos taken in May.
+
+### Functional Decision Points & Rationale
+- **No hidden filters**: the old chip had to exist because the search text silently filtered other pages; with search on its own page, every filter is visible where it applies.
+- **Search results can't be selected**: nothing on the page acts on a selection, so a click always opens the photo (even with a selection left over from Photos).
+- **The viewer remembers the list it opened from** (Photos timeline or search results), so stepping near the end of a window loads more from the right list.
+- **Page-level search stays local**: finding a document by its words or a person by name is quicker on that page; the Search page covers the whole library.
+
+### Technical Touchpoints
+- Engine (`engine/api/search.py`): `KEYWORD_RE`, `FILLER_RE`; matching runs on the remaining text; no remaining text means the filters alone decide; people and albums are matched only when text remains.
+- Frontend: new `src/components/search/SearchPage.tsx`, `searchFormat.ts`, `src/components/ui/InlineSearch.tsx`; store: `NavTab` "search", `openSearch`, `searchFocusKey`, `pendingOpen` with `openPerson` / `openAlbum` / `clearPendingOpen` (replaces `isSearchOpen` / `setSearchOpen`); `App.tsx` (Search section, Photos without search filtering, `viewerSource`); `IconRail.tsx` (Ctrl+K, current marker); `WindowStrip.tsx` (chip removed); `PhotoTimeline` `selectable` prop; `PeopleView.tsx` / `AlbumsView.tsx` open a pending person or album; `PeopleOverview.tsx`, `DocumentsView.tsx`, `AlbumsView.tsx` use `InlineSearch`; `Lightbox.tsx` opens people and albums by id; removed `src/components/shell/SearchPalette.tsx`; `.search-*` styles.
+- Tests: `engine/tests/test_search.py` (+1: keyword and filler handling); `src/components/search/search.test.tsx` (4: helpers; starting points open a person or album directly and a quick search fills the field; typing loads every page of results and a click opens instead of selecting; nothing matches and Escape clears); `shell.test.tsx` (Search page from the rail and Ctrl+K, marked current; no strip chip); `people.test.tsx`, `documents.test.tsx` (own search fields, never the Search page's text); `albums.test.tsx` (album opened from Search); `Lightbox.test.tsx` (person opened by id).
+- Mutation checks: matching keywords as text, selectable results, loading only the first page, not clearing the pending album, the viewer setting a name filter, and Documents reading the Search page's text each fail a test. Engine search suite 6 passed; frontend 135 passed; tsc passes.
+- Validated in the UI (Playwright, throwaway library, both themes):
+  - The rail opens Search with the field focused and no overlay. Try, People (Rohan, Meera) and Albums show.
+  - Videos found all 6 videos. "Rohan" showed Rohan and 4 results; a result opened the viewer at "1 of 4". Clicking Rohan opened his page.
+  - Ctrl+K from Albums returned to Search with "Rohan" kept, and Escape cleared it.
+  - Documents' own field found the Croma receipt. There is no strip chip.
+  - Contrast scan: no problems; no console errors.
+
+## 140. Redesign Step 9d: Search Page Polish; Month/Year Scrubber as on the Board
+
+Owner review of R9c (2026-11-15, screenshot of the real app).
+
+### Functionality Overview
+- **Fixed: Search page cut off at the bottom, field squashed.** The starting points sat in an area capped at 62% of the window, and its children were allowed to shrink. The field was squeezed to a thin strip and the albums row was cut off. Before typing, the starting points now use the whole page height (and scroll with it); the field keeps its 52 px height.
+- **No sideways scrolling**: People and Albums on the Search page show as one row with as many as fit the width. When there are more, the last tile is **See all** ("30 people", "12 albums") and opens People or Albums. A library with 100 people shows one tidy row.
+- **Search results keep their shapes**: the engine already sent each result's size and video state; the page used to throw them away and show big squares. Results now use justified rows like Photos, and videos still being prepared say "Preparing".
+- **Month/year scrubber as on the approved Photos board**: the scrubber is now a 64 px column with a divider. It lists the newest year's months ("Nov", "Oct", "Jun" …), then one entry per older year ("2025", "2024" …) and "No date", stacked from the top. The entry you are looking at is a lime pill (black in text on lime in both themes). Click, or press and drag along the list, to jump. If the list doesn't fit the window, the newest year collapses to one entry. It replaces the proportional ticks, year labels and floating month label, which did not match the board. Photos, the Vault, albums and Search results all use it.
+- **Fixed: rail buttons squashed in short windows** (seen while checking at 560 px): rail buttons no longer shrink. Below 640 px of height they get a little smaller (38 px) and closer, so every section and the status dot stay visible without scrolling. Scrolling would cut off the hover labels.
+
+### Functional Decision Points & Rationale
+- **"See all" instead of a scrollbar** (owner: sideways scrollbars are poor UX): the Search page offers starting points, and the full lists live on People and Albums. Hidden items are not rendered at all, so the keyboard never lands on something invisible.
+- The scrubber follows the board exactly. The proportional placement showed where months sit in the scroll height, but it read as a cluttered ruler and didn't match the approved design.
+
+### Technical Touchpoints
+- `src/components/search/SearchPage.tsx` (`useFitCount`, `fitRow`, See all tiles, idle layout), `searchFormat.ts` (`toTimeline` keeps sizes and video state); `SearchPhotoItem` type gains `width`, `height`, `is_optimized`, `is_enhanced`.
+- `src/utils/photoTimeline.ts` `scrubberEntries` (replaces `scrubberMarks`); `src/components/photos/PhotoTimeline.tsx` (scrubber as a `nav` of buttons, `jumpTo`, drag along entries).
+- `src/components/shell/IconRail.tsx` (`--rail-gap`); `.search-*`, `.timeline-scrub-entry`, `.rail-btn` and short-window styles in `src/index.css`.
+- Tests: `photoTimeline.test.ts` (entries: newest year by month, older years once, No date, collapsing when crowded); `PhotoTimeline.test.tsx` (jump by month or year, current pill follows scrolling, also partway through a year); `search.test.tsx` (+1: one row of people then See all opens People; results keep sizes). Mutation checks: showing every person, never collapsing the scrubber, and marking a year current only at its first month each fail a test. Frontend 136 passed; tsc passes.
+- Validated in the UI (Playwright, throwaway library, both themes, 1100 × 560 and 1440 × 900):
+  - The Search field is 52 px tall and nothing is cut off. People and albums rows don't scroll sideways.
+  - The Photos scrubber reads "Nov Oct Jun Jan 2025 2024 2022 2021 2020 2019 1998 No date" with Nov current; clicking 2024 jumped there and marked it.
+  - Search results show in justified rows with "Preparing" on an unready video. The rail shows every section and the status dot at 560 px.
+  - Contrast scan: no problems; no console errors.
+
