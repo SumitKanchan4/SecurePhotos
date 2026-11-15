@@ -66,3 +66,26 @@ async def test_activity_on_the_vault_screen_keeps_the_engine_open():
 
         # Locked: still refused.
         assert (await client.post("/api/vault/activity")).status_code == 401
+
+
+def test_vault_photo_lists_decrypt_each_photos_details_once(monkeypatch):
+    """Q4: listing vault photos decrypts a photo's sealed details once (it was three times)."""
+    calls = []
+
+    def fake_decrypt(row, mvk):
+        calls.append(row["id"])
+        return {"ocr_text": "passport no. X", "latitude": 12.9, "longitude": 77.6}
+
+    monkeypatch.setattr(vault.vault_storage, "decrypt_vault_details", fake_decrypt)
+    row = {
+        "id": 7, "filename": "p.jpg", "filepath": "vault/p.enc", "file_size": 10, "original_file_size": None,
+        "mime_type": "image/jpeg", "width": 4, "height": 3, "taken_at": "2024-03-03 10:00:00",
+        "camera_make": None, "camera_model": None, "latitude": None, "longitude": None, "iso": None,
+        "aperture": None, "shutter_speed": None, "focal_length": None, "is_favorite": 0, "is_encrypted": 1,
+        "is_optimized": 1, "is_enhanced": 0, "caption": None, "thumbnail_path": None, "preview_path": None,
+        "is_document": 1, "ocr_text": None, "vault_meta_enc": "sealed",
+    }
+    photo = vault._vault_photo_dict(row, b"k" * 32)
+    assert calls == [7]
+    assert (photo["ocr_text"], photo["latitude"], photo["longitude"]) == ("passport no. X", 12.9, 77.6)
+    assert photo["original_file_size"] == 10 and photo["is_document"] is True

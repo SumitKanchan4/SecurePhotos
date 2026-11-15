@@ -22,7 +22,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from engine.database import get_db_connection
+from engine.database import db_connection, get_db_connection
 from engine.config import settings, resolve_media_path
 from engine.services import vault_storage
 from engine.services.work_queues import vault_files
@@ -794,74 +794,76 @@ async def list_vault_albums() -> List[dict]:
         await conn.close()
 
 
+# Columns of a vault photo as the lists return it (one place for both lists, Q4).
+_VAULT_PHOTO_COLUMNS = """
+    p.id, p.filename, p.filepath, p.file_size, p.original_file_size, p.mime_type, p.width, p.height,
+    p.taken_at, p.camera_make, p.camera_model, p.latitude, p.longitude,
+    p.iso, p.aperture, p.shutter_speed, p.focal_length, p.is_favorite,
+    p.is_encrypted, p.is_optimized, p.is_enhanced, p.caption,
+    p.thumbnail_path, p.preview_path, p.is_document, p.ocr_text, p.vault_meta_enc
+"""
+
+
+def _vault_photo_dict(row: Any, mvk: bytes) -> Dict[str, Any]:
+    """One vault photo for the lists. Its sealed details are decrypted once (Q4: three times before)."""
+    sealed = _sealed(row, mvk)
+    return {
+        "id": row["id"],
+        "filename": row["filename"],
+        "filepath": row["filepath"],
+        "file_size": row["file_size"],
+        "original_file_size": row["original_file_size"] if row["original_file_size"] is not None else row["file_size"],
+        "mime_type": row["mime_type"],
+        "width": row["width"],
+        "height": row["height"],
+        "taken_at": row["taken_at"],
+        "camera_make": row["camera_make"],
+        "camera_model": row["camera_model"],
+        "latitude": sealed["latitude"],
+        "longitude": sealed["longitude"],
+        "iso": row["iso"],
+        "aperture": row["aperture"],
+        "shutter_speed": row["shutter_speed"],
+        "focal_length": row["focal_length"],
+        "is_favorite": bool(row["is_favorite"]),
+        "is_encrypted": bool(row["is_encrypted"]),
+        "is_optimized": bool(row["is_optimized"]),
+        "is_enhanced": bool(row["is_enhanced"]),
+        "caption": row["caption"],
+        "thumbnail_path": row["thumbnail_path"],
+        "preview_path": row["preview_path"],
+        "is_document": bool(row["is_document"]),
+        "ocr_text": sealed["ocr_text"],
+    }
+
+
 @router.get("/albums/{album_id}/photos", status_code=status.HTTP_200_OK)
 async def list_vault_album_photos(album_id: int) -> List[dict]:
     """Returns decrypted photo metadata for photos in a specific locked album."""
     mvk = get_active_mvk()
-    conn = await get_db_connection()
-    try:
-        query = """
-            SELECT 
-                p.id, p.filename, p.filepath, p.file_size, p.original_file_size, p.mime_type, p.width, p.height,
-                p.taken_at, p.camera_make, p.camera_model, p.latitude, p.longitude,
-                p.iso, p.aperture, p.shutter_speed, p.focal_length, p.is_favorite,
-                p.is_encrypted, p.is_optimized, p.is_enhanced, p.caption,
-                p.thumbnail_path, p.preview_path, p.is_document, p.ocr_text, p.vault_meta_enc
+    async with db_connection() as conn:
+        async with conn.execute(
+            f"""
+            SELECT {_VAULT_PHOTO_COLUMNS}
             FROM photo_album pa
             JOIN photos p ON pa.photo_id = p.id
             WHERE pa.album_id = ? AND p.is_encrypted = 1 AND p.trashed_at IS NULL
             ORDER BY pa.added_at DESC, p.taken_at DESC;
-        """
-        async with conn.execute(query, (album_id,)) as cursor:
+            """,
+            (album_id,),
+        ) as cursor:
             rows = await cursor.fetchall()
-            return [
-                {
-                    "id": row["id"],
-                    "filename": row["filename"],
-                    "filepath": row["filepath"],
-                    "file_size": row["file_size"],
-                    "original_file_size": row["original_file_size"] if "original_file_size" in row.keys() and row["original_file_size"] is not None else row["file_size"],
-                    "mime_type": row["mime_type"],
-                    "width": row["width"],
-                    "height": row["height"],
-                    "taken_at": row["taken_at"],
-                    "camera_make": row["camera_make"],
-                    "camera_model": row["camera_model"],
-                    "latitude": _sealed(row, mvk)["latitude"],
-                    "longitude": _sealed(row, mvk)["longitude"],
-                    "iso": row["iso"],
-                    "aperture": row["aperture"],
-                    "shutter_speed": row["shutter_speed"],
-                    "focal_length": row["focal_length"],
-                    "is_favorite": bool(row["is_favorite"]),
-                    "is_encrypted": bool(row["is_encrypted"]),
-                    "is_optimized": bool(row["is_optimized"]),
-                    "is_enhanced": bool(row["is_enhanced"]),
-                    "caption": row["caption"],
-                    "thumbnail_path": row["thumbnail_path"],
-                    "preview_path": row["preview_path"],
-                    "is_document": bool(row["is_document"]) if row["is_document"] is not None else False,
-                    "ocr_text": _sealed(row, mvk)["ocr_text"],
-                }
-                for row in rows
-            ]
-    finally:
-        await conn.close()
+    return [_vault_photo_dict(row, mvk) for row in rows]
 
 
 @router.get("/photos", status_code=status.HTTP_200_OK)
 async def list_vault_photos() -> List[dict]:
     """Returns all decrypted metadata for photos locked in the private vault."""
     mvk = get_active_mvk()
-    conn = await get_db_connection()
-    try:
+    async with db_connection() as conn:
         async with conn.execute(
-            """
-            SELECT p.id, p.filename, p.filepath, p.file_size, p.original_file_size, p.mime_type, p.width, p.height,
-                   p.taken_at, p.camera_make, p.camera_model, p.latitude, p.longitude,
-                   p.iso, p.aperture, p.shutter_speed, p.focal_length, p.is_favorite,
-                   p.is_encrypted, p.is_optimized, p.is_enhanced, p.caption, p.thumbnail_path, p.preview_path,
-                   p.is_document, p.ocr_text, p.vault_meta_enc,
+            f"""
+            SELECT {_VAULT_PHOTO_COLUMNS},
                    (
                        SELECT GROUP_CONCAT(a.name, ', ')
                        FROM photo_album pa
@@ -874,40 +876,7 @@ async def list_vault_photos() -> List[dict]:
             """
         ) as cursor:
             rows = await cursor.fetchall()
-            return [
-                {
-                    "id": row["id"],
-                    "filename": row["filename"],
-                    "filepath": row["filepath"],
-                    "file_size": row["file_size"],
-                    "original_file_size": row["original_file_size"] if "original_file_size" in row.keys() and row["original_file_size"] is not None else row["file_size"],
-                    "mime_type": row["mime_type"],
-                    "width": row["width"],
-                    "height": row["height"],
-                    "taken_at": row["taken_at"],
-                    "camera_make": row["camera_make"],
-                    "camera_model": row["camera_model"],
-                    "latitude": _sealed(row, mvk)["latitude"],
-                    "longitude": _sealed(row, mvk)["longitude"],
-                    "iso": row["iso"],
-                    "aperture": row["aperture"],
-                    "shutter_speed": row["shutter_speed"],
-                    "focal_length": row["focal_length"],
-                    "is_favorite": bool(row["is_favorite"]),
-                    "is_encrypted": bool(row["is_encrypted"]),
-                    "is_optimized": bool(row["is_optimized"]),
-                    "is_enhanced": bool(row["is_enhanced"]),
-                    "caption": row["caption"],
-                    "thumbnail_path": row["thumbnail_path"],
-                    "preview_path": row["preview_path"],
-                    "is_document": bool(row["is_document"]) if row["is_document"] is not None else False,
-                    "ocr_text": _sealed(row, mvk)["ocr_text"],
-                    "album_names": row["album_names"],
-                }
-                for row in rows
-            ]
-    finally:
-        await conn.close()
+    return [{**_vault_photo_dict(row, mvk), "album_names": row["album_names"]} for row in rows]
 
 
 @router.get("/thumbnail/{photo_id}")
