@@ -185,7 +185,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - **Done:** Vitest + Testing Library, `npm test` in the quality gate, tests for `api.ts` and the store. **Deferred to the redesign:** component tests (vault unlock, startup banner) against the new screens.
 - There are none today. Add Vitest + Testing Library; start with `api.ts`, the store, and the vault flows.
 
-### Q4 · Backend structure — `in-progress` (= review item 15; part 1 2026-11-15, history §145: crypto and silent excepts narrowed; repository layer and vault.py duplication remain)
+### Q4 · Backend structure — `done` (= review item 15; 2026-11-15: crypto and silent excepts narrowed §145; vault photo lists share one mapping and decrypt once, `db_connection()` helper §148; a full repository layer over 125 routes judged not worth the churn)
 - Remove duplication in `vault.py` (partly done in C5), add a small repository layer instead of per-route connection and dict mapping, and review the 76 broad `except Exception` blocks.
 
 ### Q6 · Tests run against the real library database — `done` (merged 2026-11-11, history §100)

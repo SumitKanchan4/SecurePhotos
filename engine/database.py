@@ -6,8 +6,9 @@ an idempotent schema migration runner designed for 100,000+ media assets.
 """
 
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+from typing import AsyncIterator, Optional
 import aiosqlite
 
 from engine.config import settings
@@ -464,6 +465,17 @@ async def get_db_connection(db_path: Optional[Path] = None) -> aiosqlite.Connect
         await conn.execute(pragma)
 
     return conn
+
+
+@asynccontextmanager
+async def db_connection(db_path: Optional[Path] = None) -> AsyncIterator[aiosqlite.Connection]:
+    """A configured connection that is always closed, replacing the open/try/finally/close
+    boilerplate (Q4): ``async with db_connection() as conn: ...``."""
+    conn = await get_db_connection(db_path)
+    try:
+        yield conn
+    finally:
+        await conn.close()
 
 
 async def rebuild_fts_index(

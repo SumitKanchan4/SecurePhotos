@@ -6058,3 +6058,14 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
   - Documents shows its empty state. Contrast scan: no problems; no console errors.
   - Locking the test library's albums whose photo files are missing now leaves them in Albums and lists the skipped photos. Before the fix, one such album had been wrongly marked private; moving it back repaired it.
 
+## 148. Backend: Vault Photo Lists Share One Mapping; a Closing Database Helper (Q4, part 2)
+
+### Functionality Overview (no visible change)
+- The two vault photo lists (all vault photos, and one locked album's photos) each built the same 30-field record and called the sealed-details decryption three times per photo: once for latitude, once for longitude, once for the document text. They now share `_vault_photo_dict` and its column list, and decrypt each photo's sealed details **once**, so a vault of 1,000 photos does 1,000 decryptions per listing instead of 3,000.
+- New `db_connection()` in `engine/database.py`: `async with db_connection() as conn:` opens a configured connection and always closes it, replacing the repeated open / try / finally / close blocks (125 of them). The two vault lists use it; other code moves over when it is touched.
+- Q4 is closed. A full repository layer over every route was weighed: 125 call sites, high churn and no visible benefit. The shared helper and the narrowed error handling (part 1, §145) address the practical problems.
+
+### Technical Touchpoints
+- `engine/database.py` (`db_connection`), `engine/api/vault.py` (`_VAULT_PHOTO_COLUMNS`, `_vault_photo_dict`, `list_vault_album_photos`, `list_vault_photos`).
+- Tests: `engine/tests/test_key_handling.py` (+1: a vault photo's sealed details are decrypted once and fill latitude, longitude and document text). Mutation check: going back to a second decryption fails it. Vault and key-handling tests (53) and the engine suite pass; ruff passes.
+
