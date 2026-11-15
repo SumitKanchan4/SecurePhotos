@@ -30,7 +30,7 @@ Hard constraints:
 | Scratches / creases | BOPBTL scratch detector → LaMa on damaged crops | MIT / Apache-2.0 / Places (grey zone) | 10–60 s measured | 151 + 208 MB |
 | Strong grain (optional) | SCUNet | Apache-2.0 | ~100 s, 5.7 GB peak (must be tamed) | 74 MB |
 
-Licensing decision (recommended): keep the app MIT; ship only the permissive models above; document the FFHQ / ImageNet grey zone in THIRD_PARTY_NOTICES. Non-commercial models (e.g. CodeFormer) are **not** bundled. If wanted later, an optional "extra models" download that the user chooses and accepts the licence for (personal use), without relicensing the app. — **Owner decision D1.**
+Licensing (**owner decision D1, 2026-11-15: keep MIT, permissive models only**): the app stays MIT; only the permissive models above are used; the FFHQ / ImageNet training-data grey zone is documented in THIRD_PARTY_NOTICES. Non-commercial models (e.g. CodeFormer) are not used, not even as an optional download.
 
 ## Behaviour
 
@@ -87,7 +87,7 @@ Total ≈ 10–12 days of work across 9 steps; first usable piece (colorize + Ac
 
 ## Decisions needed from the owner (asked one at a time)
 
-- **D1** Licensing approach (recommendation above).
+- ~~D1~~ Licensing: decided 2026-11-15 — keep MIT, permissive models only.
 - **D2** Default for the auto rules (recommended: "Ask me").
 - **D3** Where the Activity screen lives (decided on the A1 board).
 - **D4** Order: is scratch repair (A7) needed in the first merge?
