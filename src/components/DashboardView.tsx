@@ -11,7 +11,8 @@ import type { NavTab } from "../store/useAppStore";
 import { apiFetch } from "../services/api";
 import { DuplicatesView } from "./DuplicatesView";
 import { VideoOptimizerView } from "./VideoOptimizerView";
-import { formatSize, plural, storageSegments } from "./dashboard/dashFormat";
+import { formatSize, oldOriginalsNote, plural, storageSegments } from "./dashboard/dashFormat";
+import type { OldOriginalsCleanup } from "./dashboard/dashFormat";
 
 interface DashboardViewProps {
   onNavigate: (tab: NavTab) => void;
@@ -26,6 +27,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
   const [page, setPage] = useState<"overview" | "duplicates" | "videos">("overview");
   const [refreshing, setRefreshing] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [cleanup, setCleanup] = useState<OldOriginalsCleanup | null>(null);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -37,16 +39,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
         return null;
       }
     };
-    const [o, d, v, e] = await Promise.all([
+    const [o, d, v, e, c] = await Promise.all([
       json<DashboardOverview>("/api/system/dashboard"),
       json<DuplicateSummaryResponse>("/api/duplicates/summary"),
       json<VideoSummary>("/api/videos/summary"),
       json<OptimizationStatusResponse>("/api/system/optimization-status"),
+      json<OldOriginalsCleanup>("/api/videos/old-originals"),
     ]);
     setOverview(o);
     setDupes(d);
     setVideos(v);
     setEnhance(e);
+    setCleanup(c);
     setFailed(!o);
     setRefreshing(false);
   }, []);
@@ -74,6 +78,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
       await apiFetch(`/api/system/optimization/${action}`, { method: "POST" });
     } finally {
       load();
+    }
+  };
+
+  const dismissCleanup = async () => {
+    setCleanup(null);
+    try {
+      await apiFetch("/api/videos/old-originals/acknowledge", { method: "POST" });
+    } catch {
+      /* shown again next time; harmless */
     }
   };
 
@@ -115,6 +128,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
           <RefreshCw size={16} className={refreshing ? "spin" : ""} />
         </button>
       </div>
+
+      {oldOriginalsNote(cleanup) && (
+        <div className="dash-note dash-note-row" role="status">
+          <span>{oldOriginalsNote(cleanup)}</span>
+          <button type="button" className="dash-btn dash-btn-small" onClick={dismissCleanup}>
+            OK
+          </button>
+        </div>
+      )}
 
       {failed && <p className="dash-note">The library details couldn't be loaded. Check that the photo engine is running (Settings → About).</p>}
 

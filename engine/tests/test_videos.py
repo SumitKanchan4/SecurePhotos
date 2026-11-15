@@ -488,3 +488,160 @@ def test_video_preview_lru_pruning(tmp_path):
 
 
 
+
+
+async def _row(photo_id):
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT * FROM photos WHERE id = ?;", (photo_id,)) as cur:
+            return await cur.fetchone()
+    finally:
+        await conn.close()
+
+
+async def _trashed_rows_at(path):
+    from engine.services.media_paths import to_db_path
+
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(
+            "SELECT * FROM photos WHERE filepath = ? AND trashed_at IS NOT NULL;", (to_db_path(path),)
+        ) as cur:
+            return await cur.fetchall()
+    finally:
+        await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_enhance_puts_the_original_in_trash_once_checked(tmp_path):
+    """R7c2 (owner decision): the original becomes its own Trash item; purging it keeps the enhanced copy."""
+    from engine.api.trash import purge_photos
+    from engine.services.media_paths import resolve_stored_path
+
+    photo_id, original = await _heavy_library_video(tmp_path)
+    res = await enhance_old_video(photo_id, target_height=720)
+    assert res["success"] is True, res
+    enhanced = Path(res["new_filepath"])
+    assert enhanced.exists() and original.exists()
+    assert not (original.parent / ".trash").exists() or not list((original.parent / ".trash").glob(f"{original.name}.vintage_*"))
+
+    trashed = await _trashed_rows_at(original)
+    assert len(trashed) == 1 and trashed[0]["id"] == res["original_trash_id"]
+    library = await _row(photo_id)
+    assert library["trashed_at"] is None and library["height"] == 720
+    assert trashed[0]["thumbnail_path"] and trashed[0]["thumbnail_path"] != library["thumbnail_path"]
+
+    conn = await get_db_connection()
+    try:
+        assert await purge_photos(conn, [trashed[0]["id"]]) == 1
+    finally:
+        await conn.close()
+    assert not original.exists()
+    assert enhanced.exists()
+    assert resolve_stored_path(library["thumbnail_path"]) is not None
+
+
+@pytest.mark.asyncio
+async def test_enhance_keeps_the_original_when_the_copy_fails_the_check(tmp_path, monkeypatch):
+    photo_id, original = await _heavy_library_video(tmp_path)
+    import engine.services.video_service as vs
+
+    real = vs.extract_video_metadata
+
+    def short_copy(path):
+        meta = real(path)
+        return {**meta, "duration": 0.5} if "_enhancing_" in str(path) else meta
+
+    monkeypatch.setattr(vs, "extract_video_metadata", short_copy)
+    res = await enhance_old_video(photo_id, target_height=720)
+    assert res["success"] is False and "original was kept" in res["error"]
+    assert original.exists()
+    assert not list(original.parent.glob("*_enhancing_*"))
+    assert not (await _row(photo_id))["is_enhanced"]
+    assert await _trashed_rows_at(original) == []
+
+
+@pytest.mark.asyncio
+async def test_old_hidden_originals_are_cleaned_up_only_when_the_copy_checks_out(tmp_path, monkeypatch):
+    """R7c2 (owner decision): old 'Make smaller' leftovers are deleted when the smaller copy checks out,
+    old Enhance leftovers go to Trash, anything else stays."""
+    import shutil
+    from engine.api.trash import purge_photos
+    import engine.services.video_leftovers as vl
+
+    # A video made smaller by the old version: its original sits in .trash.
+    small_id, small_original = await _heavy_library_video(tmp_path)
+    kept_bytes = tmp_path / "small_original_bytes.mp4"
+    shutil.copy2(small_original, kept_bytes)
+    assert (await compress_video(small_id, crf=28))["success"]
+    hidden = small_original.parent / ".trash"
+    hidden.mkdir(exist_ok=True)
+    old_small = hidden / f"{small_original.name}.orig_20250101120000"
+    shutil.copy2(kept_bytes, old_small)
+    # Same name, but a different (shorter) video: its copy doesn't match, so it must stay.
+    ffmpeg = get_ffmpeg_path()
+    mismatched = hidden / f"{small_original.name}.orig_20250101130000"
+    subprocess.run([ffmpeg, "-y", "-f", "lavfi", "-i", "testsrc=duration=0.6:size=160x120:rate=10",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-f", "mp4", str(mismatched)], capture_output=True, check=True)
+    # A leftover whose smaller copy is gone from the library.
+    orphan = hidden / "gone_from_library.mp4.orig_20250101120000"
+    shutil.copy2(kept_bytes, orphan)
+
+    # A video enhanced by the old version: its original sits in .trash.
+    enh_id, enh_original = await _heavy_library_video(tmp_path)
+    res = await enhance_old_video(enh_id, target_height=720)
+    assert res["success"], res
+    conn = await get_db_connection()
+    try:  # undo the new behaviour so the original is a hidden leftover again
+        await conn.execute("DELETE FROM photos WHERE id = ?;", (res["original_trash_id"],))
+        await conn.commit()
+    finally:
+        await conn.close()
+    old_enhanced = enh_original.parent / ".trash" / f"{enh_original.name}.vintage_20250101120000"
+    old_enhanced.parent.mkdir(exist_ok=True)
+    enh_original.replace(old_enhanced)
+
+    result = await vl.clean_up_old_video_originals()
+    assert result["removed"] >= 1 and result["freed_bytes"] >= kept_bytes.stat().st_size
+    assert result["moved_to_trash"] >= 1 and result["kept"] >= 2
+    assert not old_small.exists()
+    assert mismatched.exists() and orphan.exists()
+    assert not old_enhanced.exists()
+    restored_spot = enh_original.parent / enh_original.name
+    assert restored_spot.exists()
+    trashed = await _trashed_rows_at(restored_spot)
+    assert len(trashed) == 1
+    assert (await _row(enh_id))["trashed_at"] is None
+
+    conn = await get_db_connection()
+    try:
+        await purge_photos(conn, [trashed[0]["id"]])
+    finally:
+        await conn.close()
+    mismatched.unlink()
+    orphan.unlink()
+
+
+@pytest.mark.asyncio
+async def test_old_originals_cleanup_runs_once_and_its_report_can_be_dismissed(tmp_path, monkeypatch):
+    import engine.services.video_leftovers as vl
+
+    monkeypatch.setattr(vl, "result_path", lambda: tmp_path / "cleanup.json")
+    calls = []
+
+    async def fake_cleanup():
+        calls.append(1)
+        return {"removed": 2, "freed_bytes": 4096, "moved_to_trash": 0, "kept": 0}
+
+    monkeypatch.setattr(vl, "clean_up_old_video_originals", fake_cleanup)
+    first = await vl.run_once()
+    assert first["freed_bytes"] == 4096 and first["acknowledged"] is False
+    assert await vl.run_once() is None and len(calls) == 1
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers = {"X-SecurePhotos-Token": os.environ.get("SECUREPHOTOS_IPC_SECRET", "")}
+        got = (await client.get("/api/videos/old-originals", headers=headers)).json()
+        assert got["removed"] == 2 and got["acknowledged"] is False
+        ack = await client.post("/api/videos/old-originals/acknowledge", headers=headers)
+        assert ack.status_code == 200 and ack.json()["acknowledged"] is True
+    assert vl.read_result()["acknowledged"] is True
