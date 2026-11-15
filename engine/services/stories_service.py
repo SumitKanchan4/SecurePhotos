@@ -169,6 +169,71 @@ def _resolve_audio_url_for_mood(mood: str) -> Optional[str]:
         return None
 
 
+def _newest_month(rows: List[Any]) -> str:
+    """'2026-11' for the newest dated row, or 'undated'."""
+    dates = [r["taken_at"] for r in rows if r["taken_at"]]
+    return max(dates)[:7] if dates else "undated"
+
+
+async def _store_story(
+    conn: Any,
+    *,
+    key: str,
+    title: str,
+    story_type: str,
+    mood: str,
+    slides: List[StorySlide],
+    person_id: Optional[int] = None,
+) -> Optional[int]:
+    """Stores a made story once (R7f) and returns its id, or None when it is already kept.
+
+    `key` names the story's kind and subject ("on_this_day:2021-11", "through_the_years:7").
+    A saved story with the same key (or, for stories saved before keys existed, the same kind
+    and the same photos) is never duplicated. An unsaved suggestion with the same key is
+    replaced by the fresh one, so making stories again refreshes suggestions instead of
+    piling up copies.
+    """
+    async with conn.execute("SELECT id, COALESCE(is_saved, 0) AS is_saved FROM stories WHERE story_key = ?;", (key,)) as cur:
+        same_key = await cur.fetchall()
+    if any(r["is_saved"] for r in same_key):
+        return None
+
+    photo_ids = sorted(slide.photo_id for slide in slides)
+    async with conn.execute(
+        """
+        SELECT s.id, group_concat(si.photo_id) AS ids
+        FROM stories s JOIN story_items si ON si.story_id = s.id
+        WHERE s.story_key IS NULL AND COALESCE(s.is_saved, 0) = 1 AND s.story_type = ?
+        GROUP BY s.id;
+        """,
+        (story_type,),
+    ) as cur:
+        for row in await cur.fetchall():
+            if sorted(int(x) for x in (row["ids"] or "").split(",") if x) == photo_ids:
+                return None
+
+    for row in same_key:
+        await conn.execute("DELETE FROM stories WHERE id = ?;", (row["id"],))
+
+    cursor = await conn.execute(
+        """
+        INSERT INTO stories (title, story_type, vibe_mood, person_id, cover_photo_id, music_track_path, story_key)
+        VALUES (?, ?, ?, ?, ?, ?, ?);
+        """,
+        (title, story_type, mood, person_id, slides[0].photo_id, VIBE_TRACKS.get(mood, VIBE_TRACKS["acoustic"]), key),
+    )
+    story_id = cursor.lastrowid
+    for idx, slide in enumerate(slides):
+        await conn.execute(
+            """
+            INSERT INTO story_items (story_id, photo_id, sort_order, transition_type, focal_x, focal_y)
+            VALUES (?, ?, ?, ?, ?, ?);
+            """,
+            (story_id, slide.photo_id, idx, slide.transition_type, slide.focal_x, slide.focal_y),
+        )
+    return story_id
+
+
 async def generate_through_the_years_story(person_id: int) -> Optional[StoryModel]:
     """Generates a chronological 'Through the Years' milestone story for a person.
 
@@ -212,23 +277,9 @@ async def generate_through_the_years_story(person_id: int) -> Optional[StoryMode
         ]
 
         title = generate_punchy_title("through_the_years", subject=person_name, seed=person_id)
-        cursor = await conn.execute(
-            """
-            INSERT INTO stories (title, story_type, vibe_mood, person_id, cover_photo_id, music_track_path)
-            VALUES (?, 'through_the_years', 'nostalgic', ?, ?, ?);
-            """,
-            (title, person_id, slides[0].photo_id, VIBE_TRACKS["nostalgic"]),
-        )
-        story_id = cursor.lastrowid
-
-        for idx, slide in enumerate(slides):
-            await conn.execute(
-                """
-                INSERT INTO story_items (story_id, photo_id, sort_order, transition_type, focal_x, focal_y)
-                VALUES (?, ?, ?, ?, ?, ?);
-                """,
-                (story_id, slide.photo_id, idx, slide.transition_type, slide.focal_x, slide.focal_y),
-            )
+        story_id = await _store_story(conn, key=f"through_the_years:{person_id}", title=title, story_type="through_the_years", mood="nostalgic", slides=slides, person_id=person_id)
+        if story_id is None:
+            return None
 
         await conn.commit()
 
@@ -307,23 +358,9 @@ async def generate_on_this_day_stories() -> List[StoryModel]:
                 for r in p_list[:12]
             ]
 
-            cursor = await conn.execute(
-                """
-                INSERT INTO stories (title, story_type, vibe_mood, cover_photo_id, music_track_path)
-                VALUES (?, 'on_this_day', 'nostalgic', ?, ?);
-                """,
-                (title, slides[0].photo_id, VIBE_TRACKS["nostalgic"]),
-            )
-            story_id = cursor.lastrowid
-
-            for idx, slide in enumerate(slides):
-                await conn.execute(
-                    """
-                    INSERT INTO story_items (story_id, photo_id, sort_order, transition_type, focal_x, focal_y)
-                    VALUES (?, ?, ?, ?, ?, ?);
-                    """,
-                    (story_id, slide.photo_id, idx, slide.transition_type, slide.focal_x, slide.focal_y),
-                )
+            story_id = await _store_story(conn, key=f"on_this_day:{yr}-{cur_month}", title=title, story_type="on_this_day", mood="nostalgic", slides=slides)
+            if story_id is None:
+                continue
 
             stories.append(
                 StoryModel(
@@ -414,23 +451,9 @@ async def generate_vacation_and_trip_stories() -> List[StoryModel]:
                 for r in p_rows
             ]
 
-            cursor = await conn.execute(
-                """
-                INSERT INTO stories (title, story_type, vibe_mood, cover_photo_id, music_track_path)
-                VALUES (?, 'vacation_adventure', 'upbeat', ?, ?);
-                """,
-                (title, slides[0].photo_id, VIBE_TRACKS["upbeat"]),
-            )
-            story_id = cursor.lastrowid
-
-            for idx, slide in enumerate(slides):
-                await conn.execute(
-                    """
-                    INSERT INTO story_items (story_id, photo_id, sort_order, transition_type, focal_x, focal_y)
-                    VALUES (?, ?, ?, ?, ?, ?);
-                    """,
-                    (story_id, slide.photo_id, idx, slide.transition_type, slide.focal_x, slide.focal_y),
-                )
+            story_id = await _store_story(conn, key=f"vacation_adventure:{folder}:{yr}-{mo}", title=title, story_type="vacation_adventure", mood="upbeat", slides=slides)
+            if story_id is None:
+                continue
 
             stories.append(
                 StoryModel(
@@ -516,23 +539,9 @@ async def generate_seasonal_retrospectives() -> List[StoryModel]:
                 for r in p_rows
             ]
 
-            cursor = await conn.execute(
-                """
-                INSERT INTO stories (title, story_type, vibe_mood, cover_photo_id, music_track_path)
-                VALUES (?, 'seasonal_highlight', ?, ?, ?);
-                """,
-                (title, mood, slides[0].photo_id, VIBE_TRACKS.get(mood, VIBE_TRACKS["acoustic"])),
-            )
-            story_id = cursor.lastrowid
-
-            for idx, slide in enumerate(slides):
-                await conn.execute(
-                    """
-                    INSERT INTO story_items (story_id, photo_id, sort_order, transition_type, focal_x, focal_y)
-                    VALUES (?, ?, ?, ?, ?, ?);
-                    """,
-                    (story_id, slide.photo_id, idx, slide.transition_type, slide.focal_x, slide.focal_y),
-                )
+            story_id = await _store_story(conn, key=f"seasonal_highlight:{season_name}:{yr}", title=title, story_type="seasonal_highlight", mood=mood, slides=slides)
+            if story_id is None:
+                continue
 
             stories.append(
                 StoryModel(
@@ -602,23 +611,9 @@ async def generate_year_in_review_story(year: Optional[str] = None) -> Optional[
         ]
 
         title = generate_punchy_title("year_in_review", year=year, seed=int(year) if year.isdigit() else 0)
-        cursor = await conn.execute(
-            """
-            INSERT INTO stories (title, story_type, vibe_mood, cover_photo_id, music_track_path)
-            VALUES (?, 'year_in_review', 'upbeat', ?, ?);
-            """,
-            (title, slides[0].photo_id, VIBE_TRACKS["upbeat"]),
-        )
-        story_id = cursor.lastrowid
-
-        for idx, slide in enumerate(slides):
-            await conn.execute(
-                """
-                INSERT INTO story_items (story_id, photo_id, sort_order, transition_type, focal_x, focal_y)
-                VALUES (?, ?, ?, ?, ?, ?);
-                """,
-                (story_id, slide.photo_id, idx, slide.transition_type, slide.focal_x, slide.focal_y),
-            )
+        story_id = await _store_story(conn, key=f"year_in_review:{year}", title=title, story_type="year_in_review", mood="upbeat", slides=slides)
+        if story_id is None:
+            return None
 
         await conn.commit()
 
@@ -668,23 +663,9 @@ async def generate_recent_highlights_story() -> Optional[StoryModel]:
         ]
 
         title = "Golden Moments & Highlights"
-        cursor = await conn.execute(
-            """
-            INSERT INTO stories (title, story_type, vibe_mood, cover_photo_id, music_track_path)
-            VALUES (?, 'highlights', 'acoustic', ?, ?);
-            """,
-            (title, slides[0].photo_id, VIBE_TRACKS["acoustic"]),
-        )
-        story_id = cursor.lastrowid
-
-        for idx, slide in enumerate(slides):
-            await conn.execute(
-                """
-                INSERT INTO story_items (story_id, photo_id, sort_order, transition_type, focal_x, focal_y)
-                VALUES (?, ?, ?, ?, ?, ?);
-                """,
-                (story_id, slide.photo_id, idx, slide.transition_type, slide.focal_x, slide.focal_y),
-            )
+        story_id = await _store_story(conn, key=f"highlights:{_newest_month(rows)}", title=title, story_type="highlights", mood="acoustic", slides=slides)
+        if story_id is None:
+            return None
 
         await conn.commit()
 
