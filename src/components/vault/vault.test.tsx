@@ -74,6 +74,51 @@ describe("Vault lock screen", () => {
     expect(screen.getByRole("button", { name: "Use your PIN instead" })).toBeInTheDocument();
   });
 
+  it("unlocks with the PIN, and a wrong PIN shows why and clears the boxes", async () => {
+    let attempts = 0;
+    const calls: { url: string; init?: RequestInit }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url, init });
+        if (url.endsWith("/api/vault/unlock")) {
+          attempts++;
+          return attempts === 1
+            ? new Response(JSON.stringify({ detail: "Incorrect PIN. 4 attempts left before your master password is needed." }), { status: 401 })
+            : new Response(JSON.stringify({ status: "unlocked" }), { status: 200 });
+        }
+        return new Response("[]", { status: 200 });
+      }),
+    );
+    render(<VaultView />);
+    const type = async (digits: string) => {
+      for (const [i, d] of [...digits].entries()) {
+        await act(async () => {
+          fireEvent.change(screen.getByLabelText(`PIN digit ${i + 1}`), { target: { value: d } });
+        });
+      }
+    };
+    await type("1111");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Incorrect PIN. 4 attempts left");
+    expect((screen.getByLabelText("PIN digit 1") as HTMLInputElement).value).toBe("");
+    await type("2468");
+    const unlocks = calls.filter((c) => c.url.endsWith("/api/vault/unlock")).map((c) => JSON.parse(String(c.init?.body)));
+    expect(unlocks).toEqual([{ pin: "1111" }, { pin: "2468" }]);
+    await waitFor(() => expect(useAppStore.getState().isVaultUnlocked).toBe(true));
+  });
+
+  it("unlocks with the master password", async () => {
+    const calls = mockEngine({ "/api/vault/unlock": { status: "unlocked" } });
+    useAppStore.setState({ hasVaultPin: false });
+    render(<VaultView />);
+    fireEvent.change(screen.getByLabelText("Master password"), { target: { value: "correct horse" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    });
+    expect(JSON.parse(String(calls.find((c) => c.url.endsWith("/api/vault/unlock"))?.init?.body))).toEqual({ password: "correct horse" });
+    expect(useAppStore.getState().isVaultUnlocked).toBe(true);
+  });
+
   it("asks for the password when the PIN can't be used yet", () => {
     mockEngine({});
     useAppStore.setState({ isVaultPinLocked: true });
