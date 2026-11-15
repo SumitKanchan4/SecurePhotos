@@ -217,7 +217,7 @@ Integration branch `feature/redesign` (master untouched until the end; owner dec
 ### R7 · Remaining screens: Albums, Stories, Documents, Dashboard, Trash, Duplicates, Big videos — boards approved 2026-11-13; built in five steps
 ### R7a · Trash: days left, restore or delete forever (asks first), vault items kept private — `done` (merged into feature/redesign 2026-11-13, PR #20, history §130)
 ### R7b · Documents: categories, pinned papers, find in photos — `done` (merged into feature/redesign 2026-11-13, PR #21, history §131; vault documents no longer listed or searchable here; pinning fixed)
-### R7c · Dashboard + Duplicates + Big videos — `done` (history §132; video originals deleted once the smaller copy is checked; similar-photo detection and video savings fixed)
+### R7c · Dashboard + Duplicates + Big videos — `done` (merged into feature/redesign 2026-11-15, PR #22, history §132; video originals deleted once the smaller copy is checked; similar-photo detection and video savings fixed)
 ### R7d · Albums: made for you, covers, album page — `todo`
 ### R7e · Stories: for you, saved, collage ideas — `todo`
 ### R8 · Refresh docs/design_system.md for the redesign (Mono + lime, icon rail, screens) before merging feature/redesign into master — `todo`
