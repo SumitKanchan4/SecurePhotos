@@ -6005,3 +6005,18 @@ Owner review of R9c (2026-11-15, screenshot of the real app).
 - Tests: `engine/tests/test_person_page.py` (3: profile photo, refused for a photo without them or in the vault; Close one stays off for Family, and changing the relationship back to Family promotes again; photo list says whether videos are ready). `src/components/people/people.test.tsx` (rename by clicking the name, updated; +3 person page: meta, relationship and Close one; Not Rohan on two selected photos; profile photo by clicking, a click opens otherwise, and Delete asks first). Mutation checks: opening instead of choosing the profile photo, unlinking only one of the selected photos, deleting without asking, always promoting family to Close one, and allowing a vault photo as profile photo each fail a test. Frontend 140 passed; tsc and build pass; ruff passes.
 - Validated in the UI (Playwright, throwaway library, both themes): Rohan's page shows "2 photos · Feb – Apr 2025", the Friends pill and Close one. The "…" menu lists Choose profile photo and Delete Rohan… (red), and the relationship menu lists five relationships. Ctrl+click showed "1 selected · Select all · Not Rohan · Add to album · Download" and Escape cleared it. Close one turned off and on again. Contrast scan: no problems; no console errors.
 
+## 145. Backend: Narrower Error Handling in Crypto and Silent Spots (Q4, part 1)
+
+### Functionality Overview
+- **Crypto**: unwrapping the vault key and reading vault file chunks caught every error, so a programming error (for example a missing key) would have been reported as "wrong password" or "damaged or tampered file". They now catch only a failed authentication (`InvalidTag`) and, for the key, a damaged payload (bad base64, wrong length). Anything else surfaces as the bug it is. No behaviour change for real users: a wrong password or a tampered file reads exactly as before.
+- **No more silent failures**: four places swallowed every error without a trace. Each now logs a warning (or catches only the expected error) and goes on as before:
+  - the album name shown in import progress;
+  - trimming old story suggestions when listing stories;
+  - removing a leftover video temp file (now `OSError` only);
+  - guessing a video's date format (now `ValueError` only).
+- Q4 continues: 79 broad `except Exception` blocks were reviewed. The vault and crypto ones that log and clean up, or re-raise as `VaultAssetError`, are correct and stay. The repository layer and the `vault.py` duplication are left for a later step.
+
+### Technical Touchpoints
+- `engine/services/crypto_vault.py` (`unwrap_master_key`, `decrypt_file_chunked_stream`), `engine/api/photos.py`, `engine/api/stories.py` (gains a logger), `engine/services/video_queue_service.py`, `engine/services/video_service.py`.
+- Tests: `engine/tests/test_vault_file_format.py` (+1: the right key works, a wrong key or damaged payload gives None, and a caller bug raises instead of looking like a wrong password). Mutation check: going back to catching every error fails the test. Engine suite 263 passed; ruff passes.
+

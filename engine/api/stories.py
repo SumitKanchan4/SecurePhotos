@@ -4,6 +4,7 @@ Delivers multi-dimensional story retrieval, intelligent timeline generation,
 and custom audio soundtrack management with automatic mood tagging.
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import List, Optional
@@ -34,6 +35,8 @@ from engine.services.stories_service import (
     prune_ephemeral_stories,
     toggle_save_story,
 )
+
+logger = logging.getLogger("securephotos.api.stories")
 
 router = APIRouter(prefix="/api/stories", tags=["Stories"])
 
@@ -80,8 +83,9 @@ async def list_stories(
         if offset == 0 and not saved_only:
             try:
                 await prune_ephemeral_stories(keep_cap=15)
-            except Exception:
-                pass
+            except Exception as e:
+                # Trimming old suggestions is housekeeping; listing stories must still work.
+                logger.warning("Could not trim old story suggestions: %s", e)
 
         where_clause = ""
         if saved_only:

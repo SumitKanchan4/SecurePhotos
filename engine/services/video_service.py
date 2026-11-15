@@ -168,15 +168,15 @@ def extract_video_metadata(filepath: str) -> Dict[str, Any]:
                 dt = datetime.datetime.fromisoformat(raw_clean)
                 taken_at = dt.strftime("%Y-%m-%d %H:%M:%S")
                 break
-            except Exception:
-                pass
+            except ValueError:
+                pass  # Not ISO; try the EXIF form next.
             # Handle format like 2023:08:15 14:30:22
             try:
                 dt = datetime.datetime.strptime(raw_val[:19], "%Y:%m:%d %H:%M:%S")
                 taken_at = dt.strftime("%Y-%m-%d %H:%M:%S")
                 break
-            except Exception:
-                pass
+            except ValueError:
+                pass  # Not a date this tag can hold; try the next tag.
 
     return {
         "width": width,
