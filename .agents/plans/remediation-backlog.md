@@ -159,7 +159,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 ### M6 · Disable `/docs` and `/openapi.json` in frozen builds — `done` (merged with H6, history §107)
 
 ### M8 · Auto-lock time setting is ignored — `done` (merged 2026-11-12, history §108; owner removed the 'Never' option)
-- **Small follow-up:** the vault screen counts mouse movement as activity, the engine only counts requests, so the engine can lock slightly before the on-screen countdown ends (the next action then shows the lock screen).
+- **Small follow-up — `done`** (history §142): the vault screen counted mouse movement as activity but the engine only counted requests, so the engine could lock before the countdown ended. The screen now reports activity (at most every 15 s) and restarts its countdown only then.
 - Settings offers 1/5/15/30 min/never (`auto_lock_duration`), but the engine (`vault.py` `AUTO_LOCK_SECONDS = 300`) and `VaultView.tsx` (`AUTO_LOCK_SECONDS = 300`) hard-code 5 minutes. Either wire it up (engine is the authority) or remove the option.
 
 ### M9 · Engine auto-reload hangs in development — `todo` (found during H6)

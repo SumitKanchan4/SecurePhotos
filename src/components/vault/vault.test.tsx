@@ -114,6 +114,36 @@ describe("Vault when unlocked", () => {
     expect(screen.getByRole("tab", { name: /Documents 0/ })).toBeInTheDocument();
   });
 
+  it("reports activity to the engine (at most every 15 s) and shows the lock card if the engine has locked", async () => {
+    let now = 1_000_000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    renderUnlocked();
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Photos 4/ })).toBeInTheDocument());
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    const pings = () => fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/api/vault/activity"));
+
+    now += 5_000;
+    fireEvent.mouseMove(window);
+    expect(pings()).toHaveLength(0); // Within 15 s of the last report.
+
+    now += 11_000;
+    fireEvent.mouseMove(window);
+    fireEvent.mouseMove(window);
+    expect(pings()).toHaveLength(1);
+    expect((pings()[0][1] as RequestInit).method).toBe("POST");
+
+    // The engine has locked already (for example after the PC slept): show the lock card.
+    fetchMock.mockImplementation(async (url: string) =>
+      String(url).endsWith("/api/vault/activity") ? new Response("{}", { status: 401 }) : new Response("{}", { status: 200 }),
+    );
+    now += 16_000;
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "ArrowDown" });
+    });
+    await waitFor(() => expect(useAppStore.getState().isVaultUnlocked).toBe(false));
+    clock.mockRestore();
+  });
+
   it("blurs everything with the privacy shield, from the button or the P key", async () => {
     renderUnlocked();
     await waitFor(() => expect(screen.getByRole("tab", { name: /Photos 4/ })).toBeInTheDocument());
