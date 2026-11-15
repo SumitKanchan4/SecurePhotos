@@ -6020,3 +6020,15 @@ Owner review of R9c (2026-11-15, screenshot of the real app).
 - `engine/services/crypto_vault.py` (`unwrap_master_key`, `decrypt_file_chunked_stream`), `engine/api/photos.py`, `engine/api/stories.py` (gains a logger), `engine/services/video_queue_service.py`, `engine/services/video_service.py`.
 - Tests: `engine/tests/test_vault_file_format.py` (+1: the right key works, a wrong key or damaged payload gives None, and a caller bug raises instead of looking like a wrong password). Mutation check: going back to catching every error fails the test. Engine suite 263 passed; ruff passes.
 
+## 146. Vault Lock Card and App Startup Split Out (Q5)
+
+### Functionality Overview (no change in behaviour)
+- **Vault**: the locked vault's card (PIN or master password, the password hint when asked for, the Emergency Card link) and its unlock logic moved to `vault/VaultLockCard.tsx`. `VaultView.tsx` keeps the hint toggle and, after an Emergency Card password reset, shows a fresh card that asks for the new password. `VaultView.tsx` went from 1,309 to 1,142 lines.
+- **App**: finding, starting and connecting to the photo engine (with the startup banner's Start engine and Check again) moved to `hooks/useEngineConnection.ts`. Polling background work (enhancing photos, preparing videos, importing) moved to `hooks/useBackgroundProgress.ts`. `App.tsx` went from 1,301 to 1,087 lines.
+- Left as they are: `StoryPlayerModal.tsx` (one self-contained feature) and the rest of `VaultView.tsx`. The vault's first-time setup screen, privacy shield, locked-album page and Documents tab still use the pre-redesign look; that is a design question for the owner rather than a code split.
+
+### Technical Touchpoints
+- New `src/components/vault/VaultLockCard.tsx`, `src/hooks/useEngineConnection.ts`, `src/hooks/useBackgroundProgress.ts`; `src/components/VaultView.tsx`, `src/App.tsx`.
+- Tests: `vault.test.tsx` (+2: unlocking with the PIN, where a wrong PIN shows the engine's message and clears the boxes; unlocking with the master password); new `src/hooks/useBackgroundProgress.test.ts` (a finished photo is marked at once; one reload per finished batch). Mutation checks: not clearing the PIN after a wrong one, and reloading on every poll instead of once per batch, each fail a test. Frontend 143 passed; tsc and build pass.
+- Validated in the UI (Playwright, throwaway library, both themes): the lock card looks as before; the PIN reopens the vault after Lock now ("Unlocked · locks in 4:56"); the master password unlocks too. Startup connects and loads the library (1,242 photos) and the saved theme; progress for enhancing, videos and imports is polled every second; no console errors.
+
