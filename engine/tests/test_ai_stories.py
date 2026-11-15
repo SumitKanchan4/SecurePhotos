@@ -377,3 +377,123 @@ async def test_story_list_gives_the_date_span_of_its_photos():
         await conn.execute(f"DELETE FROM photos WHERE id IN ({','.join('?' for _ in ids)});", ids)
         await conn.commit()
         await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_making_stories_again_never_duplicates_one():
+    """R7f: running Make new stories again refreshes suggestions and never copies a saved story."""
+    await run_migrations()
+    now = datetime.now()
+    year, month = str(now.year - 2), now.strftime("%m")
+    key = f"on_this_day:{year}-{month}"
+    conn = await get_db_connection()
+    try:
+        for i in range(3):
+            await conn.execute(
+                "INSERT INTO photos (filepath, filename, file_size, taken_at, is_favorite, is_encrypted) VALUES (?, ?, 10, ?, 0, 0);",
+                (f"/dummy/r7f_{i}.jpg", f"r7f_{i}.jpg", f"{year}-{month}-0{i + 1} 10:00:00"),
+            )
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    async def stories_for_our_photos():
+        c = await get_db_connection()
+        try:
+            async with c.execute(
+                """
+                SELECT DISTINCT s.id, s.story_key, COALESCE(s.is_saved, 0) AS is_saved
+                FROM stories s JOIN story_items si ON si.story_id = s.id JOIN photos p ON p.id = si.photo_id
+                WHERE s.story_type = 'on_this_day' AND p.filename LIKE 'r7f_%';
+                """
+            ) as cur:
+                return [dict(r) for r in await cur.fetchall()]
+        finally:
+            await c.close()
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            assert (await ac.post("/api/stories/generate")).status_code == 200
+            first = await stories_for_our_photos()
+            assert [s["story_key"] for s in first] == [key]
+
+            # Again: the suggestion is refreshed, not copied.
+            await ac.post("/api/stories/generate")
+            again = await stories_for_our_photos()
+            assert len(again) == 1
+
+            # Saved, then made again: the saved one stays and no copy appears.
+            saved_id = again[0]["id"]
+            await ac.patch(f"/api/stories/{saved_id}/save", json={"is_saved": True})
+            await ac.post("/api/stories/generate")
+            assert await stories_for_our_photos() == [{"id": saved_id, "story_key": key, "is_saved": 1}]
+
+            # A story saved before keys existed (no key) is recognised by its kind and photos.
+            c = await get_db_connection()
+            try:
+                await c.execute("UPDATE stories SET story_key = NULL WHERE id = ?;", (saved_id,))
+                await c.commit()
+            finally:
+                await c.close()
+            await ac.post("/api/stories/generate")
+            assert await stories_for_our_photos() == [{"id": saved_id, "story_key": None, "is_saved": 1}]
+    finally:
+        c = await get_db_connection()
+        try:
+            await c.execute(
+                "DELETE FROM stories WHERE id IN (SELECT si.story_id FROM story_items si JOIN photos p ON p.id = si.photo_id WHERE p.filename LIKE 'r7f_%');"
+            )
+            await c.execute("DELETE FROM photos WHERE filename LIKE 'r7f_%';")
+            await c.commit()
+        finally:
+            await c.close()
+
+
+@pytest.mark.asyncio
+async def test_startup_removes_exact_story_copies_left_by_older_versions():
+    """R7f: copies made before story keys (same kind, same photos) are removed; one is kept, saved first."""
+    await run_migrations()
+    conn = await get_db_connection()
+    try:
+        photo_ids = []
+        for i in range(2):
+            cur = await conn.execute(
+                "INSERT INTO photos (filepath, filename, file_size, taken_at, is_favorite, is_encrypted) VALUES (?, ?, 10, '2021-11-0" + str(i + 1) + " 10:00:00', 0, 0);",
+                (f"/dummy/r7f_copy_{i}.jpg", f"r7f_copy_{i}.jpg"),
+            )
+            photo_ids.append(cur.lastrowid)
+        story_ids = []
+        for saved, created in ((0, "2026-11-15 07:00:00"), (1, "2026-11-15 07:38:22"), (1, "2026-11-15 07:39:27")):
+            cur = await conn.execute(
+                "INSERT INTO stories (title, story_type, vibe_mood, is_saved, created_at) VALUES ('Remember This Day? (2021)', 'on_this_day', 'nostalgic', ?, ?);",
+                (saved, created),
+            )
+            story_ids.append(cur.lastrowid)
+            for order, pid in enumerate(reversed(photo_ids) if saved else photo_ids):
+                await conn.execute(
+                    "INSERT INTO story_items (story_id, photo_id, sort_order, transition_type, focal_x, focal_y) VALUES (?, ?, ?, 'fade', 0.5, 0.5);",
+                    (cur.lastrowid, pid, order),
+                )
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    try:
+        await run_migrations()
+        conn = await get_db_connection()
+        try:
+            placeholders = ",".join("?" * len(story_ids))
+            async with conn.execute(f"SELECT id FROM stories WHERE id IN ({placeholders});", story_ids) as cur:
+                left = [r["id"] for r in await cur.fetchall()]
+        finally:
+            await conn.close()
+        # The oldest saved copy stays; the unsaved one and the newer saved copy go.
+        assert left == [story_ids[1]]
+    finally:
+        conn = await get_db_connection()
+        try:
+            await conn.execute(f"DELETE FROM stories WHERE id IN ({','.join('?' * len(story_ids))});", story_ids)
+            await conn.execute("DELETE FROM photos WHERE filename LIKE 'r7f_copy_%';")
+            await conn.commit()
+        finally:
+            await conn.close()
