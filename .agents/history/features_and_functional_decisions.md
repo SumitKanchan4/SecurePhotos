@@ -5820,3 +5820,30 @@ Boards for the remaining screens (Albums, Stories, Documents, Dashboard, Duplica
 - `docs/design_system.md`, `docs/architecture.md`, `docs/development.md`, `docs/roadmap.md`, `.agents/skills/modern-web-ui/SKILL.md`, `.agents/rules/strict-approval-and-standards.md`, `package.json` and `package-lock.json`.
 - Checks: tsc and build pass; 128 frontend tests pass. No engine or UI code changed.
 
+## 137. Redesign Step 9a: Library Folder Shown Correctly; Storage Split by Kind
+
+Owner review after R8 (2026-11-15) raised five points: the library-folder warning, the lost storage breakdown, the app icon, the system album covers and the search pop-up. They are handled in R9a (this step), R9b (icon and covers) and R9c (a Search page; owner choice "Search page").
+
+### Functionality Overview
+- **Fixed: "No library found here"** in Settings → Storage while photos showed normally. Settings asked the window program where the library is. In a development build the program guesses the folder next to its own .exe (`…\target\debug\data`), while the engine uses the project's `data` folder. Settings now asks the engine (`GET /api/system/library`), which reports the folder it actually reads and writes. It falls back to the window program only if the engine can't be reached. The bug was older than the redesign (the old About section had it too).
+- **What SecurePhotos uses**: the Dashboard's Storage card keeps the drive bar (SecurePhotos, other files, free) and adds one row per kind, biggest first, each with its size and a thin bar. The kinds are:
+  - Photos, Videos, Documents;
+  - Private Vault (encrypted), Collages, Story music;
+  - Trash (deleted for good after 30 days);
+  - Thumbnails and previews (keep scrolling fast);
+  - App data (database and AI models).
+  Kinds with nothing in them are left out. Settings → Storage shows the same rows under "Space used". The old dashboard only split photos, videos and thumbnails; vault, Trash, documents, collages and music had no size of their own.
+
+### Functional Decision Points & Rationale
+- **The engine is the source of truth for the library folder**: it is the program that reads and writes it. The window program's guess stays as a fallback.
+- **Each file counts once**, in the first kind that fits: Trash, Private Vault, documents, collages, videos, photos. A trashed vault video is Trash, not Vault. The kinds add up to the total shown.
+- **Rows with thin bars instead of a coloured chart**, so the one-accent palette holds and every label is readable. In the light theme, thin lime bars on white are hard to see, so the bars use the accent ink (near-black), like the rail.
+- On the drive bar, a small library on a big drive keeps at least a sliver of width so it stays visible.
+
+### Technical Touchpoints
+- Engine (`engine/api/system.py`): `GET /api/system/library`; `_media_sizes_by_kind` (one grouped query); `AppStorageStats.categories`; Story music folder size counted.
+- Frontend: new `src/components/dashboard/StorageBreakdown.tsx`; `dashFormat.ts` (`storageRows`, drive segments `library` / `other`); `DashboardView.tsx`; `settings/StorageSettings.tsx` (asks the engine, falls back to Tauri); `StorageCategory` and `LibraryLocation` types; `.dash-usage-*` and `.settings-usage` styles.
+- Tests: `engine/tests/test_dashboard_api.py` (+2: each kind counted once, including Trash before Vault and Story music, and the kinds sum to the total; library endpoint returns the engine's folder); `dashboard.test.tsx` (+1, updated: rows biggest first without empty kinds; Dashboard shows the breakdown); `settings.test.tsx` (engine's folder wins over a wrong guess; fallback when the engine can't be asked).
+- Mutation checks: asking the window program instead of the engine, counting vault before Trash, listing empty kinds, and dropping Story music each fail a test. Engine suite 258 passed; frontend 130 passed; tsc, build and ruff pass.
+- Validated in the UI (Playwright, throwaway library, both themes): Settings shows the engine's folder as Connected and both screens list nine kinds (Videos 183 MB … Collages 5 KB) adding up to 224 MB. The drive bar shows the library sliver. Contrast scan: no problems; no console errors.
+

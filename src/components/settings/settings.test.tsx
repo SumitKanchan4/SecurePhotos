@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../store/useAppStore";
 import { DEFAULT_SETTINGS } from "../../hooks/useAppSettings";
@@ -154,13 +154,24 @@ describe("Photos & AI and Storage", () => {
     expect(updateSetting).toHaveBeenCalledWith("quality_crf", 25);
   });
 
-  it("shows where the library lives and how much space it uses", async () => {
-    invokeMock.mockResolvedValue({ path: "D:/SecurePhotos Library", is_custom: true, has_database: true });
+  it("shows the folder the engine really uses and what the space is used for", async () => {
+    // The window program's guess points somewhere else (a dev build looks next to its .exe).
+    invokeMock.mockResolvedValue({ path: "C:/somewhere/target/debug/data", is_custom: false, has_database: false });
     mockEngine({
+      "GET /api/system/library": { body: { path: "D:/SecurePhotos Library", has_database: true } },
       "GET /api/system/dashboard": {
         body: {
           media_counts: {},
-          app_storage: { total_bytes: 5 * 1024 ** 3, media_bytes: 4.5 * 1024 ** 3, app_system_bytes: 512 * 1024 ** 2 },
+          app_storage: {
+            total_bytes: 5 * 1024 ** 3,
+            media_bytes: 4.5 * 1024 ** 3,
+            app_system_bytes: 512 * 1024 ** 2,
+            categories: [
+              { key: "photos", bytes: 3 * 1024 ** 3 },
+              { key: "videos", bytes: 1.5 * 1024 ** 3 },
+              { key: "app", bytes: 512 * 1024 ** 2 },
+            ],
+          },
           drive_storage: { drive_letter: "D:", volume_name: "Photos", total_bytes: 1000 * 1024 ** 3, free_bytes: 600 * 1024 ** 3 },
         },
       },
@@ -168,8 +179,19 @@ describe("Photos & AI and Storage", () => {
     render(<StorageSettings />);
     expect(await screen.findByText("D:/SecurePhotos Library")).toBeInTheDocument();
     expect(screen.getByText("Connected")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText("Photos and videos 4.5 GB · app data 512 MB")).toBeInTheDocument());
+    expect(screen.queryByText("No library found here")).not.toBeInTheDocument();
+    const usage = await screen.findByRole("list", { name: "What SecurePhotos uses" });
+    expect(usage.textContent).toContain("Photos3.0 GB");
+    expect(usage.textContent).toContain("Videos1.5 GB");
+    expect(usage.textContent).toContain("App data · database and AI models512 MB");
     expect(screen.getByText("Free on Photos")).toBeInTheDocument();
     expect(screen.getByText("600.0 GB")).toBeInTheDocument();
+  });
+
+  it("falls back to the window program's answer when the engine can't be asked", async () => {
+    invokeMock.mockResolvedValue({ path: "E:/Library", is_custom: true, has_database: true });
+    mockEngine({ "GET /api/system/library": { status: 500, body: {} }, "GET /api/system/dashboard": { status: 500, body: {} } });
+    render(<StorageSettings />);
+    expect(await screen.findByText("E:/Library")).toBeInTheDocument();
   });
 });
