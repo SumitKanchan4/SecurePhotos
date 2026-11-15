@@ -5897,3 +5897,29 @@ Owner review after R8 (2026-11-15) raised five points: the library-folder warnin
   - Documents' own field found the Croma receipt. There is no strip chip.
   - Contrast scan: no problems; no console errors.
 
+## 140. Redesign Step 9d: Search Page Polish; Month/Year Scrubber as on the Board
+
+Owner review of R9c (2026-11-15, screenshot of the real app).
+
+### Functionality Overview
+- **Fixed: Search page cut off at the bottom, field squashed.** The starting points sat in an area capped at 62% of the window, and its children were allowed to shrink. The field was squeezed to a thin strip and the albums row was cut off. Before typing, the starting points now use the whole page height (and scroll with it); the field keeps its 52 px height.
+- **No sideways scrolling**: People and Albums on the Search page show as one row with as many as fit the width. When there are more, the last tile is **See all** ("30 people", "12 albums") and opens People or Albums. A library with 100 people shows one tidy row.
+- **Search results keep their shapes**: the engine already sent each result's size and video state; the page used to throw them away and show big squares. Results now use justified rows like Photos, and videos still being prepared say "Preparing".
+- **Month/year scrubber as on the approved Photos board**: the scrubber is now a 64 px column with a divider. It lists the newest year's months ("Nov", "Oct", "Jun" …), then one entry per older year ("2025", "2024" …) and "No date", stacked from the top. The entry you are looking at is a lime pill (black in text on lime in both themes). Click, or press and drag along the list, to jump. If the list doesn't fit the window, the newest year collapses to one entry. It replaces the proportional ticks, year labels and floating month label, which did not match the board. Photos, the Vault, albums and Search results all use it.
+- **Fixed: rail buttons squashed in short windows** (seen while checking at 560 px): rail buttons no longer shrink. Below 640 px of height they get a little smaller (38 px) and closer, so every section and the status dot stay visible without scrolling. Scrolling would cut off the hover labels.
+
+### Functional Decision Points & Rationale
+- **"See all" instead of a scrollbar** (owner: sideways scrollbars are poor UX): the Search page offers starting points, and the full lists live on People and Albums. Hidden items are not rendered at all, so the keyboard never lands on something invisible.
+- The scrubber follows the board exactly. The proportional placement showed where months sit in the scroll height, but it read as a cluttered ruler and didn't match the approved design.
+
+### Technical Touchpoints
+- `src/components/search/SearchPage.tsx` (`useFitCount`, `fitRow`, See all tiles, idle layout), `searchFormat.ts` (`toTimeline` keeps sizes and video state); `SearchPhotoItem` type gains `width`, `height`, `is_optimized`, `is_enhanced`.
+- `src/utils/photoTimeline.ts` `scrubberEntries` (replaces `scrubberMarks`); `src/components/photos/PhotoTimeline.tsx` (scrubber as a `nav` of buttons, `jumpTo`, drag along entries).
+- `src/components/shell/IconRail.tsx` (`--rail-gap`); `.search-*`, `.timeline-scrub-entry`, `.rail-btn` and short-window styles in `src/index.css`.
+- Tests: `photoTimeline.test.ts` (entries: newest year by month, older years once, No date, collapsing when crowded); `PhotoTimeline.test.tsx` (jump by month or year, current pill follows scrolling, also partway through a year); `search.test.tsx` (+1: one row of people then See all opens People; results keep sizes). Mutation checks: showing every person, never collapsing the scrubber, and marking a year current only at its first month each fail a test. Frontend 136 passed; tsc passes.
+- Validated in the UI (Playwright, throwaway library, both themes, 1100 × 560 and 1440 × 900):
+  - The Search field is 52 px tall and nothing is cut off. People and albums rows don't scroll sideways.
+  - The Photos scrubber reads "Nov Oct Jun Jan 2025 2024 2022 2021 2020 2019 1998 No date" with Nov current; clicking 2024 jumped there and marked it.
+  - Search results show in justified rows with "Preparing" on an unready video. The rail shows every section and the status dot at 560 px.
+  - Contrast scan: no problems; no console errors.
+

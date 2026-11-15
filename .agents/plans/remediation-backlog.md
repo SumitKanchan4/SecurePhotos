@@ -233,6 +233,7 @@ Found during R7e: running Make new stories again created a second "Remember This
 ### R9a · Library folder shown correctly; storage split by kind — `done` (merged into feature/redesign 2026-11-15, PR #27, history §137)
 ### R9b · Chosen app icon at every size; big covers for Favourites, Saved stories and Collages — `done` (merged into feature/redesign 2026-11-15, PR #28, history §138)
 ### R9c · Search page instead of the pop-up search (owner choice 2026-11-15) — `done` (merged into feature/redesign 2026-11-15, PR #29, history §139; keyword searches fixed; page-level search on Albums, People, Documents)
+### R9d · Search page polish (cut off, squashed field, no sideways rows, result shapes); month/year scrubber as on the board; rail in short windows — `done` (history §140)
 - Each step: component tests (deferred from Q3), Playwright on a throwaway library, remaining hard-coded colours of that screen cleaned up.
 
 ### P12 · Windows Hello quick unlock — `todo`

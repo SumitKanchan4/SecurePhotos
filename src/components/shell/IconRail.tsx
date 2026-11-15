@@ -84,7 +84,7 @@ export const IconRail: React.FC = () => {
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        gap: "6px",
+        gap: "var(--rail-gap, 6px)",
         padding: "12px 0",
         backgroundColor: "var(--bg-app)",
         borderRight: "1px solid var(--glass-border)",
@@ -108,7 +108,7 @@ export const IconRail: React.FC = () => {
 
       <div style={{ width: "28px", height: "1px", backgroundColor: "var(--glass-border)", margin: "4px 0" }} />
 
-      <nav style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
+      <nav style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--rail-gap, 6px)" }}>
         {RAIL_ITEMS.map((item) => {
           const isActive = activeTab === item.id;
           return (

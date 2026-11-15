@@ -460,6 +460,10 @@ export interface SearchPhotoItem {
   filename: string;
   filepath: string;
   mime_type: string;
+  width?: number | null;
+  height?: number | null;
+  is_optimized?: boolean;
+  is_enhanced?: boolean;
   thumbnail_path?: string | null;
   taken_at?: string | null;
   is_favorite: boolean;
