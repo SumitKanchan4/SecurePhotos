@@ -42,6 +42,27 @@ class EnhanceRequest(BaseModel):
     target_height: Optional[int] = 720
 
 
+@router.get("/old-originals")
+async def get_old_originals_cleanup() -> Dict[str, Any]:
+    """What the one-off cleanup of hidden video originals did (R7c2); {"status": "not_run"} before it runs."""
+    from engine.services.video_leftovers import read_result
+
+    return read_result() or {"status": "not_run"}
+
+
+@router.post("/old-originals/acknowledge")
+async def acknowledge_old_originals_cleanup() -> Dict[str, Any]:
+    """Marks the cleanup report as seen so the Dashboard stops showing it."""
+    from engine.services.video_leftovers import read_result, write_result
+
+    result = read_result()
+    if result is None:
+        raise HTTPException(status_code=404, detail="The cleanup hasn't run yet.")
+    result["acknowledged"] = True
+    write_result(result)
+    return result
+
+
 @router.get("/summary")
 async def get_video_summary() -> Dict[str, Any]:
     """Returns library-wide video statistics, telemetry, and projected storage reclamation."""
