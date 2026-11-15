@@ -11,7 +11,7 @@ import {
   CheckSquare,
   Search,
 } from "lucide-react";
-import { SearchPalette } from "./components/shell/SearchPalette";
+import { SearchPage } from "./components/search/SearchPage";
 import { WindowStrip } from "./components/shell/WindowStrip";
 import { IconRail } from "./components/shell/IconRail";
 import { PrerequisitesBanner } from "./components/PrerequisitesBanner";
@@ -36,7 +36,7 @@ import { AddToAlbumModal } from "./components/AddToAlbumModal";
 import { UpdateModal } from "./components/UpdateModal";
 import { ToastNotification } from "./components/ToastNotification";
 import { useAppStore } from "./store/useAppStore";
-import { PhotoItem, SystemPrerequisites, OptimizationProgress, VideoOptimizationProgress, SearchResponse, ImportProgressState, TimelinePhoto, TimelineResponse } from "./types";
+import { PhotoItem, SystemPrerequisites, OptimizationProgress, VideoOptimizationProgress, ImportProgressState, TimelinePhoto, TimelineResponse } from "./types";
 import { parseTimeline, viewerWindow } from "./utils/photoTimeline";
 import { invoke } from "@tauri-apps/api/core";
 import { check, Update } from "@tauri-apps/plugin-updater";
@@ -49,9 +49,7 @@ export const App: React.FC = () => {
     toggleTheme, 
     setTheme,
     setGridDensity,
-    searchQuery,
-    setSearchQuery,
-    setSearchOpen,
+    openSearch,
     selectedPhotoIds, 
     clearSelection,
     setActiveVolume,
@@ -84,8 +82,8 @@ export const App: React.FC = () => {
   const [lightboxPhotos, setLightboxPhotos] = useState<PhotoItem[] | null>(null);
   // Set while the viewer shows a window of the Photos timeline: index of the window's first photo.
   const [viewerWindowStart, setViewerWindowStart] = useState<number | null>(null);
-  const [searchResults, setSearchResults] = useState<TimelinePhoto[] | null>(null);
-  const [isSearchLoading, setIsSearchLoading] = useState(false);
+  // The list the open viewer steps through (Photos timeline or Search results), for paging.
+  const [viewerSource, setViewerSource] = useState<TimelinePhoto[] | null>(null);
   const [optimizationProgress, setOptimizationProgress] = useState<OptimizationProgress | null>(null);
   const [videoProgress, setVideoProgress] = useState<VideoOptimizationProgress | null>(null);
   const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null);
@@ -122,52 +120,7 @@ export const App: React.FC = () => {
     }
   }, [activeTab]);
 
-  // Debounced full-text & smart categorical search synchronization
-  useEffect(() => {
-    const trimmed = searchQuery.trim();
-    if (!trimmed) {
-      setSearchResults(null);
-      setIsSearchLoading(false);
-      return;
-    }
-
-    let isMounted = true;
-    setIsSearchLoading(true);
-
-    const timer = setTimeout(async () => {
-      try {
-        const res = await apiFetch(`/api/search?q=${encodeURIComponent(trimmed)}`);
-        if (res.ok && isMounted) {
-          const data: SearchResponse = await res.json();
-          const mapped: TimelinePhoto[] = data.photos.map((p) => ({
-            id: p.id,
-            taken_at: p.taken_at || null,
-            width: 0,
-            height: 0,
-            is_video: Boolean(p.mime_type?.startsWith("video/")),
-            is_favorite: p.is_favorite,
-            // Search doesn't report these; they only decide whether a video can play yet.
-            is_optimized: true,
-            is_enhanced: true,
-          }));
-          setSearchResults(mapped);
-        }
-      } catch (err) {
-        console.warn("Search query failed:", err);
-      } finally {
-        if (isMounted) setIsSearchLoading(false);
-      }
-    }, 200);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(timer);
-    };
-  }, [searchQuery]);
-
-  const displayedPhotos = useMemo(() => {
-    return searchResults !== null ? searchResults : photos;
-  }, [searchResults, photos]);
+  const displayedPhotos = photos;
 
   // Real-time polling for background photo 8K & video optimization progress
   useEffect(() => {
@@ -465,7 +418,7 @@ export const App: React.FC = () => {
 
   const handleDeletePhoto = (photoId: number) => {
     setPhotos((prev) => prev.filter((p) => p.id !== photoId));
-    setSearchResults((prev) => (prev ? prev.filter((p) => p.id !== photoId) : null));
+    setViewerSource((prev) => (prev ? prev.filter((p) => p.id !== photoId) : null));
     if (lightboxPhotos) {
       setLightboxPhotos((prev) => (prev ? prev.filter((p) => p.id !== photoId) : null));
     }
@@ -509,7 +462,7 @@ export const App: React.FC = () => {
     setPhotos((prev) =>
       prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p))
     );
-    setSearchResults((prev) =>
+    setViewerSource((prev) =>
       prev ? prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p)) : null
     );
     // Optimistically update photos in active lightbox if present
@@ -527,7 +480,7 @@ export const App: React.FC = () => {
         setPhotos((prev) =>
           prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p))
         );
-        setSearchResults((prev) =>
+        setViewerSource((prev) =>
           prev ? prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p)) : null
         );
       }
@@ -537,7 +490,7 @@ export const App: React.FC = () => {
       setPhotos((prev) =>
         prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p))
       );
-      setSearchResults((prev) =>
+      setViewerSource((prev) =>
         prev ? prev.map((p) => (p.id === photoId ? { ...p, is_favorite: !p.is_favorite } : p)) : null
       );
     }
@@ -554,7 +507,7 @@ export const App: React.FC = () => {
       });
       if (res.ok) {
         setPhotos((prev) => prev.filter((p) => !selectedPhotoIds.has(p.id)));
-        setSearchResults((prev) => (prev ? prev.filter((p) => !selectedPhotoIds.has(p.id)) : null));
+        setViewerSource((prev) => (prev ? prev.filter((p) => !selectedPhotoIds.has(p.id)) : null));
         showToast(`Moved ${ids.length} photo(s) to Trash (held for 30 days)`, "info");
         clearSelection();
       }
@@ -587,7 +540,7 @@ export const App: React.FC = () => {
       });
       if (res.ok) {
         setPhotos((prev) => prev.filter((p) => !selectedPhotoIds.has(p.id)));
-        setSearchResults((prev) => (prev ? prev.filter((p) => !selectedPhotoIds.has(p.id)) : null));
+        setViewerSource((prev) => (prev ? prev.filter((p) => !selectedPhotoIds.has(p.id)) : null));
         showToast(`${ids.length} ${ids.length === 1 ? "item" : "items"} encrypted and moved into Private Vault.`, "success");
         clearSelection();
       } else if (res.status === 401) {
@@ -689,6 +642,7 @@ export const App: React.FC = () => {
       setLightboxPhotos(details);
       setLightboxIndex(at);
       setViewerWindowStart(index - at);
+      setViewerSource(list);
     } catch (err) {
       console.error("Could not load photo details:", err);
       showToast("Couldn't open this photo. Please try again.", "warning");
@@ -741,31 +695,8 @@ export const App: React.FC = () => {
         backgroundColor: "var(--bg-app)",
       }}
     >
-      {/* Frameless window: slim drag strip + global search palette (redesign R1) */}
+      {/* Frameless window: slim drag strip (redesign R1) */}
       <WindowStrip />
-      <SearchPalette
-        onSelectPhoto={(photo, allPhotos) => {
-          const mapped: PhotoItem[] = allPhotos.map((p) => ({
-            id: p.id,
-            filename: p.filename,
-            filepath: p.filepath,
-            file_size: 0,
-            mime_type: p.mime_type,
-            taken_at: p.taken_at || undefined,
-            is_favorite: p.is_favorite,
-            is_encrypted: false,
-            thumbnail_path: p.thumbnail_path || undefined,
-            caption: p.caption || undefined,
-            ocr_text: p.ocr_text || undefined,
-            is_document: p.is_document,
-            is_optimized: false,
-            is_enhanced: false,
-          }));
-          setLightboxPhotos(mapped);
-          const targetIdx = allPhotos.findIndex((p) => p.id === photo.id);
-          setLightboxIndex(targetIdx >= 0 ? targetIdx : 0);
-        }}
-      />
 
       {/* System Prerequisites Diagnostics Banner (visible when prerequisites missing or engine offline) */}
       <PrerequisitesBanner
@@ -860,6 +791,8 @@ export const App: React.FC = () => {
           ) : activeTab === "settings" ? (
             /* Settings & Preferences */
             <SettingsView />
+          ) : activeTab === "search" ? (
+            <SearchPage onOpenPhoto={openPhotoViewer} onToggleFavorite={handleToggleFavorite} />
           ) : activeTab === "stories" ? (
             /* Dedicated Stories & Photographic Intelligence Hub */
             <StoriesView 
@@ -899,12 +832,10 @@ export const App: React.FC = () => {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {searchQuery.trim() ? "Search results" : "Photos"}
+                  Photos
                 </h1>
                 <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-                  {isSearchLoading
-                    ? "Searching…"
-                    : `${displayedPhotos.length.toLocaleString()} ${displayedPhotos.length === 1 ? "photo" : "photos"}`}
+                  {`${displayedPhotos.length.toLocaleString()} ${displayedPhotos.length === 1 ? "photo" : "photos"}`}
                 </span>
                 {libraryActivity && (
                   <span
@@ -936,7 +867,7 @@ export const App: React.FC = () => {
 
                 <button
                   type="button"
-                  onClick={() => setSearchOpen(true)}
+                  onClick={openSearch}
                   className="clickable"
                   aria-label="Search"
                   title="Search (Ctrl+K)"
@@ -981,64 +912,7 @@ export const App: React.FC = () => {
               </div>
 
               {/* 60 FPS Virtualized Grid / Empty State */}
-              {searchQuery.trim() !== "" && !isSearchLoading && displayedPhotos.length === 0 ? (
-                <div 
-                  style={{ 
-                    flex: 1,
-                    display: "flex", 
-                    flexDirection: "column", 
-                    alignItems: "center", 
-                    justifyContent: "center", 
-                    padding: "60px 20px",
-                    gap: "14px",
-                    color: "var(--text-secondary)"
-                  }}
-                >
-                  <div 
-                    style={{
-                      width: "56px",
-                      height: "56px",
-                      borderRadius: "var(--radius-full)",
-                      backgroundColor: "var(--glass-pill-bg)",
-                      border: "1px solid var(--glass-border)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "var(--text-muted)",
-                      boxShadow: "var(--glass-shadow)",
-                    }}
-                  >
-                    <Search size={26} />
-                  </div>
-                  <div style={{ fontSize: "17px", fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.01em" }}>
-                    No photos found for "{searchQuery}"
-                  </div>
-                  <div style={{ fontSize: "13px", color: "var(--text-muted)", maxWidth: "420px", textAlign: "center", lineHeight: "1.5" }}>
-                    Try searching by year (e.g. 2024), person name, or category tags. Vault photos and deleted items are protected and excluded from search.
-                  </div>
-                  <button
-                    onClick={() => setSearchQuery("")}
-                    className="clickable"
-                    style={{
-                      marginTop: "10px",
-                      padding: "8px 20px",
-                      borderRadius: "var(--radius-full)",
-                      backgroundColor: "var(--glass-pill-bg)",
-                      border: "1px solid var(--glass-pill-border)",
-                      color: "var(--accent-primary)",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                    }}
-                  >
-                    <X size={14} />
-                    <span>Clear Search Filter</span>
-                  </button>
-                </div>
-              ) : (
+              {(
                 <PhotoTimeline
                   photos={displayedPhotos}
                   onOpen={(idx) => openPhotoViewer(displayedPhotos, idx)}
@@ -1111,7 +985,7 @@ export const App: React.FC = () => {
                     }
                   }}
                   className="clickable"
-                  title={selectedCount === displayedPhotos.length ? "Unselect everything" : searchQuery.trim() ? "Select all search results" : "Select every photo in your library"}
+                  title={selectedCount === displayedPhotos.length ? "Unselect everything" : "Select every photo in your library"}
                   style={{
                     padding: "5px 12px",
                     borderRadius: "var(--radius-full)",
@@ -1367,6 +1241,7 @@ export const App: React.FC = () => {
           setLightboxIndex(null);
           setLightboxPhotos(null);
           setViewerWindowStart(null);
+          setViewerSource(null);
         }}
         onNavigate={(idx) => {
           setLightboxIndex(idx);
@@ -1374,14 +1249,15 @@ export const App: React.FC = () => {
           if (viewerWindowStart !== null && lightboxPhotos) {
             const absolute = viewerWindowStart + idx;
             const nearStart = idx < 20 && viewerWindowStart > 0;
-            const nearEnd = idx >= lightboxPhotos.length - 20 && viewerWindowStart + lightboxPhotos.length < displayedPhotos.length;
-            if ((nearStart || nearEnd) && displayedPhotos[absolute]?.id === lightboxPhotos[idx]?.id) {
-              openPhotoViewer(displayedPhotos, absolute);
+            const source = viewerSource ?? [];
+            const nearEnd = idx >= lightboxPhotos.length - 20 && viewerWindowStart + lightboxPhotos.length < source.length;
+            if ((nearStart || nearEnd) && source[absolute]?.id === lightboxPhotos[idx]?.id) {
+              openPhotoViewer(source, absolute);
             }
           }
         }}
         indexOffset={viewerWindowStart ?? 0}
-        totalCount={viewerWindowStart !== null ? displayedPhotos.length : undefined}
+        totalCount={viewerWindowStart !== null && viewerSource ? viewerSource.length : undefined}
         onDelete={(id) => {
           handleDeletePhoto(id);
           if (lightboxPhotos) {

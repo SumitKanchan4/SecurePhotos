@@ -5867,3 +5867,33 @@ Owner review after R8 (2026-11-15) raised five points: the library-folder warnin
 - Tests: `albums.test.tsx` (made-for-you mosaic and badges). Mutation check: showing only one favourite in the mosaic fails a test. Frontend 130 passed; tsc and build pass.
 - Validated in the UI (Playwright, throwaway library, both themes): the rail and favicon use the chosen icon; Favourites and Saved stories show three-photo mosaics, Collages one; badges read Favourites / Stories / Collages; contrast scan: no problems; no console errors.
 
+## 139. Redesign Step 9c: Search Is Its Own Page
+
+### Functionality Overview
+- **Search page** (owner choice 2026-11-15, replacing the box that popped up over every screen). The search icon at the top of the rail, Ctrl+K from anywhere, and the search button in the Photos header all open Search as a section; the rail marks it current. It has a big field on top.
+  - Before typing: **Try** (Videos, Favourites, Documents, this year, last year), **People** (faces with photo counts) and **Albums**; a note says Private Vault items and Trash are never searched.
+  - After typing (searches after a short pause): matching **People** and **Albums**, then "24 photos and videos" in the photo grid (all matches, loaded in pages of 200, up to 2,000). Clicking a photo opens the viewer, which counts and steps through the search results ("1 of 24"). When nothing matches, it says so and gives a hint.
+  - Clicking a person or album opens their page directly. The viewer's People and Albums links do the same; they used to set a hidden name filter.
+  - Escape in the field clears it; the text is kept while you look at other sections.
+- **Gone**: the pop-up search, the "Search: … ×" chip in the window strip, and the hidden filtering of Photos, People and Documents by the search text. Photos always shows the whole library.
+- **Search inside a page**: Albums, People and Documents each have a search icon in the header that opens a small field filtering only that page (album name; name or relationship; words in documents). One shared component.
+- **Fixed (search)**: typing a keyword such as "videos", "favourites" or "2025" applied the filter but also required the word itself in the file name or caption, so "videos" found only videos called "…videos…". Keywords (favourite(s)/favorite(s), starred, liked, video(s), movie(s), document(s), pdf(s), years, month names) now only pick the filter. Filler words (photos, pictures, of, in, from, with, and, my, the) are left out of the text to match, so "videos from 2024" finds every 2024 video and "photos of goa in may" finds Goa photos taken in May.
+
+### Functional Decision Points & Rationale
+- **No hidden filters**: the old chip had to exist because the search text silently filtered other pages; with search on its own page, every filter is visible where it applies.
+- **Search results can't be selected**: nothing on the page acts on a selection, so a click always opens the photo (even with a selection left over from Photos).
+- **The viewer remembers the list it opened from** (Photos timeline or search results), so stepping near the end of a window loads more from the right list.
+- **Page-level search stays local**: finding a document by its words or a person by name is quicker on that page; the Search page covers the whole library.
+
+### Technical Touchpoints
+- Engine (`engine/api/search.py`): `KEYWORD_RE`, `FILLER_RE`; matching runs on the remaining text; no remaining text means the filters alone decide; people and albums are matched only when text remains.
+- Frontend: new `src/components/search/SearchPage.tsx`, `searchFormat.ts`, `src/components/ui/InlineSearch.tsx`; store: `NavTab` "search", `openSearch`, `searchFocusKey`, `pendingOpen` with `openPerson` / `openAlbum` / `clearPendingOpen` (replaces `isSearchOpen` / `setSearchOpen`); `App.tsx` (Search section, Photos without search filtering, `viewerSource`); `IconRail.tsx` (Ctrl+K, current marker); `WindowStrip.tsx` (chip removed); `PhotoTimeline` `selectable` prop; `PeopleView.tsx` / `AlbumsView.tsx` open a pending person or album; `PeopleOverview.tsx`, `DocumentsView.tsx`, `AlbumsView.tsx` use `InlineSearch`; `Lightbox.tsx` opens people and albums by id; removed `src/components/shell/SearchPalette.tsx`; `.search-*` styles.
+- Tests: `engine/tests/test_search.py` (+1: keyword and filler handling); `src/components/search/search.test.tsx` (4: helpers; starting points open a person or album directly and a quick search fills the field; typing loads every page of results and a click opens instead of selecting; nothing matches and Escape clears); `shell.test.tsx` (Search page from the rail and Ctrl+K, marked current; no strip chip); `people.test.tsx`, `documents.test.tsx` (own search fields, never the Search page's text); `albums.test.tsx` (album opened from Search); `Lightbox.test.tsx` (person opened by id).
+- Mutation checks: matching keywords as text, selectable results, loading only the first page, not clearing the pending album, the viewer setting a name filter, and Documents reading the Search page's text each fail a test. Engine search suite 6 passed; frontend 135 passed; tsc passes.
+- Validated in the UI (Playwright, throwaway library, both themes):
+  - The rail opens Search with the field focused and no overlay. Try, People (Rohan, Meera) and Albums show.
+  - Videos found all 6 videos. "Rohan" showed Rohan and 4 results; a result opened the viewer at "1 of 4". Clicking Rohan opened his page.
+  - Ctrl+K from Albums returned to Search with "Rohan" kept, and Escape cleared it.
+  - Documents' own field found the Croma receipt. There is no strip chip.
+  - Contrast scan: no problems; no console errors.
+

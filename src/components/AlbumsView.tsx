@@ -4,11 +4,12 @@
  * shows the album page (photos in the Photos grid, rare actions behind one menu).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FolderPlus, Heart, Images, LayoutGrid, Play, Search, X } from "lucide-react";
+import { FolderPlus, Heart, Images, LayoutGrid, Play } from "lucide-react";
 import type { AlbumItem, ImportProgressState, PhotoItem, StoryModel } from "../types";
 import { useAppStore } from "../store/useAppStore";
 import { apiFetch, getThumbnailUrl } from "../services/api";
 import { AlbumPage, type AlbumPageTarget } from "./albums/AlbumPage";
+import { InlineSearch } from "./ui/InlineSearch";
 import { albumMeta, filterAlbums, isCollagesAlbum, plural } from "./albums/albumsFormat";
 
 interface AlbumsViewProps {
@@ -74,11 +75,9 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({ onLockAlbumToVault, onPh
   const [stories, setStories] = useState<StoryModel[]>([]);
   const [page, setPage] = useState<AlbumPageTarget | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
-  const searchRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     const json = async <T,>(path: string): Promise<T | null> => {
@@ -124,9 +123,14 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({ onLockAlbumToVault, onPh
     wasImporting.current = !!importProgress?.is_active;
   }, [importProgress?.is_active, load]);
 
+  // An album opened from Search or the viewer (R9c): show it once the albums have loaded.
+  const pendingOpen = useAppStore((st) => st.pendingOpen);
   useEffect(() => {
-    if (searching) searchRef.current?.focus();
-  }, [searching]);
+    if (pendingOpen?.kind !== "album" || albums === null) return;
+    useAppStore.getState().clearPendingOpen();
+    const album = albums.find((x) => x.id === pendingOpen.id);
+    if (album) setPage({ kind: "album", album });
+  }, [pendingOpen, albums]);
 
   const collages = useMemo(() => (albums ?? []).find(isCollagesAlbum), [albums]);
   const own = useMemo(() => (albums ?? []).filter((a) => !isCollagesAlbum(a)), [albums]);
@@ -178,40 +182,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({ onLockAlbumToVault, onPh
         <h1 className="dash-title">Albums</h1>
         <span className="dash-subtitle">{albums ? plural(own.length, "album") : ""}</span>
         <div style={{ flex: 1 }} />
-        {searching ? (
-          <span className="alb-search">
-            <Search size={14} aria-hidden="true" />
-            <input
-              ref={searchRef}
-              aria-label="Search albums"
-              placeholder="Album name"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  setQuery("");
-                  setSearching(false);
-                }
-              }}
-            />
-            <button
-              type="button"
-              aria-label="Close search"
-              onClick={() => {
-                setQuery("");
-                setSearching(false);
-              }}
-            >
-              <X size={14} />
-            </button>
-          </span>
-        ) : (
-          own.length > 0 && (
-            <button type="button" className="dash-icon-btn" aria-label="Search albums" title="Search albums" onClick={() => setSearching(true)}>
-              <Search size={16} />
-            </button>
-          )
-        )}
+        {own.length > 0 && <InlineSearch label="Search albums" placeholder="Album name" value={query} onChange={setQuery} />}
         <button type="button" className="dash-btn dash-btn-primary" onClick={() => setCreating(true)}>
           + New album
         </button>

@@ -54,7 +54,7 @@ function Harness({ onClose }: { onClose: () => void }) {
 }
 
 beforeEach(() => {
-  useAppStore.setState({ apiBaseUrl: "http://127.0.0.1:50123", apiToken: "t", selectedPhotoIds: new Set<number>() });
+  useAppStore.setState({ apiBaseUrl: "http://127.0.0.1:50123", apiToken: "t", selectedPhotoIds: new Set<number>(), searchQuery: "", pendingOpen: null });
 });
 
 describe("Lightbox keyboard", () => {
@@ -160,7 +160,7 @@ describe("Lightbox layout (redesign R3)", () => {
     expect(onNavigate).toHaveBeenLastCalledWith(2);
   });
 
-  it("loads people and albums into the details panel and opens a person in People", async () => {
+  it("loads people and albums into the details panel and opens a person's page", async () => {
     const fetchMock = vi.fn(async () =>
       new Response(
         JSON.stringify({
@@ -181,9 +181,9 @@ describe("Lightbox layout (redesign R3)", () => {
     expect(screen.getByText("Copied into your library")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Goa 2026" })).toBeInTheDocument();
 
+    // Opens Rohan's page directly (R9c), not a hidden name filter.
     fireEvent.click(screen.getByRole("button", { name: /Rohan/ }));
-    expect(useAppStore.getState().activeTab).toBe("people");
-    expect(useAppStore.getState().searchQuery).toBe("Rohan");
+    expect(useAppStore.getState()).toMatchObject({ activeTab: "people", pendingOpen: { kind: "person", id: 3 }, searchQuery: "" });
     expect(onClose).toHaveBeenCalled();
     vi.unstubAllGlobals();
   });

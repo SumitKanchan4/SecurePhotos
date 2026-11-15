@@ -81,6 +81,18 @@ describe("DocumentsView", () => {
     expect(screen.getByRole("heading", { name: "Medical" })).toBeInTheDocument();
   });
 
+  it("searches words in the papers with its own field, never the Search page's text", async () => {
+    useAppStore.setState({ searchQuery: "zebra" });
+    render(<DocumentsView />);
+    await screen.findByText("Croma receipt");
+    expect(calls.some((c) => c.url.includes("q=zebra"))).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Search documents" }));
+    await act(async () => {
+      fireEvent.change(screen.getByRole("textbox", { name: "Search documents" }), { target: { value: "croma" } });
+    });
+    expect(calls.some((c) => c.url.includes("/api/documents?q=croma"))).toBe(true);
+  });
+
   it("pins with exactly one request", async () => {
     render(<DocumentsView />);
     await screen.findByText("Croma receipt");
