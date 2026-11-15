@@ -15,8 +15,8 @@ Hard constraints:
 ## What the owner asked for (2026-11-15)
 
 1. Local restoration of old, unclear photos (faces, scratches, blur) and on-demand colorization of B&W photos.
-2. A central setting to **automatically colorize B&W photos**: keep both / only the colorized one / ask / off.
-3. The same for **blurry photos** (restore automatically / ask / off).
+2. A central setting for **B&W photos**: manual per photo (asks replace or copy each time) or automatic (with or without keeping the original).
+3. The same for **blurry photos**.
 4. A **screen showing photos being processed** (vault photos blurred), with an indicator to reach it.
 5. A plan with estimates; separate branch; testing by both of us with the owner's B&W and blurry photos before merging.
 
@@ -39,12 +39,14 @@ Licensing (**owner decision D1, 2026-11-15: keep MIT, permissive models only**):
 - In Photos, by default only one of the pair shows (per the setting); the viewer shows a **"Original / AI version" switch** and a before/after slider.
 - Deleting the AI version never touches the original; moving the original to Trash asks what to do with its versions.
 
-### Settings → Photos & AI → "Old photos" (new group)
-- **Black-and-white photos:** Off · **Ask me** (default) · Colorize, keep both · Colorize, show only the color version (original kept, one click away).
-- **Blurry or faded faces:** Off · **Ask me** (default) · Restore, keep both · Restore, show only the restored version.
-- **Scratches and creases:** always on demand (needs the user to check the marked damage).
-- **When to run:** only while plugged in (default on, like enhancing) · Speed: Balanced (default) / Best quality (slower).
-- "Ask me" = after an import, a card "12 black-and-white photos and 5 blurry faces found. Colorize / Restore / Not now."
+### Settings → Photos & AI → "Old photos" (new group) — owner decision D2, 2026-11-15
+For **black-and-white photos** and, separately, for **blurry or faded faces**:
+- **How:** **Manual** (default) — only when I ask, per photo (viewer or selection bar) · **Automatic** — after import, in the background.
+- **Manual:** each time it runs, the app asks **"Replace the photo" or "Keep a copy"** (with a "remember my choice" tick). "Keep a copy" adds the AI version next to the original.
+- **Automatic:** a switch **"Also keep the original"** (on = keep both; off = show only the new version).
+- **Safety net (applies to "Replace" and to Automatic without keeping the original):** the original is never deleted. It is kept hidden as the photo's earlier version and can be brought back from the viewer ("Show original" / "Restore original"); it is removed only if the user deletes it themselves. Old family photos are irreplaceable and AI can change a face.
+- **Scratches and creases:** always manual (the user checks the marked damage first).
+- **When to run (automatic):** only while plugged in (default on, like enhancing) · Speed: Balanced (default) / Best quality (slower).
 
 ### Detection on import (cheap, CPU)
 - **B&W:** colour saturation of a small thumbnail (also sepia-toned prints).
@@ -68,12 +70,12 @@ Sizes: S ≈ half a day of my work, M ≈ 1 day, L ≈ 2 days (each including te
 | # | Step | Size | Notes |
 |---|---|---|---|
 | A0 | **Spike & benchmark** on the owner's photos: GFPGAN CPU time/RAM, DDColor large vs tiny quality, B&W and blur detection thresholds, int8 vs fp32. Output: a comparison page (before/after) for the owner to judge. | M | Owner provides ~20–30 B&W and blurry photos. Runs read-only on a copy. |
-| A1 | **Boards** for the Activity screen, viewer version switch + before/after, Settings "Old photos", the "found on import" card, the scratch mask view. Owner approves. | M | Design first, like the redesign. |
+| A1 | **Boards** for the Activity screen, viewer version switch + before/after, Settings "Old photos", the "replace or keep a copy" prompt, the scratch mask view. Owner approves. | M | Design first, like the redesign. |
 | A2 | **Engine foundation:** model manager (download / import file / SHA-256 manifest / status in Settings → Storage), CPU ONNX session tuning (threads, tiling), a background **job queue** with progress, cancel, pause, battery rule; versions in the DB (`derived_from_id`, `ai_kind`) + IPTC labelling on export. | L | Reused by every feature. |
 | A3 | **Colorize** on demand (DDColor, Lab chroma transfer at full resolution, intensity slider, Natural/Vivid). | M | First visible feature; good first joint test. |
 | A4 | **Activity screen** + indicator (rail + header), vault items blurred. | M | |
 | A5 | **Restore faces** on demand (GFPGAN, align with YuNet landmarks, feathered paste-back, strength + per-face toggles, SFace identity check). | L | |
-| A6 | **Auto rules**: B&W and blur detection on import, Settings "Old photos", "found on import" card, keep both / only new / ask. | M | |
+| A6 | **Auto rules**: B&W and blur detection on import, Settings "Old photos" (manual / automatic, keep original), the "replace or keep a copy" prompt with remember-my-choice, hidden original + "Restore original". | M | |
 | A7 | **Repair scratches** (detector → editable mask → LaMa on crops). | L | Most UI work (brush editor). Could move after the first merge if the rest is ready. |
 | A8 | **Full test round with the owner** on real photos; fixes; docs (design system, history, THIRD_PARTY_NOTICES, licences); then PR `feature/ai-restore` → `master` with owner approval. | M | |
 
@@ -88,7 +90,7 @@ Total ≈ 10–12 days of work across 9 steps; first usable piece (colorize + Ac
 ## Decisions needed from the owner (asked one at a time)
 
 - ~~D1~~ Licensing: decided 2026-11-15 — keep MIT, permissive models only.
-- **D2** Default for the auto rules (recommended: "Ask me").
+- ~~D2~~ Settings: decided 2026-11-15 — Manual (default, asks replace or copy) or Automatic (keep original or not); the original is never deleted.
 - **D3** Where the Activity screen lives (decided on the A1 board).
 - **D4** Order: is scratch repair (A7) needed in the first merge?
 - **D5** Where to put the test photos (a folder path), and whether they may be read by the benchmark.
