@@ -2,7 +2,8 @@
  * Big videos (redesign R7c, approved board; formerly the video optimizer). Each video shows its
  * size now and after. "Make smaller" re-encodes so it looks and sounds the same; the original is
  * deleted once the smaller copy is checked (same length, has a picture: owner decision R7c), so
- * the space is freed at once. Old, low-resolution clips can be enhanced instead.
+ * the space is freed at once. Old, low-resolution clips can be enhanced instead; the original then
+ * goes to Trash for 30 days (owner decision R7c2).
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Loader2, Play } from "lucide-react";
@@ -141,7 +142,10 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({ onBack, 
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success) {
-        showToast(`Enhanced ${video.filename} to ${ENHANCE_TARGETS.find((t) => t.value === target)?.label ?? `${target}p`}.`, "success");
+        showToast(
+          `Enhanced ${video.filename} to ${ENHANCE_TARGETS.find((t) => t.value === target)?.label ?? `${target}p`}. The original is in Trash for 30 days.`,
+          "success",
+        );
         await load();
         onRefreshTelemetry?.();
       } else {
@@ -249,6 +253,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({ onBack, 
           {oldClips.length > 0 && (
             <section className="vid-section" aria-labelledby="vid-old">
               <h2 id="vid-old" className="dash-section-title">Old or low-quality clips</h2>
+              <p className="dash-muted">Enhancing sharpens and cleans up the picture. The original goes to Trash, so you can restore it for 30 days.</p>
               <div className="vid-list">
                 {oldClips.map((v) =>
                   row(
