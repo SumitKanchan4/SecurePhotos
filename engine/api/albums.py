@@ -25,6 +25,8 @@ class AlbumResponse(BaseModel):
     cover_thumbnail_path: Optional[str] = None
     photo_count: int = 0
     created_at: Optional[str] = None
+    first_taken_at: Optional[str] = None  # oldest photo's date (R7d: "86 photos · Nov 2026")
+    last_taken_at: Optional[str] = None
 
 
 class AlbumCreateRequest(BaseModel):
@@ -92,6 +94,8 @@ async def list_albums() -> List[AlbumResponse]:
                 a.id, a.name, a.description, a.is_vault, a.vault_type, a.is_favorite,
                 a.created_at, a.cover_photo_id,
                 COUNT(pa_p.id) AS photo_count,
+                MIN(pa_p.taken_at) AS first_taken_at,
+                MAX(pa_p.taken_at) AS last_taken_at,
                 p.id AS valid_cover_id,
                 p.thumbnail_path AS cover_thumbnail_path
             FROM albums a
@@ -144,6 +148,8 @@ async def list_albums() -> List[AlbumResponse]:
                     cover_thumbnail_path=cover_thumb,
                     photo_count=photo_count,
                     created_at=str(r["created_at"]) if r["created_at"] else None,
+                    first_taken_at=str(r["first_taken_at"]) if r["first_taken_at"] else None,
+                    last_taken_at=str(r["last_taken_at"]) if r["last_taken_at"] else None,
                 )
             )
 

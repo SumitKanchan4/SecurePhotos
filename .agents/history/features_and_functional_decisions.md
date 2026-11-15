@@ -5747,3 +5747,29 @@ Boards for the remaining screens (Albums, Stories, Documents, Dashboard, Duplica
 - Frontend: `src/components/DashboardView.tsx` (one-time note), `src/components/dashboard/dashFormat.ts` (`oldOriginalsNote`), `src/components/VideoOptimizerView.tsx` (Enhance wording), `.dash-note-row` in `src/index.css`.
 - Tests: `engine/tests/test_videos.py` (+4: enhanced original in Trash and purging it keeps the enhanced copy and its thumbnail; original kept when the enhanced copy fails; old leftovers removed / moved to Trash / left alone; runs once and the report can be dismissed); `src/components/dashboard/dashboard.test.tsx` (+3: note wording, note until OK, Enhance toast). Mutation checks: skipping either check, sharing the thumbnail, running more than once, and showing a dismissed note each fail a test. Engine suite 254 passed; frontend 112 passed; tsc, build and ruff pass.
 - Validated in the UI (Playwright, throwaway library with a 182 MB hidden leftover and a 320 × 240 clip): on start the leftover was deleted and the empty hidden folder removed; the Dashboard note read "…182 MB freed." in both themes and disappeared after OK; enhancing the clip to HD left the original on disk as a Trash item with its own thumbnail and "30 days left"; contrast scan: no problems; no console errors.
+
+## 134. Redesign Step 7d: Albums
+
+### Functionality Overview
+- **Albums page**: "Albums · 4 albums", a search button (filters albums by name; Escape closes it) and a lime **+ New album** (an inline name field; Create opens the new album).
+- **Made for you** on top as compact cards: **Favourites** ("248 photos"), **Saved stories** ("6 stories") and, once a collage has been saved, **Collages**.
+- **Your albums** as big 4:3 covers with the name and "86 photos · Nov 2026" (the months the photos were taken; "Empty" for an empty album). The automatic Collages album is no longer mixed in with your own albums.
+- **Album page**: "← Albums", the title, "86 photos · 8–12 Nov 2026", **Slideshow**, lime **+ Add photos**, and a "…" menu with Rename, Choose cover photo, Move album to Vault and (in red, set apart) Delete album (photos stay). The photos use the same grid as Photos (month sections, scrubber, hearts).
+  - **Rename** edits the title in place (Enter saves, Escape cancels).
+  - **Choose cover photo**: "Click the photo you want as the cover." Clicking a photo sets it ("Cover photo changed.") instead of opening it.
+  - **Move album to Vault** and **Delete album** ask first; Delete says the photos stay in your library.
+  - **Add photos** opens a picker of library photos not yet in the album (tick, then "Add 2 photos"), with **From this computer…** to bring new files straight into the album.
+- **Selecting photos** (Ctrl+click, or a click once one is selected) shows one bar: "2 selected · Select all · Remove from album · Add to album · Make collage (2–9 photos) · Download · Move to Trash · ×". Escape clears it. In Favourites the first action is "Remove from Favourites". A selection left over from Photos is cleared when an album opens.
+- **Saved stories** shows story covers that play when clicked; empty states explain what goes there.
+- **Fixed (bug)**: the old selection bar's "Move to Vault" said it moved the selected photos but encrypted the whole album without asking, and showed "moved" even when the vault was locked. Moving an album to the Vault is now only in the album menu, asks first, and the existing vault handler reports the result.
+- **Dropped**: starring albums as favourites (not on the approved board and easily confused with Favourites photos); the engine endpoint stays. The unused remove-from-album choice dialog and the old Collages placeholder image were removed.
+
+### Functional Decision Points & Rationale (owner design approved on the redesign canvas: Albums board)
+- Rare actions live behind one "…" menu so the album page stays calm; Add photos is the one strong (lime) action.
+- Remove from album needs no confirmation (the photos stay in the library); Move to Trash needs none either (Trash keeps them 30 days); deleting an album and moving it to the Vault always ask.
+
+### Technical Touchpoints
+- Engine: `engine/api/albums.py` album list returns `first_taken_at` / `last_taken_at` (trashed and vault photos excluded).
+- Frontend: `src/components/AlbumsView.tsx` rewritten (3,309 → about 280 lines); new `src/components/albums/AlbumPage.tsx`, `AddPhotosDialog.tsx`, `albumsFormat.ts`; `AlbumItem` gains the date fields; `.alb-*` styles in `src/index.css`; removed `src/components/RemoveFromAlbumModal.tsx` and `src/assets/covers/collages_default.jpg`.
+- Tests: `engine/tests/test_albums.py` (+1: date span, trashed photo not counted); `src/components/albums/albums.test.tsx` (8: date and count wording, made-for-you and own albums, search, create opens the album, menu and asking before delete, rename / cover by click / Vault after asking, selection bar remove and trash, Favourites, stale selection cleared). Mutation checks: deleting without asking, keeping a stale selection, opening the photo while choosing a cover, and listing Collages among your albums each fail a test. Engine suite 255 passed; frontend 120 passed; tsc, build and ruff pass.
+- Validated in the UI (Playwright, throwaway library, both themes): overview with Favourites (3 photos), Saved stories and four albums with covers and month spans; Goa 2026 page with "14 photos · 25 Oct 2022 – 9 Nov 2026", the menu as on the board; Ctrl+click selected two photos and Escape cleared the bar; Choose cover set the clicked photo without opening the viewer; the picker added two photos (16 photos after); Delete asked and Escape kept the album; Favourites has no album menu; contrast scan: no problems; no console errors. The picker's tiles first collapsed to 2 px rows (fixed with `grid-auto-rows: max-content`).

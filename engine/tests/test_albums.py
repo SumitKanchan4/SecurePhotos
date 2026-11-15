@@ -214,3 +214,38 @@ async def test_album_rename_workflow():
 
 
 
+
+
+@pytest.mark.asyncio
+async def test_album_list_gives_the_date_span_of_its_photos():
+    """R7d: the album list says when the photos were taken ("86 photos · Nov 2026"); trashed photos don't count."""
+    await run_migrations()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        ids = [await create_album_test_photo(tmp_path, f"span_{k}.jpg") for k in range(3)]
+        conn = await get_db_connection()
+        for pid, taken in zip(ids, ("2026-11-08 09:00:00", "2026-11-12 18:30:00", "2019-01-01 00:00:00")):
+            await conn.execute("UPDATE photos SET taken_at = ? WHERE id = ?;", (taken, pid))
+        await conn.execute("UPDATE photos SET trashed_at = CURRENT_TIMESTAMP WHERE id = ?;", (ids[2],))
+        await conn.commit()
+        await conn.close()
+        album_id = None
+        try:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                created = await client.post("/api/albums", json={"name": "Goa span", "photo_ids": ids})
+                album_id = created.json()["id"]
+                listed = next(a for a in (await client.get("/api/albums")).json() if a["id"] == album_id)
+                assert listed["photo_count"] == 2
+                assert listed["first_taken_at"].startswith("2026-11-08")
+                assert listed["last_taken_at"].startswith("2026-11-12")
+                empty = await client.post("/api/albums", json={"name": "Empty span"})
+                empty_listed = next(a for a in (await client.get("/api/albums")).json() if a["id"] == empty.json()["id"])
+                assert empty_listed["first_taken_at"] is None
+                await client.delete(f"/api/albums/{empty.json()['id']}")
+        finally:
+            conn = await get_db_connection()
+            if album_id:
+                await conn.execute("DELETE FROM albums WHERE id = ?;", (album_id,))
+            await conn.execute(f"DELETE FROM photos WHERE id IN ({','.join('?' for _ in ids)});", ids)
+            await conn.commit()
+            await conn.close()
