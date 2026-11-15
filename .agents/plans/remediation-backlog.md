@@ -192,7 +192,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 - The tests use `settings.database_path` (the developer's real `data/` library) and only back up and restore `vault_configs`. Tests insert and delete rows in the live DB. Give pytest its own temporary data folder (`SECUREPHOTOS_DATA_DIR` set in `conftest.py` before `engine.config` is imported).
 - Several vault tests call `/api/vault/reset` with no body; C6 makes the phrase required, so update those tests in C6.
 
-### Q5 · Split oversized frontend components — `in-progress` (= review item 15; viewer split 2026-11-15, history §143; person page to be redesigned and split as R10, board approved 2026-11-15)
+### Q5 · Split oversized frontend components — `done` (= review item 15; 2026-11-15: viewer §143, person page §144 (R10), vault lock card and App startup §146. PeopleView 1,764 → 480, Lightbox 1,412 → 1,195, VaultView 1,309 → 1,142, App 1,301 → 1,087. StoryPlayerModal left as one feature; the vault's setup screen, shield, locked-album page and Documents tab still use the old look: a design question)
 - PeopleView (3.3k lines), AlbumsView (3.3k), StoriesView (2.2k), VaultView (2k), Lightbox and DashboardView (1.8k), App (1.7k). Split by feature with hooks.
 
 ---
