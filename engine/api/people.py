@@ -581,7 +581,8 @@ async def get_person_photos(person_id: int):
         async with conn.execute(
             """
             SELECT p.id, p.filename, p.filepath, p.thumbnail_path, p.preview_path,
-                   p.width, p.height, p.taken_at, p.created_at, p.is_favorite, p.mime_type
+                   p.width, p.height, p.taken_at, p.created_at, p.is_favorite, p.mime_type,
+                   p.is_optimized, p.is_enhanced
             FROM photos p
             JOIN faces f ON f.photo_id = p.id
             WHERE f.person_id = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
@@ -633,7 +634,10 @@ async def update_person(person_id: int, payload: UpdatePersonRequest) -> PersonR
             # Backwards-compatible aliases
             "Wife", "Husband", "Partner", "Son", "Daughter", "Mother", "Father", "Brother", "Sister",
         }
-        if new_rel in close_relationships:
+        # Only when the relationship is being changed (and Close one isn't set in the same request):
+        # otherwise turning Close one off for a Family member was silently undone (R10).
+        relationship_changed = payload.relationship_type is not None and new_rel != row["relationship_type"]
+        if relationship_changed and payload.is_close_one is None and new_rel in close_relationships:
             new_close = True
 
         await conn.execute(
@@ -741,6 +745,39 @@ async def unlink_photo_from_person(person_id: int, photo_id: int) -> dict:
             "unlinked_faces": unlinked_faces,
             "remaining_photos": remaining_photos,
         }
+    finally:
+        await conn.close()
+
+
+class CoverPhotoRequest(BaseModel):
+    """The photo whose face of this person becomes their profile photo."""
+    photo_id: int
+
+
+@router.post("/{person_id}/cover", status_code=status.HTTP_200_OK)
+async def set_person_cover(person_id: int, payload: CoverPhotoRequest) -> dict:
+    """Uses this person's face in the chosen photo as their profile photo (person page, R10).
+
+    The photo must be a library photo (not in Trash or the vault) in which the person appears.
+    """
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(
+            """
+            SELECT f.id FROM faces f
+            JOIN photos p ON p.id = f.photo_id
+            WHERE f.person_id = ? AND f.photo_id = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
+            ORDER BY f.quality_score DESC
+            LIMIT 1;
+            """,
+            (person_id, payload.photo_id),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="This person isn't in that photo.")
+        await conn.execute("UPDATE persons SET cover_face_id = ? WHERE id = ?;", (row["id"], person_id))
+        await conn.commit()
+        return {"status": "ok", "person_id": person_id, "cover_face_id": row["id"]}
     finally:
         await conn.close()
 

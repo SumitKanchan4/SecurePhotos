@@ -238,6 +238,8 @@ Found during R7e: running Make new stories again created a second "Remember This
 ### R9d · Search page polish (cut off, squashed field, no sideways rows, result shapes); month/year scrubber as on the board; rail in short windows — `done` (merged into feature/redesign 2026-11-15, PR #30, history §140)
 - Each step: component tests (deferred from Q3), Playwright on a throwaway library, remaining hard-coded colours of that screen cleaned up.
 
+### R10 · Person page redesigned (board approved 2026-11-15); Close one stays off for family — `done` (history §144)
+
 ### P12 · Windows Hello quick unlock — `todo` (owner 2026-11-15: not now)
 - Optional, per PC, on top of the portable master password. Design together with C2 (option B).
 
