@@ -105,6 +105,11 @@ describe("AlbumsView", () => {
     expect(within(forYou).getByRole("button", { name: /Favourites\s*2 photos/ })).toBeInTheDocument();
     expect(within(forYou).getByRole("button", { name: /Saved stories\s*1 story/ })).toBeInTheDocument();
     expect(within(forYou).getByRole("button", { name: /Collages\s*4 collages/ })).toBeInTheDocument();
+    // Big covers: Favourites shows its newest photos as a mosaic, each card has its badge.
+    const favCard = within(forYou).getByRole("button", { name: /Favourites\s*2 photos/ });
+    expect(favCard.querySelector(".alb-made-cover")?.className).toContain("is-2");
+    expect(favCard.querySelectorAll(".alb-made-cover img")).toHaveLength(2);
+    expect(Array.from(forYou.querySelectorAll(".alb-made-badge")).map((b) => b.textContent)).toEqual(["Favourites", "Stories", "Collages"]);
     const yours = screen.getByRole("region", { name: "Your albums" });
     expect(within(yours).queryByText("Collages")).not.toBeInTheDocument();
     expect(within(yours).getByText("Empty")).toBeInTheDocument();

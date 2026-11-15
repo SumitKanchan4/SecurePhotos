@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="SecurePhotos">
   <!-- SecurePhotos app icon (redesign, owner choice "C · Frosted glass, photos + lens").
        Frosted glass shield over two photos, lime-ringed lens, lime halo on a black tile.
-       Used for 48 px and up; app-icon-small.svg is the simplified version for 32 px and below. -->
+       Used at every size, as the approved board showed it (R9b). -->
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1C1C1C"/><stop offset="1" stop-color="#030303"/></linearGradient>
     <radialGradient id="halo" cx="0.5" cy="0.45" r="0.5"><stop offset="0" stop-color="#C6FF00" stop-opacity="0.42"/><stop offset="1" stop-color="#C6FF00" stop-opacity="0"/></radialGradient>

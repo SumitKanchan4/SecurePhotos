@@ -231,7 +231,7 @@ Found during R7e: running Make new stories again created a second "Remember This
 ### R9 · Owner review after R8 (2026-11-15) — before the final merge into master
 - Library folder said "No library found here", storage breakdown was lost, the app icon at small sizes wasn't the chosen one, system albums lost their big covers, and search popped up over every screen (owner chose a Search page).
 ### R9a · Library folder shown correctly; storage split by kind — `done` (history §137)
-### R9b · Chosen app icon at every size; big covers for Favourites, Saved stories and Collages — `todo`
+### R9b · Chosen app icon at every size; big covers for Favourites, Saved stories and Collages — `done` (history §138)
 ### R9c · Search page instead of the pop-up search (owner choice 2026-11-15) — `todo`
 - Each step: component tests (deferred from Q3), Playwright on a throwaway library, remaining hard-coded colours of that screen cleaned up.
 

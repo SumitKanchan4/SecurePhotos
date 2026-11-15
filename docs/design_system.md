@@ -120,6 +120,7 @@ Motion:
  64 px icon rail
 ```
 
+- **App icon**: `src/assets/brand/app-icon.svg` (the chosen "C · Frosted glass, photos + lens") at every size; `scripts/render_app_icons.py` renders `src-tauri/icons/*` from it.
 - **Icon rail** (`IconRail.tsx`, `.rail-*`), 64 px. From the top: logo, search, then Photos, Stories, Albums, People, Documents, Private Vault, a divider, then Dashboard, Trash and Settings.
   - Buttons are 44 × 44 with a 14 px radius. Hover labels come from `data-label` in pure CSS. The current section uses `--rail-active-*`.
   - The **status dot** at the bottom is lime when ready, amber while the engine starts, and red for a missing drive or an engine problem. Its reason shows on hover, and a click opens Settings.
@@ -176,7 +177,7 @@ When items are selected, one floating bar shows: "N selected · Select all · [a
 | Kind | Where | Shape |
 |---|---|---|
 | Album cover | Albums | 4:3 cover, then the name and "86 photos · Nov 2026" |
-| Made for you | Albums | Compact cards for Favourites, Saved stories and Collages |
+| Made for you | Albums | Big 16:10 covers for Favourites, Saved stories and Collages: a mosaic of up to three photos (one large, two small), a lime badge with the icon, and the name and count underneath |
 | Story card | Stories, Albums → Saved stories | Tall 150 × 250, radius 18, title on the photo. Save and Hide appear on hover or keyboard focus |
 | Collage idea | Stories | 2 × 2 preview, title and contents, one Save (then Open) |
 | Document | Documents | The real page on a white "paper" sheet, title, "Receipts & bills · 9 Nov 2026", a pin and a "…" menu. Documents must never look like photo tiles |

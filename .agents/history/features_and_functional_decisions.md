@@ -5847,3 +5847,23 @@ Owner review after R8 (2026-11-15) raised five points: the library-folder warnin
 - Mutation checks: asking the window program instead of the engine, counting vault before Trash, listing empty kinds, and dropping Story music each fail a test. Engine suite 258 passed; frontend 130 passed; tsc, build and ruff pass.
 - Validated in the UI (Playwright, throwaway library, both themes): Settings shows the engine's folder as Connected and both screens list nine kinds (Videos 183 MB … Collages 5 KB) adding up to 224 MB. The drive bar shows the library sliver. Contrast scan: no problems; no console errors.
 
+## 138. Redesign Step 9b: The Chosen App Icon at Every Size; Big Covers for Albums Made for You
+
+### Functionality Overview
+- **App icon**: the owner chose "C · Frosted glass, photos + lens", and the approved board showed that art at every size, including the 36 px icon rail and the 32 px taskbar. R0 had instead put a simplified shield-and-dot mark of its own at 32 px and below and in the rail, so the app didn't show the chosen icon. The chosen art is now used everywhere: icon rail, favicon, and all icon files (`icon.ico` at 16 to 256 px, PNGs). The simplified mark is removed.
+- **Albums made for you** are big covers again, as before the redesign but in the new look:
+  - a 16:10 mosaic of up to three photos (one large, two small): your newest favourites for Favourites, the first saved stories' covers for Saved stories, the collage cover for Collages;
+  - a lime badge with the icon in the corner (Favourites, Stories, Collages);
+  - the name and count underneath, like your own albums.
+  With no photos, the badge's icon shows large instead.
+
+### Functional Decision Points & Rationale
+- **Follow the approved board**: the owner picked the full icon, so the small sizes use it too. At 16 px it is softer than a simplified mark, but it is recognisably the chosen icon.
+- **Name and count sit under the cover**, not on the photo, so they stay readable in both themes on any photo; the lime badge carries the "made for you" identity.
+
+### Technical Touchpoints
+- `src/assets/brand/app-icon.svg` used by `src/components/shell/IconRail.tsx` and `index.html`; `app-icon-small.svg` removed; `scripts/render_app_icons.py` renders every size from the one SVG; `src-tauri/icons/*` re-rendered.
+- `src/components/AlbumsView.tsx` (`SystemCover`, up to three favourite ids); `.alb-made*` styles (old `.alb-foryou*` removed).
+- Tests: `albums.test.tsx` (made-for-you mosaic and badges). Mutation check: showing only one favourite in the mosaic fails a test. Frontend 130 passed; tsc and build pass.
+- Validated in the UI (Playwright, throwaway library, both themes): the rail and favicon use the chosen icon; Favourites and Saved stories show three-photo mosaics, Collages one; badges read Favourites / Stories / Collages; contrast scan: no problems; no console errors.
+
