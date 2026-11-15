@@ -6,15 +6,11 @@ import React, { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../store/useAppStore";
 import { apiFetch } from "../../services/api";
-import type { DashboardOverview } from "../../types";
+import type { DashboardOverview, LibraryLocation } from "../../types";
+import { StorageBreakdown } from "../dashboard/StorageBreakdown";
 import { formatSize } from "../import/importFormat";
 import { SettingRow, SettingsGroup } from "./SettingsKit";
 
-interface LibraryLocation {
-  path: string;
-  is_custom: boolean;
-  has_database: boolean;
-}
 
 export const StorageSettings: React.FC = () => {
   const showToast = useAppStore((s) => s.showToast);
@@ -23,7 +19,12 @@ export const StorageSettings: React.FC = () => {
   const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
-    invoke<LibraryLocation>("get_library_location").then(setLocation).catch(() => setLocation(null));
+    // The engine knows which folder it really uses; the window program can only guess (in a
+    // development build it looks next to its own .exe and finds nothing).
+    apiFetch("/api/system/library")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((data: LibraryLocation) => setLocation(data))
+      .catch(() => invoke<LibraryLocation>("get_library_location").then(setLocation).catch(() => setLocation(null)));
     apiFetch("/api/system/dashboard")
       .then((res) => (res.ok ? res.json() : null))
       .then(setUsage)
@@ -65,16 +66,14 @@ export const StorageSettings: React.FC = () => {
           {switching ? "Choosing…" : "Switch library…"}
         </button>
       </SettingRow>
-      <SettingRow
-        title="Space used"
-        description={
-          app
-            ? `Photos and videos ${formatSize(app.media_bytes)} · app data ${formatSize(app.app_system_bytes)}`
-            : "Measuring…"
-        }
-      >
+      <SettingRow title="Space used" description={app ? "What SecurePhotos keeps in this folder." : "Measuring…"}>
         {app && <span className="settings-value">{formatSize(app.total_bytes)}</span>}
       </SettingRow>
+      {app && (
+        <div className="settings-usage">
+          <StorageBreakdown stats={app} />
+        </div>
+      )}
       {drive && drive.total_bytes > 0 && (
         <SettingRow title={`Free on ${drive.volume_name || drive.drive_letter}`} description={`of ${formatSize(drive.total_bytes)} on this drive`}>
           <span className="settings-value">{formatSize(drive.free_bytes)}</span>

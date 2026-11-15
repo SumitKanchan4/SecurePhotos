@@ -214,3 +214,65 @@ async def test_app_settings_get_and_patch():
         assert verified["reduce_motion"] is True
 
 
+
+
+@pytest.mark.asyncio
+async def test_storage_split_by_kind_counts_each_file_once():
+    """Each file counts once, in the first kind that fits: Trash, Vault, documents, collages, videos, photos."""
+    await run_migrations()
+
+    def by_key(stats):
+        return {c.key: c.bytes for c in stats.categories}
+
+    before = by_key(calculate_app_storage_footprint(force_refresh=True))
+    rows = [
+        ("r9a_photo.jpg", "originals/2026/01/r9a_photo.jpg", 1_000, "image/jpeg", 0, 0, None),
+        ("r9a_clip.mp4", "originals/2026/01/r9a_clip.mp4", 20_000, "video/mp4", 0, 0, None),
+        ("r9a_bill.pdf", "originals/2026/01/r9a_bill.pdf", 300, "application/pdf", 0, 1, None),
+        ("r9a_secret.jpg", "originals/2026/01/r9a_secret.jpg.enc", 4_000, "image/jpeg", 1, 0, None),
+        ("r9a_collage.jpg", "originals/collages/2026/01/r9a_collage.jpg", 50_000, "image/jpeg", 0, 0, None),
+        # A trashed vault video counts as Trash only.
+        ("r9a_old.mp4", "originals/2026/01/r9a_old.mp4.enc", 700_000, "video/mp4", 1, 0, "2026-11-01 10:00:00"),
+    ]
+    from engine.config import settings
+
+    song = settings.music_dir / "r9a_song.mp3"
+    song.parent.mkdir(parents=True, exist_ok=True)
+    song.write_bytes(bytes(9_000))
+    conn = await get_db_connection()
+    try:
+        for name, path, size, mime, enc, doc, trashed in rows:
+            await conn.execute(
+                "INSERT INTO photos (filename, filepath, file_size, mime_type, is_encrypted, is_document, trashed_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?);",
+                (name, path, size, mime, enc, doc, trashed),
+            )
+        await conn.commit()
+        after_stats = calculate_app_storage_footprint(force_refresh=True)
+        after = by_key(after_stats)
+        kinds = ("photos", "videos", "documents", "vault", "collages", "music", "trash")
+        delta = {k: after.get(k, 0) - before.get(k, 0) for k in kinds}
+        assert delta == {
+            "photos": 1_000, "videos": 20_000, "documents": 300, "vault": 4_000,
+            "collages": 50_000, "music": 9_000, "trash": 700_000,
+        }
+        assert sum(after.values()) == after_stats.total_bytes
+    finally:
+        song.unlink(missing_ok=True)
+        await conn.execute("DELETE FROM photos WHERE filename LIKE 'r9a_%';")
+        await conn.commit()
+        await conn.close()
+        calculate_app_storage_footprint(force_refresh=True)
+
+
+@pytest.mark.asyncio
+async def test_library_location_is_the_engines_own_folder():
+    """Settings shows the folder the engine really uses, not a guess from the window program."""
+    await run_migrations()
+    from engine.config import settings
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/api/system/library")
+    assert res.status_code == 200
+    assert res.json() == {"path": str(settings.data_dir), "has_database": True}

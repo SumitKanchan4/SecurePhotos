@@ -221,6 +221,21 @@ export interface AppStorageStats {
   database_bytes: number;
   models_bytes: number;
   orphaned_bytes?: number;
+  /** What the space is used for (R9a); sizes sum to total_bytes. */
+  categories?: StorageCategory[];
+}
+
+export type StorageCategoryKey = "photos" | "videos" | "documents" | "vault" | "collages" | "music" | "trash" | "thumbnails" | "app";
+
+export interface StorageCategory {
+  key: StorageCategoryKey;
+  bytes: number;
+}
+
+/** The library folder the engine is actually using (GET /api/system/library). */
+export interface LibraryLocation {
+  path: string;
+  has_database: boolean;
 }
 
 export interface DriveStorageStats {

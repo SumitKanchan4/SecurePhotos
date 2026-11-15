@@ -12,6 +12,7 @@ import { apiFetch } from "../services/api";
 import { DuplicatesView } from "./DuplicatesView";
 import { VideoOptimizerView } from "./VideoOptimizerView";
 import { formatSize, oldOriginalsNote, plural, storageSegments } from "./dashboard/dashFormat";
+import { StorageBreakdown } from "./dashboard/StorageBreakdown";
 import type { OldOriginalsCleanup } from "./dashboard/dashFormat";
 
 interface DashboardViewProps {
@@ -156,7 +157,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
           <div className="dash-card-head">
             <h2 id="dash-storage">Storage</h2>
             <span className="dash-muted">
-              {formatSize(drive.free_bytes)} free of {formatSize(drive.total_bytes)}
+              SecurePhotos uses {formatSize(overview?.app_storage?.total_bytes || 0)} · {formatSize(drive.free_bytes)} free of{" "}
+              {formatSize(drive.total_bytes)}
             </span>
           </div>
           <div
@@ -175,7 +177,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
                 {s.label} {formatSize(s.bytes)}
               </span>
             ))}
+            <span>
+              <span className="dash-swatch dash-bar-free" aria-hidden="true" />
+              Free {formatSize(drive.free_bytes)}
+            </span>
           </div>
+          <h3 className="dash-usage-title">What SecurePhotos uses</h3>
+          <StorageBreakdown stats={overview?.app_storage} />
         </section>
       )}
 
