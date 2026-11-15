@@ -44,3 +44,25 @@ async def test_auto_lock_notice_uses_the_configured_time():
     assert vault.auto_lock_message() == err.value.detail
     vault.set_auto_lock_seconds(60)
     assert vault.auto_lock_message() == "Vault locked automatically after 1 minute of inactivity."
+
+
+async def test_activity_on_the_vault_screen_keeps_the_engine_open():
+    """M8 follow-up: the screen reports mouse/key activity, so the engine's clock matches its countdown."""
+    from httpx import ASGITransport, AsyncClient
+
+    vault.set_auto_lock_seconds(300)
+    vault._open_session(secrets.token_bytes(32), pin_verifier=None)
+    vault.ACTIVE_VAULT_SESSION["last_activity"] = time.time() - 250  # Idle for the engine, active on screen.
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post("/api/vault/activity")
+        assert res.status_code == 200
+        assert time.time() - vault.ACTIVE_VAULT_SESSION["last_activity"] < 2
+
+        # Idle past the limit: the report is refused and the vault is locked.
+        vault.ACTIVE_VAULT_SESSION["last_activity"] = time.time() - 301
+        res = await client.post("/api/vault/activity")
+        assert res.status_code == 401
+        assert vault.ACTIVE_VAULT_SESSION["is_unlocked"] is False
+
+        # Locked: still refused.
+        assert (await client.post("/api/vault/activity")).status_code == 401
