@@ -45,18 +45,20 @@ The owner rejected the first board as too complex for a normal user (no "sepia",
   1. **Add colour to old grey photos** (black-and-white and brownish prints)
   2. **Fix faded or yellowed colours** (old colour prints)
   3. **Sharpen blurry faces**
+  4. **Remove scratches and spots** (creases, scratches, dust on old prints) — added 2026-11-16: the owner asked that it be presented like the other improvements, not as a special tool
 - One switch: **"Keep original"** (owner wording, 2026-11-16). On (default): both photos are kept and linked; from either one the viewer can switch to the other ("Original" / "Improved"). Off: once the improved photo is made, the original **moves to Trash for 30 days** (restorable, also from the viewer's "Original" switch while it is in Trash), then is deleted for good, the same as Enhance today (owner decision 2026-11-16).
-- The app decides the rest: Natural colour style (Vivid only from the viewer or the sepia fallback), automatic work waits while on battery, models are managed in Storage. Scratch repair has no setting: always by hand from the viewer.
+- The app decides the rest: Natural colour style (Vivid only from the viewer or the sepia fallback), automatic work waits while on battery, models are managed in Storage.
+- **Remove scratches and spots** follows the same flow as the others (result first, before/after, Keep both / Replace / Discard). The brush is only an optional **"Touch up"** on the result (lime shows what was removed; paint a missed scratch or erase to bring a detail back). Automatic mode repairs only marks the detector is very sure of (stricter threshold, thin-line shapes), because a false mark erases real detail.
 - **When I ask:** the viewer shows the result first (before/after); then **"Keep both" / "Replace the photo" / "Discard"** with "Remember my choice". Asking after the result (not before) was proposed on the board and accepted.
 - **Safety net (applies to "Replace the photo" and to "Keep original" off):** the original is never deleted on the spot. It goes to Trash for 30 days, stays linked to the improved photo, and can be brought back from the viewer ("Restore original") or from Trash; after 30 days it is deleted for good. Old family photos are irreplaceable and AI can change a face, so the 30 days are the window to notice.
-- The viewer's old-photo panel appears **only after** the user picks Colorize / Fix colours / Restore faces / Repair scratches from the "…" menu; the normal viewer is unchanged.
+- The viewer's old-photo panel appears **only after** the user picks Add colour / Fix faded colours / Sharpen faces / Remove scratches and spots from the "…" menu (each shown only when it fits the photo); the normal viewer is unchanged.
 
 ### Detection on import (cheap, CPU)
 - **B&W:** colour saturation of a small thumbnail (also sepia-toned prints).
 - **Blurry / faded faces:** the face scan already computes a sharpness/quality score per face; flag photos with faces below a threshold (tuned on the owner's photos).
 
 ### On-demand actions (viewer, selection bar)
-- **Colorize**, **Restore faces**, **Repair scratches** (opens a mask view: marked damage, brush/eraser, then Repair), **Enhance** (existing).
+- **Add colour**, **Fix faded colours**, **Sharpen faces**, **Remove scratches and spots** (result first; optional "Touch up" brush/eraser afterwards), **Enhance** (existing).
 - Result appears as a new version; the viewer opens on it with before/after.
 - Controls: strength slider (blends cached results, instant), colour intensity, per-face on/off; an identity check (SFace) softens a restored face that no longer looks like the same person.
 
@@ -79,7 +81,7 @@ Sizes: S ≈ half a day of my work, M ≈ 1 day, L ≈ 2 days (each including te
 | A4 | **Activity screen** + indicator (rail + header), vault items blurred. | M | |
 | A5 | **Restore faces** on demand (GFPGAN, align with YuNet landmarks, feathered paste-back, strength + per-face toggles, SFace identity check). | L | |
 | A6 | **Auto rules**: B&W and blur detection on import, Settings "Old photos" (manual / automatic, keep original), the "replace or keep a copy" prompt with remember-my-choice, hidden original + "Restore original". | M | |
-| A7 | **Repair scratches** (detector → editable mask → LaMa on crops). | L | Most UI work (brush editor). Could move after the first merge if the rest is ready. |
+| A7 | **Remove scratches and spots** (detector → LaMa on damaged crops; result first; optional Touch up with brush/eraser; strict threshold for Automatic). | L | Most UI work (Touch up editor). Could move after the first merge if the rest is ready. Needs a few scratched test photos from the owner. |
 | A8 | **Full test round with the owner** on real photos; fixes; docs (design system, history, THIRD_PARTY_NOTICES, licences); then PR `feature/ai-restore` → `master` with owner approval. | M | |
 
 Total ≈ 10–12 days of work across 9 steps; first usable piece (colorize + Activity) after A0–A4.
