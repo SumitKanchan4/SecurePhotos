@@ -389,6 +389,30 @@ CREATE TABLE IF NOT EXISTS video_processing_queue (
 CREATE INDEX IF NOT EXISTS idx_video_queue_status
 ON video_processing_queue (status, created_at);
 
+-- ── 20a. Old-photo improvements queue (H10 / A2a) ──────────────────────────
+-- One row per "improve this photo" request: add colour, fix faded colours, sharpen
+-- faces, remove scratches. status: queued -> working -> review (manual: waits for
+-- keep both / replace / discard) or done; failed / cancelled. A crash turns working
+-- back into queued. result_path is the staged result (encrypted for vault photos).
+CREATE TABLE IF NOT EXISTS restore_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    photo_id INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,             -- 'colour' | 'fade' | 'faces' | 'scratches'
+    params TEXT,                    -- JSON, e.g. {"style": "natural"}
+    origin TEXT NOT NULL DEFAULT 'manual',  -- 'manual' | 'auto'
+    status TEXT NOT NULL DEFAULT 'queued',
+    progress INTEGER NOT NULL DEFAULT 0,    -- 0-100
+    result_path TEXT,
+    result_photo_id INTEGER,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    finished_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_restore_jobs_status ON restore_jobs (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_restore_jobs_photo ON restore_jobs (photo_id);
+
 -- ── 20b. Vault Operation Journal (crash recovery) ──────────────────────────
 -- One row per photo while it is being moved into or out of the vault.
 -- file_pairs is JSON [[plain_path, enc_path], ...] (portable relative paths).

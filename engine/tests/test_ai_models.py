@@ -105,3 +105,126 @@ def test_installer_bundles_the_build_folder_not_the_live_library():
     assert not any(src.startswith("../data/") for src in resources)
     assert resources.get("../THIRD_PARTY_NOTICES.md") == "THIRD_PARTY_NOTICES.md"  # Licences travel with the models.
     assert ai_models.get_bundled_models_dir() == root / "build" / "models"  # Development runs use the same folder.
+
+
+# ── H10: old-photo models, downloaded on first use ──────────────────────────
+
+
+def _on_demand(monkeypatch, data: bytes, key: str = "gfpgan") -> dict:
+    spec = {**ai_models.ON_DEMAND_MODELS[key], "sha256": hashlib.sha256(data).hexdigest(), "size": str(len(data))}
+    monkeypatch.setitem(ai_models.ON_DEMAND_MODELS, key, spec)
+    ai_models._verified_cache.clear()
+    return spec
+
+
+def test_old_photo_models_are_pinned_to_this_repos_release_and_not_bundled():
+    assert set(ai_models.ON_DEMAND_MODELS) == {"ddcolor_large", "ddcolor_artistic", "gfpgan"}
+    for spec in ai_models.ON_DEMAND_MODELS.values():
+        assert spec["url"] == "https://github.com/SumitKanchan4/SecurePhotos/releases/download/models-v1/" + spec["file"]
+        assert re.fullmatch(r"[0-9a-f]{64}", spec["sha256"]) and int(spec["size"]) > 100_000_000
+        assert spec["license"] == "Apache-2.0"
+    assert not set(ai_models.ON_DEMAND_MODELS) & set(ai_models.MODELS)  # The installer stays small.
+
+
+def test_download_reports_progress_and_keeps_only_a_verified_file(tmp_path, monkeypatch):
+    data = b"x" * (3 * 1024 * 1024 + 5)
+    spec = _on_demand(monkeypatch, data)
+    monkeypatch.setattr(ai_models.urllib.request, "urlopen", lambda *a, **k: FakeResponse(data))
+    seen = []
+    path = ai_models.fetch_on_demand("gfpgan", tmp_path, on_progress=lambda d, t: seen.append((d, t)))
+    assert path.read_bytes() == data and seen[-1] == (len(data), len(data)) and len(seen) == 4
+    assert ai_models.is_model_ready("gfpgan", tmp_path) and ai_models.model_path("gfpgan", tmp_path) == tmp_path / spec["file"]
+
+
+def test_cancelled_download_leaves_nothing_behind(tmp_path, monkeypatch):
+    import threading
+
+    data = b"y" * (2 * 1024 * 1024)
+    _on_demand(monkeypatch, data)
+    monkeypatch.setattr(ai_models.urllib.request, "urlopen", lambda *a, **k: FakeResponse(data))
+    stop = threading.Event()
+    stop.set()
+    with pytest.raises(ai_models.DownloadCancelled):
+        ai_models.fetch_on_demand("gfpgan", tmp_path, cancel=stop)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_missing_or_damaged_model_is_never_used(tmp_path, monkeypatch):
+    spec = _on_demand(monkeypatch, b"the real weights")
+    with pytest.raises(FileNotFoundError):
+        ai_models.model_path("gfpgan", tmp_path)
+    (tmp_path / spec["file"]).write_bytes(b"the real weightz")  # Same size, one byte off.
+    assert not ai_models.is_model_ready("gfpgan", tmp_path)
+    with pytest.raises(FileNotFoundError):
+        ai_models.model_path("gfpgan", tmp_path)
+
+
+def test_a_replaced_file_is_checked_again(tmp_path, monkeypatch):
+    import os
+
+    spec = _on_demand(monkeypatch, b"good weights")
+    target = tmp_path / spec["file"]
+    target.write_bytes(b"good weights")
+    assert ai_models.is_model_ready("gfpgan", tmp_path)
+    target.write_bytes(b"evil weights")
+    os.utime(target, ns=(1, 1))  # Different timestamp, so the remembered check doesn't apply.
+    assert not ai_models.is_model_ready("gfpgan", tmp_path)
+
+
+def test_import_from_file_recognises_a_renamed_model_and_refuses_anything_else(tmp_path, monkeypatch):
+    spec = _on_demand(monkeypatch, b"weights from a usb stick")
+    picked = tmp_path / "Downloads" / "renamed (1).onnx"
+    picked.parent.mkdir()
+    picked.write_bytes(b"weights from a usb stick")
+    library = tmp_path / "library"
+    assert ai_models.import_model_file(picked, library) == "gfpgan"
+    assert (library / spec["file"]).read_bytes() == b"weights from a usb stick" and picked.exists()
+    other = tmp_path / "holiday.jpg"
+    other.write_bytes(b"not a model at all, same size?!")
+    with pytest.raises(ValueError):
+        ai_models.import_model_file(other, library)
+    with pytest.raises(ValueError):
+        ai_models.import_model_file(tmp_path / "missing.onnx", library)
+    assert sorted(p.name for p in library.iterdir()) == [spec["file"]]
+
+
+def test_only_one_big_model_is_in_memory_at_a_time(monkeypatch):
+    from engine.services import onnx_sessions
+
+    opened = []
+    monkeypatch.setattr(onnx_sessions.ai_models, "model_path", lambda key: Path(f"{key}.onnx"))
+    monkeypatch.setattr(onnx_sessions, "_open", lambda path: opened.append(path.name) or object())
+    onnx_sessions.release()
+    with onnx_sessions.use_model("ddcolor_large") as first:
+        pass
+    with onnx_sessions.use_model("ddcolor_large") as again:
+        assert again is first  # Same model: not loaded twice.
+    with onnx_sessions.use_model("gfpgan"):
+        assert onnx_sessions.loaded_model() == "gfpgan"
+    assert opened == ["ddcolor_large.onnx", "gfpgan.onnx"]
+    onnx_sessions.release()
+    assert onnx_sessions.loaded_model() is None
+    assert 1 <= onnx_sessions.cpu_threads() <= 4
+
+
+def test_release_refuses_while_old_photo_models_need_a_login():
+    script = Path(__file__).resolve().parents[2] / "scripts" / "create_release.py"
+    spec = importlib.util.spec_from_file_location("create_release", script)
+    create_release = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(create_release)
+
+    class Opener:
+        def __init__(self, public):
+            self.public, self.headers = public, []
+
+        def open(self, req, timeout=None):
+            self.headers.append(dict(req.header_items()))
+            if not self.public:
+                raise OSError("404 (private repo)")
+            return FakeResponse(b"")
+
+    FakeResponse.status = 200
+    private = Opener(public=False)
+    assert create_release.check_on_demand_models_public(private) == [s["url"] for s in ai_models.ON_DEMAND_MODELS.values()]
+    assert all("Authorization" not in h for h in private.headers)  # Checked as an anonymous user would.
+    assert create_release.check_on_demand_models_public(Opener(public=True)) == []
