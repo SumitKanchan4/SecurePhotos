@@ -37,6 +37,13 @@ Licensing (**owner decision D1, 2026-11-15: keep MIT, permissive models only**):
 ### Versions (new in the library)
 - A result is a **new photo linked to its original** (`derived_from_id`, `ai_kind` = colorized / restored / repaired).
 - In Photos, by default only one of the pair shows (per the setting); the viewer shows a **"Original / AI version" switch** and a before/after slider.
+- **Metadata (owner decision 2026-11-16: same as the original, so the pair sits side by side):**
+  - Copied as-is: date taken, location, camera, title/description, favourite, album memberships, named faces (face boxes stay valid; colour/face/scratch fixes don't move pixels).
+  - Ordering: the improved photo sorts **directly after** its original (tie-break on `derived_from_id`).
+  - Private Vault: an improved photo of a vault photo is **always created in the vault** (never in the library).
+  - People / person page / Stories: the pair counts as **one** photo (the improved one shown, with the Original switch).
+  - Duplicates: a linked pair is **never** offered as duplicates.
+  - Its own: file hash, size, resolution, search embedding (so "red shirt" finds the colourised one), "edited on" date, and the AI label (IPTC `digitalSourceType` + app badge) on export.
 - Deleting the AI version never touches the original; moving the original to Trash asks what to do with its versions.
 
 ### Settings → Photos & AI → "Old photos" (new group) — D2 (2026-11-15), simplified on the A1 board (2026-11-16)
