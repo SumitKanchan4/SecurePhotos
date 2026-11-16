@@ -145,6 +145,13 @@ Built as planned, with these choices: an improved photo always links to the **fi
 - **Model hosting (owner decision 2026-11-16):** attachments on a Release of **this repo**, tag `models-v1` (files up to 2 GB, pinned by URL + SHA-256; a new model = new tag + app update). The repo stays private until it is stable, then becomes public, so until then downloads only work for the owner: development and joint testing use "import from file" / the local models folder. `scripts/create_release.py` gets a gate that refuses to build a release while any `on_demand` model URL can't be fetched without a login.
 - Not in git (100 MB file limit; Git LFS free quota ~1 GB storage and bandwidth), not bundled in the installer.
 
+## A2c · Models with the installer (owner decisions 2026-11-16) — to build after A4
+- **Only our models.** No "import from file" or any way for a user to point the app at another model: remove `import_model_file`, `/api/restore/models/import` and their tests/docs. A model is used only if it is the pinned file with the pinned SHA-256.
+- **Small models stay inside the installer** (as today: YuNet, SFace, Real-ESRGAN).
+- **Big models are downloaded by the installer** (install and upgrade), each checked by SHA-256; a model already in place and verified is skipped. If a download fails, the installer still completes and shows each model's status (ready / already up to date / couldn't download, the app will ask later).
+- **In the app:** if a model is missing, a popup explains it is needed for the old-photo features and offers to download it (progress, resume). If the user cancels, **only the features that need that model are locked** (Add colour, Fix faded colours if it ever needs one, Sharpen faces, Remove scratches); pressing one shows the popup again. Everything else (import, browsing, vault, People, albums, Stories, enhancing) keeps working. The owner first suggested a view-only app; agreed on feature-level blocking after discussion.
+- Engine start: checks every model (skip if verified, else mark missing) so the UI knows which features are available.
+
 ## A3 notes (built 2026-11-16)
 - Engine: `engine/services/old_photo_processors.py` (recipe F, Vivid 768, sepia fallback, recipe Q) registered at start; `/api/restore/photos/{id}/state` (one request per opened photo: fitting actions, family, open job), `/jobs/{id}/result`, `intensity` on keep.
 - Viewer: "…" menu, progress in the date line, before/after divider, side panel, keep dialog, Original / Improved switch; grid "AI" badge (timeline flag 8).
