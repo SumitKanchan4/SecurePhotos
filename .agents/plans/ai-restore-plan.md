@@ -136,8 +136,10 @@ Engine only; no visible UI yet (A3 adds the viewer panel, A4 the Activity screen
 - Engine tests with **tiny generated ONNX models** (no GB downloads in CI): checksum refusal, import-from-file, queue order / cancel / pause / battery wait / crash recovery, one-model-at-a-time, vault results never written in plain form, metadata copy, ordering, pair-as-one in people and duplicates, Keep original off → Trash 30 days → restore, migration on an old library copy, XMP label present on export.
 - Mutation checks on the new services, full engine suite, then docs: `features_and_functional_decisions.md`, `database_schema.md`, THIRD_PARTY_NOTICES (DDColor, GFPGAN, training-data note).
 
-### Open question before coding
-- Where the downloadable model files live. Recommended: **GitHub Release assets** of this project (free, versioned, files up to 2 GB, pinned by SHA-256). Alternatives: a Hugging Face repo, or no hosting (users import files by hand).
+### Approved 2026-11-16, and where the model files live
+- The owner approved this A2 plan.
+- **Model hosting (owner decision 2026-11-16):** attachments on a Release of **this repo**, tag `models-v1` (files up to 2 GB, pinned by URL + SHA-256; a new model = new tag + app update). The repo stays private until it is stable, then becomes public, so until then downloads only work for the owner: development and joint testing use "import from file" / the local models folder. `scripts/create_release.py` gets a gate that refuses to build a release while any `on_demand` model URL can't be fetched without a login.
+- Not in git (100 MB file limit; Git LFS free quota ~1 GB storage and bandwidth), not bundled in the installer.
 
 ## Testing
 
