@@ -561,6 +561,13 @@ DEFAULT_APP_SETTINGS: Dict[str, Any] = {
     "face_clustering": True,
     "ambient_music": True,
     "ken_burns_motion": True,
+    # H10 Settings › Old photos: "ask" (only when I ask) or "auto" per improvement.
+    "old_photos_colour": "ask",
+    "old_photos_fade": "ask",
+    "old_photos_faces": "ask",
+    "old_photos_scratches": "ask",
+    "old_photos_keep_original": True,   # Off: the original goes to Trash for 30 days.
+    "old_photos_keep_choice": "ask",    # "Remember my choice": "ask" | "keep_both" | "replace".
 }
 
 

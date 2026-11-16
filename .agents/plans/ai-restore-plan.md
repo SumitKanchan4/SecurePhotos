@@ -123,7 +123,9 @@ Built as planned, with these changes: the session manager is `engine/services/on
   - **Vault photos:** decrypted only in memory; any result or cache file for a vault photo is written encrypted (the same vault storage as today). Nothing private ever sits in plain form on disk.
 - **API** (`engine/api/restore.py`, new): queue jobs for one or many photos, list jobs (for Activity: working / waiting / finished today; vault items flagged so the UI blurs them and shows no file name), cancel, pause / resume, model status / download / import-file.
 
-### A2b · Versions, metadata and labels (L)
+### A2b · Versions, metadata and labels (L) — built 2026-11-16 (branch `feature/a2b-versions`)
+Built as planned, with these choices: an improved photo always links to the **first original** (improving a copy adds up kinds, e.g. `colour,faces`); albums are copied with the original's `added_at` so the pair also sits together in albums; vault copies re-seal the sealed details for the new photo id; the duplicate finder treats each family as **one** photo (its newest copy), because a third look-alike photo would otherwise join the pair into one group; People/Stories hide an original that has a live copy (`not_superseded`), except where an action targets one specific photo. Endpoints live under `/api/restore` (`/jobs/{id}/keep`, `/photos/{id}/versions`, `/photos/{id}/restore-original`). Timeline rows get flag `8` = AI copy.
+
 - **DB migration** (`database.py`, one-time, recorded in `applied_migrations`): `photos.derived_from_id` (→ photos.id), `photos.ai_kind`, `photos.ai_params` (JSON), `photos.edited_at`; index on `derived_from_id`. `docs/database_schema.md` updated.
 - **Versions service** (`engine/services/photo_versions.py`, new):
   - `create_version(original, result, kind, params)`: writes the file atomically (temp → fsync → verify → replace, like Enhance), makes thumbnail and preview, hashes it, and **copies the metadata** per the rules above (date, place, camera, title, favourite, albums, named faces; vault → vault).

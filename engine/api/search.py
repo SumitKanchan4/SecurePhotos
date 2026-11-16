@@ -8,6 +8,8 @@ import logging
 import re
 from typing import List, Optional
 from fastapi import APIRouter, Query, status
+
+from engine.services.photo_versions import pair_order
 from pydantic import BaseModel
 
 from engine.database import get_db_connection
@@ -289,7 +291,7 @@ async def search_media(
                    p.caption, p.thumbnail_path, p.preview_path, p.ocr_text
             FROM photos p
             WHERE {where_sql}
-            ORDER BY p.taken_at DESC, p.id DESC
+            ORDER BY p.taken_at DESC, {pair_order('p')}
             LIMIT ? OFFSET ?;
         """
         query_params = final_params + [limit, offset]
