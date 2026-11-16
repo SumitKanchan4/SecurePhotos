@@ -8,7 +8,7 @@ import asyncio
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from engine.services import ai_models, restore_queue
@@ -54,6 +54,7 @@ async def cancel_job(job_id: int) -> Dict[str, bool]:
 class KeepRequest(BaseModel):
     choice: str  # "keep_both" | "replace" | "discard"
     remember: bool = False
+    intensity: float = Field(1.0, ge=0.0, le=1.0)  # The viewer's strength slider.
 
 
 @router.post("/jobs/{job_id}/keep")
@@ -62,11 +63,86 @@ async def keep_job_result(job_id: int, payload: KeepRequest) -> Dict[str, Any]:
     from engine.services.photo_versions import VersionError
 
     try:
-        return await restore_queue.keep_result(job_id, payload.choice, payload.remember)
+        return await restore_queue.keep_result(job_id, payload.choice, payload.remember, payload.intensity)
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err))
     except VersionError as err:
         raise HTTPException(status_code=409, detail=str(err))
+
+
+@router.get("/jobs/{job_id}/result")
+async def job_result(job_id: int) -> Response:
+    """The finished result waiting for a decision, for the viewer's before/after (never cached)."""
+    from engine.database import db_connection
+    from engine.services import photo_versions
+
+    async with db_connection() as conn:
+        async with conn.execute(
+            "SELECT j.status, j.result_path, p.is_encrypted FROM restore_jobs j JOIN photos p ON p.id = j.photo_id WHERE j.id = ?;",
+            (job_id,),
+        ) as cur:
+            row = await cur.fetchone()
+    if row is None or row[0] != "review":
+        raise HTTPException(status_code=404, detail="No result is waiting.")
+    key = restore_queue._vault_key() if row[2] else None
+    if row[2] and key is None:
+        raise HTTPException(status_code=409, detail="vault_locked")
+    try:
+        data = await asyncio.to_thread(photo_versions.read_photo_bytes, row[1], bool(row[2]), key)
+    except photo_versions.VersionError as err:
+        raise HTTPException(status_code=404, detail=str(err))
+    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@router.get("/photos/{photo_id}/state")
+async def photo_state(photo_id: int) -> Dict[str, Any]:
+    """Everything the viewer needs for one photo in one request: which improvements fit, its
+    Original / Improved family, and any job for it that is still open (waiting, working, review)."""
+    from engine.database import db_connection
+    from engine.services import photo_versions
+
+    try:
+        options = await photo_options(photo_id)
+    except HTTPException as err:
+        if err.status_code != 409:
+            raise
+        options = {"colour": False, "fade": False}  # Vault locked: nothing to offer until it opens.
+    async with db_connection() as conn:
+        try:
+            family = await photo_versions.versions_of(conn, photo_id)
+        except photo_versions.VersionError as err:
+            raise HTTPException(status_code=404, detail=str(err))
+    jobs = await restore_queue.list_jobs()
+    open_job = next((j for j in jobs["working"] + jobs["waiting"] + jobs["review"] if j["photo_id"] == photo_id), None)
+    return {"options": options, "members": family["members"], "job": open_job}
+
+
+@router.get("/photos/{photo_id}/options")
+async def photo_options(photo_id: int) -> Dict[str, Any]:
+    """Which improvements fit this photo: "Add colour" for grey photos, "Fix faded colours" otherwise."""
+    from engine.database import db_connection
+    from engine.services import photo_versions
+    from engine.services.old_photo_processors import decode_rgb, is_black_and_white
+
+    async with db_connection() as conn:
+        async with conn.execute(
+            "SELECT thumbnail_path, filepath, is_encrypted, mime_type, ai_kind FROM photos WHERE id = ? AND trashed_at IS NULL;",
+            (photo_id,),
+        ) as cur:
+            row = await cur.fetchone()
+    if row is None or (row[3] or "").startswith("video/"):
+        raise HTTPException(status_code=404, detail="Not a photo.")
+    key = restore_queue._vault_key() if row[2] else None
+    if row[2] and key is None:
+        raise HTTPException(status_code=409, detail="vault_locked")
+    try:
+        data = await asyncio.to_thread(photo_versions.read_photo_bytes, row[0] or row[1], bool(row[2]), key)
+        grey = await asyncio.to_thread(lambda: is_black_and_white(decode_rgb(data)))
+    except Exception:
+        raise HTTPException(status_code=404, detail="The photo can't be read.")
+    done = set(filter(None, (row[4] or "").split(",")))
+    # An AI-coloured copy is a colour photo now, but "fixing its faded colours" makes no sense.
+    return {"colour": grey and "colour" not in done, "fade": not grey and not done & {"fade", "colour"}}
 
 
 @router.get("/photos/{photo_id}/versions")

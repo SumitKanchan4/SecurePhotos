@@ -38,6 +38,8 @@ import {
 } from "./viewer/viewerFormat";
 import { ViewerDetails } from "./viewer/ViewerDetails";
 import { useVolumeBooster } from "./viewer/useVolumeBooster";
+import { useOldPhoto } from "./viewer/useOldPhoto";
+import { BeforeAfter, ImproveMenu, OldPhotoPanel, VersionSwitch } from "./viewer/OldPhotoPanel";
 
 interface LightboxProps {
   photos: PhotoItem[];
@@ -55,6 +57,8 @@ interface LightboxProps {
   /** When `photos` is a window of a longer list: position of photos[0] in it, and its length. */
   indexOffset?: number;
   totalCount?: number;
+  /** H10: an improved copy was kept (or an original replaced), so the lists should reload. */
+  onLibraryChanged?: () => void;
 }
 
 export const Lightbox: React.FC<LightboxProps> = ({
@@ -72,6 +76,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
   onUnlockRequest,
   onVaultStatusChange,
   isDocumentView = false,
+  onLibraryChanged,
 }) => {
   const showToast = useAppStore((state) => state.showToast);
   const isVaultUnlocked = useAppStore((state) => state.isVaultUnlocked);
@@ -175,6 +180,12 @@ export const Lightbox: React.FC<LightboxProps> = ({
   // always calls the latest handler: re-adding it on every render meant a key that caused a
   // re-render mid-event (Escape also clears the selection) never reached the viewer.
   keyHandlerRef.current = (e: KeyboardEvent) => {
+    // A dialog on top of the viewer (e.g. "Keep the improved photo?") handles its own keys:
+    // Escape closes only the dialog, and arrows never switch photos behind it.
+    if (document.querySelector(".alb-dialog-backdrop, .danger-dialog-backdrop")) return;
+    // Sliders, checkboxes and text fields keep their own keys (arrows move the strength slider).
+    const target = e.target as HTMLElement | null;
+    if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) && e.key !== "Escape") return;
     if (e.key === "Escape") {
       if (isDownloadMenuOpen) setIsDownloadMenuOpen(false);
       else onClose();
@@ -251,6 +262,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isOpen, isDragging, zoom]);
+
+  // H10: old-photo improvements for the open photo (nothing shows until the user asks).
+  const old = useOldPhoto(currentPhoto, isOpen);
 
   if (!isOpen || !currentPhoto) return null;
 
@@ -464,7 +478,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
   const title = viewerTitle(currentPhoto);
   const chip = qualityChip(currentPhoto);
-  const statusText = isOptimizingThis
+  const statusText = old.statusText
+    ? old.statusText
+    : isOptimizingThis
     ? `Enhancing to 8K · ${optimizationProgress?.item_progress ?? 0}%`
     : isQueued
     ? "Waiting to be enhanced"
@@ -504,7 +520,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
               ) : null}
               {statusText && (
                 <span className="viewer-status">
-                  {isOptimizingThis ? <Loader2 size={11} className="spin" /> : <Clock size={11} />}
+                  {isOptimizingThis || old.statusText ? <Loader2 size={11} className="spin" /> : <Clock size={11} />}
                   {statusText}
                 </span>
               )}
@@ -512,6 +528,16 @@ export const Lightbox: React.FC<LightboxProps> = ({
           </div>
 
           <div style={{ flex: 1 }} />
+
+          <VersionSwitch
+            old={old}
+            currentId={currentPhoto.id}
+            onOpen={(id) => {
+              const index = photos.findIndex((p) => p.id === id);
+              if (index >= 0) onNavigate(index);
+              return index >= 0;
+            }}
+          />
 
           {zoom > 1 && (
             <button
@@ -556,6 +582,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
               <Heart size={17} fill={isFavorite ? "currentColor" : "none"} />
             </button>
           )}
+
+          {!isDocumentView && !isVideo && <ImproveMenu old={old} />}
 
           <div className="viewer-menu-anchor">
             <button
@@ -1139,6 +1167,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
               </div>
             )}
           </div>
+          {old.reviewUrl && <BeforeAfter before={primaryImageUrl} after={old.reviewUrl} intensity={old.intensity} />}
         </div>
 
         {filmIndexes.length > 0 && (
@@ -1168,7 +1197,24 @@ export const Lightbox: React.FC<LightboxProps> = ({
         )}
       </div>
 
-      {showInfo && (
+      {old.panelOpen && (
+        <OldPhotoPanel
+          old={old}
+          onError={(message) => showToast(message, "warning")}
+          onKept={(choice) => {
+            if (choice === "discard") return;
+            onLibraryChanged?.();
+            if (choice === "replace") {
+              showToast("Replaced. The original is in Trash for 30 days.", "success");
+              onClose();
+            } else {
+              showToast("Kept. The improved photo is next to the original.", "success");
+            }
+          }}
+        />
+      )}
+
+      {showInfo && !old.panelOpen && (
         <ViewerDetails
           photo={currentPhoto}
           context={context}
