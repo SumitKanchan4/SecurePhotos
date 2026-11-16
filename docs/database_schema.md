@@ -489,6 +489,29 @@ CREATE TABLE IF NOT EXISTS duplicate_groups (
     distance INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ── Old-photo improvements queue (H10 / A2a) ───────────────────────────────
+-- One row per request to add colour, fix faded colours, sharpen faces or remove
+-- scratches. queued -> working -> review (manual: waits for keep both / replace /
+-- discard) or done; failed / cancelled. A crash turns working back into queued.
+-- result_path is the staged result in data/restore_staging (encrypted .enc for vault photos).
+CREATE TABLE IF NOT EXISTS restore_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    photo_id INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,             -- 'colour' | 'fade' | 'faces' | 'scratches'
+    params TEXT,                    -- JSON, e.g. {"style": "natural"}
+    origin TEXT NOT NULL DEFAULT 'manual',  -- 'manual' | 'auto' (auto waits while on battery)
+    status TEXT NOT NULL DEFAULT 'queued',
+    progress INTEGER NOT NULL DEFAULT 0,
+    result_path TEXT,
+    result_photo_id INTEGER,
+    error_message TEXT,             -- e.g. 'models_missing'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    finished_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_restore_jobs_status ON restore_jobs (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_restore_jobs_photo ON restore_jobs (photo_id);
 ```
 
 ---

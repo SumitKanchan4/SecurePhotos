@@ -370,6 +370,21 @@ Redistribution and use in source and binary forms, with or without modification,
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+## Old-photo models (downloaded on first use)
+
+These are not in the installer. The app downloads them from this project's GitHub Release `models-v1` the first time someone improves an old photo (or the user imports the files), and checks each against a pinned SHA-256 fingerprint before loading it. How they are built from the official code and weights: `scripts/model_export/README.md`.
+
+| Model | Used for | Licence | Source |
+|---|---|---|---|
+| DDColor ConvNeXt-L (`ddcolor_modelscope_dyn.onnx`) | Adding colour to black-and-white photos | Apache License 2.0 | [piddnad/DDColor](https://github.com/piddnad/DDColor), weights [piddnad/ddcolor_modelscope](https://huggingface.co/piddnad/ddcolor_modelscope) |
+| DDColor ConvNeXt-L artistic (`ddcolor_artistic_512.onnx`) | Adding colour (second opinion, merged) | Apache License 2.0 | [piddnad/DDColor](https://github.com/piddnad/DDColor), weights [piddnad/ddcolor_artistic](https://huggingface.co/piddnad/ddcolor_artistic) |
+| GFPGAN v1.4, clean architecture (`gfpgan_v1.4_512.onnx`) | Sharpening blurry faces | Apache License 2.0, with third-party parts (see below) | [TencentARC/GFPGAN](https://github.com/TencentARC/GFPGAN) |
+
+Both projects are under the Apache License 2.0 (full text above, in the SFace section).
+
+- DDColor: Copyright the DDColor authors (piddnad / DAMO Academy, Alibaba Group).
+- GFPGAN: "Copyright (C) 2021 THL A29 Limited, a Tencent company. All rights reserved. GFPGAN is licensed under the Apache License Version 2.0 except for the third-party components listed below." Those components are BasicSR (Apache-2.0); StyleGAN2, whose code is modified from stylegan2-pytorch (MIT) and, through it, NVIDIA's StyleGAN2, under the NVIDIA Source Code License, which limits use to non-commercial purposes; and DFDNet (CC BY-NC-SA 4.0). The exported model uses only GFPGAN's "clean" architecture files (`gfpganv1_clean_arch.py`, `stylegan2_clean_arch.py`): pure PyTorch, without NVIDIA's custom CUDA operations and without any DFDNet code. The licence doesn't state whether the NVIDIA terms still reach this architecture; the owner decided (2026-11-16) to use it with this note, and to revisit before the app is ever sold or the repository is made public.
+
 ## Removed models (no longer used or downloaded)
 
 | Model | Reason |
@@ -383,4 +398,4 @@ When an existing library is upgraded, these files are deleted from `data/models`
 
 ## A note on training data
 
-Most face-recognition models, including permissively licensed ones, were trained on face datasets released for research. The licences above cover the model files themselves; this note is for transparency, not legal advice.
+Most face-recognition models, including permissively licensed ones, were trained on face datasets released for research. The old-photo models were trained on ImageNet (DDColor) and FFHQ (GFPGAN; FFHQ is released by NVIDIA under CC BY-NC-SA 4.0). The licences above cover the model files themselves; this note is for transparency, not legal advice.
