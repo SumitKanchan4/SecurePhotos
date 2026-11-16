@@ -7,7 +7,7 @@ Research behind this plan: `.agents/research/Local photo restoration and coloriz
 Hard constraints:
 - **CPU only.** The owner and most users have no GPU. Compact ONNX models, tiled, in a background worker; GPU (DirectML) is only an optional speed-up later.
 - **Fully offline.** Models are downloaded once (or imported from a file) and checked against SHA-256 hashes; photos never leave the computer.
-- **Never destroy the original.** Every result is a new copy linked to its original.
+- **Never destroy the original on the spot.** Every result is a new copy linked to its original; an original the user chooses not to keep goes to Trash for 30 days first.
 - **Say it's AI.** Restored faces and colorized photos carry an "AI" badge in the app and IPTC `digitalSourceType` metadata in exported files (EU AI Act Art. 50).
 
 ---
@@ -45,10 +45,10 @@ The owner rejected the first board as too complex for a normal user (no "sepia",
   1. **Add colour to old grey photos** (black-and-white and brownish prints)
   2. **Fix faded or yellowed colours** (old colour prints)
   3. **Sharpen blurry faces**
-- One switch: **"Show the original too"** (on = both show in Photos; off = only the improved one shows, the original waits behind "Original" in the viewer).
+- One switch: **"Keep original"** (owner wording, 2026-11-16). On (default): both photos are kept and linked; from either one the viewer can switch to the other ("Original" / "Improved"). Off: once the improved photo is made, the original **moves to Trash for 30 days** (restorable, also from the viewer's "Original" switch while it is in Trash), then is deleted for good, the same as Enhance today (owner decision 2026-11-16).
 - The app decides the rest: Natural colour style (Vivid only from the viewer or the sepia fallback), automatic work waits while on battery, models are managed in Storage. Scratch repair has no setting: always by hand from the viewer.
 - **When I ask:** the viewer shows the result first (before/after); then **"Keep both" / "Replace the photo" / "Discard"** with "Remember my choice". Asking after the result (not before) was proposed on the board and accepted.
-- **Safety net (applies to "Replace" and to Automatic without showing the original):** the original is never deleted. It is kept hidden as the photo's earlier version and can be brought back from the viewer ("Show original" / "Restore original"); it is removed only if the user deletes it themselves. Old family photos are irreplaceable and AI can change a face.
+- **Safety net (applies to "Replace the photo" and to "Keep original" off):** the original is never deleted on the spot. It goes to Trash for 30 days, stays linked to the improved photo, and can be brought back from the viewer ("Restore original") or from Trash; after 30 days it is deleted for good. Old family photos are irreplaceable and AI can change a face, so the 30 days are the window to notice.
 - The viewer's old-photo panel appears **only after** the user picks Colorize / Fix colours / Restore faces / Repair scratches from the "…" menu; the normal viewer is unchanged.
 
 ### Detection on import (cheap, CPU)
