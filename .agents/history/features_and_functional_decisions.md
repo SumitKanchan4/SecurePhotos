@@ -6069,3 +6069,25 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 - `engine/database.py` (`db_connection`), `engine/api/vault.py` (`_VAULT_PHOTO_COLUMNS`, `_vault_photo_dict`, `list_vault_album_photos`, `list_vault_photos`).
 - Tests: `engine/tests/test_key_handling.py` (+1: a vault photo's sealed details are decrypted once and fill latitude, longitude and document text). Mutation check: going back to a second decryption fails it. Vault and key-handling tests (53) and the engine suite pass; ruff passes.
 
+
+## 149. Old Photos, Step A2a: Downloadable Models and the Improvement Queue (H10)
+
+### Functionality Overview (no visible change yet)
+- Foundation for improving old photos (add colour, fix faded colours, sharpen faces, remove scratches). The viewer panel (A3) and the Activity screen (A4) build on it.
+- **Models on demand:** three ONNX files (DDColor large and artistic, GFPGAN v1.4; ~2.3 GB) are not in the installer. They are downloaded from this repo's Release `models-v1` the first time they are needed, with progress and cancel, or imported from a file the user picks (recognised by checksum, not name). A file that doesn't match its pinned SHA-256 is never loaded.
+- **One DDColor file for both styles:** exported with a variable input size, it gives the same output as the fixed 512 and 768 exports (max difference 0.0003) at the same speed, so Natural and Vivid share one ~1 GB download.
+- **Queue:** one job at a time on the CPU; only one large model in memory (A0 peak with all loaded: 7.3 GB); jobs that use the loaded model go first; photos the user asked for go before automatic ones; automatic jobs wait while on battery, requested ones don't; pause / resume; cancel at any point; a crash puts unfinished jobs back in the queue and removes stray files.
+- **Vault photos:** processed only while the vault is open, decrypted in memory only, result written encrypted; if the vault locks during a job, the result is dropped and the job waits for the next unlock. The Activity list marks them private (no file name).
+
+### Functional Decision Points & Rationale
+- **Hosting (owner, 2026-11-16):** Release attachments of this repo, not git (100 MB file limit) or Git LFS (~1 GB free quota). The repo stays private until it is stable, so `scripts/create_release.py` refuses to release while any model URL needs a login; meanwhile testing uses "import from file".
+- **Rebuildable:** `scripts/model_export/` rebuilds the three files from the upstream code (pinned commits) and official weights; with the recorded tool versions they come out byte-identical (checked).
+- **Manual before automatic, battery only holds automatic work:** a photo the user explicitly asked to improve shouldn't wait for the charger.
+- **Licensing finding (pending owner decision):** GFPGAN's licence is Apache-2.0 except for third-party parts; its StyleGAN2 code carries NVIDIA's non-commercial licence. The exported model uses only the "clean" pure-PyTorch architecture (no NVIDIA CUDA code), but the licence doesn't say whether the NVIDIA terms still apply. Recorded in THIRD_PARTY_NOTICES; the owner decides whether face sharpening stays (D1: permissive models only).
+
+### Technical Touchpoints
+- `engine/services/ai_models.py` (`ON_DEMAND_MODELS`, `fetch_on_demand`, `is_model_ready` with a (size, mtime) cache, `model_path`, `import_model_file`, download progress / cancel), `engine/services/onnx_sessions.py` (new), `engine/services/restore_queue.py` (new; processors plug in with `register_processor`), `engine/api/restore.py` (new: `/api/restore/jobs`, cancel, pause / resume, `/models`, download, import), `engine/main.py` (router + worker start / stop), `engine/database.py` + `docs/database_schema.md` (`restore_jobs`), `scripts/create_release.py` (model URL gate), `scripts/model_export/`, THIRD_PARTY_NOTICES.md.
+- Tests: `engine/tests/test_restore_queue.py` (17, fake processor), `engine/tests/test_ai_models.py` (+8). Mutation checks: 12 deliberate breaks (vault filter, plain-text vault result, battery rule, discard, vault lock mid-job and mid-save, stray files, private names, checksum, cache, partial download, model reload) are each caught. Engine suite passes; ruff passes.
+
+### State & Lifecycle Impact
+- New table only; existing libraries get it on start (`CREATE TABLE IF NOT EXISTS`). New folder `data/restore_staging`. Nothing changes for existing photos until A2b / A3.
