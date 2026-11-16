@@ -72,7 +72,7 @@ Sizes: S ≈ half a day of my work, M ≈ 1 day, L ≈ 2 days (each including te
 | A0 | **Spike & benchmark** on the owner's photos: GFPGAN CPU time/RAM, DDColor large vs tiny quality, B&W and blur detection thresholds, int8 vs fp32. Output: a comparison page (before/after) for the owner to judge. | M | Owner provides ~20–30 B&W and blurry photos. Runs read-only on a copy. |
 | A1 | **Boards** for the Activity screen, viewer version switch + before/after, Settings "Old photos", the "replace or keep a copy" prompt, the scratch mask view. Owner approves. | M | Design first, like the redesign. |
 | A2 | **Engine foundation:** model manager (download / import file / SHA-256 manifest / status in Settings → Storage), CPU ONNX session tuning (threads, tiling), a background **job queue** with progress, cancel, pause, battery rule; versions in the DB (`derived_from_id`, `ai_kind`) + IPTC labelling on export. | L | Reused by every feature. |
-| A3 | **Colorize** on demand (DDColor, Lab chroma transfer at full resolution, intensity slider, Natural/Vivid). | M | First visible feature; good first joint test. |
+| A3 | **Colorize** on demand (DDColor, Lab chroma transfer at full resolution, intensity slider, Natural/Vivid). Recipe chosen by the owner in A0 (2026-11-16), see "Colorize recipe" below. | M | First visible feature; good first joint test. |
 | A4 | **Activity screen** + indicator (rail + header), vault items blurred. | M | |
 | A5 | **Restore faces** on demand (GFPGAN, align with YuNet landmarks, feathered paste-back, strength + per-face toggles, SFace identity check). | L | |
 | A6 | **Auto rules**: B&W and blur detection on import, Settings "Old photos" (manual / automatic, keep original), the "replace or keep a copy" prompt with remember-my-choice, hidden original + "Restore original". | M | |
@@ -80,6 +80,16 @@ Sizes: S ≈ half a day of my work, M ≈ 1 day, L ≈ 2 days (each including te
 | A8 | **Full test round with the owner** on real photos; fixes; docs (design system, history, THIRD_PARTY_NOTICES, licences); then PR `feature/ai-restore` → `master` with owner approval. | M | |
 
 Total ≈ 10–12 days of work across 9 steps; first usable piece (colorize + Activity) after A0–A4.
+
+## Colorize recipe (from A0, owner-approved 2026-11-16)
+
+Tested on the owner's 11 B&W/sepia photos (variants A–F). The owner judged **F** "all good" except two sepia-heavy group photos, which looked best with the 768 px variant (E).
+
+- **Natural (default) = F:** stretch the brightness (1st–99th percentile auto-levels) before the model → DDColor **large** and **artistic** at 512 px → per pixel keep the more colourful prediction (soft blend, no seams) → put the colour on the **stretched** brightness (restores faded contrast). ~9 s per photo on the Ryzen 7 5700U.
+- **Vivid = E:** the same, but the large model at **768 px**. Richer colour on crowded or sepia photos, but sometimes wrong hues (purple water and rocks, a red wall), so it is never the default. ~13 s.
+- **Automatic fallback:** after Natural, if more than about two-thirds of the coloured pixels are still orange/brown (Lab hue 30–100°), also run Vivid and use it when it removes the cast. In A0 this picked exactly the two photos the owner preferred in Vivid (90% and 70% brown versus at most 64% for the others). Tune the threshold on more photos; the viewer's Natural/Vivid switch always lets the user override.
+- Rejected: the baseline without contrast stretch (keeps the sepia cast), and 768 px as the default (wrong hues).
+- Note: one model is loaded at a time in the app (A0 peak with all models loaded was 7.3 GB).
 
 ## Testing
 
