@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from engine.database import get_db_connection
 from engine.config import settings, resolve_media_path
+from engine.services.photo_versions import pair_order
 from engine.services.ingestion_service import ingest_single_photo
 
 logger = logging.getLogger("securephotos.api.photos")
@@ -42,6 +43,8 @@ class PhotoResponse(BaseModel):
     caption: Optional[str] = None
     thumbnail_path: Optional[str] = None
     preview_path: Optional[str] = None
+    derived_from_id: Optional[int] = None  # H10: set on an improved copy (points to the original).
+    ai_kind: Optional[str] = None          # H10: 'colour', 'fade', 'faces', 'scratches' (comma-joined).
 
 
 _PHOTO_COLUMNS = """
@@ -49,7 +52,8 @@ _PHOTO_COLUMNS = """
     taken_at, camera_make, camera_model,
     latitude, longitude, iso, aperture, shutter_speed, focal_length,
     is_favorite, is_encrypted,
-    is_optimized, is_enhanced, caption, thumbnail_path, preview_path
+    is_optimized, is_enhanced, caption, thumbnail_path, preview_path,
+    derived_from_id, ai_kind
 """
 
 
@@ -80,6 +84,8 @@ def _photo_from_row(row) -> "PhotoResponse":
         caption=row["caption"],
         thumbnail_path=row["thumbnail_path"],
         preview_path=row["preview_path"],
+        derived_from_id=row["derived_from_id"],
+        ai_kind=row["ai_kind"],
     )
 
 
@@ -87,6 +93,7 @@ def _photo_from_row(row) -> "PhotoResponse":
 TIMELINE_FAVORITE = 1
 TIMELINE_OPTIMIZED = 2
 TIMELINE_ENHANCED = 4
+TIMELINE_AI = 8  # H10: an improved copy (the grid shows the AI badge).
 DETAILS_MAX_IDS = 500
 
 
@@ -500,7 +507,7 @@ async def list_photos(
         query += " AND strftime('%Y', taken_at) = ?"
         params.append(year)
 
-    query += " ORDER BY taken_at DESC, id DESC LIMIT ? OFFSET ?;"
+    query += f" ORDER BY taken_at DESC, {pair_order()} LIMIT ? OFFSET ?;"
     params.extend([limit, offset])
 
     async with conn.execute(query, params) as cursor:
@@ -520,11 +527,11 @@ async def get_photo_timeline() -> TimelineResponse:
     conn = await get_db_connection()
     try:
         async with conn.execute(
-            """
-            SELECT id, taken_at, width, height, mime_type, is_favorite, is_optimized, is_enhanced
+            f"""
+            SELECT id, taken_at, width, height, mime_type, is_favorite, is_optimized, is_enhanced, ai_kind
             FROM photos
             WHERE is_encrypted = 0 AND trashed_at IS NULL
-            ORDER BY taken_at DESC, id DESC;
+            ORDER BY taken_at DESC, {pair_order()};
             """
         ) as cursor:
             rows = await cursor.fetchall()
@@ -539,7 +546,8 @@ async def get_photo_timeline() -> TimelineResponse:
             "v" if (r["mime_type"] or "").startswith("video/") else "p",
             (TIMELINE_FAVORITE if r["is_favorite"] else 0)
             | (TIMELINE_OPTIMIZED if r["is_optimized"] else 0)
-            | (TIMELINE_ENHANCED if r["is_enhanced"] else 0),
+            | (TIMELINE_ENHANCED if r["is_enhanced"] else 0)
+            | (TIMELINE_AI if r["ai_kind"] else 0),
         ]
         for r in rows
     ]

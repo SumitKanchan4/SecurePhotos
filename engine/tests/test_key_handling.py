@@ -84,6 +84,7 @@ def test_vault_photo_lists_decrypt_each_photos_details_once(monkeypatch):
         "aperture": None, "shutter_speed": None, "focal_length": None, "is_favorite": 0, "is_encrypted": 1,
         "is_optimized": 1, "is_enhanced": 0, "caption": None, "thumbnail_path": None, "preview_path": None,
         "is_document": 1, "ocr_text": None, "vault_meta_enc": "sealed",
+        "derived_from_id": None, "ai_kind": None,
     }
     photo = vault._vault_photo_dict(row, b"k" * 32)
     assert calls == [7]

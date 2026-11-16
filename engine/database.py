@@ -75,7 +75,11 @@ CREATE TABLE IF NOT EXISTS photos (
     original_file_hash TEXT,        -- Immutable baseline SHA-256 checksum for deduplication
     folder_name TEXT,
     trashed_at DATETIME,
-    trash_expires_at DATETIME
+    trash_expires_at DATETIME,
+    derived_from_id INTEGER REFERENCES photos(id) ON DELETE SET NULL, -- H10: improved copy of this photo
+    ai_kind TEXT,                   -- H10: 'colour', 'fade', 'faces', 'scratches' (comma-joined when combined)
+    ai_params TEXT,                 -- H10: JSON settings used, e.g. {"style": "natural"}
+    edited_at DATETIME              -- H10: when the improved copy was made
 );
 
 -- ── 2. Albums Table ──────────────────────────────────────────────────────────
@@ -772,6 +776,18 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
             logger.info("Migrated photos schema: added is_pinned column.")
 
         await conn.execute("CREATE INDEX IF NOT EXISTS ix_photos_pinned_doc ON photos (is_pinned DESC, is_document, trashed_at);")
+
+        # H10 / A2b: an improved photo (colour, faded colours, faces, scratches) is its own
+        # photo linked to the original it came from. Deleting the original for good unlinks it.
+        if "derived_from_id" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN derived_from_id INTEGER REFERENCES photos(id) ON DELETE SET NULL;")
+        if "ai_kind" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN ai_kind TEXT;")
+        if "ai_params" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN ai_params TEXT;")
+        if "edited_at" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN edited_at DATETIME;")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_photos_derived_from ON photos (derived_from_id);")
 
         # Stories lifecycle migration: dynamically add is_saved and covering indexes
         async with conn.execute("PRAGMA table_info(stories);") as cursor:

@@ -6091,3 +6091,26 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 
 ### State & Lifecycle Impact
 - New table only; existing libraries get it on start (`CREATE TABLE IF NOT EXISTS`). New folder `data/restore_staging`. Nothing changes for existing photos until A2b / A3.
+
+## 150. Old Photos, Step A2b: Improved Copies Linked to Their Originals (H10)
+
+### Functionality Overview (engine; the viewer UI comes in A3)
+- After the user has seen a result, they choose **Keep both**, **Replace the photo** or **Discard** (optionally "Remember my choice"). Automatic jobs don't ask: the "Keep original" setting decides (on = keep both, off = replace).
+- An improved copy is its own photo linked to the original (`derived_from_id`, `ai_kind`, `ai_params`, `edited_at`). It keeps the original's date, place, camera, caption, favourite, albums (same date added) and named faces, so it sits right after the original in Photos, albums, search, the vault and person pages.
+- **Replace** moves the original to Trash for 30 days, still linked; **Restore original** brings it back (both then kept). Nothing is deleted on the spot.
+- **Vault photos:** the copy is created encrypted in the vault (file and thumbnail), its sealed details re-sealed for the new photo; nothing is written in plain form; keeping needs the vault open.
+- **Counted once:** People, Stories and the duplicate finder treat an original and its copies as one photo (the newest copy), so a person's count doesn't double and the duplicate finder can't offer either half for Trash.
+- **Labelled:** the copy is AVIF with the original's EXIF and colour profile plus IPTC `DigitalSourceType` in XMP (`compositeWithTrainedAlgorithmicMedia`; the non-AI faded-colour fix alone is `algorithmicallyEnhanced`). Photo responses carry `derived_from_id` and `ai_kind`; timeline rows flag AI copies (8) for the badge.
+
+### Functional Decision Points & Rationale
+- **Owner decisions (2026-11-16):** same metadata as the original so the pair is side by side; "Keep original" off sends the original to Trash for 30 days (like Enhance), not an immediate delete; the question comes after the result is shown.
+- **Links always point to the first original:** improving an improved photo adds up its kinds (`colour,faces`) and keeps one family, so the viewer's Original / Improved switch stays simple.
+- **Duplicate finder sees one member per family:** excluding only the pair wasn't enough (a third look-alike joined both into one group).
+- **Per-photo actions are not filtered:** People queries that act on one specific photo (the viewer) still see an original's faces.
+
+### Technical Touchpoints
+- New `engine/services/photo_versions.py` (`create_version`, `encode_version`, `versions_of`, `restore_original`, `pair_order`, `not_superseded`); `engine/services/restore_queue.py` (`keep_result`, auto-apply, status `discarded`); `engine/api/restore.py` (`/jobs/{id}/keep`, `/photos/{id}/versions`, `/photos/{id}/restore-original`); `engine/database.py` (photos columns + index, one-time add); `engine/api/system.py` (old-photo settings defaults); ordering in `api/photos.py`, `api/albums.py`, `api/vault.py`, `api/search.py`; pair-as-one in `api/people.py`, `services/stories_service.py`, `services/duplicate_service.py`; `docs/database_schema.md`.
+- Tests: `engine/tests/test_photo_versions.py` (15). Mutation checks: 14 deliberate breaks (plain vault copy, replace without Trash, metadata, album date, order, people count, duplicates, re-sealing, Keep original switch, AI label, first-original link, faded-fix label, Stories, faces) are each caught. Engine suite (308) and ruff pass.
+
+### State & Lifecycle Impact
+- Existing libraries get four nullable columns and an index on start; nothing changes for existing photos. Deleting an original for good (Trash after 30 days) unlinks its copies (`ON DELETE SET NULL`); the copies stay.
