@@ -39,14 +39,17 @@ Licensing (**owner decision D1, 2026-11-15: keep MIT, permissive models only**):
 - In Photos, by default only one of the pair shows (per the setting); the viewer shows a **"Original / AI version" switch** and a before/after slider.
 - Deleting the AI version never touches the original; moving the original to Trash asks what to do with its versions.
 
-### Settings → Photos & AI → "Old photos" (new group) — owner decision D2, 2026-11-15
-For **black-and-white photos** and, separately, for **blurry or faded faces**:
-- **How:** **Manual** (default) — only when I ask, per photo (viewer or selection bar) · **Automatic** — after import, in the background.
-- **Manual:** each time it runs, the app asks **"Replace the photo" or "Keep a copy"** (with a "remember my choice" tick). "Keep a copy" adds the AI version next to the original.
-- **Automatic:** a switch **"Also keep the original"** (on = keep both; off = show only the new version).
-- **Safety net (applies to "Replace" and to Automatic without keeping the original):** the original is never deleted. It is kept hidden as the photo's earlier version and can be brought back from the viewer ("Show original" / "Restore original"); it is removed only if the user deletes it themselves. Old family photos are irreplaceable and AI can change a face.
-- **Scratches and creases:** always manual (the user checks the marked damage first).
-- **When to run (automatic):** only while plugged in (default on, like enhancing) · Speed: Balanced (default) / Best quality (slower).
+### Settings → Photos & AI → "Old photos" (new group) — D2 (2026-11-15), simplified on the A1 board (2026-11-16)
+The owner rejected the first board as too complex for a normal user (no "sepia", "scratches", speed or model words). Approved shape:
+- Three plain rows, each with a small before → after picture and a **"When I ask" (default) / "Automatically"** choice:
+  1. **Add colour to old grey photos** (black-and-white and brownish prints)
+  2. **Fix faded or yellowed colours** (old colour prints)
+  3. **Sharpen blurry faces**
+- One switch: **"Show the original too"** (on = both show in Photos; off = only the improved one shows, the original waits behind "Original" in the viewer).
+- The app decides the rest: Natural colour style (Vivid only from the viewer or the sepia fallback), automatic work waits while on battery, models are managed in Storage. Scratch repair has no setting: always by hand from the viewer.
+- **When I ask:** the viewer shows the result first (before/after); then **"Keep both" / "Replace the photo" / "Discard"** with "Remember my choice". Asking after the result (not before) was proposed on the board and accepted.
+- **Safety net (applies to "Replace" and to Automatic without showing the original):** the original is never deleted. It is kept hidden as the photo's earlier version and can be brought back from the viewer ("Show original" / "Restore original"); it is removed only if the user deletes it themselves. Old family photos are irreplaceable and AI can change a face.
+- The viewer's old-photo panel appears **only after** the user picks Colorize / Fix colours / Restore faces / Repair scratches from the "…" menu; the normal viewer is unchanged.
 
 ### Detection on import (cheap, CPU)
 - **B&W:** colour saturation of a small thumbnail (also sepia-toned prints).
@@ -60,7 +63,7 @@ For **black-and-white photos** and, separately, for **blurry or faded faces**:
 ### Processing screen ("Activity")
 - One place for all background work: imports, video preparation, enhancing, colorizing, restoring, repairing. Each item: thumbnail, what's being done, progress, time left, Cancel; waiting items below; finished today with "Open".
 - **Vault items** show a blurred/locked thumbnail and no file name.
-- **Reaching it:** the rail's status dot becomes an activity indicator (spinning ring + count while work runs) and opens Activity; the Photos header pill ("Colorizing · 3 of 12") opens it too. — design on a board for approval first.
+- **Reaching it (D3, approved on the A1 board 2026-11-16):** no rail item. The rail's status dot becomes a turning lime ring with the count of items left (dashed when paused) and opens Activity; the Photos header pill ("Colorizing · 3 of 12 ›") opens it too and shows only while work runs. A photo being worked on shows a small ring on its tile.
 - Pause all / resume; pauses on battery.
 
 ## Steps and estimates
@@ -70,9 +73,9 @@ Sizes: S ≈ half a day of my work, M ≈ 1 day, L ≈ 2 days (each including te
 | # | Step | Size | Notes |
 |---|---|---|---|
 | A0 ✅ | **Spike & benchmark** (done 2026-11-16; results in "Colorize recipe") on the owner's photos: GFPGAN CPU time/RAM, DDColor large vs tiny quality, B&W and blur detection thresholds, int8 vs fp32. Output: a comparison page (before/after) for the owner to judge. | M | Owner provides ~20–30 B&W and blurry photos. Runs read-only on a copy. |
-| A1 | **Boards** for the Activity screen, viewer version switch + before/after, Settings "Old photos", the "replace or keep a copy" prompt, the scratch mask view. Owner approves. | M | Design first, like the redesign. |
+| A1 ✅ | **Boards** (approved 2026-11-16 after one round: simpler settings, panel only on demand) for the Activity screen, viewer version switch + before/after, Settings "Old photos", the "replace or keep a copy" prompt, the scratch mask view. Owner approves. | M | Design first, like the redesign. |
 | A2 | **Engine foundation:** model manager (download / import file / SHA-256 manifest / status in Settings → Storage), CPU ONNX session tuning (threads, tiling), a background **job queue** with progress, cancel, pause, battery rule; versions in the DB (`derived_from_id`, `ai_kind`) + IPTC labelling on export. | L | Reused by every feature. |
-| A3 | **Colorize** on demand (DDColor, Lab chroma transfer at full resolution, intensity slider, Natural/Vivid). Recipe chosen by the owner in A0 (2026-11-16), see "Colorize recipe" below. | M | First visible feature; good first joint test. |
+| A3 | **Colorize** and **Fix faded colours** on demand (DDColor, Lab chroma transfer at full resolution, intensity slider, Natural/Vivid). Recipe chosen by the owner in A0 (2026-11-16), see "Colorize recipe" below. | M | First visible feature; good first joint test. |
 | A4 | **Activity screen** + indicator (rail + header), vault items blurred. | M | |
 | A5 | **Restore faces** on demand (GFPGAN, align with YuNet landmarks, feathered paste-back, strength + per-face toggles, SFace identity check). | L | |
 | A6 | **Auto rules**: B&W and blur detection on import, Settings "Old photos" (manual / automatic, keep original), the "replace or keep a copy" prompt with remember-my-choice, hidden original + "Restore original". | M | |
@@ -89,6 +92,7 @@ Tested on the owner's 11 B&W/sepia photos (variants A–F). The owner judged **F
 - **Vivid = E:** the same, but the large model at **768 px**. Richer colour on crowded or sepia photos, but sometimes wrong hues (purple water and rocks, a red wall), so it is never the default. ~13 s.
 - **Automatic fallback:** after Natural, if more than about two-thirds of the coloured pixels are still orange/brown (Lab hue 30–100°), also run Vivid and use it when it removes the cast. In A0 this picked exactly the two photos the owner preferred in Vivid (90% and 70% brown versus at most 64% for the others). Tune the threshold on more photos; the viewer's Natural/Vivid switch always lets the user override.
 - Rejected: the baseline without contrast stretch (keeps the sepia cast), and 768 px as the default (wrong hues).
+- **Faded / yellowed colour photos (owner approved "R", 2026-11-16):** no AI for the colours. Each channel's own black and white point (0.5th–99.5th percentile, gain capped at 3×) removes the cast and the fade; gentle local contrast on brightness (CLAHE, clip 1.6); colour × 1.12. Under 1 s per photo. Then faces restored (below). Rejected: AI recolouring of colour photos; it discards the real colours and guessed wrong ones (a blue pole turned red, a cream house turned blue-green). Known gap: a slight pink/purple lean on a few photos, to tune in A3.
 - **Faces (A5):** GFPGAN v1.4 blended at **80%** with a feathered mask; owner confirmed the restored faces still look like the same people (2026-11-16). 2.0–3.1 s per face.
 - Note: one model is loaded at a time in the app (A0 peak with all models loaded was 7.3 GB).
 
@@ -102,6 +106,6 @@ Tested on the owner's 11 B&W/sepia photos (variants A–F). The owner judged **F
 
 - ~~D1~~ Licensing: decided 2026-11-15 — keep MIT, permissive models only.
 - ~~D2~~ Settings: decided 2026-11-15 — Manual (default, asks replace or copy) or Automatic (keep original or not); the original is never deleted.
-- **D3** Where the Activity screen lives (decided on the A1 board).
+- ~~D3~~ Activity: decided 2026-11-16 — rail status ring + Photos header pill, no rail item.
 - **D4** Order: is scratch repair (A7) needed in the first merge?
 - **D5** Where to put the test photos (a folder path), and whether they may be read by the benchmark.
