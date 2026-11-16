@@ -11,7 +11,8 @@ export type NavTab =
   | "vault" 
   | "trash" 
   | "settings"
-  | "search";
+  | "search"
+  | "activity";
 
 /** A person or album to open directly when its section shows (search and viewer links, R9c). */
 export type PendingOpen = { kind: "person" | "album"; id: number } | null;
@@ -29,6 +30,8 @@ interface AppState {
   selectedPhotoIds: Set<number>;
   activeVolume: VolumeInfo | null;
   isDriveConnected: boolean;
+  /** H10 / A4: background work summary for the rail's status ring (null when idle). */
+  activitySummary: { remaining: number; paused: boolean; headline: string | null } | null;
   systemHealth: SystemHealth | null;
   isVaultUnlocked: boolean;
   isVaultConfigured: boolean;
@@ -58,6 +61,7 @@ interface AppState {
   clearSelection: () => void;
   setActiveVolume: (vol: VolumeInfo | null) => void;
   setIsDriveConnected: (connected: boolean) => void;
+  setActivitySummary: (summary: { remaining: number; paused: boolean; headline: string | null } | null) => void;
   setSystemHealth: (health: SystemHealth | null) => void;
   setIsVaultUnlocked: (unlocked: boolean) => void;
   setIsVaultConfigured: (configured: boolean) => void;
@@ -120,6 +124,7 @@ export const useAppStore = create<AppState>((set) => ({
   selectedPhotoIds: new Set<number>(),
   activeVolume: null,
   isDriveConnected: true,
+  activitySummary: null,
   systemHealth: null,
   isVaultUnlocked: false,
   isVaultConfigured: false,
@@ -180,6 +185,7 @@ export const useAppStore = create<AppState>((set) => ({
   clearSelection: () => set((state) => (state.selectedPhotoIds.size === 0 ? state : { selectedPhotoIds: new Set<number>() })),
   setActiveVolume: (activeVolume) => set({ activeVolume }),
   setIsDriveConnected: (isDriveConnected) => set({ isDriveConnected }),
+  setActivitySummary: (activitySummary) => set({ activitySummary }),
   setSystemHealth: (systemHealth) => set({ systemHealth }),
   setIsVaultUnlocked: (isVaultUnlocked) => set({ isVaultUnlocked }),
   setIsVaultConfigured: (isVaultConfigured) => set({ isVaultConfigured }),
