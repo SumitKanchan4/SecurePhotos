@@ -697,6 +697,63 @@ html, body, #root {
 .viewer-nav-prev { left: 14px; }
 .viewer-nav-next { right: 14px; }
 
+/* ── Activity (H10 / A4) ─────────────────────────────────────────── */
+.rail-ring {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+.rail-ring::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 3px solid var(--glass-border);
+  border-top-color: var(--accent-fill);
+  border-right-color: var(--accent-fill);
+  animation: rail-ring-turn 1.4s linear infinite;
+}
+.rail-activity.is-paused .rail-ring::before { border: 2px dashed var(--text-muted); animation: none; }
+/* On the active (filled) rail button the ring and count follow the button's own text colour. */
+.rail-btn-active .rail-ring { color: inherit; }
+.rail-btn-active .rail-ring::before { border-color: color-mix(in srgb, currentColor 30%, transparent); border-top-color: currentColor; border-right-color: currentColor; }
+.rail-btn-active.is-paused .rail-ring::before { border: 2px dashed currentColor; }
+@keyframes rail-ring-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .rail-ring::before { animation: none; } }
+
+.act-section { display: flex; flex-direction: column; gap: 10px; }
+.act-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.act-row { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border-radius: 14px; background: var(--bg-surface); border: 1px solid var(--glass-border); }
+.act-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.act-row-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.act-row-line strong { font-size: 14px; font-weight: 800; color: var(--text-primary); white-space: nowrap; }
+.act-row-detail { flex: 1; min-width: 0; font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-row-pct { font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.act-bar { height: 6px; border-radius: var(--radius-full); background: var(--glass-pill-bg); overflow: hidden; }
+.act-bar > div { height: 100%; border-radius: var(--radius-full); background: var(--accent-fill); transition: width 0.4s ease; }
+.act-bar > div.is-indeterminate { width: 30% !important; animation: act-slide 1.2s ease-in-out infinite; }
+@keyframes act-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@media (prefers-reduced-motion: reduce) { .act-bar > div.is-indeterminate { animation: none; } }
+.act-thumb { flex-shrink: 0; object-fit: cover; background: var(--bg-surface-elevated); display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
+.act-thumb-row { width: 72px; height: 54px; border-radius: 9px; }
+.act-thumb-tile { width: 100%; aspect-ratio: 4 / 3; border-radius: 10px; }
+.act-thumb.is-private { background: repeating-linear-gradient(135deg, var(--bg-surface-elevated) 0 8px, var(--glass-pill-bg) 8px 16px); color: var(--text-primary); }
+.act-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; }
+.act-tile { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.act-tile.is-waiting .act-thumb { opacity: 0.8; }
+.act-tile-label { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-tile-link { align-self: flex-start; padding: 0; border: none; background: none; font-size: 12px; font-weight: 700; color: var(--text-primary); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.act-tile-link.is-strong { font-weight: 800; }
+.act-tile-link:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.act-cancel { flex-shrink: 0; }
+
 /* ── Old photos in the viewer (H10 / A3): before/after, side panel, keep dialog ── */
 .viewer-segment { display: inline-flex; padding: 3px; border-radius: var(--radius-full); background: #171717; border: 1px solid rgba(255, 255, 255, 0.12); }
 .viewer-segment button { height: 30px; padding: 0 12px; border: none; border-radius: var(--radius-full); background: transparent; color: #a3a3a3; font-size: 12px; font-weight: 700; cursor: pointer; }

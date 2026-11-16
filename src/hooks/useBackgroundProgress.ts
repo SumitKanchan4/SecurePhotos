@@ -1,10 +1,11 @@
 /**
  * Background work the Photos header reports (Q5: moved out of App.tsx unchanged): photo
- * enhancement, video preparation and imports, polled every second. A photo that finishes
+ * enhancement, video preparation, imports and old-photo jobs (H10), polled every second. A photo that finishes
  * enhancing is marked at once; when a whole batch ends the library reloads.
  */
 import { useEffect, useRef, useState } from "react";
 import type { ImportProgressState, OptimizationProgress, VideoOptimizationProgress } from "../types";
+import type { RestoreJobsReport } from "../components/activity/activityFormat";
 import { apiFetch } from "../services/api";
 
 interface BackgroundProgressHandlers {
@@ -18,6 +19,7 @@ export function useBackgroundProgress(onEvents: BackgroundProgressHandlers) {
   const [optimizationProgress, setOptimizationProgress] = useState<OptimizationProgress | null>(null);
   const [videoProgress, setVideoProgress] = useState<VideoOptimizationProgress | null>(null);
   const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null);
+  const [restoreJobs, setRestoreJobs] = useState<RestoreJobsReport | null>(null);
   const handlers = useRef(onEvents);
   handlers.current = onEvents;
 
@@ -26,14 +28,27 @@ export function useBackgroundProgress(onEvents: BackgroundProgressHandlers) {
     let wasVideoActive = false;
     let wasImportActive = false;
     let lastPhotoCompletedCount = 0;
+    let lastKeptCount = -1;
 
     const interval = setInterval(async () => {
       try {
-        const [photoRes, videoRes, importRes] = await Promise.all([
+        const [photoRes, videoRes, importRes, restoreRes] = await Promise.all([
           apiFetch("/api/photos/optimization-progress").catch(() => null),
           apiFetch("/api/videos/optimization-progress").catch(() => null),
           apiFetch("/api/photos/import-progress").catch(() => null),
+          apiFetch("/api/restore/jobs").catch(() => null),
         ]);
+
+        // H10 / A4: old-photo jobs for Activity. A newly kept improved copy (e.g. made by the
+        // automatic rules) appears in the library, so reload once when one is added.
+        if (restoreRes && restoreRes.ok) {
+          const restoreData: RestoreJobsReport = await restoreRes.json();
+          const finished = Array.isArray(restoreData?.finished_today) ? restoreData.finished_today : [];
+          setRestoreJobs(Array.isArray(restoreData?.working) ? restoreData : null);
+          const kept = finished.filter((j) => j.status === "done").length;
+          if (lastKeptCount >= 0 && kept > lastKeptCount) handlers.current.onBatchFinished();
+          lastKeptCount = kept;
+        }
 
         if (photoRes && photoRes.ok) {
           const photoData: OptimizationProgress = await photoRes.json();
@@ -82,5 +97,5 @@ export function useBackgroundProgress(onEvents: BackgroundProgressHandlers) {
     return () => clearInterval(interval);
   }, []);
 
-  return { optimizationProgress, videoProgress, importProgress };
+  return { optimizationProgress, videoProgress, importProgress, restoreJobs };
 }
