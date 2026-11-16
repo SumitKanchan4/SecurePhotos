@@ -91,6 +91,11 @@ const Tile: React.FC<TileProps> = React.memo(
               {processing ? "Preparing" : "Video"}
             </span>
           )}
+          {photo.is_ai && (
+            <span className="timeline-ai" title="Improved with AI (colour, faces or scratches)">
+              AI
+            </span>
+          )}
         </div>
 
         {selectable && (

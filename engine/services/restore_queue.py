@@ -444,7 +444,7 @@ async def _old_photo_settings() -> Dict[str, Any]:
     return (await get_app_settings())["settings"]
 
 
-async def keep_result(job_id: int, choice: str, remember: bool = False) -> Dict[str, Any]:
+async def keep_result(job_id: int, choice: str, remember: bool = False, intensity: float = 1.0) -> Dict[str, Any]:
     """What the user (or the automatic rule) decided for a finished result.
 
     - ``keep_both``: the improved photo is added next to the original.
@@ -453,6 +453,7 @@ async def keep_result(job_id: int, choice: str, remember: bool = False) -> Dict[
     - ``discard``: the result is deleted; nothing changes in the library.
 
     ``remember`` stores the choice as the "When I keep a result" setting (not for discard).
+    ``intensity`` (0-1) is the viewer's strength slider: below 1 the result is mixed with the original.
 
     Returns:
         ``{"photo_id": new photo id or None}``.
@@ -481,6 +482,14 @@ async def keep_result(job_id: int, choice: str, remember: bool = False) -> Dict[
             staged = await asyncio.to_thread(
                 photo_versions.read_photo_bytes, job["result_path"], bool(job["is_encrypted"]), key
             )
+            if intensity < 0.999:
+                from engine.services.old_photo_processors import apply_intensity
+
+                async with conn.execute("SELECT filepath FROM photos WHERE id = ?;", (job["photo_id"],)) as cur:
+                    source_path = (await cur.fetchone())[0]
+                source = await asyncio.to_thread(photo_versions.read_photo_bytes, source_path, bool(job["is_encrypted"]), key)
+                staged = await asyncio.to_thread(apply_intensity, staged, source, intensity)
+                del source
             new_id = await photo_versions.create_version(
                 conn, job["photo_id"], staged, job["kind"], json.loads(job["params"] or "{}"), key
             )

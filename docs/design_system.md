@@ -199,7 +199,7 @@ When items are selected, one floating bar shows: "N selected · Select all · [a
 |---|---|---|
 | Photos | `App.tsx`, `photos/PhotoTimeline.tsx` | Whole library in one timeline. Header: count, status pill, search (opens the Search page) and "+ Import" |
 | Search | `search/SearchPage.tsx`, `search/searchFormat.ts` | Big field; before typing: Try chips, People, Albums; after: matching people and albums, then results in the photo grid. Keywords (videos, favourites, documents, a year or month) filter rather than match text |
-| Viewer | `Lightbox.tsx`, `viewer/viewerFormat.ts` | Dark surround. Top bar: Back, the title with an 8K / 4K / HD chip, and date · "41 of 12,480". Actions: Favourite, Download (menu: the file, or a print-ready 300 dpi copy), Details; then, after a divider, Trash and the lime lock (Move to Vault, or Restore for a vault photo). A filmstrip of nine. Details are hidden each time the viewer opens. Zoom with double-click, Ctrl + wheel or + / − / 0 |
+| Viewer | `Lightbox.tsx`, `viewer/viewerFormat.ts` | Dark surround. Top bar: Back, the title with an 8K / 4K / HD chip, and date · "41 of 12,480". Actions: Favourite, Download (menu: the file, or a print-ready 300 dpi copy), Details; then, after a divider, Trash and the lime lock (Move to Vault, or Restore for a vault photo). A filmstrip of nine. Details are hidden each time the viewer opens. Zoom with double-click, Ctrl + wheel or + / − / 0. **Old photos (H10):** a "…" button (before Download) offers only what fits: Add colour (grey or sepia photos) or Fix faded colours (colour photos). While it works the date line reads "Adding colour · 45%". The result shows over the photo with a before/after divider ("Before" dark pill, "AI · After" lime pill) and a right panel (`viewer/OldPhotoPanel.tsx`): Natural / Vivid, Strength, "Keep this…" → dialog Keep both / Replace the photo (original to Trash for 30 days) / Discard, with Remember my choice. A photo with an improved copy shows an Original / Improved switch in the top bar; improved copies carry a lime "AI" badge in the grid |
 | Stories | `StoriesView.tsx`, `stories/*` | Header with Story music (icon) and Make new stories. Rows: For you, Saved, Collage ideas (6 first, then "Show more ideas") |
 | Albums | `AlbumsView.tsx`, `albums/*` | Made for you, then Your albums as covers. Album page: "← Albums", Slideshow, "+ Add photos", and a "…" menu (Rename, Choose cover photo, Move album to Vault, Delete album) |
 | People | `PeopleView.tsx`, `people/PeopleOverview.tsx` | Close ones on top, "Same person?" (one suggestion at a time), Everyone, and "Who is this?" naming cards (six first). Rename on the person page |
@@ -231,12 +231,13 @@ Each screen's pure helpers (wording, dates, counts) live next to it in a `*Forma
 | L | Move to Vault (or restore) | Viewer |
 | Delete / Backspace | Move to Trash | Viewer |
 | + / − / 0 | Zoom in / out / reset | Viewer (photos) |
+| ← / → | Move the before/after divider or the Strength slider (when focused; never switches photos) | Viewer, old-photo result |
 | ↑ / ↓, M | Volume, mute | Viewer (videos) |
 | P | Privacy shield | Private Vault |
 | Space, ← / → | Play or pause, previous / next | Story player, slideshow |
 | Enter / Space | Open or select the focused photo | Photo grid |
 
-The app-wide keys (T, L, Esc) are ignored while typing in an input or text box. New shortcuts need the same guard.
+The app-wide keys (T, L, Esc) are ignored while typing in an input or text box. New shortcuts need the same guard. The viewer's own keys are ignored while a dialog is on top of it (Esc closes only that dialog) and while a slider, checkbox or field has focus.
 
 ---
 

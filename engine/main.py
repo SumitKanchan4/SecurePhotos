@@ -77,6 +77,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from engine.services.video_leftovers import run_once as clean_up_old_video_originals
         asyncio.create_task(clean_up_old_video_originals())
 
+    # H10: plug in "Add colour" and "Fix faded colours" (the worker runs them; tests use fakes).
+    from engine.services import old_photo_processors
+    old_photo_processors.register()
+
     yield
 
     logger.info("Shutting down SecurePhotos Engine sidecar...")
