@@ -252,7 +252,7 @@ async def generate_through_the_years_story(person_id: int) -> Optional[StoryMode
             SELECT p.id, p.filename, p.taken_at, strftime('%Y', p.taken_at) as yr, f.box_x, f.box_y
             FROM photos p
             JOIN faces f ON p.id = f.photo_id
-            WHERE f.person_id = ? AND p.is_encrypted = 0 AND p.taken_at IS NOT NULL AND p.trashed_at IS NULL
+            WHERE f.person_id = ? AND p.is_encrypted = 0 AND p.taken_at IS NOT NULL AND p.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = p.id AND v.trashed_at IS NULL)
             GROUP BY yr
             ORDER BY yr ASC;
             """,
@@ -315,7 +315,7 @@ async def generate_on_this_day_stories() -> List[StoryModel]:
             SELECT p.id, p.filename, p.taken_at, strftime('%Y', p.taken_at) as yr, strftime('%m', p.taken_at) as mo
             FROM photos p
             WHERE p.taken_at IS NOT NULL 
-              AND p.trashed_at IS NULL 
+              AND p.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = p.id AND v.trashed_at IS NULL) 
               AND p.is_encrypted = 0
               AND strftime('%m', p.taken_at) = ?
               AND strftime('%Y', p.taken_at) != ?
@@ -394,7 +394,7 @@ async def generate_vacation_and_trip_stories() -> List[StoryModel]:
             """
             SELECT folder_name, strftime('%Y', taken_at) as yr, strftime('%m', taken_at) as mo, COUNT(*) as cnt
             FROM photos
-            WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0
+            WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0 AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = photos.id AND v.trashed_at IS NULL)
             GROUP BY folder_name, yr, mo
             HAVING cnt >= 3
             ORDER BY (CASE WHEN folder_name IS NOT NULL AND folder_name != '' THEN 1 ELSE 0 END) DESC, cnt DESC
@@ -427,7 +427,7 @@ async def generate_vacation_and_trip_stories() -> List[StoryModel]:
                 """
                 SELECT id, filename, taken_at, strftime('%Y', taken_at) as yr
                 FROM photos
-                WHERE folder_name = ? AND trashed_at IS NULL AND is_encrypted = 0
+                WHERE folder_name = ? AND trashed_at IS NULL AND is_encrypted = 0 AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = photos.id AND v.trashed_at IS NULL)
                 ORDER BY is_favorite DESC, id ASC
                 LIMIT 12;
                 """,
@@ -493,7 +493,7 @@ async def generate_seasonal_retrospectives() -> List[StoryModel]:
                 SELECT strftime('%Y', taken_at) as yr, COUNT(*) as cnt
                 FROM photos
                 WHERE strftime('%m', taken_at) IN ({placeholders})
-                  AND taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0
+                  AND taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0 AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = photos.id AND v.trashed_at IS NULL)
                 GROUP BY yr
                 HAVING cnt >= 4
                 ORDER BY yr DESC
@@ -515,7 +515,7 @@ async def generate_seasonal_retrospectives() -> List[StoryModel]:
                 FROM photos
                 WHERE strftime('%m', taken_at) IN ({placeholders})
                   AND strftime('%Y', taken_at) = ?
-                  AND trashed_at IS NULL AND is_encrypted = 0
+                  AND trashed_at IS NULL AND is_encrypted = 0 AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = photos.id AND v.trashed_at IS NULL)
                 ORDER BY is_favorite DESC, id ASC
                 LIMIT 10;
                 """,
@@ -571,7 +571,7 @@ async def generate_year_in_review_story(year: Optional[str] = None) -> Optional[
                 """
                 SELECT strftime('%Y', taken_at) as yr 
                 FROM photos 
-                WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0 
+                WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0 AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = photos.id AND v.trashed_at IS NULL) 
                 GROUP BY yr 
                 ORDER BY COUNT(*) DESC 
                 LIMIT 1;
@@ -586,7 +586,7 @@ async def generate_year_in_review_story(year: Optional[str] = None) -> Optional[
             """
             SELECT id, filename, taken_at, strftime('%Y', taken_at) as yr
             FROM photos
-            WHERE strftime('%Y', taken_at) = ? AND trashed_at IS NULL AND is_encrypted = 0
+            WHERE strftime('%Y', taken_at) = ? AND trashed_at IS NULL AND is_encrypted = 0 AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = photos.id AND v.trashed_at IS NULL)
             ORDER BY is_favorite DESC, id ASC
             LIMIT 10;
             """,
@@ -639,7 +639,7 @@ async def generate_recent_highlights_story() -> Optional[StoryModel]:
             """
             SELECT id, filename, taken_at, strftime('%Y', taken_at) as yr
             FROM photos
-            WHERE trashed_at IS NULL AND is_encrypted = 0
+            WHERE trashed_at IS NULL AND is_encrypted = 0 AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = photos.id AND v.trashed_at IS NULL)
             ORDER BY is_favorite DESC, id DESC
             LIMIT 12;
             """

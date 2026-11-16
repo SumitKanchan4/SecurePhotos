@@ -292,7 +292,7 @@ async def scan_and_cluster_duplicates(conn: aiosqlite.Connection) -> List[Dict[s
             id, filename, filepath, file_size, mime_type, width, height,
             taken_at, camera_make, camera_model, is_favorite, is_encrypted,
             is_optimized, is_enhanced, caption, thumbnail_path, preview_path,
-            blur_score, quality_score, phash, file_hash, folder_name
+            blur_score, quality_score, phash, file_hash, folder_name, derived_from_id
         FROM photos
         WHERE trashed_at IS NULL AND is_encrypted = 0
         ORDER BY id ASC;
@@ -300,6 +300,16 @@ async def scan_and_cluster_duplicates(conn: aiosqlite.Connection) -> List[Dict[s
     cursor = await conn.execute(query)
     rows = await cursor.fetchall()
     photos = [dict(r) for r in rows]
+
+    # H10: a photo and its improved copies (colour, faces...) look alike on purpose. Each family
+    # takes part once, as its newest improved copy, so neither half can be offered for Trash.
+    newest: Dict[int, Dict[str, Any]] = {}
+    for p in photos:
+        root = p.get("derived_from_id") or p["id"]
+        current = newest.get(root)
+        if current is None or (p.get("derived_from_id") and (not current.get("derived_from_id") or p["id"] > current["id"])):
+            newest[root] = p
+    photos = sorted(newest.values(), key=lambda p: p["id"])
 
     if len(photos) < 2:
         await conn.execute("DELETE FROM duplicate_groups;")

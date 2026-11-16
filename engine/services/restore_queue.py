@@ -8,7 +8,8 @@ app stays responsive and memory stays bounded (one large model loaded, see
 
 Flow of one job::
 
-    queued -> working -> review   (result staged; the user keeps both / replaces / discards, A2b)
+    queued -> working -> review   (result staged) -> done (kept) | discarded
+                                  automatic jobs skip the question: "Keep original" decides
                       -> failed    (error_message says why; e.g. "models_missing")
     queued | working | review -> cancelled
 
@@ -244,7 +245,7 @@ async def list_jobs() -> Dict[str, Any]:
         "working": [r for r in rows if r["status"] == "working"],
         "waiting": [r for r in rows if r["status"] == "queued"],
         "review": [r for r in rows if r["status"] == "review"],
-        "finished_today": [r for r in rows if r["status"] in ("done", "failed", "cancelled")],
+        "finished_today": [r for r in rows if r["status"] in ("done", "discarded", "failed", "cancelled")],
         "paused": state["paused"],
         "paused_reason": state["paused_reason"],
         "download": state["download"],
@@ -309,7 +310,7 @@ async def _next_job(conn: aiosqlite.Connection, vault_open: bool, auto_allowed: 
 
 async def _set(conn: aiosqlite.Connection, job_id: int, **fields: Any) -> None:
     sets = ", ".join(f"{k} = ?" for k in fields)
-    finished = ", finished_at = CURRENT_TIMESTAMP" if fields.get("status") in ("review", "done", "failed", "cancelled") else ""
+    finished = ", finished_at = CURRENT_TIMESTAMP" if fields.get("status") in ("review", "done", "discarded", "failed", "cancelled") else ""
     await conn.execute(
         f"UPDATE restore_jobs SET {sets}, updated_at = CURRENT_TIMESTAMP{finished} WHERE id = ?;",
         (*fields.values(), job_id),
@@ -415,6 +416,9 @@ async def process_next_job() -> bool:
                 staged.unlink(missing_ok=True)
                 raise JobCancelled()
             await _set(conn, job_id, status="review", progress=100, result_path=to_db_path(staged), error_message=None)
+            if job["origin"] == "auto":  # No one to ask: apply the "Keep original" setting.
+                keep_original = (await _old_photo_settings()).get("old_photos_keep_original", True)
+                await keep_result(job_id, "keep_both" if keep_original else "replace")
         except JobCancelled:
             if job_id in _cancel_requested:
                 await _set(conn, job_id, status="cancelled", progress=0)
@@ -429,6 +433,70 @@ async def process_next_job() -> bool:
             state["active_job_id"] = None
             key = None
         return True
+
+
+KEEP_CHOICES = ("keep_both", "replace", "discard")
+
+
+async def _old_photo_settings() -> Dict[str, Any]:
+    from engine.api.system import get_app_settings
+
+    return (await get_app_settings())["settings"]
+
+
+async def keep_result(job_id: int, choice: str, remember: bool = False) -> Dict[str, Any]:
+    """What the user (or the automatic rule) decided for a finished result.
+
+    - ``keep_both``: the improved photo is added next to the original.
+    - ``replace``: the improved photo is added and the original goes to Trash for 30 days
+      (still linked; "Restore original" brings it back).
+    - ``discard``: the result is deleted; nothing changes in the library.
+
+    ``remember`` stores the choice as the "When I keep a result" setting (not for discard).
+
+    Returns:
+        ``{"photo_id": new photo id or None}``.
+
+    Raises:
+        ValueError: Unknown choice, or the job isn't waiting for a decision.
+        photo_versions.VersionError: The vault is locked (vault photo) or the files failed a check.
+    """
+    from engine.services import photo_versions
+
+    if choice not in KEEP_CHOICES:
+        raise ValueError(f"Unknown choice {choice!r}")
+    async with db_connection() as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT j.*, p.is_encrypted FROM restore_jobs j JOIN photos p ON p.id = j.photo_id WHERE j.id = ?;", (job_id,)
+        ) as cur:
+            job = await cur.fetchone()
+        if job is None or job["status"] != "review":
+            raise ValueError("This result is no longer waiting for a decision.")
+        new_id = None
+        if choice != "discard":
+            key = _vault_key() if job["is_encrypted"] else None
+            if job["is_encrypted"] and key is None:
+                raise photo_versions.VersionError("vault_locked")
+            staged = await asyncio.to_thread(
+                photo_versions.read_photo_bytes, job["result_path"], bool(job["is_encrypted"]), key
+            )
+            new_id = await photo_versions.create_version(
+                conn, job["photo_id"], staged, job["kind"], json.loads(job["params"] or "{}"), key
+            )
+            del staged, key
+            if choice == "replace":
+                await photo_versions.trash_photo(conn, job["photo_id"])
+        _remove_staged(job["result_path"])
+        await _set(
+            conn, job_id, status="discarded" if choice == "discard" else "done",
+            result_path=None, result_photo_id=new_id,
+        )
+    if remember and choice != "discard":
+        from engine.api.system import SettingsUpdatePayload, update_app_settings
+
+        await update_app_settings(SettingsUpdatePayload(settings={"old_photos_keep_choice": choice}))
+    return {"photo_id": new_id}
 
 
 async def worker_loop() -> None:
