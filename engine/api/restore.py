@@ -51,6 +51,50 @@ async def cancel_job(job_id: int) -> Dict[str, bool]:
     return {"cancelled": True}
 
 
+class KeepRequest(BaseModel):
+    choice: str  # "keep_both" | "replace" | "discard"
+    remember: bool = False
+
+
+@router.post("/jobs/{job_id}/keep")
+async def keep_job_result(job_id: int, payload: KeepRequest) -> Dict[str, Any]:
+    """The user's decision after seeing the result: keep both, replace the photo, or discard."""
+    from engine.services.photo_versions import VersionError
+
+    try:
+        return await restore_queue.keep_result(job_id, payload.choice, payload.remember)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+    except VersionError as err:
+        raise HTTPException(status_code=409, detail=str(err))
+
+
+@router.get("/photos/{photo_id}/versions")
+async def photo_versions_list(photo_id: int) -> Dict[str, Any]:
+    """The original and its improved copies, for the viewer's Original / Improved switch."""
+    from engine.database import db_connection
+    from engine.services import photo_versions
+
+    async with db_connection() as conn:
+        try:
+            return await photo_versions.versions_of(conn, photo_id)
+        except photo_versions.VersionError as err:
+            raise HTTPException(status_code=404, detail=str(err))
+
+
+@router.post("/photos/{photo_id}/restore-original")
+async def restore_original(photo_id: int) -> Dict[str, int]:
+    """Brings the original of an improved photo back from Trash, still linked."""
+    from engine.database import db_connection
+    from engine.services import photo_versions
+
+    async with db_connection() as conn:
+        try:
+            return {"original_id": await photo_versions.restore_original(conn, photo_id)}
+        except photo_versions.VersionError as err:
+            raise HTTPException(status_code=404, detail=str(err))
+
+
 @router.post("/pause")
 async def pause() -> Dict[str, bool]:
     restore_queue.pause()

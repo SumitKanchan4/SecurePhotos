@@ -73,7 +73,7 @@ async def list_people() -> List[PersonResponse]:
                    COUNT(DISTINCT ph.id) AS active_photo_count, p.cover_face_id
             FROM persons p
             JOIN faces f ON f.person_id = p.id
-            JOIN photos ph ON f.photo_id = ph.id AND ph.trashed_at IS NULL AND ph.is_encrypted = 0
+            JOIN photos ph ON f.photo_id = ph.id AND ph.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = ph.id AND v.trashed_at IS NULL) AND ph.is_encrypted = 0
             GROUP BY p.id
             HAVING active_photo_count > 0
             ORDER BY p.is_close_one DESC, active_photo_count DESC, p.affinity_score DESC;
@@ -90,7 +90,7 @@ async def list_people() -> List[PersonResponse]:
                     """
                     SELECT f.id FROM faces f
                     JOIN photos ph ON f.photo_id = ph.id
-                    WHERE f.id = ? AND ph.trashed_at IS NULL AND ph.is_encrypted = 0;
+                    WHERE f.id = ? AND ph.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = ph.id AND v.trashed_at IS NULL) AND ph.is_encrypted = 0;
                     """,
                     (cover_face,),
                 ) as chk_cur:
@@ -102,7 +102,7 @@ async def list_people() -> List[PersonResponse]:
                     """
                     SELECT f.id FROM faces f
                     JOIN photos ph ON f.photo_id = ph.id
-                    WHERE f.person_id = ? AND ph.trashed_at IS NULL AND ph.is_encrypted = 0
+                    WHERE f.person_id = ? AND ph.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = ph.id AND v.trashed_at IS NULL) AND ph.is_encrypted = 0
                     ORDER BY f.is_anchor_medoid DESC, f.quality_score DESC
                     LIMIT 1;
                     """,
@@ -145,7 +145,7 @@ async def list_unlabeled_clusters() -> List[UnlabeledClusterResponse]:
             FROM faces f
             JOIN photos p ON f.photo_id = p.id
             WHERE f.person_id IS NULL AND f.cluster_id IS NOT NULL
-              AND p.trashed_at IS NULL AND p.is_encrypted = 0 AND f.quality_score >= 0.25
+              AND p.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = p.id AND v.trashed_at IS NULL) AND p.is_encrypted = 0 AND f.quality_score >= 0.25
             GROUP BY f.cluster_id
             ORDER BY photo_count DESC, face_count DESC;
             """
@@ -164,7 +164,7 @@ async def list_unlabeled_clusters() -> List[UnlabeledClusterResponse]:
                 SELECT f.id FROM faces f
                 JOIN photos p ON p.id = f.photo_id
                 WHERE f.cluster_id = ? AND f.person_id IS NULL AND f.quality_score >= 0.25
-                  AND p.trashed_at IS NULL AND p.is_encrypted = 0
+                  AND p.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = p.id AND v.trashed_at IS NULL) AND p.is_encrypted = 0
                 ORDER BY f.is_anchor_medoid DESC, f.quality_score DESC
                 LIMIT 1;
                 """,
@@ -179,7 +179,7 @@ async def list_unlabeled_clusters() -> List[UnlabeledClusterResponse]:
                 SELECT f.id FROM faces f
                 JOIN photos p ON p.id = f.photo_id
                 WHERE f.cluster_id = ? AND f.person_id IS NULL AND f.quality_score >= 0.25
-                  AND p.trashed_at IS NULL AND p.is_encrypted = 0
+                  AND p.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = p.id AND v.trashed_at IS NULL) AND p.is_encrypted = 0
                 GROUP BY f.photo_id
                 ORDER BY f.is_anchor_medoid DESC, f.quality_score DESC
                 LIMIT 4;
@@ -230,7 +230,7 @@ async def _library_photo_count(conn, column: str, value) -> int:
         f"""
         SELECT COUNT(DISTINCT f.photo_id) FROM faces f
         JOIN photos p ON p.id = f.photo_id
-        WHERE f.{column} = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
+        WHERE f.{column} = ? AND p.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = p.id AND v.trashed_at IS NULL) AND p.is_encrypted = 0
         {"AND f.person_id IS NULL" if column == "cluster_id" else ""};
         """,
         (value,),
@@ -244,7 +244,7 @@ async def _best_face(conn, column: str, value) -> Optional[int]:
         f"""
         SELECT f.id FROM faces f
         JOIN photos p ON p.id = f.photo_id
-        WHERE f.{column} = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
+        WHERE f.{column} = ? AND p.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = p.id AND v.trashed_at IS NULL) AND p.is_encrypted = 0
         {"AND f.person_id IS NULL" if column == "cluster_id" else ""}
         ORDER BY f.is_anchor_medoid DESC, f.quality_score DESC, f.id
         LIMIT 1;
@@ -500,7 +500,7 @@ async def tag_medoid_cluster(payload: TagClusterRequest) -> dict:
             SELECT COUNT(DISTINCT f.photo_id) AS cnt 
             FROM faces f 
             JOIN photos p ON f.photo_id = p.id 
-            WHERE f.person_id = ? AND p.is_encrypted = 0 AND p.trashed_at IS NULL;
+            WHERE f.person_id = ? AND p.is_encrypted = 0 AND p.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = p.id AND v.trashed_at IS NULL);
             """,
             (person_id,),
         ) as c_cur:
@@ -512,7 +512,7 @@ async def tag_medoid_cluster(payload: TagClusterRequest) -> dict:
             """
             SELECT f.id FROM faces f
             JOIN photos p ON f.photo_id = p.id
-            WHERE f.person_id = ? AND p.is_encrypted = 0 AND p.trashed_at IS NULL
+            WHERE f.person_id = ? AND p.is_encrypted = 0 AND p.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = p.id AND v.trashed_at IS NULL)
             ORDER BY f.is_anchor_medoid DESC, f.quality_score DESC
             LIMIT 1;
             """,
@@ -585,7 +585,7 @@ async def get_person_photos(person_id: int):
                    p.is_optimized, p.is_enhanced
             FROM photos p
             JOIN faces f ON f.photo_id = p.id
-            WHERE f.person_id = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
+            WHERE f.person_id = ? AND p.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = p.id AND v.trashed_at IS NULL) AND p.is_encrypted = 0
             GROUP BY p.id
             ORDER BY p.taken_at DESC, p.id DESC;
             """,
@@ -701,7 +701,7 @@ async def unlink_photo_from_person(person_id: int, photo_id: int) -> dict:
             SELECT COUNT(DISTINCT f.photo_id) AS cnt
             FROM faces f
             JOIN photos p ON f.photo_id = p.id
-            WHERE f.person_id = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0;
+            WHERE f.person_id = ? AND p.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = p.id AND v.trashed_at IS NULL) AND p.is_encrypted = 0;
             """,
             (person_id,),
         ) as c_cur:
@@ -723,7 +723,7 @@ async def unlink_photo_from_person(person_id: int, photo_id: int) -> dict:
                         """
                         SELECT f.id FROM faces f
                         JOIN photos p ON f.photo_id = p.id
-                        WHERE f.person_id = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
+                        WHERE f.person_id = ? AND p.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = p.id AND v.trashed_at IS NULL) AND p.is_encrypted = 0
                         ORDER BY f.is_anchor_medoid DESC, f.quality_score DESC
                         LIMIT 1;
                         """,

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
 from engine.database import get_db_connection
+from engine.services.photo_versions import pair_order
 from engine.api.photos import PhotoResponse
 
 logger = logging.getLogger("securephotos.api.albums")
@@ -231,11 +232,12 @@ async def get_album_detail(album_id: int) -> AlbumDetailResponse:
                 p.taken_at, p.camera_make, p.camera_model,
                 p.latitude, p.longitude, p.iso, p.aperture, p.shutter_speed, p.focal_length,
                 p.is_favorite, p.is_encrypted,
-                p.is_optimized, p.is_enhanced, p.caption, p.thumbnail_path, p.preview_path
+                p.is_optimized, p.is_enhanced, p.caption, p.thumbnail_path, p.preview_path,
+                p.derived_from_id, p.ai_kind
             FROM photo_album pa
             JOIN photos p ON pa.photo_id = p.id
             WHERE pa.album_id = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
-            ORDER BY pa.added_at DESC, p.taken_at DESC;
+            ORDER BY pa.added_at DESC, p.taken_at DESC, """ + pair_order("p") + """;
         """
         async with conn.execute(query, (album_id,)) as cursor:
             rows = await cursor.fetchall()
@@ -266,6 +268,8 @@ async def get_album_detail(album_id: int) -> AlbumDetailResponse:
                 caption=r["caption"],
                 thumbnail_path=r["thumbnail_path"],
                 preview_path=r["preview_path"],
+                derived_from_id=r["derived_from_id"],
+                ai_kind=r["ai_kind"],
             )
             for r in rows
         ]

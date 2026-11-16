@@ -285,7 +285,11 @@ CREATE TABLE IF NOT EXISTS photos (
     file_hash TEXT,                 -- SHA-256 checksum for deduplication & verification
     folder_name TEXT,
     trashed_at DATETIME,
-    trash_expires_at DATETIME
+    trash_expires_at DATETIME,
+    derived_from_id INTEGER REFERENCES photos(id) ON DELETE SET NULL, -- H10: improved copy of this original
+    ai_kind TEXT,                   -- H10: 'colour' | 'fade' | 'faces' | 'scratches' (comma-joined when combined)
+    ai_params TEXT,                 -- H10: JSON settings used, e.g. {"style": "natural"}
+    edited_at DATETIME              -- H10: when the improved copy was made
 );
 
 -- ── 2. Albums Table ──────────────────────────────────────────────────────────
@@ -512,6 +516,10 @@ CREATE TABLE IF NOT EXISTS restore_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_restore_jobs_status ON restore_jobs (status, created_at);
 CREATE INDEX IF NOT EXISTS idx_restore_jobs_photo ON restore_jobs (photo_id);
+CREATE INDEX IF NOT EXISTS idx_photos_derived_from ON photos (derived_from_id);
+-- H10: an improved copy keeps its original's date, place, camera, caption, favourite, albums
+-- (same added_at) and named faces. Lists sort it right after the original; People, Stories and
+-- the duplicate finder count the pair once (the newest copy). status 'discarded' = result thrown away.
 ```
 
 ---
