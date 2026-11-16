@@ -1056,6 +1056,7 @@ export const App: React.FC = () => {
         }}
         onToggleFavorite={handleToggleFavorite}
         isDocumentView={activeTab === "documents"}
+        onLibraryChanged={() => loadPhotos()}
         onTogglePin={handleTogglePin}
         onUnlockRequest={(action) => {
           if (action) {

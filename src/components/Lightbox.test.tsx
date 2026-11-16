@@ -175,7 +175,7 @@ describe("Lightbox layout (redesign R3)", () => {
     const { onClose } = renderViewer();
     fireEvent.keyDown(window, { key: "i" });
     expect(await screen.findByRole("button", { name: /Rohan/ })).toBeInTheDocument();
-    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe("http://127.0.0.1:50123/api/photos/7/context");
+    expect((fetchMock.mock.calls as unknown as [string][]).map((c) => c[0])).toContain("http://127.0.0.1:50123/api/photos/7/context");
     expect(screen.getByText("Google Pixel 9 Pro")).toBeInTheDocument();
     expect(screen.getByText("f/1.7 · ISO 50")).toBeInTheDocument();
     expect(screen.getByText("Copied into your library")).toBeInTheDocument();

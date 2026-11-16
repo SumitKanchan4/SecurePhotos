@@ -6114,3 +6114,29 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 
 ### State & Lifecycle Impact
 - Existing libraries get four nullable columns and an index on start; nothing changes for existing photos. Deleting an original for good (Trash after 30 days) unlinks its copies (`ON DELETE SET NULL`); the copies stay.
+
+## 151. Old Photos, Step A3: Add Colour and Fix Faded Colours in the Viewer (H10)
+
+### Functionality Overview
+- The viewer gets a "…" button that offers only what fits the photo: **Add colour** (black-and-white or sepia photos) or **Fix faded colours** (colour photos with a yellow cast or fading). Nothing else changes in the viewer until one is picked.
+- While it works, the date line reads "Adding colour · 45%"; it keeps running if the user looks at other photos or closes the viewer (the result is picked up again when the photo is reopened).
+- The result appears over the photo with a draggable before/after divider, and a side panel: Natural / Vivid (colour only), Strength, and "Keep this…". The dialog offers **Keep both** (default) or **Replace the photo** (the original goes to Trash for 30 days), plus Discard and "Remember my choice"; a remembered choice turns the button into "Keep both" / "Replace the photo" directly.
+- A photo with an improved copy shows **Original / Improved** in the top bar; improved copies carry a lime **AI** badge in the grid.
+- The first use downloads the models once (~2 GB) with a progress bar.
+
+### Functional Decision Points & Rationale
+- **Recipes** are the ones the owner approved on their own photos (A0): Natural = recipe F, Vivid = 768 px, automatic Vivid try for photos that stay sepia; Fix faded colours = recipe Q (no AI).
+- **"Black-and-white" means one uniform tint** (Lab a/b spread), not low saturation: a strongly toned sepia print failed the old rule in the browser test. On the owner's 19 photos the new rule picks exactly the 11 grey ones with a wide margin.
+- **Contrast stretch capped at 2.5x** around the photo's mid-tone: a nearly flat image turned black; the owner's prints need 1.3-1.4x, so their results are unchanged.
+- **Strength = mix with the original**, shown instantly as the result's opacity over the photo and applied the same way when kept.
+- **Natural / Vivid re-runs** the colouring (about 13 s for Vivid) rather than caching both; the result waiting for a decision is replaced.
+- **One request per opened photo** (`/state`) for the menu, the switch and any open job, so moving through photos stays light.
+- **Keyboard:** the viewer ignores its shortcuts while a dialog is on top (Esc closes only the dialog) or while a slider/checkbox/field has focus (arrows used to switch photos while adjusting Strength).
+
+### Technical Touchpoints
+- Engine: `engine/services/old_photo_processors.py` (new; `register()` in `engine/main.py`), `engine/api/restore.py` (`/photos/{id}/state`, `/photos/{id}/options`, `/jobs/{id}/result`, `intensity` on keep), `engine/services/restore_queue.py` (`keep_result(..., intensity)`).
+- Frontend: `src/components/viewer/useOldPhoto.ts`, `src/components/viewer/OldPhotoPanel.tsx` (ImproveMenu, VersionSwitch, BeforeAfter, OldPhotoPanel, KeepDialog), `src/components/Lightbox.tsx` (wiring, key guard, `onLibraryChanged`), `src/App.tsx`, `src/components/photos/PhotoTimeline.tsx` + `src/utils/photoTimeline.ts` (AI badge, flag 8), `src/types/index.ts`, `src/index.css` (`.viewer-segment`, `.ba-*`, `.op-*`, `.timeline-ai`), `docs/design_system.md`.
+- Tests: `engine/tests/test_old_photo_processors.py` (12, fake models), `engine/tests/test_photo_versions.py` (+4), `src/components/viewer/oldPhoto.test.tsx` (10), timeline and Lightbox tests updated. Mutation checks: 17 deliberate breaks each caught (after strengthening five weak tests). Engine 323, frontend 156, ruff and tsc pass. Browser check on a throwaway library in both themes (menu, progress, before/after, panel, dialog, Keep both, grid badge, Original / Improved switch); contrast checks clean.
+
+### State & Lifecycle Impact
+- No schema change. Results waiting for a decision survive a restart (A2a). The models are fetched once into `data/models`; "import from file" exists in the API but has no button yet (needs Tauri's file dialog).

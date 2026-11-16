@@ -84,7 +84,7 @@ Sizes: S ≈ half a day of my work, M ≈ 1 day, L ≈ 2 days (each including te
 | A0 ✅ | **Spike & benchmark** (done 2026-11-16; results in "Colorize recipe") on the owner's photos: GFPGAN CPU time/RAM, DDColor large vs tiny quality, B&W and blur detection thresholds, int8 vs fp32. Output: a comparison page (before/after) for the owner to judge. | M | Owner provides ~20–30 B&W and blurry photos. Runs read-only on a copy. |
 | A1 ✅ | **Boards** (approved 2026-11-16 after one round: simpler settings, panel only on demand) for the Activity screen, viewer version switch + before/after, Settings "Old photos", the "replace or keep a copy" prompt, the scratch mask view. Owner approves. | M | Design first, like the redesign. |
 | A2 | **Engine foundation:** model manager (download / import file / SHA-256 manifest / status in Settings → Storage), CPU ONNX session tuning (threads, tiling), a background **job queue** with progress, cancel, pause, battery rule; versions in the DB (`derived_from_id`, `ai_kind`) + IPTC labelling on export. | L | Reused by every feature. |
-| A3 | **Colorize** and **Fix faded colours** on demand (DDColor, Lab chroma transfer at full resolution, intensity slider, Natural/Vivid). Recipe chosen by the owner in A0 (2026-11-16), see "Colorize recipe" below. | M | First visible feature; good first joint test. |
+| A3 ✅ | **Colorize** and **Fix faded colours** on demand (built 2026-11-16, branch `feature/a3-colour`; see "A3 notes") (DDColor, Lab chroma transfer at full resolution, intensity slider, Natural/Vivid). Recipe chosen by the owner in A0 (2026-11-16), see "Colorize recipe" below. | M | First visible feature; good first joint test. |
 | A4 | **Activity screen** + indicator (rail + header), vault items blurred. | M | |
 | A5 | **Restore faces** on demand (GFPGAN, align with YuNet landmarks, feathered paste-back, strength + per-face toggles, SFace identity check). | L | |
 | A6 | **Auto rules**: B&W and blur detection on import, Settings "Old photos" (manual / automatic, keep original), the "replace or keep a copy" prompt with remember-my-choice, hidden original + "Restore original". | M | |
@@ -144,6 +144,13 @@ Built as planned, with these choices: an improved photo always links to the **fi
 - The owner approved this A2 plan.
 - **Model hosting (owner decision 2026-11-16):** attachments on a Release of **this repo**, tag `models-v1` (files up to 2 GB, pinned by URL + SHA-256; a new model = new tag + app update). The repo stays private until it is stable, then becomes public, so until then downloads only work for the owner: development and joint testing use "import from file" / the local models folder. `scripts/create_release.py` gets a gate that refuses to build a release while any `on_demand` model URL can't be fetched without a login.
 - Not in git (100 MB file limit; Git LFS free quota ~1 GB storage and bandwidth), not bundled in the installer.
+
+## A3 notes (built 2026-11-16)
+- Engine: `engine/services/old_photo_processors.py` (recipe F, Vivid 768, sepia fallback, recipe Q) registered at start; `/api/restore/photos/{id}/state` (one request per opened photo: fitting actions, family, open job), `/jobs/{id}/result`, `intensity` on keep.
+- Viewer: "…" menu, progress in the date line, before/after divider, side panel, keep dialog, Original / Improved switch; grid "AI" badge (timeline flag 8).
+- Found while testing in the browser and fixed: (1) black-and-white detection now means **one uniform tint** (Lab a/b spread), because strong sepia prints failed the old saturation rule (owner's 19 photos: still exactly the 11 grey ones); (2) the contrast stretch is capped at 2.5x around the photo's mid-tone, because a nearly flat scan turned black (owner's prints need 1.3-1.4x, unchanged); (3) Escape in the keep dialog also closed the viewer, and arrows on the strength slider switched photos; the viewer now ignores its keys while a dialog is on top or a control has focus; (4) an AI-coloured copy no longer offers "Fix faded colours".
+- Real models on 4 owner photos (read only, outputs deleted): ~10-12 s per grey photo including model swaps, ~16 s when the sepia fallback runs, under 1 s for the faded-colour fix; results match the approved A0 round.
+- Not yet: "import from file" has an API but no button (needs Tauri's file dialog plugin); while the repo is private the models go into the test library by import before the joint test. Activity screen is A4.
 
 ## Testing
 

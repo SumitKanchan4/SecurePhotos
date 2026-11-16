@@ -315,3 +315,69 @@ async def test_stories_use_the_copy_not_both(lib):
         assert new_id in shown and other_id in shown and original_id not in shown
     finally:
         await delete_story(story.id)
+
+
+# ── A3 endpoints: the waiting result, which actions fit, the strength slider ──
+
+
+async def test_viewer_gets_the_waiting_result_and_the_actions_that_fit(lib):
+    original_id, colour_id = lib["ids"]
+    job_id = await _finish(original_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.get(f"/api/restore/jobs/{job_id}/result")
+        assert res.status_code == 200 and res.headers["cache-control"] == "no-store"
+        assert Image.open(io.BytesIO(res.content)).size == (96, 72)
+        await restore_queue.keep_result(job_id, "discard")
+        assert (await client.get(f"/api/restore/jobs/{job_id}/result")).status_code == 404  # Nothing waiting any more.
+
+        conn = lib["conn"]
+        grey = settings.data_dir / "originals" / f"grey_{secrets.token_hex(2)}.jpg"
+        Image.new("RGB", (64, 48), (128, 128, 128)).save(grey, "JPEG")
+        cur = await conn.execute("INSERT INTO photos (filename, filepath, file_size, mime_type) VALUES ('grey.jpg', ?, 1, 'image/jpeg');", (to_db_path(grey),))
+        grey_id = cur.lastrowid
+        await conn.commit()
+        try:
+            assert (await client.get(f"/api/restore/photos/{grey_id}/options")).json() == {"colour": True, "fade": False}
+            assert (await client.get(f"/api/restore/photos/{colour_id}/options")).json() == {"colour": False, "fade": True}
+            assert (await client.get("/api/restore/photos/999999/options")).status_code == 404
+        finally:
+            await conn.execute("DELETE FROM photos WHERE id = ?;", (grey_id,))
+            await conn.commit()
+            grey.unlink(missing_ok=True)
+
+
+async def test_strength_zero_keeps_the_original_look(lib, monkeypatch):
+    conn, original_id = lib["conn"], lib["ids"][0]
+    blue = io.BytesIO()
+    Image.new("RGB", (96, 72), (20, 60, 220)).save(blue, "JPEG", quality=95)
+    monkeypatch.setitem(restore_queue.PROCESSORS, "colour", restore_queue.Processor(models=(), run=lambda *a: blue.getvalue()))
+    job_id = await _finish(original_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post(f"/api/restore/jobs/{job_id}/keep", json={"choice": "keep_both", "intensity": 0})
+        assert (await client.post(f"/api/restore/jobs/{job_id}/keep", json={"choice": "keep_both", "intensity": 2})).status_code == 422
+    new = await _photo(conn, res.json()["photo_id"])
+    with Image.open(resolve_stored_path(new["filepath"])) as im:
+        copy = im.convert("RGB").getpixel((60, 60))
+    with Image.open(lib["folder"] / "grandparents.jpg") as im:
+        orig = im.convert("RGB").getpixel((60, 60))
+    assert max(abs(a - b) for a, b in zip(copy, orig)) < 12  # The original's pixels, not the blue result.
+
+
+async def test_viewer_state_in_one_request(lib, monkeypatch):
+    original_id = lib["ids"][0]
+    two_colours = io.BytesIO()
+    img = Image.new("RGB", (96, 72), (200, 60, 50))
+    img.paste((40, 90, 200), (48, 0, 96, 72))
+    img.save(two_colours, "JPEG", quality=95)
+    monkeypatch.setitem(restore_queue.PROCESSORS, "colour", restore_queue.Processor(models=(), run=lambda *a: two_colours.getvalue()))
+    job_id = await _finish(original_id)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        state = (await client.get(f"/api/restore/photos/{original_id}/state")).json()
+        assert state["options"] == {"colour": False, "fade": True}
+        assert state["job"]["id"] == job_id and state["job"]["status"] == "review"
+        assert [m["id"] for m in state["members"]] == [original_id]
+        new_id = (await client.post(f"/api/restore/jobs/{job_id}/keep", json={"choice": "keep_both"})).json()["photo_id"]
+        state = (await client.get(f"/api/restore/photos/{new_id}/state")).json()
+        assert state["job"] is None and [m["id"] for m in state["members"]] == [original_id, new_id]
+        assert state["options"] == {"colour": False, "fade": False}  # Already coloured: nothing more to offer.
+        assert (await client.get("/api/restore/photos/999999/state")).status_code == 404
