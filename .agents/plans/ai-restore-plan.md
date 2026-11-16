@@ -105,6 +105,40 @@ Tested on the owner's 11 B&W/sepia photos (variants A–F). The owner judged **F
 - **Faces (A5):** GFPGAN v1.4 blended at **80%** with a feathered mask; owner confirmed the restored faces still look like the same people (2026-11-16). 2.0–3.1 s per face.
 - Note: one model is loaded at a time in the app (A0 peak with all models loaded was 7.3 GB).
 
+## A2 in detail (engine foundation) — proposed 2026-11-16, awaiting owner approval
+
+Engine only; no visible UI yet (A3 adds the viewer panel, A4 the Activity screen). Split into two PRs into `feature/ai-restore`.
+
+### A2a · Models and the job queue (M–L)
+- **Model registry** (`engine/services/ai_models.py`): add the old-photo models to `MODELS` with a new `"on_demand": True` flag (not bundled in the installer: ~2–3 GB; downloaded the first time a feature is used). Same rules as today: pinned URL + SHA-256, verified before use, a bad file is never loaded. New: download with progress and cancel, and **"import from file"** (copy a downloaded `.onnx` from disk, then verify), for offline machines. `scripts/fetch_models.py` skips `on_demand` models.
+  - Models: DDColor large 512, DDColor artistic 512, DDColor large 768 (Vivid; separate optional download), GFPGAN v1.4 512. Scratch models are added in A7.
+  - Try one 512/768 DDColor file with a dynamic input size, to avoid a second ~1 GB download; if the decoder can't, keep two files.
+  - The ONNX files are made by our own export scripts from the official Apache-2.0 weights; the scripts and the vetted model code go into `scripts/model_export/` (licence headers kept) so anyone can rebuild and check the hashes.
+- **ONNX sessions** (`engine/services/onnx_runtime.py`, new): one place for CPU settings (4 threads, no spinning), **one big model loaded at a time** (A0 peak was 7.3 GB with all loaded), unloaded after the queue goes idle.
+- **Job queue** (`engine/services/restore_queue.py`, new; modelled on `video_queue_service.py`):
+  - Table `restore_jobs` (photo_id, kind = colour / fade / faces / scratches, params JSON, origin = manual / auto, status = queued / working / review / done / failed / cancelled, progress 0–100, result path, result_photo_id, error, timestamps).
+  - One worker; groups queued jobs by model so a model loads once per batch; pause / resume; per-job cancel; waits while on battery (reuse `_wait_while_on_battery`, moved to a shared helper); after a crash `working` → `queued`; temp files cleaned on start.
+  - **Vault photos:** decrypted only in memory; any result or cache file for a vault photo is written encrypted (the same vault storage as today). Nothing private ever sits in plain form on disk.
+- **API** (`engine/api/restore.py`, new): queue jobs for one or many photos, list jobs (for Activity: working / waiting / finished today; vault items flagged so the UI blurs them and shows no file name), cancel, pause / resume, model status / download / import-file.
+
+### A2b · Versions, metadata and labels (L)
+- **DB migration** (`database.py`, one-time, recorded in `applied_migrations`): `photos.derived_from_id` (→ photos.id), `photos.ai_kind`, `photos.ai_params` (JSON), `photos.edited_at`; index on `derived_from_id`. `docs/database_schema.md` updated.
+- **Versions service** (`engine/services/photo_versions.py`, new):
+  - `create_version(original, result, kind, params)`: writes the file atomically (temp → fsync → verify → replace, like Enhance), makes thumbnail and preview, hashes it, and **copies the metadata** per the rules above (date, place, camera, title, favourite, albums, named faces; vault → vault).
+  - Result-first flow: a manual job ends in `review` with the result staged (encrypted for vault photos); `keep_both` / `replace` / `discard` turns it into a version or deletes it. Automatic jobs go straight to a version.
+  - **Keep original off / Replace:** the original goes to Trash for 30 days through the existing trash code (`trashed_at`, `trash_expires_at`), still linked. `restore_original` brings it back and links it again.
+  - Deleting the improved photo never touches the original; trashing an original that has versions asks in the UI (A3), and the API refuses silent cascades.
+- **Rules in existing queries:** timeline order puts the improved photo directly after its original; person pages, Stories and People counts treat a pair as one photo; the duplicate finder never pairs a photo with its own version; search indexes the improved photo on its own.
+- **Settings keys** (`app_settings`): one per row (`old_photos_colour`, `old_photos_fade`, `old_photos_faces`, `old_photos_scratches` = `ask` / `auto`), `old_photos_keep_original` (default on), `old_photos_keep_choice` (`ask` / `keep_both` / `replace`). Detection on import that uses them comes in A6.
+- **AI label:** exported / downloaded improved photos carry IPTC `digitalSourceType` in XMP (`compositeWithTrainedAlgorithmicMedia` for colour / faces / scratches, `algorithmicallyEnhanced` for the non-AI colour fix), and the photo API returns `ai_kind` so the UI can show the "AI" badge.
+
+### Tests and checks (both PRs)
+- Engine tests with **tiny generated ONNX models** (no GB downloads in CI): checksum refusal, import-from-file, queue order / cancel / pause / battery wait / crash recovery, one-model-at-a-time, vault results never written in plain form, metadata copy, ordering, pair-as-one in people and duplicates, Keep original off → Trash 30 days → restore, migration on an old library copy, XMP label present on export.
+- Mutation checks on the new services, full engine suite, then docs: `features_and_functional_decisions.md`, `database_schema.md`, THIRD_PARTY_NOTICES (DDColor, GFPGAN, training-data note).
+
+### Open question before coding
+- Where the downloadable model files live. Recommended: **GitHub Release assets** of this project (free, versioned, files up to 2 GB, pinned by SHA-256). Alternatives: a Hugging Face repo, or no hosting (users import files by hand).
+
 ## Testing
 
 - Every step: unit/component tests, engine tests, mutation checks, Playwright on a throwaway library in both themes (as in the redesign).
