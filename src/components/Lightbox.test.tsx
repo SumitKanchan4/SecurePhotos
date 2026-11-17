@@ -57,6 +57,27 @@ beforeEach(() => {
   useAppStore.setState({ apiBaseUrl: "http://127.0.0.1:50123", apiToken: "t", selectedPhotoIds: new Set<number>(), searchQuery: "", pendingOpen: null });
 });
 
+describe("Lightbox loading (A8: smooth)", () => {
+  it("shows the thumbnail at once, then the screen-sized preview; the full photo only when zoomed in", () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })));
+    render(<Lightbox photos={[photo(1), photo(2)]} currentIndex={0} isOpen onClose={vi.fn()} onNavigate={vi.fn()} />);
+    const placeholder = screen.getByTestId("viewer-placeholder");
+    expect(placeholder.getAttribute("src")).toContain("/api/photos/1/thumbnail");
+    const shown = () => screen.getAllByRole("img", { name: "Photo" }).find((i) => i.getAttribute("decoding") === "async")!;
+    const main = shown();
+    expect(main.getAttribute("src")).toContain("/api/photos/1/preview");
+    expect(main).toHaveStyle({ opacity: "0" });
+    expect(screen.queryByText(/Loading Enhanced Photo/)).not.toBeInTheDocument();
+    fireEvent.load(main);
+    expect(screen.queryByTestId("viewer-placeholder")).not.toBeInTheDocument();
+    expect(main).toHaveStyle({ opacity: "1" });
+    fireEvent.keyDown(window, { key: "+" });
+    fireEvent.keyDown(window, { key: "+" });
+    expect(shown().getAttribute("src")).toContain("/api/photos/1/original");
+    vi.unstubAllGlobals();
+  });
+});
+
 describe("Lightbox keyboard", () => {
   it("closes on Escape even when Escape also clears a selection", () => {
     useAppStore.setState({ selectedPhotoIds: new Set([5, 6]) });
