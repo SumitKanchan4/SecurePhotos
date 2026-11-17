@@ -1,7 +1,7 @@
 """Automated Tests for 4K Super-Resolution, Social Affinity & Stories."""
 
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from PIL import Image
 import pytest
@@ -384,14 +384,14 @@ async def test_making_stories_again_never_duplicates_one():
     """R7f: running Make new stories again refreshes suggestions and never copies a saved story."""
     await run_migrations()
     now = datetime.now()
-    year, month = str(now.year - 2), now.strftime("%m")
-    key = f"on_this_day:{year}-{month}"
+    year = str(now.year - 2)
+    key = f"on_this_day:{year}-W{now.isocalendar()[1]:02d}"  # P3: this week, years ago.
     conn = await get_db_connection()
     try:
         for i in range(3):
             await conn.execute(
                 "INSERT INTO photos (filepath, filename, file_size, taken_at, is_favorite, is_encrypted) VALUES (?, ?, 10, ?, 0, 0);",
-                (f"/dummy/r7f_{i}.jpg", f"r7f_{i}.jpg", f"{year}-{month}-0{i + 1} 10:00:00"),
+                (f"/dummy/r7f_{i}.jpg", f"r7f_{i}.jpg", f"{year}-{(now - timedelta(days=i)).strftime('%m-%d')} 10:00:00"),
             )
         await conn.commit()
     finally:

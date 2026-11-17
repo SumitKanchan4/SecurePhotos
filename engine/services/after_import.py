@@ -35,6 +35,11 @@ FACES_WAITING = (
     f"{_LIBRARY} AND faces_scanned = 0 AND COALESCE(is_document, 0) = 0 "
     "AND (ocr_text IS NOT NULL OR COALESCE(mime_type, '') NOT LIKE 'image/%')"
 )
+# Step 6 (P3): the fingerprint for duplicates (dHash, from the thumbnail), after the text.
+DUPS_WAITING = (
+    f"{_LIBRARY} AND phash IS NULL AND thumbnail_path IS NOT NULL "
+    "AND (ocr_text IS NOT NULL OR COALESCE(mime_type, '') NOT LIKE 'image/%')"
+)
 # Step 4 (P2): the old-photo rules look at an original once its text and faces are done.
 RULES_WAITING = (
     f"{_LIBRARY} AND restore_checked = 0 AND derived_from_id IS NULL AND COALESCE(mime_type, '') LIKE 'image/%' "
@@ -72,7 +77,24 @@ async def counts() -> Dict[str, int]:
             faces = (await cur.fetchone())[0]
         async with conn.execute(f"SELECT COUNT(*) FROM photos WHERE {RULES_WAITING};") as cur:
             rules = (await cur.fetchone())[0]
-    return {"text_waiting": int(text), "faces_waiting": int(faces), "rules_waiting": int(rules)}
+        async with conn.execute(f"SELECT COUNT(*) FROM photos WHERE {DUPS_WAITING};") as cur:
+            dups = (await cur.fetchone())[0]
+    return {"text_waiting": int(text), "faces_waiting": int(faces), "rules_waiting": int(rules), "dups_waiting": int(dups)}
+
+
+async def fingerprint(photo_id: int) -> None:
+    """Step 6: the photo's fingerprint for finding duplicates ('' when it can't be read)."""
+    from engine.services.duplicate_service import compute_image_dhash
+    from engine.services.media_paths import resolve_stored_path
+
+    async with db_connection() as conn:
+        async with conn.execute("SELECT thumbnail_path FROM photos WHERE id = ?;", (photo_id,)) as cur:
+            row = await cur.fetchone()
+    path = resolve_stored_path(row[0]) if row and row[0] else None
+    value = await asyncio.to_thread(compute_image_dhash, str(path)) if path is not None else None
+    async with db_connection() as conn:
+        await conn.execute("UPDATE photos SET phash = ? WHERE id = ? AND phash IS NULL;", (value or "", photo_id))
+        await conn.commit()
 
 
 async def _hold_reason() -> Optional[str]:
@@ -192,7 +214,38 @@ async def run_once() -> bool:
         state["done_this_run"] += 1
         state["rules_done"] = True
         return True
+    photo_id = await _next(DUPS_WAITING)
+    if photo_id is not None:
+        state.update(active=True, step="duplicates", photo_id=photo_id)
+        await fingerprint(photo_id)
+        state["done_this_run"] += 1
+        state["dups_dirty"] = True
+        return True
     return False
+
+
+async def finish_run() -> None:
+    """After a run: regroup duplicates once, suggest the new photos' stories, and the day's."""
+    from engine.services import stories_planner
+
+    if state.pop("dups_dirty", False):
+        from engine.services.duplicate_service import scan_and_cluster_duplicates
+
+        try:
+            async with db_connection() as conn:
+                await scan_and_cluster_duplicates(conn)
+        except Exception as err:
+            logger.warning("Finding duplicates failed: %s", err)
+    if state.pop("rules_done", False):  # New photos were prepared.
+        _start_enhancement()  # Photos the rules passed (and their copies, later) go on to 8K.
+        try:
+            await stories_planner.after_import()
+        except Exception as err:
+            logger.warning("Suggesting stories failed: %s", err)
+    try:
+        await stories_planner.daily_if_due()
+    except Exception as err:
+        logger.warning("The day's stories failed: %s", err)
 
 
 async def _finish_faces() -> None:
@@ -223,8 +276,7 @@ async def worker_loop() -> None:
                 await asyncio.sleep(0)
                 continue
             await _finish_faces()
-            if state.pop("rules_done", False):
-                _start_enhancement()  # Photos the rules passed (and their copies, later) go on to 8K.
+            await finish_run()
             state.update(active=False, step=None, photo_id=None, done_this_run=0, **(await counts()))
             _wake.clear()
             try:
