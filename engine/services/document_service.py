@@ -6,6 +6,7 @@ for receipts, invoices, passports, tax filings, medical records, and legal forms
 
 import asyncio
 import logging
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -149,25 +150,67 @@ def is_candidate_document(
     if mime_type == "application/pdf" or fn_lower.endswith(".pdf"):
         return True
 
-    doc_indicators = [
-        "doc", "scan", "receipt", "invoice", "bill", "passport", "license",
-        "tax", "1040", "w2", "medical", "rx", "contract", "statement", "form",
-        "ticket", "boarding_pass", "paper", "memo", "letter", "schedule", "prescription",
-    ]
-    for ind in doc_indicators:
-        if ind in fn_lower:
+    # A8 (owner: "Find in photos brought all the images"): words, not letters inside words.
+    # Device-made names (timestamps, GUIDs) say nothing ("1040" hid in phone timestamps).
+    if not is_machine_name(filename):
+        tokens = set(re.split(r"[^a-z0-9]+", Path(fn_lower).stem))
+        if tokens & FILENAME_WORDS or "boarding" in tokens and "pass" in tokens:
             return True
 
     if ocr_text:
-        txt = ocr_text.strip().lower()
-        if len(txt) >= 20:
-            for kw_list in CATEGORY_KEYWORDS.values():
-                if any(kw in txt for kw in kw_list):
-                    return True
-            if len(txt) >= 40:
-                return True
+        words = re.findall(r"[a-z]{3,}", ocr_text.lower())
+        hits = keyword_hits(ocr_text)
+        # A sign, a T-shirt or OCR noise on an old print is not a document: it needs real text,
+        # with document words in it, or a whole page of text.
+        if (hits >= 2 and len(words) >= OCR_MIN_WORDS_WITH_KEYWORDS) or len(words) >= OCR_MIN_WORDS_PAGE:
+            return True
 
     return False
+
+
+FILENAME_WORDS = {
+    "doc", "document", "scan", "scanned", "receipt", "invoice", "bill", "passport", "license", "licence",
+    "tax", "1040", "w2", "medical", "rx", "contract", "statement", "form", "ticket", "paper", "memo",
+    "letter", "schedule", "prescription", "aadhaar", "pan", "certificate",
+}
+OCR_MIN_WORDS_WITH_KEYWORDS = 8
+OCR_MIN_WORDS_PAGE = 60
+
+
+def keyword_hits(ocr_text: Optional[str]) -> int:
+    """How many different document words appear as whole words (or phrases) in the text."""
+    text = (ocr_text or "").lower()
+    found = set()
+    for kw_list in CATEGORY_KEYWORDS.values():
+        for kw in kw_list:
+            if re.search(rf"(?<![a-z0-9]){re.escape(kw)}(?![a-z0-9])", text):
+                found.add(kw)
+    return len(found)
+
+
+def is_machine_name(filename: str) -> bool:
+    """Same rule as the app's display names: made by a phone, camera or app, not a person."""
+    stem = Path(filename or "").stem.lower()
+    return bool(
+        re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", stem)
+        or re.search(r"\d{8,}", stem)
+        or re.fullmatch(r"[\d\s_.()-]+", stem)
+    )
+
+
+async def recheck_scanned_documents(conn) -> int:
+    """Photos the scan marked as documents under the old, loose rules go back to Photos when
+    the current rules say they aren't (only scan-made marks; uses the text already read).
+    Returns how many went back."""
+    async with conn.execute(
+        "SELECT id, filename, ocr_text, mime_type FROM photos WHERE is_document = 1 AND document_source = 'scan';"
+    ) as cur:
+        rows = await cur.fetchall()
+    back = [r[0] for r in rows if not is_candidate_document(r[1] or "", r[2], r[3])]
+    if back:
+        marks = ",".join("?" * len(back))
+        await conn.execute(f"UPDATE photos SET is_document = 0, document_source = NULL WHERE id IN ({marks});", back)
+    return len(back)
 
 
 async def scan_library_for_documents() -> Dict[str, Any]:
@@ -180,6 +223,7 @@ async def scan_library_for_documents() -> Dict[str, Any]:
     """
     conn = await get_db_connection()
     try:
+        await recheck_scanned_documents(conn)  # Earlier scan marks the current rules reject.
         async with conn.execute(
             """
             SELECT id, filename, filepath, file_size, mime_type, is_document, ocr_text, content_tags
@@ -204,7 +248,10 @@ async def scan_library_for_documents() -> Dict[str, Any]:
 
             # If OCR text not yet extracted for this image, run local on-device OCR
             if not ocr_text and filepath and (not mime_type or not mime_type.startswith("video/")):
-                extracted = await extract_ocr_text_on_device(filepath)
+                # Stored paths are relative to the library folder (A8: OCR never ran before this).
+                from engine.services.media_paths import resolve_stored_path
+
+                extracted = await extract_ocr_text_on_device(resolve_stored_path(filepath) or filepath)
                 if extracted:
                     ocr_text = extracted
                     await conn.execute(
@@ -219,7 +266,8 @@ async def scan_library_for_documents() -> Dict[str, Any]:
                     """
                     UPDATE photos
                     SET is_document = 1,
-                        content_tags = ?
+                        content_tags = ?,
+                        document_source = 'scan'
                     WHERE id = ?;
                     """,
                     (category, photo_id),

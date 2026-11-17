@@ -6277,5 +6277,11 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 - Frontend: `src/utils/displayName.ts` (new), `activityFormat.ts`, `ActivityView.tsx`, `OldPhotoPanel.tsx` (`ChoiceBar`), `useOldPhoto.ts` (`pendingCopy`, `chooseVersion`), `Lightbox.tsx` (`onShowVersion`), `App.tsx`, `viewerFormat.ts`, `ViewerDetails.tsx`, Duplicates, Trash, People, Stories, Videos, `PhotosAISettings.tsx`, `useAppSettings.ts`, `index.css`.
 - Tests: engine 403, frontend 188.
 
+### Round 2 (same day)
+- **What to keep** moved out of Activity to its own Dashboard page next to Duplicates (owner); the Photos header shows "N improved" and "N duplicates" pills that open those pages.
+- **Smooth loading** (measured): library queries take < 0.2 ms; the time went into rebuilding every thumbnail at each start, and decoding the 8K photo on every view (~735 ms vs ~100 ms for a 2560 px preview). Now: thumbnails rebuilt only when missing or old; a 2560 px WebP preview made once per photo (`display_preview.py`, `preview_path`, encrypted with the photo if it moves to the vault); the viewer shows the cached thumbnail at once, preloads neighbours, loads the full 8K only when zoomed.
+- **Find in photos** flagged 20 ordinary photos: "1040" sat inside phone timestamp names, and OCR never ran (relative path). Whole-word rules, device-made names ignored, real text required; `document_source = 'scan'` lets later rule changes re-check scan-made marks; the migration sent the wrong ones back to Photos.
+- All owner feedback is tracked in `.agents/plans/feedback-backlog.md`.
+
 ### State & Lifecycle Impact
-- New column `photos.choice_pending` (migration marks copies made earlier by automatic jobs). New setting `battery_pause_below` (20).
+- New columns `photos.choice_pending` (migration marks copies made earlier by automatic jobs) and `photos.document_source`. New setting `battery_pause_below` (20). Preview files in `previews/display/`.
