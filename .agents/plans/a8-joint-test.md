@@ -72,7 +72,11 @@ Owner feedback 2026-11-17. The ordered after-import process, sticky headers, yea
 storage, stories and People are the **next phase**, not this branch.
 - [ ] Photos shows one tile per improved photo (the improved one); Original / Improved in the viewer swaps the original in.
 - [ ] A photo improved automatically asks "Which do you want to keep?" in the viewer; Keep improved / Keep both / Keep original do what they say (Trash for 30 days).
-- [ ] Activity → Choose what to keep lists them; Keep improved for these / Keep both work; the header pill reminds when nothing else runs.
+- [ ] ~~Activity → Choose what to keep~~ (round 2: moved) Photos header "N improved" pill → What to keep page: pairs side by side; Keep improved / Both / Original; Keep improved for all asks first; Back returns to Photos.
+- [ ] Photos header "N duplicates" pill opens Duplicates.
+- [ ] Opening a photo: the thumbnail shows at once and the photo sharpens in; next/previous are instant; zooming in loads full detail.
+- [ ] App start: no long busy period rebuilding thumbnails.
+- [ ] Documents → Find in photos: the 20 phone photos are no longer documents; real documents/receipts are found (text is read now).
 - [ ] An original that already has an improved copy offers no "…" improvements.
 - [ ] Text screenshots imported as scans: improved, but the original is kept even with Keep original off.
 - [ ] No GUID / IMG_ names anywhere (viewer title, Info, Activity, Trash, Duplicates, Stories, People, Videos).

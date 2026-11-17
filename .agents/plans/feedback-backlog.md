@@ -40,11 +40,11 @@ New feedback is added here the same day. Status: **Done** (needs owner re-check)
 
 | # | Feedback | Status | Notes / where |
 |---|----------|--------|---------------|
-| 1 | Loading takes too long; should be smooth; think deeply | This branch (measure) → plan | Measure first (start-up, Photos grid, viewer); fix what this branch made slower; the rest becomes a performance plan. |
-| 2 | Activity is the wrong place to decide "what to keep"; a page like Duplicates | This branch | Own review page next to Duplicates. |
-| 3 | Photos tab pill: "what to keep" (shorter name) and duplicates | This branch | "N improved" and "N duplicates" pills open their review pages. |
+| 1 | Loading takes too long; should be smooth; think deeply | Done, part (A8) + Next phase | Measured: library queries < 0.2 ms (not the cause). Fixed: (a) every start rebuilt all thumbnails, decoding each 8K photo and video while the grid loaded; now only missing/old ones. (b) The viewer decoded the full 8K photo (~735 ms) on every view; now a 2560 px preview (~100 ms), made once, the cached thumbnail shown at once, neighbours preloaded, full 8K only when zoomed. Next phase: background AI jobs (8K, old photos, faces) run side by side and compete for the CPU; one scheduler in the ordered after-import process. Dev mode also spends ~8 s compiling the page on first start (not in the installed app). |
+| 2 | Activity is the wrong place to decide "what to keep"; a page like Duplicates | Done (A8) | Dashboard → What to keep (pairs side by side; Keep improved / Both / Original; for all). |
+| 3 | Photos tab pill: "what to keep" (shorter name) and duplicates | Done (A8) | "12 improved" and "3 duplicates" pills open those pages; Back returns to Photos. |
 | 4 | Dashboard needs a complete revamp; looks like a settings page | Next phase | Design board first (owner approval). |
-| 5 | Documents → "Find in photos" brought all the images | This branch (bug) | Investigate and fix. |
+| 5 | Documents → "Find in photos" brought all the images | Done (A8) | 20 phone photos flagged because "1040" (a US tax form) sat inside their timestamp names; OCR never ran (relative path). Now whole words only, device-made names ignored, real text needed; OCR fixed; wrong marks went back to Photos (migration). |
 | 6 | Background music belongs in Settings, with a page to import, manage and play | Next phase | |
 | 7 | Photo quality slider doesn't show what's set or which is Balanced; restrict it | Next phase | Recommendation: three choices (Best, Balanced, Smaller) instead of a slider. |
 | 8 | Stories screenshot: Collage ideas appear under the empty For you / Saved | Open question | Owner sent the screenshot without a note; check whether collages use both a photo and its copy. |

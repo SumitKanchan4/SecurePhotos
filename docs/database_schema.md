@@ -292,6 +292,8 @@ CREATE TABLE IF NOT EXISTS photos (
     edited_at DATETIME,             -- H10: when the improved copy was made
     choice_pending INTEGER NOT NULL DEFAULT 0 -- A8: kept by an automatic rule; the owner hasn't chosen
                                     -- improved / original / both. Migration marks earlier automatic copies.
+    document_source TEXT            -- A8: 'scan' when "Find in photos" marked it a document (re-checked when
+                                    -- the rules change); NULL = the user or added as a document.
 );
 -- A8: the library lists one tile per group (photo_versions.stack_top): an original with an
 -- improved copy outside Trash is hidden behind it, and of several copies only the newest shows.
