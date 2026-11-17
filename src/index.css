@@ -656,6 +656,9 @@ html, body, #root {
 .viewer-menu button svg { margin-top: 2px; flex-shrink: 0; }
 .viewer-menu strong { display: block; font-size: 13px; font-weight: 600; }
 .viewer-menu small { display: block; font-size: 11px; color: #a3a3a3; margin-top: 2px; }
+.viewer-menu button.is-locked strong { color: #d4d4d4; }
+.viewer-menu button.is-locked small { white-space: nowrap; }
+.viewer-menu .viewer-menu-lock { margin-left: auto; align-self: center; color: #a3a3a3; }
 
 .viewer-stage {
   position: relative;
@@ -792,7 +795,8 @@ html, body, #root {
 .op-btn-primary { border: none; background: var(--accent-fill); color: var(--on-accent); font-weight: 800; }
 .op-btn:disabled { opacity: 0.6; cursor: default; }
 
-.op-dialog { width: min(460px, 100%); }
+/* Two classes: the general .alb-dialog width (920px) comes later in this file. */
+.alb-dialog.op-dialog { width: min(460px, 100%); }
 .op-dialog-body { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; }
 .op-choice { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: 14px; border: 1px solid var(--glass-border); cursor: pointer; }
 .op-choice.is-on { border: 2px solid var(--text-primary); padding: 11px; }

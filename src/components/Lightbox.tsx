@@ -39,7 +39,7 @@ import {
 import { ViewerDetails } from "./viewer/ViewerDetails";
 import { useVolumeBooster } from "./viewer/useVolumeBooster";
 import { useOldPhoto } from "./viewer/useOldPhoto";
-import { BeforeAfter, ImproveMenu, OldPhotoPanel, VersionSwitch } from "./viewer/OldPhotoPanel";
+import { BeforeAfter, ImproveMenu, ModelDialog, OldPhotoPanel, VersionSwitch } from "./viewer/OldPhotoPanel";
 
 interface LightboxProps {
   photos: PhotoItem[];
@@ -1211,6 +1211,16 @@ export const Lightbox: React.FC<LightboxProps> = ({
               showToast("Kept. The improved photo is next to the original.", "success");
             }
           }}
+        />
+      )}
+
+      {old.modelPrompt && (
+        <ModelDialog
+          prompt={old.modelPrompt}
+          progress={old.download}
+          onDownload={() => void old.downloadModels()}
+          onCancelDownload={() => void old.cancelDownload()}
+          onClose={old.closeModelPrompt}
         />
       )}
 

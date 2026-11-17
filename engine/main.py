@@ -73,6 +73,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Old-photo improvements (H10): one job at a time on the CPU.
         from engine.services.restore_queue import start_worker as start_restore_worker
         start_restore_worker()
+        # A2c: check every old-photo model once (skipped quickly when already verified), so the
+        # viewer knows straight away which improvements need a download.
+        from engine.services.ai_models import check_all_models
+        asyncio.create_task(asyncio.to_thread(check_all_models))
         # One-off: handle video originals left in hidden .trash folders by older versions (R7c2).
         from engine.services.video_leftovers import run_once as clean_up_old_video_originals
         asyncio.create_task(clean_up_old_video_originals())

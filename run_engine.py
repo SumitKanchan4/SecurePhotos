@@ -8,6 +8,12 @@ root = Path(__file__).resolve().parent
 if str(root) not in sys.path:
     sys.path.insert(0, str(root))
 
+# The installer's model download (H10 / A2c) needs none of the server: handle it first.
+if __name__ == "__main__" and "--fetch-models" in sys.argv[1:2]:
+    from engine.services.model_installer import main as fetch_models_main
+
+    sys.exit(fetch_models_main())
+
 from engine.main import app, parse_args
 from engine.config import settings
 import uvicorn

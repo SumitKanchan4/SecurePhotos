@@ -6164,3 +6164,27 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 
 ### State & Lifecycle Impact
 - No schema change. The enhancement pause lives in memory: a restart resumes work (the queue's own pause also resets on restart).
+
+## 153. Old Photos, Step A2c: Models With the Installer (H10)
+
+### Functionality Overview
+- **The installer downloads the old-photo models** (Add colour, its second pass, Sharpen faces; about 2.3 GB) after it copies the app, on install and on every upgrade. A model already in place and verified is skipped. If a download fails (offline, or the release isn't public yet), the install still completes and shows each model's status: ready / already up to date / couldn't download (the app will ask later). Silent and passive installs (updates) skip the message box.
+- **In the app:** an action whose model is missing shows a lock and "Needs a one-time download · 1.0 GB" in the viewer's "…" menu. Choosing it opens a popup, "Add colour needs a one-time download", that downloads right there with a progress bar ("1.0 GB of 2.0 GB"), Cancel download and Keep browsing (it carries on in Activity). When it finishes, the action starts. If it fails: "Couldn't download it. Check your internet connection and try again." with Try again.
+- **Not now** locks only the actions that need that model; pressing one shows the popup again. Everything else (import, browsing, the vault, People, albums, Stories, enhancing, Fix faded colours) keeps working.
+- **Only our models:** "import from file" is gone. A model is used only if it is the exact pinned file (SHA-256).
+- An interrupted download continues where it stopped next time.
+
+### Functional Decision Points & Rationale
+- Owner decisions (2026-11-16/17): models with the installer, not on first use; only our own models; when one is missing, lock only the features that need it (the owner first suggested a view-only app; agreed on feature-level locking after discussion); the popup itself downloads.
+- The installer runs the engine itself (`--fetch-models`) instead of an NSIS download plugin: the same tested code (HTTPS, SHA-256, resume) and no extra plugin.
+- The queue never downloads on its own (no surprise 2 GB downloads from automatic rules); a job whose model is missing fails with "Needs a download".
+- Verified files are remembered next to them (`verified.json`), so starts and upgrades don't re-hash 2.3 GB; a stamp is only trusted for the same size, time and checksum.
+
+### Technical Touchpoints
+- New: `engine/services/model_installer.py`.
+- Changed: `engine/services/ai_models.py` (both folders, `find_model`, `missing_models`, `download_size`, resume, `verified.json`, `check_all_models`; `import_model_file` removed), `engine/services/restore_queue.py` (`models_for`, `missing_for`, `download_models` with overall progress and `download_result`; no downloads from the worker), `engine/api/restore.py` (409 `models_missing`, `downloads` in `/state`, `/models/download {kind}`, `result` in `/models`; `/models/import` removed), `engine/main.py` (model check at start), `run_engine.py` (`--fetch-models` before the server loads), `scripts/build-engine.py`, `src-tauri/nsis-hooks.nsh`, `src/components/viewer/useOldPhoto.ts`, `src/components/viewer/OldPhotoPanel.tsx` (`ModelDialog`, locked menu items), `src/components/Lightbox.tsx`, `src/index.css`, `THIRD_PARTY_NOTICES.md`, `docs/design_system.md`.
+- Tests: engine 339 (+14: resume, range ignored, network drop, damaged file, remembered check, foreign stamp, app folder, installer statuses / library elsewhere / never fails, launcher and hook, queue never downloads, overall progress, failed / cancelled, 409 and per-action download), frontend 171 (+3). Mutation checks: 10 deliberate breaks each caught. The installer hook compiles with Tauri's NSIS; the real `--fetch-models` run: release answers 404 while the repo is private → three "couldn't download" lines, exit 0; on a library that has the models → "already up to date", a second run in 0.9 s. Browser check in both themes on a throwaway library with one colour model hidden: lock in the menu, popup, failed download, Not now, no job queued, contrast clean.
+- Fixed on the way: the old-photo dialogs were 920px wide (the general dialog width overrode `.op-dialog`).
+
+### State & Lifecycle Impact
+- No schema change. New files next to the models: `verified.json` and, after an install, `install_status.txt`. Models stay with the data folder on uninstall, like the library.
