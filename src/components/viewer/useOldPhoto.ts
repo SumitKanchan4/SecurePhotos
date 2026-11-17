@@ -5,6 +5,10 @@
  * an improvement from the "…" menu; the result shows first with a before/after slider; only
  * then does the app ask Keep both / Replace / Discard (unless "Remember my choice" was ticked).
  * The original is never deleted on the spot: Replace sends it to Trash for 30 days.
+ *
+ * Models (A2c): the installer downloads them. If one is still missing, picking an action
+ * that needs it opens a popup that downloads it (and then starts the action). "Not now"
+ * leaves only those actions locked; everything else keeps working.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, getApiUrl } from "../../services/api";
@@ -36,6 +40,14 @@ export interface ModelDownload {
   total: number;
 }
 
+/** The popup asking to download the models an action needs. */
+export interface ModelPrompt {
+  kind: ImproveKind;
+  style: "natural" | "vivid";
+  bytes: number;
+  phase: "ask" | "downloading" | "failed";
+}
+
 /** Plain words for each improvement (no technical terms; A1 board). */
 export const IMPROVE_LABELS: Record<string, { action: string; working: string; done: string }> = {
   colour: { action: "Add colour", working: "Adding colour", done: "Colour added" },
@@ -54,6 +66,9 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
   const [style, setStyle] = useState<"natural" | "vivid">("natural");
   const [intensity, setIntensity] = useState(1);
   const [download, setDownload] = useState<ModelDownload | null>(null);
+  const [downloads, setDownloads] = useState<Partial<Record<ImproveKind, number>>>({});
+  const [modelPrompt, setModelPrompt] = useState<ModelPrompt | null>(null);
+  const downloadTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [resultVersion, setResultVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -63,6 +78,7 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
   // Which actions fit this photo, and its Original / Improved family.
   useEffect(() => {
     setOptions(null);
+    setDownloads({});
     setJob(null);
     setVersions([]);
     setIntensity(1);
@@ -76,6 +92,7 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
       .then((data) => {
         if (cancelled || !data) return;
         setOptions(data.options ?? null);
+        setDownloads(data.downloads ?? {});
         setVersions(data.members ?? []);
         if (data.job) setJob(data.job);
       })
@@ -112,13 +129,24 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
   }, [active, job?.id]);
 
   const start = useCallback(
-    async (kind: ImproveKind, nextStyle: "natural" | "vivid" = "natural") => {
+    async (kind: ImproveKind, nextStyle: "natural" | "vivid" = "natural", modelsJustArrived = false) => {
       if (!photoId) return;
+      const bytes = downloads[kind];
+      if (bytes && !modelsJustArrived) {
+        setModelPrompt({ kind, style: nextStyle, bytes, phase: "ask" });
+        return;
+      }
       setBusy(true);
       try {
         // Trying the other style replaces the result waiting for a decision.
         if (job?.status === "review") await apiFetch(`/api/restore/jobs/${job.id}/keep`, jsonPost({ choice: "discard" }));
         const res = await apiFetch("/api/restore/jobs", jsonPost({ photo_ids: [photoId], kind, params: kind === "colour" ? { style: nextStyle } : {} }));
+        if (res.status === 409) {
+          // A model went missing since the photo was opened: ask for it.
+          setJob(null);
+          setModelPrompt({ kind, style: nextStyle, bytes: 0, phase: "ask" });
+          return;
+        }
         if (!res.ok) throw new Error(await res.text());
         const { job_ids } = await res.json();
         setStyle(nextStyle);
@@ -128,7 +156,7 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
         setBusy(false);
       }
     },
-    [photoId, job],
+    [photoId, job, downloads],
   );
 
   const cancel = useCallback(async () => {
@@ -155,22 +183,63 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
     [job, intensity],
   );
 
+  const stopDownloadTimer = () => {
+    if (downloadTimer.current) clearInterval(downloadTimer.current);
+    downloadTimer.current = null;
+  };
+  useEffect(() => stopDownloadTimer, []);
+
+  /** Asks the model popup for this action (e.g. from the panel after a job needed a model). */
+  const askForModels = useCallback((kind: ImproveKind) => {
+    setJob(null);
+    setModelPrompt({ kind, style: "natural", bytes: downloads[kind] ?? 0, phase: "ask" });
+  }, [downloads]);
+
+  /** The popup's Download: fetches only what the action needs, then starts it. */
   const downloadModels = useCallback(async () => {
-    await apiFetch("/api/restore/models/download", { method: "POST" });
-    setDownload({ model: "", done: 0, total: 1 });
-    const timer = setInterval(async () => {
-      const res = await apiFetch("/api/restore/models").catch(() => null);
-      if (!res?.ok) return;
-      const data = await res.json();
+    const prompt = modelPrompt;
+    if (!prompt) return;
+    setModelPrompt({ ...prompt, phase: "downloading" });
+    setDownload({ model: "", done: 0, total: prompt.bytes || 1 });
+    const res = await apiFetch("/api/restore/models/download", jsonPost({ kind: prompt.kind })).catch(() => null);
+    if (!res?.ok) {
+      setDownload(null);
+      setModelPrompt({ ...prompt, phase: "failed" });
+      return;
+    }
+    stopDownloadTimer();
+    downloadTimer.current = setInterval(async () => {
+      const r = await apiFetch("/api/restore/models").catch(() => null);
+      if (!r?.ok) return;
+      const data = await r.json();
       setDownload(data.download ?? null);
-      if (!data.download) {
-        clearInterval(timer);
-        const ready = (data.models ?? []).every((m: { ready: boolean }) => m.ready);
-        if (ready && job && (job.kind === "colour" || job.kind === "fade")) await start(job.kind, style);
-        else setDownload(null);
+      if (data.download) return;
+      stopDownloadTimer();
+      if (data.result === "done") {
+        setDownloads((d) => ({ ...d, [prompt.kind]: undefined }));
+        // Still in the popup: go straight on with what the user asked for.
+        const stillWaiting = promptRef.current?.phase === "downloading";
+        setModelPrompt(null);
+        if (stillWaiting) void startRef.current(prompt.kind, prompt.style, true);
+      } else {
+        setModelPrompt((current) => (current ? { ...current, phase: data.result === "cancelled" ? "ask" : "failed" } : current));
       }
     }, POLL_MS);
-  }, [job, start, style]);
+  }, [modelPrompt]);
+
+  // The download's last tick uses the latest start() and popup (no stale closures).
+  const startRef = useRef(start);
+  startRef.current = start;
+  const promptRef = useRef(modelPrompt);
+  promptRef.current = modelPrompt;
+
+  const cancelDownload = useCallback(async () => {
+    await apiFetch("/api/restore/models/cancel-download", { method: "POST" }).catch(() => undefined);
+  }, []);
+
+  /** "Not now" (or "Keep browsing" while it downloads): the popup closes; a running download
+   *  goes on in Activity, and only the actions that need it stay locked. */
+  const closeModelPrompt = useCallback(() => setModelPrompt(null), []);
 
   const restoreOriginal = useCallback(async () => {
     if (!photoId) return null;
@@ -189,6 +258,7 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
         : `${label.working} · ${job.progress}%`
       : null;
   const needsModels = job?.status === "failed" && job.error === "models_missing";
+  const locked = (Object.keys(downloads) as ImproveKind[]).filter((k) => downloads[k]);
 
   return {
     options,
@@ -198,6 +268,9 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
     intensity,
     setIntensity,
     download,
+    downloads,
+    locked,
+    modelPrompt,
     busy,
     reviewUrl,
     statusText,
@@ -207,6 +280,9 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
     cancel,
     keep,
     downloadModels,
+    askForModels,
+    cancelDownload,
+    closeModelPrompt,
     restoreOriginal,
     dismiss: () => setJob(null),
   };

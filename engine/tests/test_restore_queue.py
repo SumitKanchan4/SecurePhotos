@@ -1,5 +1,6 @@
 """H10 / A2a: the old-photo improvement queue (no real models: a fake processor stands in)."""
 
+import asyncio
 import builtins
 import secrets
 import shutil
@@ -169,18 +170,52 @@ async def test_jobs_using_the_loaded_model_go_first(env, monkeypatch):
     assert (await _job(env["conn"], colour_job))[0] == "queued"
 
 
-async def test_missing_models_fail_the_job_with_a_clear_reason(env, monkeypatch):
+async def test_missing_models_fail_the_job_and_are_never_downloaded_without_asking(env, monkeypatch):
     monkeypatch.setitem(restore_queue.PROCESSORS, "faces", restore_queue.Processor(models=("gfpgan",), run=lambda *x: RESULT))
+    monkeypatch.setattr(ai_models, "is_model_ready", lambda key, d=None: False)
+    monkeypatch.setattr(ai_models, "fetch_on_demand", lambda *a, **k: pytest.fail("downloaded without asking"))
+    (job_id,) = await restore_queue.enqueue([env["ids"][0]], "faces", origin="auto")
+    await restore_queue.process_next_job()
+    assert (await _job(env["conn"], job_id))[0::3] == ("failed", "models_missing")
+    assert restore_queue.state["download"] is None
+
+
+async def test_download_progress_covers_every_missing_model(env, monkeypatch):
+    ready = {"ddcolor_artistic"}
+    monkeypatch.setattr(ai_models, "is_model_ready", lambda key, d=None: key in ready)
+    sizes = {k: int(s["size"]) for k, s in ai_models.ON_DEMAND_MODELS.items()}
+    seen = []
+
+    def fetch(key, d, progress, cancel):
+        progress(sizes[key] // 2, sizes[key])
+        seen.append(dict(restore_queue.state["download"]))
+        ready.add(key)
+
+    monkeypatch.setattr(ai_models, "fetch_on_demand", fetch)
+    assert await restore_queue.download_models(list(ai_models.ON_DEMAND_MODELS)) is True
+    total = sizes["ddcolor_large"] + sizes["gfpgan"]
+    assert [s["total"] for s in seen] == [total, total]
+    assert seen[0]["done"] == sizes["ddcolor_large"] // 2
+    assert seen[1]["done"] == sizes["ddcolor_large"] + sizes["gfpgan"] // 2
+    assert restore_queue.state["download"] is None and restore_queue.state["download_result"] == "done"
+
+
+async def test_a_failed_or_cancelled_download_says_so(env, monkeypatch):
     monkeypatch.setattr(ai_models, "is_model_ready", lambda key, d=None: False)
 
     def offline(*a, **k):
         raise OSError("no internet")
 
     monkeypatch.setattr(ai_models, "fetch_on_demand", offline)
-    (job_id,) = await restore_queue.enqueue([env["ids"][0]], "faces")
-    await restore_queue.process_next_job()
-    assert (await _job(env["conn"], job_id))[0::3] == ("failed", "models_missing")
-    assert restore_queue.state["download"] is None
+    assert await restore_queue.download_models(["gfpgan"]) is False
+    assert restore_queue.state["download_result"] == "failed"
+
+    def cancelled(*a, **k):
+        raise ai_models.DownloadCancelled("gfpgan")
+
+    monkeypatch.setattr(ai_models, "fetch_on_demand", cancelled)
+    assert await restore_queue.download_models(["gfpgan"]) is False
+    assert restore_queue.state["download_result"] == "cancelled" and restore_queue.state["download"] is None
 
 
 async def test_a_failing_improvement_is_reported_not_retried_forever(env, monkeypatch):
@@ -324,5 +359,32 @@ async def test_api_queues_lists_and_cancels(env):
         assert (await client.post("/api/restore/resume")).json() == {"paused": False}
         models = (await client.get("/api/restore/models")).json()["models"]
         assert {m["key"] for m in models} == set(ai_models.ON_DEMAND_MODELS)
-        bad = await client.post("/api/restore/models/import", json={"path": str(env["folder"] / "a.jpg")})
-        assert bad.status_code == 400
+        # There is no way to hand the app another model file (A2c).
+        assert (await client.post("/api/restore/models/import", json={"path": str(env["folder"] / "a.jpg")})).status_code in (404, 405)
+
+
+async def test_api_refuses_a_job_whose_model_is_missing_and_downloads_only_what_it_needs(env, monkeypatch):
+    monkeypatch.setitem(restore_queue.PROCESSORS, "colour", restore_queue.Processor(models=("ddcolor_large", "ddcolor_artistic"), run=lambda *x: RESULT))
+    monkeypatch.setattr(ai_models, "is_model_ready", lambda key, d=None: key == "ddcolor_artistic")
+    asked = []
+
+    async def fake_download(keys):
+        asked.append(list(keys))
+        return True
+
+    monkeypatch.setattr(restore_queue, "download_models", fake_download)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post("/api/restore/jobs", json={"photo_ids": env["ids"], "kind": "colour"})
+        assert res.status_code == 409 and res.json()["detail"] == "models_missing"
+        assert (await client.get("/api/restore/jobs")).json()["waiting"] == []
+        started = await client.post("/api/restore/models/download", json={"kind": "colour"})
+        assert started.json() == {"started": True, "bytes": int(ai_models.ON_DEMAND_MODELS["ddcolor_large"]["size"])}
+        await asyncio.sleep(0)
+        assert asked == [["ddcolor_large", "ddcolor_artistic"]]
+        assert (await client.post("/api/restore/models/download", json={"kind": "nope"})).status_code == 400
+        # Only the app's own models can be fetched: a URL or file name in the body is ignored.
+        asked.clear()
+        await client.post("/api/restore/models/download", json={"kind": None, "url": "https://evil.example/x.onnx"})
+        await asyncio.sleep(0)
+        assert asked == [list(ai_models.ON_DEMAND_MODELS)]
+

@@ -5,11 +5,15 @@
  * - BeforeAfter: the result over the photo with a draggable divider (strength = opacity).
  * - OldPhotoPanel: Natural / Vivid, strength, Keep this…, plus progress, model download and errors.
  * - KeepDialog: Keep both / Replace the photo / Discard, with "Remember my choice".
+ * - ModelDialog (A2c): an action whose model isn't on this computer yet asks to download it
+ *   (progress, cancel, keep browsing) and then starts. "Not now" keeps only that action locked.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { Download, Loader2, MoreHorizontal, Palette, SunMedium, X } from "lucide-react";
+import { Download, Loader2, Lock, MoreHorizontal, Palette, SunMedium, X } from "lucide-react";
 import { apiFetch } from "../../services/api";
-import { IMPROVE_LABELS, type KeepChoice, type OldPhotoState } from "./useOldPhoto";
+import { IMPROVE_LABELS, type KeepChoice, type ModelPrompt, type OldPhotoState } from "./useOldPhoto";
+
+const formatGb = (bytes: number) => `${(bytes / 1e9).toFixed(1)} GB`;
 
 export const ImproveMenu: React.FC<{ old: OldPhotoState }> = ({ old }) => {
   const [open, setOpen] = useState(false);
@@ -35,24 +39,29 @@ export const ImproveMenu: React.FC<{ old: OldPhotoState }> = ({ old }) => {
         <>
           <div className="viewer-menu-backdrop" onClick={() => setOpen(false)} />
           <div className="viewer-menu" role="menu" aria-label="More">
-            {items.map((item) => (
-              <button
-                key={item.kind}
-                type="button"
-                role="menuitem"
-                disabled={old.busy || old.panelOpen}
-                onClick={() => {
-                  setOpen(false);
-                  void old.start(item.kind);
-                }}
-              >
-                {item.icon}
-                <span>
-                  <strong>{IMPROVE_LABELS[item.kind].action}</strong>
-                  <small>{item.hint}</small>
-                </span>
-              </button>
-            ))}
+            {items.map((item) => {
+              const bytes = old.downloads[item.kind];
+              return (
+                <button
+                  key={item.kind}
+                  type="button"
+                  role="menuitem"
+                  className={bytes ? "is-locked" : undefined}
+                  disabled={old.busy || old.panelOpen}
+                  onClick={() => {
+                    setOpen(false);
+                    void old.start(item.kind);
+                  }}
+                >
+                  {item.icon}
+                  <span>
+                    <strong>{IMPROVE_LABELS[item.kind].action}</strong>
+                    <small>{bytes ? `Needs a one-time download · ${formatGb(bytes)}` : item.hint}</small>
+                  </span>
+                  {bytes ? <Lock size={13} className="viewer-menu-lock" aria-label="Needs a download" /> : null}
+                </button>
+              );
+            })}
           </div>
         </>
       )}
@@ -131,8 +140,6 @@ export const BeforeAfter: React.FC<{ before: string; after: string; intensity: n
   );
 };
 
-const formatGb = (bytes: number) => `${(bytes / 1e9).toFixed(1)} GB`;
-
 export const OldPhotoPanel: React.FC<{
   old: OldPhotoState;
   onKept: (choice: KeepChoice, newPhotoId: number | null) => void;
@@ -171,33 +178,19 @@ export const OldPhotoPanel: React.FC<{
 
       {(job.status === "queued" || job.status === "working") && (
         <div className="op-section">
-          {old.download ? (
-            <>
-              <p className="op-text">Getting the {job.kind === "colour" ? "colour" : ""} models ready (once, about 2 GB)…</p>
-              <div className="op-bar"><div style={{ width: `${old.download.total ? (old.download.done / old.download.total) * 100 : 0}%` }} /></div>
-              <p className="op-hint">{formatGb(old.download.done)} of {formatGb(old.download.total)}</p>
-            </>
-          ) : (
-            <>
-              <p className="op-text">{job.status === "queued" ? "Waiting for the photo before it…" : `${label.working}…`}</p>
-              <div className="op-bar"><div style={{ width: `${job.progress}%` }} /></div>
-              <p className="op-hint">This runs on your computer. You can keep looking at other photos.</p>
-            </>
-          )}
+          <p className="op-text">{job.status === "queued" ? "Waiting for the photo before it…" : `${label.working}…`}</p>
+          <div className="op-bar"><div style={{ width: `${job.progress}%` }} /></div>
+          <p className="op-hint">This runs on your computer. You can keep looking at other photos.</p>
           <button type="button" className="op-btn" onClick={() => void old.cancel()}>Cancel</button>
         </div>
       )}
 
       {old.needsModels && (
         <div className="op-section">
-          <p className="op-text">This needs a one-time download of about 2 GB. After that it works offline.</p>
-          {old.download ? (
-            <div className="op-bar"><div style={{ width: `${old.download.total ? (old.download.done / old.download.total) * 100 : 0}%` }} /></div>
-          ) : (
-            <button type="button" className="op-btn op-btn-primary" onClick={() => void old.downloadModels()}>
-              <Download size={14} /> Download now
-            </button>
-          )}
+          <p className="op-text">This needs a one-time download first. After that it works offline.</p>
+          <button type="button" className="op-btn op-btn-primary" onClick={() => (job.kind === "colour" || job.kind === "fade") && old.askForModels(job.kind)}>
+            <Download size={14} /> Download…
+          </button>
         </div>
       )}
 
@@ -285,6 +278,83 @@ export const KeepDialog: React.FC<{
             {busy && <Loader2 size={13} className="spin" />}
             {choice === "keep_both" ? "Keep both" : "Replace the photo"}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/** What each action needs to download, in plain words (no model names). */
+const MODEL_REASON: Record<string, string> = {
+  colour: "the colour model",
+  fade: "its model",
+  faces: "the face model",
+  scratches: "its model",
+};
+
+/**
+ * A2c popup: "Add colour needs a one-time download". Download shows progress here (and in
+ * Activity) and then starts the action; "Keep browsing" closes the popup while it carries on;
+ * "Not now" leaves only this action locked.
+ */
+export const ModelDialog: React.FC<{
+  prompt: ModelPrompt;
+  progress: { done: number; total: number } | null;
+  onDownload: () => void;
+  onCancelDownload: () => void;
+  onClose: () => void;
+}> = ({ prompt, progress, onDownload, onCancelDownload, onClose }) => {
+  const label = IMPROVE_LABELS[prompt.kind];
+  const downloading = prompt.phase === "downloading";
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const pct = progress && progress.total ? Math.min(100, (progress.done / progress.total) * 100) : 0;
+  const size = prompt.bytes ? ` (${formatGb(prompt.bytes)})` : "";
+  return (
+    <div className="alb-dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="alb-dialog op-dialog" role="dialog" aria-modal="true" aria-labelledby="op-model-title">
+        <div className="alb-dialog-head">
+          <h2 id="op-model-title">{label.action} needs a one-time download</h2>
+        </div>
+        <div className="op-dialog-body">
+          {prompt.phase === "failed" ? (
+            <p className="op-text" role="alert">Couldn't download it. Check your internet connection and try again.</p>
+          ) : (
+            <p className="op-text">
+              SecurePhotos does this on your computer, so it needs {MODEL_REASON[prompt.kind] ?? "its model"} first{size}. After that it works
+              offline, and your photos never leave this computer.
+            </p>
+          )}
+          {downloading && (
+            <>
+              <div className="op-bar" role="progressbar" aria-label="Download" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
+                <div style={{ width: `${pct}%` }} />
+              </div>
+              <p className="op-hint">
+                {progress && progress.total > 1 ? `${formatGb(progress.done)} of ${formatGb(progress.total)} · ` : ""}
+                You can keep browsing; the download carries on in Activity.
+              </p>
+            </>
+          )}
+          {!downloading && <p className="op-hint">Until then, everything else in SecurePhotos works as usual.</p>}
+        </div>
+        <div className="alb-dialog-foot">
+          {downloading ? (
+            <>
+              <button type="button" className="dash-btn" onClick={onCancelDownload}>Cancel download</button>
+              <button type="button" className="dash-btn dash-btn-primary" onClick={onClose} autoFocus>Keep browsing</button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="dash-btn" onClick={onClose}>Not now</button>
+              <button type="button" className="dash-btn dash-btn-primary" onClick={onDownload} autoFocus>
+                <Download size={14} /> {prompt.phase === "failed" ? "Try again" : "Download"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

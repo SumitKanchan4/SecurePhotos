@@ -171,21 +171,175 @@ def test_a_replaced_file_is_checked_again(tmp_path, monkeypatch):
     assert not ai_models.is_model_ready("gfpgan", tmp_path)
 
 
-def test_import_from_file_recognises_a_renamed_model_and_refuses_anything_else(tmp_path, monkeypatch):
-    spec = _on_demand(monkeypatch, b"weights from a usb stick")
-    picked = tmp_path / "Downloads" / "renamed (1).onnx"
-    picked.parent.mkdir()
-    picked.write_bytes(b"weights from a usb stick")
-    library = tmp_path / "library"
-    assert ai_models.import_model_file(picked, library) == "gfpgan"
-    assert (library / spec["file"]).read_bytes() == b"weights from a usb stick" and picked.exists()
-    other = tmp_path / "holiday.jpg"
-    other.write_bytes(b"not a model at all, same size?!")
-    with pytest.raises(ValueError):
-        ai_models.import_model_file(other, library)
-    with pytest.raises(ValueError):
-        ai_models.import_model_file(tmp_path / "missing.onnx", library)
-    assert sorted(p.name for p in library.iterdir()) == [spec["file"]]
+class RangeResponse(FakeResponse):
+    """A server answer with an HTTP status (206 = the rest of a partial file)."""
+
+    def __init__(self, data: bytes, status: int):
+        super().__init__(data)
+        self.status = status
+
+
+def test_an_interrupted_download_continues_where_it_stopped(tmp_path, monkeypatch):
+    data = bytes(range(256)) * 20_000
+    spec = _on_demand(monkeypatch, data)
+    (tmp_path / (spec["file"] + ".download")).write_bytes(data[:1_000_000])
+    asked = []
+
+    def server(req, **k):
+        asked.append(req.get_header("Range"))
+        return RangeResponse(data[1_000_000:], 206)
+
+    monkeypatch.setattr(ai_models.urllib.request, "urlopen", server)
+    seen = []
+    path = ai_models.fetch_on_demand("gfpgan", tmp_path, on_progress=lambda d, t: seen.append(d))
+    assert asked == ["bytes=1000000-"] and path.read_bytes() == data
+    assert seen[0] > 1_000_000 and seen[-1] == len(data)  # Progress counts the part already there.
+
+
+def test_a_server_that_ignores_the_range_starts_again(tmp_path, monkeypatch):
+    data = b"z" * 3_000_000
+    spec = _on_demand(monkeypatch, data)
+    (tmp_path / (spec["file"] + ".download")).write_bytes(b"stale bytes")
+    monkeypatch.setattr(ai_models.urllib.request, "urlopen", lambda *a, **k: RangeResponse(data, 200))
+    assert ai_models.fetch_on_demand("gfpgan", tmp_path).read_bytes() == data
+
+
+def test_a_network_drop_keeps_the_part_already_downloaded(tmp_path, monkeypatch):
+    data = b"w" * (3 * 1024 * 1024)
+    spec = _on_demand(monkeypatch, data)
+
+    class Dropping(FakeResponse):
+        def read(self, n=-1):
+            if self.tell() >= 2 * 1024 * 1024:
+                raise ConnectionResetError("network gone")
+            return super().read(n)
+
+    monkeypatch.setattr(ai_models.urllib.request, "urlopen", lambda *a, **k: Dropping(data))
+    with pytest.raises(ConnectionResetError):
+        ai_models.fetch_on_demand("gfpgan", tmp_path)
+    assert (tmp_path / (spec["file"] + ".download")).stat().st_size == 2 * 1024 * 1024
+    assert not ai_models.is_model_ready("gfpgan", tmp_path)
+
+
+def test_a_damaged_download_is_not_kept(tmp_path, monkeypatch):
+    spec = _on_demand(monkeypatch, b"x" * 2_000_000)
+    monkeypatch.setattr(ai_models.urllib.request, "urlopen", lambda *a, **k: FakeResponse(b"y" * 2_000_000))
+    with pytest.raises(IOError):
+        ai_models.fetch_on_demand("gfpgan", tmp_path)
+    assert not (tmp_path / spec["file"]).exists() and not (tmp_path / (spec["file"] + ".download")).exists()
+
+
+def test_a_verified_model_is_not_hashed_again_on_the_next_start(tmp_path, monkeypatch):
+    spec = _on_demand(monkeypatch, b"verified weights")
+    (tmp_path / spec["file"]).write_bytes(b"verified weights")
+    assert ai_models.is_model_ready("gfpgan", tmp_path)
+    assert (tmp_path / ai_models.VERIFIED_FILE).is_file()
+    ai_models._verified_cache.clear()  # A new engine start.
+    monkeypatch.setattr(ai_models, "sha256_of", lambda p: pytest.fail("hashed again"))
+    assert ai_models.is_model_ready("gfpgan", tmp_path)
+
+
+def test_a_stamp_for_another_file_does_not_count(tmp_path, monkeypatch):
+    import json
+    import os
+
+    spec = _on_demand(monkeypatch, b"good weights")
+    target = tmp_path / spec["file"]
+    target.write_bytes(b"evil weights")
+    st = target.stat()
+    # A stamp written for different bytes (other checksum) never makes a file trusted.
+    (tmp_path / ai_models.VERIFIED_FILE).write_text(json.dumps({spec["file"]: [st.st_size, st.st_mtime_ns, "0" * 64]}))
+    assert not ai_models.is_model_ready("gfpgan", tmp_path)
+    os.utime(target, ns=(5, 5))
+    assert not ai_models.is_model_ready("gfpgan", tmp_path)
+
+
+def test_models_the_installer_put_in_the_app_folder_are_found(dirs, monkeypatch):
+    library, bundled = dirs
+    monkeypatch.setattr(ai_models, "get_models_dir", lambda: library)
+    spec = _on_demand(monkeypatch, b"installed by the setup")
+    assert ai_models.missing_models(["gfpgan"]) == ["gfpgan"]
+    (bundled / spec["file"]).write_bytes(b"installed by the setup")
+    assert ai_models.model_path("gfpgan") == bundled / spec["file"]  # Used in place, not copied.
+    assert ai_models.missing_models(["gfpgan"]) == [] and not library.exists()
+    assert ai_models.download_size(["gfpgan", "gfpgan"]) == 2 * len(b"installed by the setup")
+
+
+def test_there_is_no_way_to_use_another_model_file():
+    assert not hasattr(ai_models, "import_model_file")
+
+
+# ── A2c: the installer's model download ────────────────────────────────────
+
+
+def _all_small(monkeypatch, payloads: dict) -> None:
+    for key, data in payloads.items():
+        _on_demand(monkeypatch, data, key)
+
+
+def test_installer_skips_verified_models_downloads_the_rest_and_never_fails(tmp_path, monkeypatch):
+    from engine.services import model_installer
+
+    payloads = {"ddcolor_large": b"L" * 2_000_000, "ddcolor_artistic": b"A" * 1_000, "gfpgan": b"G" * 1_000}
+    _all_small(monkeypatch, payloads)
+    dest = tmp_path / "app" / "data" / "models"
+    dest.mkdir(parents=True)
+    (dest / ai_models.ON_DEMAND_MODELS["ddcolor_artistic"]["file"]).write_bytes(payloads["ddcolor_artistic"])
+
+    def server(req, **k):
+        if "gfpgan" in req.full_url:
+            raise OSError("404 not public yet")
+        return FakeResponse(payloads["ddcolor_large"])
+
+    monkeypatch.setattr(ai_models.urllib.request, "urlopen", server)
+    monkeypatch.setattr(ai_models, "get_models_dir", lambda: tmp_path / "library" / "models")
+    lines = []
+    monkeypatch.setattr("builtins.print", lambda line, **k: lines.append(line))
+    assert model_installer.main(["--fetch-models", str(dest)]) == 0
+    status = (dest / model_installer.STATUS_FILE).read_bytes().decode("utf-8")
+    assert "Add colour: ready\r\n" in status
+    assert "Add colour (second pass): already up to date\r\n" in status
+    assert "Sharpen faces: couldn't download (the app will ask later)" in status
+    assert "The app will offer the download" in status
+    assert any(line.startswith("  Add colour: ") and line.endswith("%") for line in lines)  # Progress lines.
+    assert ai_models.is_model_ready("ddcolor_large", dest) and not ai_models.is_model_ready("gfpgan", dest)
+
+
+def test_installer_counts_models_already_in_a_library_kept_elsewhere(tmp_path, monkeypatch):
+    from engine.services import model_installer
+
+    payloads = {"ddcolor_large": b"L" * 10, "ddcolor_artistic": b"A" * 10, "gfpgan": b"G" * 10}
+    _all_small(monkeypatch, payloads)
+    library = tmp_path / "external" / "models"
+    library.mkdir(parents=True)
+    for key, data in payloads.items():
+        (library / ai_models.ON_DEMAND_MODELS[key]["file"]).write_bytes(data)
+    monkeypatch.setattr(ai_models, "get_models_dir", lambda: library)
+    monkeypatch.setattr(ai_models.urllib.request, "urlopen", lambda *a, **k: pytest.fail("downloaded again"))
+    monkeypatch.setattr("builtins.print", lambda *a, **k: None)
+    dest = tmp_path / "app" / "data" / "models"
+    assert model_installer.main(["--fetch-models", str(dest)]) == 0
+    status = (dest / model_installer.STATUS_FILE).read_text(encoding="utf-8")
+    assert status.count("already up to date") == 3 and "offer the download" not in status
+
+
+def test_installer_survives_anything(tmp_path, monkeypatch):
+    from engine.services import model_installer
+
+    monkeypatch.setattr(model_installer, "fetch_models", lambda *a, **k: 1 / 0)
+    monkeypatch.setattr("builtins.print", lambda *a, **k: None)
+    assert model_installer.main(["--fetch-models", str(tmp_path)]) == 0
+    assert "couldn't download" in (tmp_path / model_installer.STATUS_FILE).read_text(encoding="utf-8")
+
+
+def test_the_engine_launcher_runs_the_model_download_without_starting_the_server():
+    from pathlib import Path as _P
+
+    launcher = (_P(__file__).resolve().parents[2] / "run_engine.py").read_text(encoding="utf-8")
+    assert launcher.index("--fetch-models") < launcher.index("from engine.main import")
+    hooks = (_P(__file__).resolve().parents[2] / "src-tauri" / "nsis-hooks.nsh").read_text(encoding="utf-8")
+    assert '"$INSTDIR\\securephotos-engine.exe" --fetch-models "$INSTDIR\\data\\models"' in hooks
+    assert "$PassiveMode <> 1" in hooks  # No message box during silent updates.
 
 
 def test_only_one_big_model_is_in_memory_at_a_time(monkeypatch):
