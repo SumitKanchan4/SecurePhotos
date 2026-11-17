@@ -6,7 +6,7 @@ import { daysLeftLabel, groupByTrashMonth, isEndingSoon, itemsLabel, TrashedItem
 
 const item = (id: number, trashed_at: string, days: number, extra: Partial<TrashedItem> = {}): TrashedItem => ({
   id,
-  filename: `photo_${id}.jpg`,
+  filename: `Trip day ${id}.jpg`,
   filepath: `originals/photo_${id}.jpg`,
   file_size: 1000,
   formatted_size: "1 KB",
@@ -70,8 +70,8 @@ describe("TrashView", () => {
 
   it("restores the selected items with one click", async () => {
     render(<TrashView />);
-    fireEvent.click(await screen.findByRole("button", { name: "photo_1.jpg, 27 days left" }));
-    fireEvent.click(screen.getByRole("button", { name: "photo_2.jpg, 2 days left" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Trip day 1, 27 days left" }));
+    fireEvent.click(screen.getByRole("button", { name: "Trip day 2, 2 days left" }));
     expect(screen.getByText("2 selected")).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Restore/ }));
@@ -79,12 +79,12 @@ describe("TrashView", () => {
     const post = calls.find((c) => c.url.endsWith("/api/trash/restore"));
     expect(JSON.parse(String(post?.init?.body))).toEqual({ photo_ids: [1, 2] });
     expect(useAppStore.getState().showToast).toHaveBeenCalledWith("Restored 2 items.", "success");
-    expect(screen.queryByRole("button", { name: "photo_1.jpg, 27 days left" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Trip day 1, 27 days left" })).not.toBeInTheDocument();
   });
 
   it("asks before deleting forever, and Cancel deletes nothing", async () => {
     render(<TrashView />);
-    fireEvent.click(await screen.findByRole("button", { name: "photo_2.jpg, 2 days left" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Trip day 2, 2 days left" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete forever…" }));
     const dialog = screen.getByRole("alertdialog", { name: "Delete 1 item forever?" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));

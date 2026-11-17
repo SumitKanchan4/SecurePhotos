@@ -590,7 +590,7 @@ export const App: React.FC = () => {
             <ActivityView
               model={activity}
               onOpenPhoto={(id) => {
-                const item = [...activity.ready, ...activity.finished].find((i) => i.photoId === id);
+                const item = [...activity.ready, ...activity.attention].find((i) => i.photoId === id);
                 void openPhotoById(id, item?.private);
               }}
               onCancelJob={(id) => void postQuietly(`/api/restore/jobs/${id}/cancel`)}

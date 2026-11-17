@@ -464,9 +464,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
     const mediaTypeLabel = isVideo ? "video" : "photo";
 
     if (mode === "studio_print") {
-      showToast(`🖨️ Downloading print-ready photo "${filename}" to your computer's Downloads folder...`, "info");
+      showToast("Saving a print-ready copy to your Downloads folder…", "info");
     } else {
-      showToast(`📥 Downloading ${mediaTypeLabel} "${filename}" to your computer's Downloads folder...`, "info");
+      showToast(`Saving the ${mediaTypeLabel} to your Downloads folder…`, "info");
     }
 
     const downloadUrl = getApiUrl(`/api/photos/${currentPhoto.id}/download?mode=${mode}`);
@@ -506,7 +506,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
           </button>
           <div className="viewer-title-block">
             <div className="viewer-title-row">
-              <h2 className="viewer-title" title={currentPhoto.filename}>{title}</h2>
+              <h2 className="viewer-title">{title}</h2>
               {chip && (
                 <span className="viewer-chip" title={chip.title}>
                   {chip.label}
@@ -688,7 +688,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
             {!isVideo && !isVaultItem && !isPreviewLoaded && !previewHasError && (
               <img
                 src={thumbnailUrl}
-                alt={currentPhoto.filename}
+                alt={title}
                 style={{
                   maxWidth: "92%",
                   maxHeight: "88%",
@@ -1064,7 +1064,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
               >
                 <img
                   src={previewHasError ? thumbnailUrl : primaryImageUrl}
-                  alt={currentPhoto.filename}
+                  alt={title}
                   onLoad={() => setIsPreviewLoaded(true)}
                   onError={() => {
                     setPreviewHasError(true);
@@ -1192,7 +1192,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   key={item.id}
                   type="button"
                   className={`viewer-film-item${isCurrent ? " is-current" : ""}`}
-                  aria-label={`Open ${viewerTitle(item)}`}
+                  aria-label={`Open ${viewerTitle(item)}, ${i + 1} of ${photos.length}`}
                   aria-current={isCurrent ? "true" : undefined}
                   onClick={() => !isCurrent && onNavigate(i)}
                 >
