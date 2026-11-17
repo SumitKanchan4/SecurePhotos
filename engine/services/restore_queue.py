@@ -568,7 +568,8 @@ async def process_next_job() -> bool:
             del outcome
             await _set(conn, job_id, status="review", progress=100, result_path=to_db_path(staged), result_info=info_json, error_message=None)
             if job["origin"] == "auto":  # No one to ask: apply the "Keep original" setting.
-                keep_original = (await _old_photo_settings()).get("old_photos_keep_original", True)
+                # Drawings, documents and screenshots always keep their original too (A8).
+                keep_original = params.get("keep_both") or (await _old_photo_settings()).get("old_photos_keep_original", True)
                 await keep_result(job_id, "keep_both" if keep_original else "replace")
         except JobCancelled:
             if job_id in _cancel_requested:
