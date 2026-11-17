@@ -302,17 +302,34 @@ async def _process_next_video_job() -> bool:
             await conn.commit()
             return False
 
-        # Mark as processing
-        await conn.execute(
+    finally:
+        await conn.close()
+
+    # One heavy job at a time (after-import plan, owner D2). The slot is taken before the job is
+    # marked "processing", so waiting for it never looks like a stalled job (3-minute watchdog).
+    from engine.services import cpu_budget
+
+    priority = cpu_budget.USER if action == "enhance" else cpu_budget.BACKGROUND  # "Enhance" is asked for.
+    async with cpu_budget.heavy(priority, f"video:{photo_id}"):
+        return await _run_video_job(queue_id, photo_id, action, target_height, retry_count)
+
+
+async def _run_video_job(queue_id: int, photo_id: int, action: str, target_height: int, retry_count: int) -> bool:
+    """Runs one video job (holding the heavy-work slot) and records how it ended."""
+    conn = await get_db_connection()
+    try:
+        cur = await conn.execute(
             """
             UPDATE video_processing_queue
             SET status = 'processing',
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?;
+            WHERE id = ? AND status IN ('queued', 'paused');
             """,
             (queue_id,),
         )
         await conn.commit()
+        if cur.rowcount == 0:  # Removed or taken meanwhile (e.g. the video went to Trash).
+            return True
     finally:
         await conn.close()
 

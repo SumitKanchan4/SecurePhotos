@@ -6,7 +6,11 @@ the photo itself, so nothing is missed and a restart resumes where it stopped:
 1. Basics: during import (date, place, camera, hash, thumbnail).
 2. **Read text** (``ocr_text``: NULL = not read yet, '' = read, no text) → document check.
 3. **Faces** (``faces_scanned``), only after the text is read, never on documents (owner D1).
-4.-7. Old-photo fix, 8K, duplicates, stories: P2 and P3.
+4. **Old-photo rules** (``restore_checked``): queue the automatic fix (Settings → Old photos).
+5. **8K** (``is_optimized``): the 8K pass in ``api/photos.py`` takes a photo only when 2-4 are
+   done and no old-photo job is open for it; improved copies first, then their originals (D3).
+   Heavy work (fixes, 8K, video, vault) takes turns through ``cpu_budget`` (D2).
+6.-7. Duplicates, stories: P3.
 
 This module runs the quick steps (2 and 3: well under a second per photo), newest photos
 first, for the whole library: a new import, an older library whose text was never read, and
@@ -30,6 +34,11 @@ TEXT_WAITING = f"{_LIBRARY} AND ocr_text IS NULL AND COALESCE(mime_type, '') LIK
 FACES_WAITING = (
     f"{_LIBRARY} AND faces_scanned = 0 AND COALESCE(is_document, 0) = 0 "
     "AND (ocr_text IS NOT NULL OR COALESCE(mime_type, '') NOT LIKE 'image/%')"
+)
+# Step 4 (P2): the old-photo rules look at an original once its text and faces are done.
+RULES_WAITING = (
+    f"{_LIBRARY} AND restore_checked = 0 AND derived_from_id IS NULL AND COALESCE(mime_type, '') LIKE 'image/%' "
+    "AND ocr_text IS NOT NULL AND (faces_scanned = 1 OR COALESCE(is_document, 0) = 1)"
 )
 
 IDLE_RECHECK_SECONDS = 60  # Also picks up anything a missed wake-up left behind.
@@ -61,7 +70,9 @@ async def counts() -> Dict[str, int]:
             text = (await cur.fetchone())[0]
         async with conn.execute(f"SELECT COUNT(*) FROM photos WHERE {FACES_WAITING};") as cur:
             faces = (await cur.fetchone())[0]
-    return {"text_waiting": int(text), "faces_waiting": int(faces)}
+        async with conn.execute(f"SELECT COUNT(*) FROM photos WHERE {RULES_WAITING};") as cur:
+            rules = (await cur.fetchone())[0]
+    return {"text_waiting": int(text), "faces_waiting": int(faces), "rules_waiting": int(rules)}
 
 
 async def _hold_reason() -> Optional[str]:
@@ -172,6 +183,15 @@ async def run_once() -> bool:
         state["done_this_run"] += 1
         state["faces_dirty"] = True
         return True
+    photo_id = await _next(RULES_WAITING)
+    if photo_id is not None:
+        from engine.services import old_photo_rules
+
+        state.update(active=True, step="rules", photo_id=photo_id)
+        await old_photo_rules.check_photo(photo_id)  # Always records that it looked.
+        state["done_this_run"] += 1
+        state["rules_done"] = True
+        return True
     return False
 
 
@@ -203,6 +223,8 @@ async def worker_loop() -> None:
                 await asyncio.sleep(0)
                 continue
             await _finish_faces()
+            if state.pop("rules_done", False):
+                _start_enhancement()  # Photos the rules passed (and their copies, later) go on to 8K.
             state.update(active=False, step=None, photo_id=None, done_this_run=0, **(await counts()))
             _wake.clear()
             try:
@@ -215,6 +237,13 @@ async def worker_loop() -> None:
             logger.error("After-import step failed: %s", err, exc_info=True)
             state.update(active=False, step=None, photo_id=None)
             await asyncio.sleep(5)
+
+
+def _start_enhancement() -> None:
+    from engine.api import photos as photos_api
+
+    if not photos_api.optimization_state["is_active"]:
+        asyncio.get_running_loop().create_task(photos_api.run_background_optimization())
 
 
 def start() -> None:

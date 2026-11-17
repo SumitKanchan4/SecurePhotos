@@ -18,7 +18,8 @@ or "Automatically". After an import, every new photo is looked at once, in the b
 
 Jobs are queued as ``origin="auto"``: they run after anything the user asked for, wait while
 the laptop is on battery, and keep their result by the "Keep original" switch (see
-``restore_queue``). Vault photos, videos, documents and improved copies are skipped.
+``restore_queue``). Vault photos, videos and improved copies are skipped. Since the after-import
+process (P2) this runs as its step 4, after text and faces, before 8K (``check_photo``).
 
 Drawings, pages of text and screenshots that look like scans (A8, owner decision 2026-11-17)
 are improved like any scan, but always keep their original, even with "Keep original" off.
@@ -78,35 +79,50 @@ def _look(stored: str) -> Tuple[bool, int, bool]:
     return is_black_and_white(rgb), faces, looks_like_a_graphic(rgb)
 
 
-async def on_imported(photo_ids: Iterable[int]) -> List[int]:
-    """Queues the automatic improvements for newly imported photos. Returns the job ids."""
-    auto = await automatic_rows()
-    if not any(auto.values()):
-        return []
-    ids = list(dict.fromkeys(int(p) for p in photo_ids))
-    queued: List[int] = []
-    for photo_id in ids:
+async def check_photo(photo_id: int, auto: Optional[Dict[str, bool]] = None) -> Optional[int]:
+    """The after-import step (P2): queues the automatic improvement for one photo, if any, and
+    records that the rules have looked at it (8K enhancement waits for that). Returns the job id.
+
+    Documents, drawings and screenshots are improved too but always keep their original (A8).
+    """
+    auto = auto if auto is not None else await automatic_rows()
+    job_id: Optional[int] = None
+    try:
+        if any(auto.values()):
+            async with db_connection() as conn:
+                async with conn.execute(
+                    """SELECT thumbnail_path, filepath, iso, aperture, shutter_speed, COALESCE(is_document, 0) FROM photos
+                       WHERE id = ? AND trashed_at IS NULL AND COALESCE(is_encrypted, 0) = 0
+                         AND derived_from_id IS NULL AND (mime_type IS NULL OR mime_type NOT LIKE 'video/%');""",
+                    (photo_id,),
+                ) as cur:
+                    row = await cur.fetchone()
+            if row is not None and looks_like_a_scan(row[2], row[3], row[4]):
+                try:
+                    grey, faces, graphic = await asyncio.to_thread(_look, row[0] or row[1])
+                except Exception as err:
+                    logger.warning("Couldn't look at photo %s for the automatic rules: %s", photo_id, err)
+                else:
+                    job = plan(grey, faces > 0, auto)
+                    if job is not None:
+                        kind, params = job
+                        if graphic or row[5]:  # Improved too, but the original always stays (A8).
+                            params = {**params, "keep_both": True}
+                        queued = await restore_queue.enqueue([photo_id], kind, params, origin="auto")
+                        job_id = queued[0] if queued else None
+    finally:
         async with db_connection() as conn:
-            async with conn.execute(
-                """SELECT thumbnail_path, filepath, iso, aperture, shutter_speed FROM photos
-                   WHERE id = ? AND trashed_at IS NULL AND COALESCE(is_encrypted, 0) = 0
-                     AND COALESCE(is_document, 0) = 0 AND derived_from_id IS NULL
-                     AND (mime_type IS NULL OR mime_type NOT LIKE 'video/%');""",
-                (photo_id,),
-            ) as cur:
-                row = await cur.fetchone()
-        if row is None or not looks_like_a_scan(row[2], row[3], row[4]):
-            continue
-        try:
-            grey, faces, graphic = await asyncio.to_thread(_look, row[0] or row[1])
-        except Exception as err:
-            logger.warning("Couldn't look at photo %s for the automatic rules: %s", photo_id, err)
-            continue
-        job = plan(grey, faces > 0, auto)
-        if job is None:
-            continue
-        kind, params = job
-        if graphic:  # A8: improved too, but the original always stays, whatever "Keep original" says.
-            params = {**params, "keep_both": True}
-        queued += await restore_queue.enqueue([photo_id], kind, params, origin="auto")
+            await conn.execute("UPDATE photos SET restore_checked = 1 WHERE id = ?;", (photo_id,))
+            await conn.commit()
+    return job_id
+
+
+async def on_imported(photo_ids: Iterable[int]) -> List[int]:
+    """Queues the automatic improvements for the given photos (each once). Returns the job ids."""
+    auto = await automatic_rows()
+    queued: List[int] = []
+    for photo_id in dict.fromkeys(int(p) for p in photo_ids):
+        job_id = await check_photo(photo_id, auto)
+        if job_id is not None:
+            queued.append(job_id)
     return queued

@@ -6306,3 +6306,24 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 
 ### State & Lifecycle Impact
 - No schema change. Existing libraries: every photo's text is read once in the background (about 0.2-0.3 s per photo).
+
+## 159. After-Import Process, Step P2: Heavy Work One at a Time, Fix Before 8K
+
+### Functionality Overview
+- **One heavy job at a time** (owner D2): 8K, old-photo improvements, video preparation and the vault enhancer take turns through one slot; what the user asked for goes first, then automatic fixes, then 8K, then automatic video work. A running job is never cut off.
+- **Old-photo fix before 8K**: the automatic rules are now a step after text and faces; 8K waits until they have looked at the photo and any old-photo job for it has ended. The fix works at the scan's own size and 8K runs once.
+- **Both get 8K** (owner D3): the improved copy (first; it is in front) and its original, so Original vs Improved compare like for like. The copy keeps its AI label through 8K.
+- **Documents are improved too** by the automatic rules, always keeping the original (A8).
+
+### Functional Decision Points & Rationale
+- One slot rather than a full scheduler rewrite: each worker keeps its own queue and safety rules; only "when may I use the CPU" is shared.
+- The video worker takes the slot before marking a job "processing", so waiting never looks like a stalled job to its 3-minute watchdog.
+- Found in the end-to-end run: a scan named "scan…" was treated as a document; "scan" is no longer a document word.
+
+### Technical Touchpoints
+- New: `engine/services/cpu_budget.py`, `engine/tests/test_cpu_budget.py`.
+- Changed: `api/photos.py` (8K pass picks one ready photo at a time, `ENHANCE_READY`), `restore_queue.py` (slot, starts 8K after a job), `video_queue_service.py`, `vault_enhancer.py`, `old_photo_rules.py` (`check_photo`), `after_import.py` (rules step), `photo_versions.py` (copy gets 8K, keeps text), `enhancement_service.py` (keeps XMP), `database.py` (`restore_checked`), `document_service.py`.
+- Checks: engine 433; end to end in a throwaway library with the real models: text → faces → rules → colour (19 s) → 8K copy (12 s) → 8K original (11 s).
+
+### State & Lifecycle Impact
+- New column `photos.restore_checked` (existing photos count as checked).

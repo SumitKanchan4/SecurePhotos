@@ -32,6 +32,7 @@ The actual image work for each kind is plugged in with :func:`register_processor
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -538,7 +539,19 @@ async def process_next_job() -> bool:
             await _set(conn, job_id, status="failed", error_message="models_missing")
             return True
 
-        await _set(conn, job_id, status="working", progress=0)
+        # One heavy job at a time (owner D2): what the user asked for goes first, then automatic
+        # fixes (before 8K). The job shows "waiting" until it has the slot.
+        from engine.services import cpu_budget
+
+        slot = contextlib.AsyncExitStack()
+        await slot.enter_async_context(
+            cpu_budget.heavy(cpu_budget.USER if job["origin"] == "manual" else cpu_budget.AUTO_RESTORE, f"restore:{job_id}")
+        )
+        try:
+            await _set(conn, job_id, status="working", progress=0)
+        except BaseException:
+            await slot.aclose()
+            raise
         state["active_job_id"] = job_id
         _progress[job_id] = 0
 
@@ -599,7 +612,20 @@ async def process_next_job() -> bool:
             _progress.pop(job_id, None)
             state["active_job_id"] = None
             key = None
+            await slot.aclose()
+        # The photo (and a kept copy) can go on to 8K now (after-import order: fix, then 8K).
+        _kick_enhancement()
         return True
+
+
+def _kick_enhancement() -> None:
+    """Starts the 8K pass if it isn't running (it picks up whatever is ready)."""
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return  # Tests run the passes themselves.
+    from engine.api import photos as photos_api
+
+    if not photos_api.optimization_state["is_active"]:
+        asyncio.get_running_loop().create_task(photos_api.run_background_optimization())
 
 
 KEEP_CHOICES = ("keep_both", "replace", "discard")

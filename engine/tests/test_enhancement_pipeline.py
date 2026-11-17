@@ -81,9 +81,56 @@ def test_never_overwrites_an_existing_avif(work_dir):
     assert other.read_bytes() == b"another photo"
 
 
+def test_an_improved_copys_ai_label_survives_8k(work_dir):
+    """P2: improved copies get 8K too (owner D3); their IPTC 'made with AI' label must stay."""
+    from engine.services.photo_versions import SOURCE_TYPE_AI, xmp_packet
+
+    src = work_dir / "copy.avif"
+    Image.new("RGB", (1200, 900), (120, 90, 60)).save(src, "AVIF", quality=80, xmp=xmp_packet(SOURCE_TYPE_AI))
+    result = enhance_to_avif(src, 80)
+    with Image.open(result.path) as out:
+        assert b"compositeWithTrainedAlgorithmicMedia" in out.info["xmp"]
+
+
+async def test_8k_waits_for_the_earlier_after_import_steps(work_dir, monkeypatch):
+    """P2: a photo is enhanced only once its text is read, its faces found, the old-photo rules
+    have looked at it and no old-photo job is open for it; improved copies go first."""
+    monkeypatch.setattr(photos, "_running_on_battery", lambda: False)
+    conn = await get_db_connection()
+    ids = {}
+    try:
+        await conn.execute("UPDATE photos SET is_optimized = 1;")  # Only this test's photos.
+        for name, cols in (
+            ("ready.jpg", {}),
+            ("text_unread.jpg", {"ocr_text": None}),
+            ("faces_waiting.jpg", {"faces_scanned": 0}),
+            ("document.jpg", {"faces_scanned": 0, "is_document": 1}),  # No faces on documents (D1).
+            ("rules_waiting.jpg", {"restore_checked": 0}),
+            ("job_open.jpg", {}),
+        ):
+            ids[name] = await _insert_photo(conn, work_dir / name, **cols)
+        ids["copy.jpg"] = await _insert_photo(conn, work_dir / "copy.jpg", restore_checked=0, derived_from_id=ids["ready.jpg"])
+        await conn.execute(
+            "INSERT INTO restore_jobs (photo_id, kind, status, origin) VALUES (?, 'colour', 'queued', 'auto');", (ids["job_open.jpg"],)
+        )
+        await conn.commit()
+        picked, skipped = [], set()
+        while (row := await photos._next_to_enhance(skipped)) is not None:
+            picked.append(row["filename"])
+            skipped.add(row["id"])
+        assert picked == ["copy.jpg", "document.jpg", "ready.jpg"]  # The copy (in front) first.
+    finally:
+        await conn.execute(f"DELETE FROM restore_jobs WHERE photo_id IN ({','.join('?' * len(ids))});", list(ids.values()))
+        await conn.execute(f"DELETE FROM photos WHERE id IN ({','.join('?' * len(ids))});", list(ids.values()))
+        await conn.commit()
+        await conn.close()
+
+
 async def _insert_photo(conn, path, **cols):
     fields = {"filename": path.name, "filepath": to_db_path(path), "file_size": path.stat().st_size if path.exists() else 1,
-              "mime_type": "image/jpeg", "file_hash": "abc123", **cols}
+              "mime_type": "image/jpeg", "file_hash": "abc123",
+              # After-import steps before 8K are done (text read, faces found, old-photo rules).
+              "ocr_text": "", "faces_scanned": 1, "restore_checked": 1, **cols}
     keys = ",".join(fields)
     cur = await conn.execute(f"INSERT INTO photos ({keys}) VALUES ({','.join('?' * len(fields))});", list(fields.values()))
     await conn.commit()
