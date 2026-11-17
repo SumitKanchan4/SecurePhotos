@@ -66,8 +66,9 @@ def not_superseded(alias: str = "p") -> str:
 
 
 def merged_kinds(previous: Optional[str], kind: str) -> str:
-    """'colour' + 'faces' -> 'colour,faces' (fixed order, no repeats)."""
-    kinds = set(filter(None, (previous or "").split(","))) | {kind}
+    """'colour' + 'faces' -> 'colour,faces' (fixed order, no repeats); ``kind`` may itself be
+    a list ('fade,faces': a faded-colour fix whose faces were sharpened)."""
+    kinds = set(filter(None, (previous or "").split(","))) | set(filter(None, kind.split(",")))
     return ",".join(k for k in KIND_ORDER if k in kinds)
 
 

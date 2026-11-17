@@ -115,7 +115,7 @@ describe("Old photos in the viewer", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Remember my choice" }));
     fireEvent.click(screen.getByRole("button", { name: "Replace the photo" }));
     await waitFor(() => expect(handlers.onLibraryChanged).toHaveBeenCalled());
-    expect(calls.find((c) => c.url === "/api/restore/jobs/5/keep")?.body).toEqual({ choice: "replace", remember: true, intensity: 0.6 });
+    expect(calls.find((c) => c.url === "/api/restore/jobs/5/keep")?.body).toEqual({ choice: "replace", remember: true, intensity: 0.6, faces_off: [] });
     expect(handlers.onClose).toHaveBeenCalled(); // The original is now in Trash.
   });
 
@@ -208,6 +208,71 @@ describe("Old photos in the viewer", () => {
     renderViewer();
     fireEvent.click(await screen.findByRole("button", { name: "Download…" }));
     expect(await screen.findByRole("dialog", { name: "Add colour needs a one-time download" })).toBeInTheDocument();
+  });
+
+  it("offers Sharpen faces for a photo with faces", async () => {
+    const calls = mockEngine({
+      "/api/restore/photos/1/state": () => ({ options: { colour: false, fade: true, faces: true }, members: [], job: null }),
+      "/api/restore/jobs": (_u, init) => (init?.method === "POST" ? { job_ids: [8] } : { working: [], waiting: [], review: [], finished_today: [], download: null }),
+    });
+    renderViewer();
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    const item = screen.getByRole("menuitem", { name: /Sharpen faces/ });
+    expect(item).toHaveTextContent("Clearer faces in blurry or old photos");
+    await act(async () => fireEvent.click(item));
+    await waitFor(() => expect(calls.find((c) => c.url === "/api/restore/jobs" && c.body)?.body).toEqual({ photo_ids: [1], kind: "faces", params: {} }));
+  });
+
+  it("outlines each face; clicking one keeps it as it was, in the preview and when keeping", async () => {
+    const facesJob = {
+      ...reviewJob,
+      kind: "faces",
+      faces: [
+        { box: [0.1, 0.1, 0.2, 0.25], sharpened: true },
+        { box: [0.4, 0.1, 0.2, 0.25], sharpened: true },
+        { box: [0.7, 0.5, 0.1, 0.12], sharpened: false },
+      ],
+    };
+    const calls = mockEngine({
+      "/api/restore/photos/1/state": () => ({ options: { colour: false, fade: false, faces: false }, members: [], job: facesJob }),
+      "/api/system/settings": () => ({ settings: { old_photos_keep_choice: "keep_both" } }),
+      "/api/restore/jobs/5/keep": () => ({ photo_id: 78 }),
+    });
+    renderViewer();
+    const first = await screen.findByRole("button", { name: "Face 1: sharpened" });
+    expect(first).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Face 2: sharpened" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Face 3/ })).not.toBeInTheDocument(); // Left by the identity check: not a switch.
+    const panel = screen.getByRole("complementary", { name: "Sharpen faces" });
+    expect(panel).toHaveTextContent("2 faces sharpened · 1 left as it was (no longer looked like the same person).");
+    fireEvent.click(first);
+    expect(screen.getByRole("button", { name: "Face 1: as it was" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("img", { name: "After" }).getAttribute("src")).toContain("faces_off=0");
+    expect(panel).toHaveTextContent("1 face sharpened · 1 switched off");
+    fireEvent.click(screen.getByRole("button", { name: "Keep both" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/api/restore/jobs/5/keep")?.body).toMatchObject({ choice: "keep_both", faces_off: [0] }));
+  });
+
+  it("offers Also sharpen faces after a faded-colour fix when the face model is missing", async () => {
+    let tick = 0;
+    const calls = mockEngine({
+      "/api/restore/photos/1/state": () => ({ options: { colour: false, fade: true, faces: true }, downloads: { faces: 3.4e8 }, members: [], job: { ...reviewJob, kind: "fade", faces: [], faces_waiting: 2 } }),
+      "/api/system/settings": () => ({ settings: { old_photos_keep_choice: "ask" } }),
+      "/api/restore/models/download": () => ({ started: true, bytes: 3.4e8 }),
+      "/api/restore/models": () => (++tick < 1 ? {} : { models: [], download: null, result: "done" }),
+      "/api/restore/jobs/5/keep": () => ({ photo_id: null }),
+      "/api/restore/jobs": (_u, init) => (init?.method === "POST" ? { job_ids: [9] } : { working: [], waiting: [], review: [], finished_today: [], download: null }),
+    });
+    renderViewer();
+    expect(await screen.findByText("There are 2 faces that could be sharpened too.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Also sharpen faces" }));
+    const dialog = await screen.findByRole("dialog", { name: "Sharpen faces needs a one-time download" });
+    expect(dialog).toHaveTextContent("the face model first (0.3 GB)");
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Download" })));
+    expect(calls.find((c) => c.url === "/api/restore/models/download")?.body).toEqual({ kind: "faces" });
+    // Once it's here, Fix faded colours runs again (now with faces); the old result is discarded.
+    await waitFor(() => expect(calls.find((c) => c.url === "/api/restore/jobs" && c.body)?.body).toEqual({ photo_ids: [1], kind: "fade", params: {} }), { timeout: 4000 });
+    expect(calls.find((c) => c.url === "/api/restore/jobs/5/keep")?.body).toEqual({ choice: "discard" });
   });
 
   it("switches between the original and the improved photo", async () => {

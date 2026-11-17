@@ -498,7 +498,10 @@ CREATE TABLE IF NOT EXISTS duplicate_groups (
 -- One row per request to add colour, fix faded colours, sharpen faces or remove
 -- scratches. queued -> working -> review (manual: waits for keep both / replace /
 -- discard) or done; failed / cancelled. A crash turns working back into queued.
--- result_path is the staged result in data/restore_staging (encrypted .enc for vault photos).
+-- result_path is the staged result in data/restore_staging (encrypted .enc for vault photos); a face
+-- result also stages the sharpened faces next to it (job_N.faces / job_N.faces.enc, A5).
+-- result_info (A5): JSON for the viewer while a result waits (faces: landmarks, box, strength, likeness;
+-- faces_waiting). Always NULL for vault photos: theirs is kept in memory only.
 CREATE TABLE IF NOT EXISTS restore_jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     photo_id INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
@@ -508,6 +511,7 @@ CREATE TABLE IF NOT EXISTS restore_jobs (
     status TEXT NOT NULL DEFAULT 'queued',
     progress INTEGER NOT NULL DEFAULT 0,
     result_path TEXT,
+    result_info TEXT,
     result_photo_id INTEGER,
     error_message TEXT,             -- e.g. 'models_missing'
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

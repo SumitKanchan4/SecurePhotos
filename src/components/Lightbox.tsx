@@ -1167,7 +1167,16 @@ export const Lightbox: React.FC<LightboxProps> = ({
               </div>
             )}
           </div>
-          {old.reviewUrl && <BeforeAfter before={primaryImageUrl} after={old.reviewUrl} intensity={old.intensity} />}
+          {old.reviewUrl && (
+            <BeforeAfter
+              before={primaryImageUrl}
+              after={old.reviewUrl}
+              intensity={old.intensity}
+              faces={old.job?.faces}
+              facesOff={old.facesOff}
+              onToggleFace={old.toggleFace}
+            />
+          )}
         </div>
 
         {filmIndexes.length > 0 && (

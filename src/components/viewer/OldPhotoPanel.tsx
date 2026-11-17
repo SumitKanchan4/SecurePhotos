@@ -2,16 +2,17 @@
  * The viewer's old-photo pieces (H10 / A3), as approved on the A1 board:
  * - ImproveMenu: the "…" button with only the improvements that fit this photo.
  * - VersionSwitch: "Original / Improved" when the photo has a linked copy.
- * - BeforeAfter: the result over the photo with a draggable divider (strength = opacity).
+ * - BeforeAfter: the result over the photo with a draggable divider (strength = opacity), and
+ *   for faces (A5) an outline on each face: click one to keep it as it was.
  * - OldPhotoPanel: Natural / Vivid, strength, Keep this…, plus progress, model download and errors.
  * - KeepDialog: Keep both / Replace the photo / Discard, with "Remember my choice".
  * - ModelDialog (A2c): an action whose model isn't on this computer yet asks to download it
  *   (progress, cancel, keep browsing) and then starts. "Not now" keeps only that action locked.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { Download, Loader2, Lock, MoreHorizontal, Palette, SunMedium, X } from "lucide-react";
+import { Download, Loader2, Lock, MoreHorizontal, Palette, ScanFace, SunMedium, X } from "lucide-react";
 import { apiFetch } from "../../services/api";
-import { IMPROVE_LABELS, type KeepChoice, type ModelPrompt, type OldPhotoState } from "./useOldPhoto";
+import { IMPROVE_LABELS, type ImproveKind, type KeepChoice, type ModelPrompt, type OldPhotoState, type ResultFace } from "./useOldPhoto";
 
 const formatGb = (bytes: number) => `${(bytes / 1e9).toFixed(1)} GB`;
 
@@ -20,7 +21,8 @@ export const ImproveMenu: React.FC<{ old: OldPhotoState }> = ({ old }) => {
   const items = [
     old.options?.colour && { kind: "colour" as const, icon: <Palette size={15} />, hint: "Natural colours for a black-and-white photo" },
     old.options?.fade && { kind: "fade" as const, icon: <SunMedium size={15} />, hint: "Removes a yellow cast and brings colours back" },
-  ].filter(Boolean) as { kind: "colour" | "fade"; icon: React.ReactNode; hint: string }[];
+    old.options?.faces && { kind: "faces" as const, icon: <ScanFace size={15} />, hint: "Clearer faces in blurry or old photos" },
+  ].filter(Boolean) as { kind: ImproveKind; icon: React.ReactNode; hint: string }[];
   if (!items.length) return null;
   return (
     <div className="viewer-menu-anchor">
@@ -92,7 +94,14 @@ export const VersionSwitch: React.FC<{
   );
 };
 
-export const BeforeAfter: React.FC<{ before: string; after: string; intensity: number }> = ({ before, after, intensity }) => {
+export const BeforeAfter: React.FC<{
+  before: string;
+  after: string;
+  intensity: number;
+  faces?: ResultFace[];
+  facesOff?: number[];
+  onToggleFace?: (index: number) => void;
+}> = ({ before, after, intensity, faces = [], facesOff = [], onToggleFace }) => {
   const [split, setSplit] = useState(50);
   const boxRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
@@ -123,6 +132,29 @@ export const BeforeAfter: React.FC<{ before: string; after: string; intensity: n
         />
         <span className="ba-tag ba-tag-before">Before</span>
         <span className="ba-tag ba-tag-after">AI · After</span>
+        {faces.map((face, i) => {
+          const [x, y, w, h] = face.box;
+          const on = face.sharpened && !facesOff.includes(i);
+          const style = { left: `${x * 100}%`, top: `${y * 100}%`, width: `${w * 100}%`, height: `${h * 100}%` };
+          if (!face.sharpened) {
+            return (
+              <span key={i} className="ba-face is-kept" style={style} title="Left as it was: it no longer looked like the same person" aria-hidden="true" />
+            );
+          }
+          return (
+            <button
+              key={i}
+              type="button"
+              className={`ba-face${on ? " is-on" : ""}`}
+              style={style}
+              aria-pressed={on}
+              aria-label={`Face ${i + 1}: ${on ? "sharpened" : "as it was"}`}
+              title={on ? "Sharpened · click to keep this face as it was" : "As it was · click to sharpen it"}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => onToggleFace?.(i)}
+            />
+          );
+        })}
         <div className="ba-divider" style={{ left: `${split}%` }}>
           <input
             type="range"
@@ -188,7 +220,7 @@ export const OldPhotoPanel: React.FC<{
       {old.needsModels && (
         <div className="op-section">
           <p className="op-text">This needs a one-time download first. After that it works offline.</p>
-          <button type="button" className="op-btn op-btn-primary" onClick={() => (job.kind === "colour" || job.kind === "fade") && old.askForModels(job.kind)}>
+          <button type="button" className="op-btn op-btn-primary" onClick={() => job.kind !== "scratches" && old.askForModels(job.kind)}>
             <Download size={14} /> Download…
           </button>
         </div>
@@ -216,6 +248,7 @@ export const OldPhotoPanel: React.FC<{
               <p className="op-hint">Vivid gives richer colour to faded group photos; it can get a few colours wrong.</p>
             </div>
           )}
+          <FacesSection old={old} />
           <div className="op-section">
             <label className="op-label" htmlFor="op-strength">Strength</label>
             <input id="op-strength" type="range" min={0} max={100} value={Math.round(old.intensity * 100)} onChange={(e) => old.setIntensity(Number(e.target.value) / 100)} className="op-range" />
@@ -357,6 +390,41 @@ export const ModelDialog: React.FC<{
           )}
         </div>
       </div>
+    </div>
+  );
+};
+
+/** What happened to the faces in a result (A5), and the way to sharpen them when the model is missing. */
+const FacesSection: React.FC<{ old: OldPhotoState }> = ({ old }) => {
+  const job = old.job;
+  if (!job) return null;
+  const faces = job.faces ?? [];
+  const waiting = job.faces_waiting ?? 0;
+  if (waiting > 0) {
+    return (
+      <div className="op-section">
+        <span className="op-label">Faces</span>
+        <p className="op-text">{waiting === 1 ? "There is a face" : `There are ${waiting} faces`} that could be sharpened too.</p>
+        <button type="button" className="op-btn" onClick={() => old.askForModels("faces", job.kind === "scratches" ? "faces" : job.kind)}>
+          <ScanFace size={14} /> Also sharpen faces
+        </button>
+      </div>
+    );
+  }
+  if (!faces.length) return null;
+  const sharpened = faces.filter((f, i) => f.sharpened && !old.facesOff.includes(i)).length;
+  const asItWas = faces.filter((f, i) => f.sharpened && old.facesOff.includes(i)).length;
+  const kept = faces.filter((f) => !f.sharpened).length;
+  const parts = [
+    `${sharpened} ${sharpened === 1 ? "face" : "faces"} sharpened`,
+    asItWas ? `${asItWas} switched off` : null,
+    kept ? `${kept} left as ${kept === 1 ? "it was" : "they were"} (no longer looked like the same person)` : null,
+  ].filter(Boolean);
+  return (
+    <div className="op-section">
+      <span className="op-label">Faces</span>
+      <p className="op-text">{parts.join(" · ")}.</p>
+      {faces.some((f) => f.sharpened) && <p className="op-hint">Click a face on the photo to keep it as it was.</p>}
     </div>
   );
 };

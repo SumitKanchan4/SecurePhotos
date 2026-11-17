@@ -75,7 +75,12 @@ numpy==2.5.2
     #   -c engine/requirements.txt
     #   -r engine/requirements.in
     #   onnxruntime
+    #   opencv-python-headless
 onnxruntime==1.29.0
+    # via
+    #   -c engine/requirements.txt
+    #   -r engine/requirements.in
+opencv-python-headless==5.0.0.93
     # via
     #   -c engine/requirements.txt
     #   -r engine/requirements.in
