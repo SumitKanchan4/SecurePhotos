@@ -36,7 +36,7 @@ import json
 import logging
 import os
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
@@ -64,13 +64,30 @@ class Processor:
     """How one kind of improvement is done.
 
     Attributes:
-        models: On-demand model keys it needs (downloaded before the first job runs).
-        run: ``run(image_bytes, params, progress, cancelled) -> result_bytes``. Runs on a
-            worker thread; must return an encoded image (the original file stays untouched).
+        models: On-demand model keys it needs (a job fails with "models_missing" without them).
+        run: ``run(image_bytes, params, progress, cancelled) -> result_bytes | Outcome``. Runs
+            on a worker thread; must return an encoded image (the original file stays untouched).
     """
 
     models: Sequence[str]
-    run: Callable[[bytes, Dict[str, Any], ProgressFn, CancelledFn], bytes]
+    run: Callable[[bytes, Dict[str, Any], ProgressFn, CancelledFn], Any]
+
+
+@dataclass
+class Outcome:
+    """A result with more than the image (A5: the faces that were sharpened).
+
+    Attributes:
+        image: The encoded result.
+        info: Small JSON-able details for the viewer, e.g. ``{"faces": [...], "width", "height"}``.
+            Kept in the database for library photos, in memory only for vault photos.
+        extra: Bytes staged next to the result (encrypted for vault photos), e.g. the sharpened
+            faces, so single faces can be switched off before keeping.
+    """
+
+    image: bytes
+    info: Dict[str, Any] = field(default_factory=dict)
+    extra: Optional[bytes] = None
 
 
 PROCESSORS: Dict[str, Processor] = {}
@@ -83,6 +100,7 @@ state: Dict[str, Any] = {
     "download_result": None,  # "done" | "failed" | "cancelled" once the last download ended.
 }
 _progress: Dict[int, int] = {}
+_private_info: Dict[int, Dict[str, Any]] = {}  # Outcome.info of vault jobs: never written in plain form.
 _cancel_requested: set = set()
 _download_cancel = threading.Event()
 _wake: Optional[asyncio.Event] = None
@@ -163,10 +181,18 @@ async def enqueue(photo_ids: Iterable[int], kind: str, params: Optional[Dict[str
     return ids
 
 
+def _extra_path(result: Path) -> Path:
+    """``job_7.img`` -> ``job_7.faces``; ``job_7.enc`` -> ``job_7.faces.enc``."""
+    if result.name.endswith(ENC_SUFFIX):
+        return result.with_name(result.name[: -len(ENC_SUFFIX)] + ".faces" + ENC_SUFFIX)
+    return result.with_name(result.stem + ".faces")
+
+
 def _remove_staged(stored: Optional[str]) -> None:
     path = resolve_stored_path(stored) if stored else None
     if path is not None:
         path.unlink(missing_ok=True)
+        _extra_path(path).unlink(missing_ok=True)
 
 
 async def cancel(job_id: int) -> bool:
@@ -186,8 +212,9 @@ async def cancel(job_id: int) -> bool:
             _cancel_requested.add(job_id)
             return True
         _remove_staged(row["result_path"])
+        _private_info.pop(job_id, None)
         await conn.execute(
-            "UPDATE restore_jobs SET status = 'cancelled', result_path = NULL, updated_at = CURRENT_TIMESTAMP, "
+            "UPDATE restore_jobs SET status = 'cancelled', result_path = NULL, result_info = NULL, updated_at = CURRENT_TIMESTAMP, "
             "finished_at = CURRENT_TIMESTAMP WHERE id = ?;",
             (job_id,),
         )
@@ -227,9 +254,35 @@ def _job_view(row: aiosqlite.Row) -> Dict[str, Any]:
         "filename": None if private else row["filename"],
         "error": row["error_message"],
         "result_photo_id": row["result_photo_id"],
+        **_faces_view(row["id"], row["status"], row["result_info"], private),
         "created_at": row["created_at"],
         "finished_at": row["finished_at"],
     }
+
+
+def result_info(job_id: int, stored: Optional[str], private: bool) -> Dict[str, Any]:
+    """The Outcome.info of a result waiting for a decision ({} if none)."""
+    if private:
+        return _private_info.get(job_id, {})
+    try:
+        return json.loads(stored) if stored else {}
+    except ValueError:
+        return {}
+
+
+def _faces_view(job_id: int, status: str, stored: Optional[str], private: bool) -> Dict[str, Any]:
+    """For the viewer: each face as a box in 0-1 of the image and whether it was sharpened;
+    ``faces_waiting``: faces that could be sharpened once the face model is downloaded."""
+    if status != "review":
+        return {"faces": [], "faces_waiting": 0}
+    info = result_info(job_id, stored, private)
+    w, h = float(info.get("width") or 1), float(info.get("height") or 1)
+    faces = [
+        {"box": [round(b[0] / w, 4), round(b[1] / h, 4), round(b[2] / w, 4), round(b[3] / h, 4)], "sharpened": f["strength"] > 0}
+        for f in info.get("faces", [])
+        for b in [f["box"]]
+    ]
+    return {"faces": faces, "faces_waiting": int(info.get("faces_waiting", 0))}
 
 
 async def list_jobs() -> Dict[str, Any]:
@@ -265,7 +318,12 @@ async def recover_on_start() -> None:
         await conn.execute("UPDATE restore_jobs SET status = 'queued', progress = 0 WHERE status = 'working';")
         await conn.commit()
         async with conn.execute("SELECT result_path FROM restore_jobs WHERE status = 'review' AND result_path IS NOT NULL;") as cur:
-            keep = {r[0] for r in await cur.fetchall()}
+            keep = set()
+            for (stored,) in await cur.fetchall():
+                keep.add(stored)
+                resolved = resolve_stored_path(stored)
+                if resolved is not None:
+                    keep.add(to_db_path(_extra_path(resolved)))
     folder = staging_dir()
     if folder.is_dir():
         for path in folder.iterdir():
@@ -375,16 +433,16 @@ def _read_photo(row: aiosqlite.Row, key: Optional[bytes]) -> bytes:
     return path.read_bytes()
 
 
-def _write_staged(job_id: int, data: bytes, key: Optional[bytes]) -> Path:
+def _write_staged(job_id: int, data: bytes, key: Optional[bytes], dest: Optional[Path] = None) -> Path:
     folder = staging_dir()
     folder.mkdir(parents=True, exist_ok=True)
     if key is not None:
         from engine.services.crypto_vault import encrypt_file_chunked
 
-        dest = folder / f"job_{job_id}{ENC_SUFFIX}"
+        dest = dest or folder / f"job_{job_id}{ENC_SUFFIX}"
         encrypt_file_chunked(data, dest, key)  # Temp + fsync + rename inside.
         return dest
-    dest = folder / f"job_{job_id}.img"
+    dest = dest or folder / f"job_{job_id}.img"
     tmp = dest.with_name(dest.name + ".tmp")
     with open(tmp, "wb") as fh:
         fh.write(data)
@@ -435,12 +493,23 @@ async def process_next_job() -> bool:
             del image
             if cancelled():
                 raise JobCancelled()
-            staged = await asyncio.to_thread(_write_staged, job_id, result, key)
+            outcome = result if isinstance(result, Outcome) else Outcome(image=result)
             del result
+            staged = await asyncio.to_thread(_write_staged, job_id, outcome.image, key)
+            if outcome.extra is not None:
+                await asyncio.to_thread(_write_staged, job_id, outcome.extra, key, _extra_path(staged))
             if private and _vault_key() is None:  # The vault locked while saving: respect it.
                 staged.unlink(missing_ok=True)
+                _extra_path(staged).unlink(missing_ok=True)
                 raise JobCancelled()
-            await _set(conn, job_id, status="review", progress=100, result_path=to_db_path(staged), error_message=None)
+            info_json = None
+            if outcome.info:
+                if private:
+                    _private_info[job_id] = outcome.info
+                else:
+                    info_json = json.dumps(outcome.info)
+            del outcome
+            await _set(conn, job_id, status="review", progress=100, result_path=to_db_path(staged), result_info=info_json, error_message=None)
             if job["origin"] == "auto":  # No one to ask: apply the "Keep original" setting.
                 keep_original = (await _old_photo_settings()).get("old_photos_keep_original", True)
                 await keep_result(job_id, "keep_both" if keep_original else "replace")
@@ -469,7 +538,28 @@ async def _old_photo_settings() -> Dict[str, Any]:
     return (await get_app_settings())["settings"]
 
 
-async def keep_result(job_id: int, choice: str, remember: bool = False, intensity: float = 1.0) -> Dict[str, Any]:
+async def result_image(conn: aiosqlite.Connection, job: aiosqlite.Row, key: Optional[bytes], faces_off: Sequence[int] = ()) -> bytes:
+    """The staged result, rebuilt without the faces in ``faces_off`` (the viewer's per-face switch)."""
+    from engine.services import photo_versions
+
+    staged = await asyncio.to_thread(photo_versions.read_photo_bytes, job["result_path"], bool(job["is_encrypted"]), key)
+    info = result_info(job["id"], job["result_info"], bool(job["is_encrypted"]))
+    off = sorted({int(i) for i in faces_off if 0 <= int(i) < len(info.get("faces", []))})
+    if not off:
+        return staged
+    from engine.services.old_photo_processors import without_faces
+
+    extra_stored = to_db_path(_extra_path(resolve_stored_path(job["result_path"])))
+    extra = await asyncio.to_thread(photo_versions.read_photo_bytes, extra_stored, bool(job["is_encrypted"]), key)
+    async with conn.execute("SELECT filepath FROM photos WHERE id = ?;", (job["photo_id"],)) as cur:
+        source_path = (await cur.fetchone())[0]
+    source = await asyncio.to_thread(photo_versions.read_photo_bytes, source_path, bool(job["is_encrypted"]), key)
+    return await asyncio.to_thread(without_faces, job["kind"], source, info, extra, off)
+
+
+async def keep_result(
+    job_id: int, choice: str, remember: bool = False, intensity: float = 1.0, faces_off: Sequence[int] = ()
+) -> Dict[str, Any]:
     """What the user (or the automatic rule) decided for a finished result.
 
     - ``keep_both``: the improved photo is added next to the original.
@@ -479,6 +569,7 @@ async def keep_result(job_id: int, choice: str, remember: bool = False, intensit
 
     ``remember`` stores the choice as the "When I keep a result" setting (not for discard).
     ``intensity`` (0-1) is the viewer's strength slider: below 1 the result is mixed with the original.
+    ``faces_off``: faces (by index) the user switched off; they are kept as they were.
 
     Returns:
         ``{"photo_id": new photo id or None}``.
@@ -504,9 +595,7 @@ async def keep_result(job_id: int, choice: str, remember: bool = False, intensit
             key = _vault_key() if job["is_encrypted"] else None
             if job["is_encrypted"] and key is None:
                 raise photo_versions.VersionError("vault_locked")
-            staged = await asyncio.to_thread(
-                photo_versions.read_photo_bytes, job["result_path"], bool(job["is_encrypted"]), key
-            )
+            staged = await result_image(conn, job, key, faces_off)
             if intensity < 0.999:
                 from engine.services.old_photo_processors import apply_intensity
 
@@ -515,16 +604,21 @@ async def keep_result(job_id: int, choice: str, remember: bool = False, intensit
                 source = await asyncio.to_thread(photo_versions.read_photo_bytes, source_path, bool(job["is_encrypted"]), key)
                 staged = await asyncio.to_thread(apply_intensity, staged, source, intensity)
                 del source
+            from engine.services.old_photo_processors import kinds_kept
+
+            info = result_info(job["id"], job["result_info"], bool(job["is_encrypted"]))
+            kind = kinds_kept(job["kind"], info, [int(i) for i in faces_off])
             new_id = await photo_versions.create_version(
-                conn, job["photo_id"], staged, job["kind"], json.loads(job["params"] or "{}"), key
+                conn, job["photo_id"], staged, kind, json.loads(job["params"] or "{}"), key
             )
             del staged, key
             if choice == "replace":
                 await photo_versions.trash_photo(conn, job["photo_id"])
         _remove_staged(job["result_path"])
+        _private_info.pop(job_id, None)
         await _set(
             conn, job_id, status="discarded" if choice == "discard" else "done",
-            result_path=None, result_photo_id=new_id,
+            result_path=None, result_info=None, result_photo_id=new_id,
         )
     if remember and choice != "discard":
         from engine.api.system import SettingsUpdatePayload, update_app_settings

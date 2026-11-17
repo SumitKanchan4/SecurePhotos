@@ -12,5 +12,6 @@ cryptography
 psutil
 numpy
 onnxruntime
+opencv-python-headless
 python-multipart
 winocr; sys_platform == 'win32'

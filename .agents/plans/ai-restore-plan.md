@@ -86,7 +86,7 @@ Sizes: S ≈ half a day of my work, M ≈ 1 day, L ≈ 2 days (each including te
 | A2 | **Engine foundation:** model manager (download / import file / SHA-256 manifest / status in Settings → Storage), CPU ONNX session tuning (threads, tiling), a background **job queue** with progress, cancel, pause, battery rule; versions in the DB (`derived_from_id`, `ai_kind`) + IPTC labelling on export. | L | Reused by every feature. |
 | A3 ✅ | **Colorize** and **Fix faded colours** on demand (built 2026-11-16, branch `feature/a3-colour`; see "A3 notes") (DDColor, Lab chroma transfer at full resolution, intensity slider, Natural/Vivid). Recipe chosen by the owner in A0 (2026-11-16), see "Colorize recipe" below. | M | First visible feature; good first joint test. |
 | A4 ✅ | **Activity screen** (built 2026-11-16, branch `feature/a4-activity`) + indicator (rail + header), vault items blurred. | M | |
-| A5 | **Restore faces** on demand (GFPGAN, align with YuNet landmarks, feathered paste-back, strength + per-face toggles, SFace identity check). | L | |
+| A5 ✅ | **Restore faces** on demand (built 2026-11-17, branch `feature/a5-faces`; see "A5 notes") (GFPGAN, align with YuNet landmarks, feathered paste-back, strength + per-face toggles, SFace identity check). | L | |
 | A6 | **Auto rules**: B&W and blur detection on import, Settings "Old photos" (manual / automatic, keep original), the "replace or keep a copy" prompt with remember-my-choice, hidden original + "Restore original". | M | |
 | A7 | **Remove scratches and spots** (detector → LaMa on damaged crops; result first; optional Touch up with brush/eraser; strict threshold for Automatic). | L | Most UI work (Touch up editor). Could move after the first merge if the rest is ready. Needs a few scratched test photos from the owner. |
 | A8 | **Full test round with the owner** on real photos; fixes; docs (design system, history, THIRD_PARTY_NOTICES, licences); then PR `feature/ai-restore` → `master` with owner approval. | M | |
@@ -161,6 +161,16 @@ Built as planned, with these choices: an improved photo always links to the **fi
 - The queue never downloads by itself; `POST /jobs` answers 409 `models_missing`; `/state` lists `downloads` (bytes per locked action); `POST /models/download {kind}` fetches only what that action needs; `GET /models` gives overall progress and `result` (done / failed / cancelled).
 - Removed: `import_model_file`, `/api/restore/models/import`. For the joint test (repo still private), the model files can be copied into the test library's `data/models`; they are accepted only if their SHA-256 matches.
 - Found in the browser check and fixed: the old-photo dialogs (Keep, and the new popup) were 920px wide because the general dialog rule comes later in the CSS.
+
+## A5 notes (built 2026-11-17)
+- Recipe as approved in A0: YuNet faces (>= 24 px wide) with landmarks, similarity transform to GFPGAN's 512 px template, GFPGAN v1.4, feathered paste at 80%. `engine/services/face_sharpen.py`.
+- **Identity check (owner decision 2026-11-17):** SFace similarity between the face before and after. On the owner's 19 photos (143 faces) large faces scored 0.70-0.93; tiny or motion-blurred faces (35-50 px) often 0.2-0.45, where GFPGAN was inventing a face. Rule: **below 0.45 the face is left as it was; otherwise 80%.** No 50% middle step (it looked like a ghosted double image). A face that can't be measured is left as it was. Measured read-only; the comparison page was local and deleted after the decision.
+- **Fix faded colours = recipe R (owner decision 2026-11-17):** the colour fix always runs (never locked); faces are sharpened too when the face model is on the computer; otherwise the panel offers "Also sharpen faces" (download popup, then the fix runs again).
+- **Per-face switch:** the sharpened 512 px faces are staged next to the result (`job_N.faces`, encrypted for vault photos), so switching a face off rebuilds the image exactly (putting the old pixels back would also undo part of a neighbour in a group photo, where the soft edges overlap). The image before sharpening is the original (Sharpen faces) or the deterministic colour fix (Fix faded colours).
+- Face positions of a vault photo's result are kept in memory only (`restore_jobs.result_info` stays NULL).
+- A kept faded-colour fix with sharpened faces is labelled `fade,faces` (AI-made in IPTC), with every face switched off just `fade`.
+- `opencv-python-headless` was used since A3 but missing from `engine/requirements.in`; added and pinned (5.0.0.93).
+- Speed on the owner's photos: about 2 s per face (a 19-face group photo ~39 s).
 
 ## A3 notes (built 2026-11-16)
 - Engine: `engine/services/old_photo_processors.py` (recipe F, Vivid 768, sepia fallback, recipe Q) registered at start; `/api/restore/photos/{id}/state` (one request per opened photo: fitting actions, family, open job), `/jobs/{id}/result`, `intensity` on keep.

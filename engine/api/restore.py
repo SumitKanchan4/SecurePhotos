@@ -56,6 +56,7 @@ class KeepRequest(BaseModel):
     choice: str  # "keep_both" | "replace" | "discard"
     remember: bool = False
     intensity: float = Field(1.0, ge=0.0, le=1.0)  # The viewer's strength slider.
+    faces_off: List[int] = Field(default_factory=list, max_length=500)  # Faces switched off in the viewer (A5).
 
 
 @router.post("/jobs/{job_id}/keep")
@@ -64,34 +65,46 @@ async def keep_job_result(job_id: int, payload: KeepRequest) -> Dict[str, Any]:
     from engine.services.photo_versions import VersionError
 
     try:
-        return await restore_queue.keep_result(job_id, payload.choice, payload.remember, payload.intensity)
+        return await restore_queue.keep_result(job_id, payload.choice, payload.remember, payload.intensity, payload.faces_off)
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err))
     except VersionError as err:
         raise HTTPException(status_code=409, detail=str(err))
 
 
+def _face_indices(text: str) -> List[int]:
+    try:
+        return sorted({int(x) for x in text.split(",") if x.strip()})[:500]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="faces_off must be face numbers, e.g. 0,2")
+
+
 @router.get("/jobs/{job_id}/result")
-async def job_result(job_id: int) -> Response:
-    """The finished result waiting for a decision, for the viewer's before/after (never cached)."""
+async def job_result(job_id: int, faces_off: str = "") -> Response:
+    """The finished result waiting for a decision, for the viewer's before/after (never cached).
+    ``faces_off=0,2`` shows it with those faces left as they were (the per-face switch)."""
+    import aiosqlite
+
     from engine.database import db_connection
     from engine.services import photo_versions
 
+    off = _face_indices(faces_off)
     async with db_connection() as conn:
+        conn.row_factory = aiosqlite.Row
         async with conn.execute(
-            "SELECT j.status, j.result_path, p.is_encrypted FROM restore_jobs j JOIN photos p ON p.id = j.photo_id WHERE j.id = ?;",
+            "SELECT j.*, p.is_encrypted FROM restore_jobs j JOIN photos p ON p.id = j.photo_id WHERE j.id = ?;",
             (job_id,),
         ) as cur:
-            row = await cur.fetchone()
-    if row is None or row[0] != "review":
-        raise HTTPException(status_code=404, detail="No result is waiting.")
-    key = restore_queue._vault_key() if row[2] else None
-    if row[2] and key is None:
-        raise HTTPException(status_code=409, detail="vault_locked")
-    try:
-        data = await asyncio.to_thread(photo_versions.read_photo_bytes, row[1], bool(row[2]), key)
-    except photo_versions.VersionError as err:
-        raise HTTPException(status_code=404, detail=str(err))
+            job = await cur.fetchone()
+        if job is None or job["status"] != "review":
+            raise HTTPException(status_code=404, detail="No result is waiting.")
+        key = restore_queue._vault_key() if job["is_encrypted"] else None
+        if job["is_encrypted"] and key is None:
+            raise HTTPException(status_code=409, detail="vault_locked")
+        try:
+            data = await restore_queue.result_image(conn, job, key, off)
+        except photo_versions.VersionError as err:
+            raise HTTPException(status_code=404, detail=str(err))
     return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
@@ -107,7 +120,7 @@ async def photo_state(photo_id: int) -> Dict[str, Any]:
     except HTTPException as err:
         if err.status_code != 409:
             raise
-        options = {"colour": False, "fade": False}  # Vault locked: nothing to offer until it opens.
+        options = {"colour": False, "fade": False, "faces": False}  # Vault locked: nothing to offer until it opens.
     async with db_connection() as conn:
         try:
             family = await photo_versions.versions_of(conn, photo_id)
@@ -132,9 +145,11 @@ async def _downloads_for(options: Dict[str, Any]) -> Dict[str, int]:
 
 @router.get("/photos/{photo_id}/options")
 async def photo_options(photo_id: int) -> Dict[str, Any]:
-    """Which improvements fit this photo: "Add colour" for grey photos, "Fix faded colours" otherwise."""
+    """Which improvements fit this photo: "Add colour" for grey photos, "Fix faded colours" otherwise,
+    and "Sharpen faces" when it has faces (found on the 1024 px thumbnail)."""
     from engine.database import db_connection
     from engine.services import photo_versions
+    from engine.services.face_sharpen import count_faces
     from engine.services.old_photo_processors import decode_rgb, is_black_and_white
 
     async with db_connection() as conn:
@@ -150,12 +165,23 @@ async def photo_options(photo_id: int) -> Dict[str, Any]:
         raise HTTPException(status_code=409, detail="vault_locked")
     try:
         data = await asyncio.to_thread(photo_versions.read_photo_bytes, row[0] or row[1], bool(row[2]), key)
-        grey = await asyncio.to_thread(lambda: is_black_and_white(decode_rgb(data)))
+        rgb = await asyncio.to_thread(decode_rgb, data)
+        grey = await asyncio.to_thread(is_black_and_white, rgb)
     except Exception:
         raise HTTPException(status_code=404, detail="The photo can't be read.")
     done = set(filter(None, (row[4] or "").split(",")))
+    try:
+        # Small on the thumbnail is fine: a 40 px face in a 3500 px scan is ~12 px here.
+        has_faces = "faces" not in done and await asyncio.to_thread(count_faces, rgb, 10) > 0
+    except Exception:  # Face models unavailable: just don't offer it.
+        has_faces = False
+    del rgb
     # An AI-coloured copy is a colour photo now, but "fixing its faded colours" makes no sense.
-    return {"colour": grey and "colour" not in done, "fade": not grey and not done & {"fade", "colour"}}
+    return {
+        "colour": grey and "colour" not in done,
+        "fade": not grey and not done & {"fade", "colour"},
+        "faces": has_faces,
+    }
 
 
 @router.get("/photos/{photo_id}/versions")

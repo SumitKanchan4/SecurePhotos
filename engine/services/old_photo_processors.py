@@ -11,9 +11,12 @@ Recipes chosen by the owner on their own photos in the A0 test (2026-11-16):
 - **Sepia fallback:** after Natural, if more than about two-thirds of the coloured pixels are
   still orange/brown, Vivid is tried too and used if it removes the cast (in A0 this picked
   exactly the two photos the owner preferred in Vivid).
-- **Fix faded colours (recipe Q, no AI):** each channel's own black and white point
+- **Fix faded colours (recipe R):** recipe Q, no AI: each channel's own black and white point
   (0.5th-99.5th percentile, gain capped at 3x) removes the yellow/pink cast and the fade;
-  gentle local contrast (CLAHE) on brightness; colour x 1.12. Under a second.
+  gentle local contrast (CLAHE) on brightness; colour x 1.12. Under a second. Then, if the
+  face model is on this computer, faces are sharpened at 80% (owner, A5: the colour fix never
+  waits for a download; without the model the viewer offers "Also sharpen faces").
+- **Sharpen faces (A5):** GFPGAN on each face, see ``face_sharpen``.
 
 Each processor takes the photo's file bytes and returns a high-quality JPEG of the result;
 ``photo_versions`` turns it into the labelled AVIF copy. The original is never touched.
@@ -27,8 +30,8 @@ from typing import Any, Callable, Dict, List
 import numpy as np
 from PIL import Image, ImageOps
 
-from engine.services import onnx_sessions
-from engine.services.restore_queue import Processor, register_processor
+from engine.services import ai_models, face_sharpen, onnx_sessions
+from engine.services.restore_queue import Outcome, Processor, register_processor
 
 COLOUR_MODELS = ("ddcolor_large", "ddcolor_artistic")
 NATURAL_SIZE, VIVID_SIZE = 512, 768
@@ -171,11 +174,45 @@ def fix_faded_colours(rgb: np.ndarray) -> np.ndarray:
     return (np.clip(cv2.cvtColor(lab, cv2.COLOR_Lab2RGB), 0, 1) * 255).round().astype(np.uint8)
 
 
-def fade(data: bytes, params: Dict[str, Any], progress: Callable[[int], None], cancelled: Callable[[], bool]) -> bytes:
-    progress(20)
-    result = fix_faded_colours(decode_rgb(data))
+def _faces_outcome(base: np.ndarray, progress: Callable[[int], None], cancelled: Callable[[], bool], span=(5, 95)) -> Outcome:
+    out, records, crops = face_sharpen.sharpen_faces(base, progress, cancelled, span)
+    info = {"faces": records, "width": int(base.shape[1]), "height": int(base.shape[0])}
+    return Outcome(image=encode_jpeg(out), info=info, extra=face_sharpen.pack_faces(crops) if crops else None)
+
+
+def fade(data: bytes, params: Dict[str, Any], progress: Callable[[int], None], cancelled: Callable[[], bool]) -> Outcome:
+    """Recipe R: the colour fix, then faces when the face model is here (unless ``faces`` is False)."""
+    progress(10)
+    fixed = fix_faded_colours(decode_rgb(data))
+    if params.get("faces", True) and not cancelled():
+        if ai_models.is_model_ready(face_sharpen.FACE_MODEL):
+            return _faces_outcome(fixed, progress, cancelled, (20, 95))
+        waiting = face_sharpen.count_faces(fixed)
+        if waiting:  # The viewer offers "Also sharpen faces" (download first).
+            return Outcome(image=encode_jpeg(fixed), info={"faces_waiting": waiting})
     progress(95)
-    return encode_jpeg(result)
+    return Outcome(image=encode_jpeg(fixed))
+
+
+def sharpen(data: bytes, params: Dict[str, Any], progress: Callable[[int], None], cancelled: Callable[[], bool]) -> Outcome:
+    """Sharpen faces on the photo as it is."""
+    progress(3)
+    return _faces_outcome(decode_rgb(data), progress, cancelled)
+
+
+def without_faces(kind: str, source: bytes, info: Dict[str, Any], extra: bytes, off: List[int]) -> bytes:
+    """The result rebuilt with the faces in ``off`` left as they were (the viewer's per-face
+    switch). The image before sharpening is recomputed from the original: itself for
+    "Sharpen faces", the (deterministic) colour fix for "Fix faded colours"."""
+    rgb = decode_rgb(source)
+    base = fix_faded_colours(rgb) if kind == "fade" else rgb
+    return encode_jpeg(face_sharpen.compose(base, info["faces"], face_sharpen.unpack_faces(extra), off))
+
+
+def kinds_kept(kind: str, info: Dict[str, Any], off: List[int]) -> str:
+    """The label of the kept copy: a faded-colour fix whose faces were sharpened is AI-made."""
+    sharpened = [i for i, f in enumerate(info.get("faces", [])) if f["strength"] > 0 and i not in set(off)]
+    return f"{kind},faces" if kind == "fade" and sharpened else kind
 
 
 def apply_intensity(result: bytes, source: bytes, intensity: float) -> bytes:
@@ -192,4 +229,5 @@ def apply_intensity(result: bytes, source: bytes, intensity: float) -> bytes:
 def register() -> None:
     """Plugs the processors into the queue (called once at engine start)."""
     register_processor("colour", Processor(models=COLOUR_MODELS, run=add_colour))
-    register_processor("fade", Processor(models=(), run=fade))
+    register_processor("fade", Processor(models=(), run=fade))  # Faces only if the model is here.
+    register_processor("faces", Processor(models=(face_sharpen.FACE_MODEL,), run=sharpen))
