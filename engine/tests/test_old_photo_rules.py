@@ -143,13 +143,18 @@ async def test_automatic_rows_touch_only_scans_and_fold_faces_into_the_colour_jo
     await update_app_settings(SettingsUpdatePayload(settings={"old_photos_colour": "auto", "old_photos_fade": "auto", "old_photos_faces": "auto"}))
     queued = await old_photo_rules.on_imported(ids.values())
     jobs = await _jobs(list(ids.values()))
-    assert len(queued) == len(jobs) == 3
+    assert len(queued) == len(jobs) == 4
     assert (ids["grey_scan.jpg"], "colour", '{"faces": true, "style": "natural"}', "auto") in jobs
     assert (ids["colour_scan.jpg"], "fade", '{"faces": true}', "auto") in jobs
-    # A8: a drawing is improved too, but always keeps its original.
+    # A8: a drawing and a document are improved too, but always keep their original.
     assert (ids["drawing.png"], "colour", '{"faces": true, "keep_both": true, "style": "natural"}', "auto") in jobs
-    # Never: the phone's own black-and-white photo, the vault photo, the document.
-    assert {j[0] for j in jobs} == {ids["grey_scan.jpg"], ids["colour_scan.jpg"], ids["drawing.png"]}
+    assert (ids["grey_doc.jpg"], "colour", '{"faces": true, "keep_both": true, "style": "natural"}', "auto") in jobs
+    # Never: the phone's own black-and-white photo, the vault photo.
+    assert {j[0] for j in jobs} == {ids["grey_scan.jpg"], ids["colour_scan.jpg"], ids["drawing.png"], ids["grey_doc.jpg"]}
+    # Every photo the rules looked at is recorded (8K waits for it), whatever they decided.
+    async with db_connection() as conn:
+        async with conn.execute(f"SELECT COUNT(*) FROM photos WHERE restore_checked = 1 AND id IN ({','.join('?' * len(ids))});", tuple(ids.values())) as cur:
+            assert (await cur.fetchone())[0] == len(ids)  # Including the ones skipped (phone photo, vault).
 
 
 async def test_faces_alone_sharpens_scans_with_faces_only(library):
@@ -158,7 +163,9 @@ async def test_faces_alone_sharpens_scans_with_faces_only(library):
     assert await old_photo_rules.on_imported(ids.values()) == []  # No faces found.
     library["faces"]["count"] = 1
     await old_photo_rules.on_imported(ids.values())
-    assert {(j[0], j[1]) for j in await _jobs(list(ids.values()))} == {(ids["grey_scan.jpg"], "faces"), (ids["colour_scan.jpg"], "faces"), (ids["drawing.png"], "faces")}
+    assert {(j[0], j[1]) for j in await _jobs(list(ids.values()))} == {
+        (ids["grey_scan.jpg"], "faces"), (ids["colour_scan.jpg"], "faces"), (ids["drawing.png"], "faces"), (ids["grey_doc.jpg"], "faces"),
+    }
 
 
 async def test_automatic_jobs_go_after_what_the_user_asked_for(library, monkeypatch):
@@ -181,15 +188,14 @@ async def test_automatic_jobs_go_after_what_the_user_asked_for(library, monkeypa
         await restore_queue.cancel(job_id)
 
 
-async def test_an_import_hands_its_new_photos_to_the_rules(monkeypatch):
+async def test_an_import_hands_its_new_photos_to_the_after_import_process(monkeypatch):
+    """Since P2 the rules are a step of the after-import process (after text and faces): an
+    import wakes it, and its new photos wait for the rules."""
+    from engine.services import after_import
+
     await run_migrations()
     handed = []
-
-    async def record(ids):
-        handed.append(list(ids))
-        return []
-
-    monkeypatch.setattr(old_photo_rules, "on_imported", record)
+    monkeypatch.setattr(after_import, "wake", lambda: handed.append("woken"))
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / f"scan_{secrets.token_hex(3)}.jpg"
         Image.new("RGB", (64, 48), (90, 90, 90)).save(path, "JPEG")
@@ -197,7 +203,10 @@ async def test_an_import_hands_its_new_photos_to_the_rules(monkeypatch):
             res = await client.post("/api/photos/import", json={"file_paths": [str(path)]})
     new_ids = res.json()["imported_photo_ids"]
     try:
-        assert handed == [new_ids] and len(new_ids) == 1
+        assert handed == ["woken"] and len(new_ids) == 1
+        async with db_connection() as conn:
+            async with conn.execute("SELECT restore_checked FROM photos WHERE id = ?;", (new_ids[0],)) as cur:
+                assert (await cur.fetchone())[0] == 0  # Waits for the rules (and 8K waits for them).
     finally:
         async with db_connection() as conn:
             await conn.execute(f"DELETE FROM photos WHERE id IN ({','.join('?' * len(new_ids))});", tuple(new_ids))

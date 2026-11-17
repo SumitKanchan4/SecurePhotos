@@ -25,7 +25,7 @@ New feedback is added here the same day. Status: **Done** (needs owner re-check)
 | 9 | File names are GUIDs; don't show them anywhere | Done (A8) | Device-made names hidden everywhere; person-written names still show. |
 | 10 | Improved + original: avoid duplicates in the library | Done (A8) | One tile per pair (improved in front); choose Keep improved / both / original. |
 | 11 | Already-improved photos: don't show the improvement options | Done (A8) | No "…" improvements on an original that has a copy. "Redo improvement" not built yet (Next phase if wanted). |
-| 12 | Are improved photos 8K too? What happened to the 8K tag on others? | Next phase | Depends on timing today (8K pass vs old-photo job). Ordered process: old-photo fix first, then 8K once. |
+| 12 | Are improved photos 8K too? What happened to the 8K tag on others? | Done (P2) | Old-photo fix first (scan's own size), then 8K for the copy and the original (owner D3). |
 | 13 | Year bar on the right: show the year with its months under it | Next phase | |
 | 14 | Pause on battery only below 20%, configurable | Done (A8) | Settings → Photos & AI: Below 20% / Below 50% / Always / Never. |
 | 15 | "Everything runs on this computer…" line in Activity is rogue | Done (A8) | Removed. |

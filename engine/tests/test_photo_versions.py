@@ -123,6 +123,7 @@ async def test_keep_both_adds_a_linked_copy_with_the_same_details(lib):
     for col in ("taken_at", "latitude", "longitude", "camera_make", "is_favorite", "caption", "is_enhanced"):
         assert new[col] == orig[col], col
     assert new["filename"] == "grandparents_colour.avif" and new["mime_type"] == "image/avif"
+    assert new["is_optimized"] == 0  # After-import P2 / owner D3: the copy gets 8K too.
     assert orig["trashed_at"] is None and (lib["folder"] / "grandparents.jpg").read_bytes() == original_bytes
 
     path = resolve_stored_path(new["filepath"])
