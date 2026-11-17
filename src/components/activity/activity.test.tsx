@@ -33,7 +33,7 @@ const report = (extra: Partial<RestoreJobsReport> = {}): RestoreJobsReport => ({
 describe("buildActivity", () => {
   it("is idle with nothing running", () => {
     const m = buildActivity({});
-    expect(m).toMatchObject({ working: [], waiting: [], ready: [], finished: [], remaining: 0, headline: null });
+    expect(m).toMatchObject({ working: [], waiting: [], ready: [], attention: [], remaining: 0, headline: null });
   });
 
   it("puts every kind of background work in one list and counts what's left", () => {
@@ -41,13 +41,29 @@ describe("buildActivity", () => {
       restore: report({ working: [job(1, { status: "working", progress: 40 })], waiting: [job(2), job(3)] }),
       importing: { is_active: true, total_count: 10, completed_count: 4, current_filename: "a.jpg", album_id: null, album_name: null, imported: 4, skipped: 0 },
       enhance: { is_active: true, active_photo_id: 9, active_filename: "x.jpg", item_progress: 30, completed_count: 1, total_count: 5 },
-      video: { is_active: true, total_count: 2, completed_count: 0, item_progress: 10 },
+      video: { is_active: true, total_count: 2, completed_count: 0, item_progress: 10, active_video_id: 55 },
     });
-    expect(m.working.map((i) => i.title)).toEqual(["Importing", "Adding colour", "Preparing videos", "Enhancing photos"]);
-    expect(m.working[1]).toMatchObject({ detail: "old_1.jpg", progress: 40, cancel: "job", jobId: 1 });
-    expect(m.waiting).toHaveLength(2);
+    expect(m.working.map((i) => i.title)).toEqual(["Importing", "Adding colour", "Preparing a video", "Enhancing to 8K"]);
+    expect(m.working[1]).toMatchObject({ detail: "old 1", progress: 40, cancel: "job", jobId: 1 });
+    // Every card shows what is being worked on.
+    expect(m.working[2].photoId).toBe(55);
+    expect(m.working[3].photoId).toBe(9);
+    // What waits behind the current video and photo is listed too, so the page counts what the ring counts.
+    expect(m.waiting.map((i) => [i.key, i.count])).toEqual([["job-2", undefined], ["job-3", undefined], ["video-waiting", 1], ["enhance-waiting", 3]]);
+    expect(m.waiting.find((i) => i.key === "enhance-waiting")?.detail).toBe("3 photos");
     expect(m.remaining).toBe(6 + 3 + 2 + 4);
     expect(m.headline).toBe("Importing · 15 items left");
+  });
+
+  it("shows a name only when a person wrote it", () => {
+    const m = buildActivity({
+      restore: report({
+        working: [job(1, { status: "working", filename: "1792341321410-1c9bc690-7433-41b8-b05b-6742f8547d2f.avif" })],
+        waiting: [job(2, { filename: "Grandma wedding.jpg" })],
+      }),
+    });
+    expect(m.working[0].detail).toBe("");
+    expect(m.waiting[0].detail).toBe("Grandma wedding");
   });
 
   it("never names a vault photo", () => {
@@ -61,12 +77,12 @@ describe("buildActivity", () => {
       enhance: { is_active: true, active_photo_id: null, active_filename: null, item_progress: 0, completed_count: 2, total_count: 4, paused_reason: "on_battery" },
     });
     expect(m.working[0]).toMatchObject({ kind: "models", progress: 50, detail: "0.5 of 1.0 GB · once only" });
-    expect(m.working.find((i) => i.kind === "enhance")?.detail).toBe("3 of 4 · waiting for the charger");
+    expect(m.working.find((i) => i.kind === "enhance")?.detail).toBe("3 of 4 · waiting: battery low");
     expect(m.paused).toBe(true);
     expect(m.headline).toBe("Paused · 3 items left");
   });
 
-  it("lists results waiting for a decision and what finished today (newest first)", () => {
+  it("lists results waiting for a decision, and only finished work that needs the user", () => {
     const m = buildActivity({
       restore: report({
         review: [job(4, { status: "review" })],
@@ -74,7 +90,7 @@ describe("buildActivity", () => {
       }),
     });
     expect(m.ready[0]).toMatchObject({ title: "Colour added · ready to look at", photoId: 104 });
-    expect(m.finished.map((i) => [i.outcome, i.photoId])).toEqual([["Nothing to fix", 108], ["Needs a download", 107], ["Not kept", 106], ["Colour added", 77]]);
+    expect(m.attention.map((i) => [i.outcome, i.photoId])).toEqual([["Needs a download", 107]]);
     expect(m.headline).toBe("1 photo ready to look at");
     expect(m.remaining).toBe(0);
   });
@@ -101,16 +117,30 @@ describe("ActivityView", () => {
       }),
     });
     render(<ActivityView model={model} {...handlers} />);
-    expect(screen.getByText("1 working · 1 waiting")).toBeInTheDocument();
+    expect(screen.getByText("2 to do")).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "Adding colour" })).toHaveAttribute("aria-valuenow", "62");
     expect(screen.getByLabelText("Private photo")).toBeInTheDocument();
     expect(screen.queryByText("old_2.jpg")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Everything runs on this computer/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(handlers.onCancelJob).toHaveBeenCalledWith(1);
     fireEvent.click(screen.getByRole("button", { name: "Open" }));
     expect(handlers.onOpenPhoto).toHaveBeenCalledWith(103);
     fireEvent.click(screen.getByRole("button", { name: "Pause all" }));
     expect(handlers.onPauseAll).toHaveBeenCalled();
+  });
+
+  it("shows the photos waiting to be enhanced as one group, and problems under Needs attention", () => {
+    const model = buildActivity({
+      enhance: { is_active: true, active_photo_id: 9, active_filename: "x.jpg", item_progress: 30, completed_count: 16, total_count: 24 },
+      restore: report({ finished_today: [job(7, { status: "failed", error: "models_missing" }), job(8, { status: "done", result_photo_id: 70 })] }),
+    });
+    render(<ActivityView model={model} {...props()} />);
+    expect(screen.getByText("8 to do")).toBeInTheDocument();
+    expect(screen.getByText("7 photos")).toBeInTheDocument();
+    expect(screen.getByText("Photos to enhance")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Needs attention" })).toHaveTextContent("Needs a download");
+    expect(screen.queryByText("Colour added")).not.toBeInTheDocument();
   });
 
   it("offers Resume when paused and Stop import for an import", () => {

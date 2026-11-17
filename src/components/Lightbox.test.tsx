@@ -155,8 +155,9 @@ describe("Lightbox layout (redesign R3)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Previous photo" }));
     expect(onNavigate).toHaveBeenLastCalledWith(0);
     const strip = screen.getByRole("navigation", { name: "Nearby photos" });
-    expect(strip.querySelector("[aria-current=true]")).toHaveAttribute("aria-label", "Open Baga beach, sunset");
-    fireEvent.click(screen.getByRole("button", { name: "Open photo_8" }));
+    expect(strip.querySelector("[aria-current=true]")?.getAttribute("aria-label")).toMatch(/^Open Baga beach, sunset, 2 of \d+$/);
+    // Device-made names ("photo_8.jpg") are never shown: the button says what it is and where.
+    fireEvent.click(screen.getByRole("button", { name: /^Open Photo, 3 of \d+$/ }));
     expect(onNavigate).toHaveBeenLastCalledWith(2);
   });
 

@@ -182,13 +182,13 @@ describe("DuplicatesView", () => {
     });
     render(<DuplicatesView onBack={vi.fn()} />);
     expect(await screen.findByText("1 group · about 16 MB can be freed")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Keep IMG_1.jpg" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("checkbox", { name: "Keep Photo 1" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByText("Keep · best pick")).toBeInTheDocument();
     expect(screen.getAllByText("Goes to Trash")).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "Keep IMG_1.jpg" }));
-    expect(screen.getByRole("checkbox", { name: "Keep IMG_1.jpg" })).toHaveAttribute("aria-checked", "true"); // at least one is kept
-    fireEvent.click(screen.getByRole("checkbox", { name: "Keep IMG_2.jpg" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Keep Photo 1" }));
+    expect(screen.getByRole("checkbox", { name: "Keep Photo 1" })).toHaveAttribute("aria-checked", "true"); // at least one is kept
+    fireEvent.click(screen.getByRole("checkbox", { name: "Keep Photo 2" }));
     expect(screen.getByText("1 group · about 8.0 MB can be freed")).toBeInTheDocument();
 
     await act(async () => {
@@ -234,14 +234,14 @@ describe("VideoOptimizerView", () => {
     expect(await screen.findByText("1.8 GB now · about 614 MB after")).toBeInTheDocument();
     expect(screen.getByText("4:32")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Make smaller" }));
-    const dialog = screen.getByRole("alertdialog", { name: "Make goa_beach.mp4 smaller?" });
+    const dialog = screen.getByRole("alertdialog", { name: "Make this video smaller?" });
     expect(dialog).toHaveTextContent("The original is deleted once the smaller copy has been checked");
     expect(calls.some((c) => c.url.endsWith("/compress"))).toBe(false);
     await act(async () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Make smaller" }));
     });
     expect(calls.some((c) => c.url.endsWith("/api/videos/9/compress") && c.init?.method === "POST")).toBe(true);
-    expect(useAppStore.getState().showToast).toHaveBeenCalledWith("Made goa_beach.mp4 smaller. 1.2 GB freed.", "success");
+    expect(useAppStore.getState().showToast).toHaveBeenCalledWith("Made the video smaller. 1.2 GB freed.", "success");
   });
 
   it("reports the batch result from the engine's real fields", async () => {
@@ -271,7 +271,7 @@ describe("VideoOptimizerView", () => {
       fireEvent.click(screen.getByRole("button", { name: "Enhance" }));
     });
     expect(useAppStore.getState().showToast).toHaveBeenCalledWith(
-      "Enhanced 1998_birthday.avi to HD. The original is in Trash for 30 days.",
+      "Enhanced the video to HD. The original is in Trash for 30 days.",
       "success",
     );
   });

@@ -10,6 +10,7 @@ import { useAppStore } from "../store/useAppStore";
 import { apiFetch, getThumbnailUrl } from "../services/api";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { daysLeftLabel, groupByTrashMonth, isEndingSoon, itemsLabel, TrashedItem } from "./trash/trashFormat";
+import { itemTitle } from "../utils/displayName";
 
 type Pending = { kind: "selected"; ids: number[] } | { kind: "all" } | null;
 
@@ -144,8 +145,8 @@ export const TrashView: React.FC = () => {
                     type="button"
                     className={`trash-tile${isSelected ? " is-selected" : ""}`}
                     aria-pressed={isSelected}
-                    aria-label={`${item.filename}, ${daysLeftLabel(item.days_remaining)}`}
-                    title={item.is_vault_item ? "Private Vault item" : `${item.filename} · ${item.formatted_size}`}
+                    aria-label={`${itemTitle(item)}, ${daysLeftLabel(item.days_remaining)}`}
+                    title={item.is_vault_item ? "Private Vault item" : `${itemTitle(item)} · ${item.formatted_size}`}
                     onClick={() => toggle(item.id)}
                   >
                     {item.is_vault_item ? (

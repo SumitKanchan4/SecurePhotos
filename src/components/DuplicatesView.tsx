@@ -10,6 +10,7 @@ import { useAppStore } from "../store/useAppStore";
 import { apiFetch, getThumbnailUrl } from "../services/api";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { formatSize, groupTitle, plural, reclaimableBytes, resolveLabel } from "./dashboard/dashFormat";
+import { itemTitle } from "../utils/displayName";
 
 interface DuplicatesViewProps {
   onBack: () => void;
@@ -187,7 +188,7 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({ onBack, onPhotoC
                       <button
                         type="button"
                         className={`dup-photo${best && keeping ? " is-best" : ""}`}
-                        aria-label={`Open ${p.filename}`}
+                        aria-label={`Open ${itemTitle(p)} ${i + 1}`}
                         onClick={() => onPhotoClick?.(i, g.photos)}
                       >
                         <img src={getThumbnailUrl(p.id)} alt="" loading="lazy" draggable={false} />
@@ -196,7 +197,7 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({ onBack, onPhotoC
                         type="button"
                         role="checkbox"
                         aria-checked={keeping}
-                        aria-label={`Keep ${p.filename}`}
+                        aria-label={`Keep ${itemTitle(p)} ${i + 1}`}
                         className={`dup-check${keeping ? " is-on" : ""}`}
                         onClick={() => toggle(g, p.id)}
                       >
