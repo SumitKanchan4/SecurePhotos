@@ -21,6 +21,9 @@ Rules:
   and their staged result is written encrypted. If the vault locks mid-job, the result is
   dropped and the job waits for the next unlock.
 - After a crash, ``working`` jobs go back to ``queued`` and stray staging files are removed.
+- The queue never downloads a model by itself (A2c): the installer fetches them, and the app
+  asks before downloading one that is missing. A job whose model isn't there fails with
+  ``models_missing`` (Activity: "Needs a download").
 
 The actual image work for each kind is plugged in with :func:`register_processor`
 (A3 colour + faded colours, A5 faces, A7 scratches), so this module has no model code.
@@ -76,7 +79,8 @@ state: Dict[str, Any] = {
     "paused": False,          # Paused by the user.
     "paused_reason": None,    # "on_battery" while waiting for the charger.
     "active_job_id": None,
-    "download": None,         # {"model": key, "done": bytes, "total": bytes} while fetching models.
+    "download": None,         # {"model": key, "done": bytes, "total": bytes} for the whole download.
+    "download_result": None,  # "done" | "failed" | "cancelled" once the last download ended.
 }
 _progress: Dict[int, int] = {}
 _cancel_requested: set = set()
@@ -318,24 +322,45 @@ async def _set(conn: aiosqlite.Connection, job_id: int, **fields: Any) -> None:
     await conn.commit()
 
 
-async def _ensure_models(keys: Sequence[str]) -> bool:
-    """Downloads missing models with progress. False if a download failed or was cancelled."""
-    for key in keys:
-        if await asyncio.to_thread(ai_models.is_model_ready, key):
-            continue
-        _download_cancel.clear()
-        state["download"] = {"model": key, "done": 0, "total": int(ai_models.ON_DEMAND_MODELS[key]["size"])}
+def models_for(kind: str) -> Sequence[str]:
+    """The on-demand models an improvement needs (none for a non-AI fix)."""
+    processor = PROCESSORS.get(kind)
+    return tuple(processor.models) if processor else ()
 
-        def progress(done: int, total: int, _key: str = key) -> None:
-            state["download"] = {"model": _key, "done": done, "total": total}
 
-        try:
-            await asyncio.to_thread(ai_models.fetch_on_demand, key, None, progress, _download_cancel)
-        except Exception as err:  # Offline, repo not public yet, cancelled, bad checksum.
-            logger.warning("Could not get model %s: %s", key, err)
-            return False
-        finally:
-            state["download"] = None
+def missing_for(kind: str) -> List[str]:
+    """Models still to download before ``kind`` can run (may hash a file once: call in a thread)."""
+    return ai_models.missing_models(models_for(kind))
+
+
+async def download_models(keys: Sequence[str]) -> bool:
+    """Downloads missing models with progress, after the user agreed. Progress covers the
+    whole download (all missing models). False if a download failed or was cancelled."""
+    missing = await asyncio.to_thread(ai_models.missing_models, keys)
+    _download_cancel.clear()
+    state["download_result"] = None
+    total = ai_models.download_size(missing)
+    before = 0
+    try:
+        for key in missing:
+            state["download"] = {"model": key, "done": before, "total": total}
+
+            def progress(done: int, _total: int, _key: str = key, _before: int = before) -> None:
+                state["download"] = {"model": _key, "done": min(total, _before + done), "total": total}
+
+            try:
+                await asyncio.to_thread(ai_models.fetch_on_demand, key, None, progress, _download_cancel)
+            except ai_models.DownloadCancelled:
+                state["download_result"] = "cancelled"
+                return False
+            except Exception as err:  # Offline, repo not public yet, bad checksum.
+                logger.warning("Could not get model %s: %s", key, err)
+                state["download_result"] = "failed"
+                return False
+            before += int(ai_models.ON_DEMAND_MODELS[key]["size"])
+    finally:
+        state["download"] = None
+    state["download_result"] = "done"
     return True
 
 
@@ -389,7 +414,7 @@ async def process_next_job() -> bool:
         if not private:
             key = None
 
-        if not await _ensure_models(processor.models):
+        if await asyncio.to_thread(ai_models.missing_models, processor.models):
             await _set(conn, job_id, status="failed", error_message="models_missing")
             return True
 

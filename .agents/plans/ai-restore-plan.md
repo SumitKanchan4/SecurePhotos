@@ -6,7 +6,7 @@ Research behind this plan: `.agents/research/Local photo restoration and coloriz
 
 Hard constraints:
 - **CPU only.** The owner and most users have no GPU. Compact ONNX models, tiled, in a background worker; GPU (DirectML) is only an optional speed-up later.
-- **Fully offline.** Models are downloaded once (or imported from a file) and checked against SHA-256 hashes; photos never leave the computer.
+- **Fully offline.** Models are downloaded once (by the installer, or in the app after asking) and checked against SHA-256 hashes; photos never leave the computer.
 - **Never destroy the original on the spot.** Every result is a new copy linked to its original; an original the user chooses not to keep goes to Trash for 30 days first.
 - **Say it's AI.** Restored faces and colorized photos carry an "AI" badge in the app and IPTC `digitalSourceType` metadata in exported files (EU AI Act Art. 50).
 
@@ -145,19 +145,29 @@ Built as planned, with these choices: an improved photo always links to the **fi
 - **Model hosting (owner decision 2026-11-16):** attachments on a Release of **this repo**, tag `models-v1` (files up to 2 GB, pinned by URL + SHA-256; a new model = new tag + app update). The repo stays private until it is stable, then becomes public, so until then downloads only work for the owner: development and joint testing use "import from file" / the local models folder. `scripts/create_release.py` gets a gate that refuses to build a release while any `on_demand` model URL can't be fetched without a login.
 - Not in git (100 MB file limit; Git LFS free quota ~1 GB storage and bandwidth), not bundled in the installer.
 
-## A2c · Models with the installer (owner decisions 2026-11-16) — to build after A4
+## A2c ✅ · Models with the installer (owner decisions 2026-11-16; built 2026-11-17, branch `feature/a2c-models-installer`)
 - **Only our models.** No "import from file" or any way for a user to point the app at another model: remove `import_model_file`, `/api/restore/models/import` and their tests/docs. A model is used only if it is the pinned file with the pinned SHA-256.
 - **Small models stay inside the installer** (as today: YuNet, SFace, Real-ESRGAN).
 - **Big models are downloaded by the installer** (install and upgrade), each checked by SHA-256; a model already in place and verified is skipped. If a download fails, the installer still completes and shows each model's status (ready / already up to date / couldn't download, the app will ask later).
 - **In the app:** if a model is missing, a popup explains it is needed for the old-photo features and offers to download it (progress, resume). If the user cancels, **only the features that need that model are locked** (Add colour, Fix faded colours if it ever needs one, Sharpen faces, Remove scratches); pressing one shows the popup again. Everything else (import, browsing, vault, People, albums, Stories, enhancing) keeps working. The owner first suggested a view-only app; agreed on feature-level blocking after discussion.
 - Engine start: checks every model (skip if verified, else mark missing) so the UI knows which features are available.
+- Owner, 2026-11-17: the popup itself downloads (not only a link to somewhere else).
+
+### A2c notes (built 2026-11-17)
+- Installer: `src-tauri/nsis-hooks.nsh` (post-install) runs `securephotos-engine.exe --fetch-models "$INSTDIR\data\models"` (`engine/services/model_installer.py`, handled in `run_engine.py` before the server loads). Per model: already up to date / ready / couldn't download (the app will ask later); progress lines in the details list; a message box with the status unless the install is silent or passive (updates). Exit code always 0. A model already verified in a library kept elsewhere (`data_location.txt`) counts as up to date.
+- Downloads continue after a network drop (`<file>.download` + HTTP Range); a cancelled one is removed; a damaged one is never kept.
+- Verified files are remembered in `verified.json` (size, mtime, SHA-256) next to them, so a restart or an upgrade doesn't hash 2.3 GB again. A stamp with another checksum never counts.
+- Models are found in the library's `data/models` or the app's own `data/models` (where the installer puts them), used in place.
+- The queue never downloads by itself; `POST /jobs` answers 409 `models_missing`; `/state` lists `downloads` (bytes per locked action); `POST /models/download {kind}` fetches only what that action needs; `GET /models` gives overall progress and `result` (done / failed / cancelled).
+- Removed: `import_model_file`, `/api/restore/models/import`. For the joint test (repo still private), the model files can be copied into the test library's `data/models`; they are accepted only if their SHA-256 matches.
+- Found in the browser check and fixed: the old-photo dialogs (Keep, and the new popup) were 920px wide because the general dialog rule comes later in the CSS.
 
 ## A3 notes (built 2026-11-16)
 - Engine: `engine/services/old_photo_processors.py` (recipe F, Vivid 768, sepia fallback, recipe Q) registered at start; `/api/restore/photos/{id}/state` (one request per opened photo: fitting actions, family, open job), `/jobs/{id}/result`, `intensity` on keep.
 - Viewer: "…" menu, progress in the date line, before/after divider, side panel, keep dialog, Original / Improved switch; grid "AI" badge (timeline flag 8).
 - Found while testing in the browser and fixed: (1) black-and-white detection now means **one uniform tint** (Lab a/b spread), because strong sepia prints failed the old saturation rule (owner's 19 photos: still exactly the 11 grey ones); (2) the contrast stretch is capped at 2.5x around the photo's mid-tone, because a nearly flat scan turned black (owner's prints need 1.3-1.4x, unchanged); (3) Escape in the keep dialog also closed the viewer, and arrows on the strength slider switched photos; the viewer now ignores its keys while a dialog is on top or a control has focus; (4) an AI-coloured copy no longer offers "Fix faded colours".
 - Real models on 4 owner photos (read only, outputs deleted): ~10-12 s per grey photo including model swaps, ~16 s when the sepia fallback runs, under 1 s for the faded-colour fix; results match the approved A0 round.
-- Not yet: "import from file" has an API but no button (needs Tauri's file dialog plugin); while the repo is private the models go into the test library by import before the joint test. Activity screen is A4.
+- Not yet: Activity screen is A4. ("Import from file" was removed in A2c.)
 
 ## Testing
 

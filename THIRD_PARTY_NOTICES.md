@@ -370,9 +370,9 @@ Redistribution and use in source and binary forms, with or without modification,
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-## Old-photo models (downloaded on first use)
+## Old-photo models (downloaded by the installer)
 
-These are not in the installer. The app downloads them from this project's GitHub Release `models-v1` the first time someone improves an old photo (or the user imports the files), and checks each against a pinned SHA-256 fingerprint before loading it. How they are built from the official code and weights: `scripts/model_export/README.md`.
+These are not packed inside the installer. The installer downloads them from this project's GitHub Release `models-v1` (or, if that fails, the app offers the download before the first feature that needs one), and each is checked against a pinned SHA-256 fingerprint before it is loaded. How they are built from the official code and weights: `scripts/model_export/README.md`.
 
 | Model | Used for | Licence | Source |
 |---|---|---|---|
