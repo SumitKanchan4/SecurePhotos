@@ -14,20 +14,24 @@ Lookup order:
 
 A file that fails its checksum is never loaded.
 
-Old-photo models (H10, ``ON_DEMAND_MODELS``) are too big for the installer (~2.3 GB), so
-they are fetched the first time the user improves an old photo, or imported from a file.
-They live on this repo's GitHub Release ``models-v1`` and are pinned by URL + SHA-256 in
-the same way. ``scripts/model_export/`` rebuilds them from the official weights.
+Old-photo models (H10, ``ON_DEMAND_MODELS``) are too big to ship inside the installer
+(~2.3 GB). The installer downloads them into ``<app>/data/models`` after it copies the app
+(``engine/services/model_installer.py``, run as ``securephotos-engine --fetch-models``); if
+that fails the app asks before the first feature that needs one. They live on this repo's
+GitHub Release ``models-v1`` and are pinned by URL + SHA-256 in the same way.
+``scripts/model_export/`` rebuilds them from the official weights. Only these exact files
+are ever used: there is no way to point the app at another model (owner decision, A2c).
 """
 
 import hashlib
+import json
 import logging
 import os
 import shutil
 import threading
 import urllib.request
 from pathlib import Path
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Iterable, List, Optional
 
 logger = logging.getLogger("securephotos.ai_models")
 
@@ -125,6 +129,9 @@ def download_verified(
 ) -> Path:
     """Downloads one model from its pinned address into ``dest_dir`` and verifies it.
 
+    An interrupted download (network drop, app closed) leaves ``<file>.download`` behind and
+    the next attempt continues from there; a cancelled one is removed.
+
     Args:
         spec: Model entry from ``MODELS`` or ``ON_DEMAND_MODELS``.
         dest_dir: Folder to put the verified file in.
@@ -139,19 +146,27 @@ def download_verified(
     path = dest_dir / spec["file"]
     logger.info("Downloading %s (%s licence)...", spec["file"], spec["license"])
     tmp = path.with_name(path.name + ".download")
-    req = urllib.request.Request(spec["url"], headers={"User-Agent": "SecurePhotos"})
     total = int(spec.get("size", 0))
-    done = 0
+    done = tmp.stat().st_size if tmp.is_file() else 0
+    if total and done >= total:
+        done = 0  # A full-size leftover failed its check before; start again.
+    headers = {"User-Agent": "SecurePhotos"}
+    if done:
+        headers["Range"] = f"bytes={done}-"
+    req = urllib.request.Request(spec["url"], headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp, open(tmp, "wb") as fh:
-            for block in iter(lambda: resp.read(1024 * 1024), b""):
-                if cancel is not None and cancel.is_set():
-                    raise DownloadCancelled(spec["file"])
-                fh.write(block)
-                done += len(block)
-                if on_progress:
-                    on_progress(done, total or done)
-    except BaseException:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            if done and getattr(resp, "status", 200) != 206:
+                done = 0  # The server ignored the range: start from the beginning.
+            with open(tmp, "ab" if done else "wb") as fh:
+                for block in iter(lambda: resp.read(1024 * 1024), b""):
+                    if cancel is not None and cancel.is_set():
+                        raise DownloadCancelled(spec["file"])
+                    fh.write(block)
+                    done += len(block)
+                    if on_progress:
+                        on_progress(done, total or done)
+    except DownloadCancelled:
         tmp.unlink(missing_ok=True)
         raise
     actual = sha256_of(tmp)
@@ -183,8 +198,10 @@ def ensure_model(spec: Dict[str, str], models_dir: Optional[Path] = None) -> Pat
     return download_verified(spec, models_dir)
 
 
-# Verifying a 1 GB file takes seconds, so a file already checked is remembered by (size, mtime).
+# Verifying a 1 GB file takes seconds, so a file already checked is remembered by
+# (size, mtime): in memory, and in ``verified.json`` next to it so the next start is instant.
 _verified_cache: Dict[str, tuple] = {}
+VERIFIED_FILE = "verified.json"
 
 
 def _stat_key(path: Path) -> tuple:
@@ -192,32 +209,90 @@ def _stat_key(path: Path) -> tuple:
     return (st.st_size, st.st_mtime_ns)
 
 
-def is_model_ready(key: str, models_dir: Optional[Path] = None) -> bool:
-    """True if the on-demand model ``key`` is present in the library and matches its checksum."""
-    spec = ON_DEMAND_MODELS[key]
-    path = (models_dir or get_models_dir()) / spec["file"]
+def _read_stamps(folder: Path) -> Dict[str, list]:
+    try:
+        data = json.loads((folder / VERIFIED_FILE).read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _remember(path: Path, sha256: str) -> None:
+    stamp = _stat_key(path)
+    _verified_cache[str(path)] = (stamp, sha256)
+    stamps = _read_stamps(path.parent)
+    stamps[path.name] = [stamp[0], stamp[1], sha256]
+    try:
+        tmp = path.parent / (VERIFIED_FILE + ".tmp")
+        tmp.write_text(json.dumps(stamps, indent=1), encoding="utf-8")
+        os.replace(tmp, path.parent / VERIFIED_FILE)
+    except OSError:
+        pass  # Read-only folder: it is simply checked again next time.
+
+
+def model_dirs(models_dir: Optional[Path] = None) -> List[Path]:
+    """Where an old-photo model may be: the library's folder, then the app's own
+    ``<app>/data/models`` (where the installer puts them) when that is a different folder."""
+    first = models_dir or get_models_dir()
+    dirs = [first]
+    if models_dir is None:
+        app_dir = get_bundled_models_dir()
+        try:
+            if app_dir.resolve() != first.resolve():
+                dirs.append(app_dir)
+        except OSError:
+            pass
+    return dirs
+
+
+def _verified_here(path: Path, sha256: str) -> bool:
     if not path.is_file():
         return False
     stamp = _stat_key(path)
-    cached = _verified_cache.get(str(path))
-    if cached == (stamp, spec["sha256"]):
+    if _verified_cache.get(str(path)) == (stamp, sha256):
         return True
-    if sha256_of(path) != spec["sha256"]:
+    if _read_stamps(path.parent).get(path.name) == [stamp[0], stamp[1], sha256]:
+        _verified_cache[str(path)] = (stamp, sha256)
+        return True
+    if sha256_of(path) != sha256:
         return False
-    _verified_cache[str(path)] = (stamp, spec["sha256"])
+    _remember(path, sha256)
     return True
+
+
+def find_model(key: str, models_dir: Optional[Path] = None) -> Optional[Path]:
+    """The verified file for on-demand model ``key``, or None if it isn't on this computer."""
+    spec = ON_DEMAND_MODELS[key]
+    for folder in model_dirs(models_dir):
+        if _verified_here(folder / spec["file"], spec["sha256"]):
+            return folder / spec["file"]
+    return None
+
+
+def is_model_ready(key: str, models_dir: Optional[Path] = None) -> bool:
+    """True if on-demand model ``key`` is on this computer and matches its checksum."""
+    return find_model(key, models_dir) is not None
+
+
+def missing_models(keys: Iterable[str], models_dir: Optional[Path] = None) -> List[str]:
+    """The keys among ``keys`` that still need downloading."""
+    return [k for k in keys if not is_model_ready(k, models_dir)]
+
+
+def download_size(keys: Iterable[str]) -> int:
+    """Bytes to download for ``keys``."""
+    return sum(int(ON_DEMAND_MODELS[k]["size"]) for k in keys)
 
 
 def model_path(key: str, models_dir: Optional[Path] = None) -> Path:
     """The verified file for on-demand model ``key``.
 
     Raises:
-        FileNotFoundError: The model hasn't been downloaded or imported yet (or is damaged).
+        FileNotFoundError: The model hasn't been downloaded yet (or is damaged).
     """
-    spec = ON_DEMAND_MODELS[key]
-    path = (models_dir or get_models_dir()) / spec["file"]
-    if not is_model_ready(key, models_dir):
-        raise FileNotFoundError(f"The model {spec['file']} is not downloaded yet.")
+    path = find_model(key, models_dir)
+    if path is None:
+        raise FileNotFoundError(f"The model {ON_DEMAND_MODELS[key]['file']} is not downloaded yet.")
     return path
 
 
@@ -227,46 +302,15 @@ def fetch_on_demand(
     on_progress: Optional[Callable[[int, int], None]] = None,
     cancel: Optional[threading.Event] = None,
 ) -> Path:
-    """Downloads on-demand model ``key`` unless a verified copy is already there."""
-    models_dir = models_dir or get_models_dir()
-    if is_model_ready(key, models_dir):
-        return models_dir / ON_DEMAND_MODELS[key]["file"]
-    path = download_verified(ON_DEMAND_MODELS[key], models_dir, on_progress, cancel)
-    _verified_cache[str(path)] = (_stat_key(path), ON_DEMAND_MODELS[key]["sha256"])
+    """Downloads on-demand model ``key`` into ``models_dir`` unless a verified copy is already there."""
+    found = find_model(key, models_dir)
+    if found is not None:
+        return found
+    path = download_verified(ON_DEMAND_MODELS[key], models_dir or get_models_dir(), on_progress, cancel)
+    _remember(path, ON_DEMAND_MODELS[key]["sha256"])
     return path
 
 
-def import_model_file(source: Path, models_dir: Optional[Path] = None) -> str:
-    """Copies a model file the user picked (e.g. downloaded on another computer) into the library.
-
-    The file is recognised by its checksum, not its name, so a renamed copy works and any
-    other file is refused. It is copied to a temp name, checked again, then moved into place.
-
-    Returns:
-        The model's key in ``ON_DEMAND_MODELS``.
-
-    Raises:
-        ValueError: The file isn't one of the app's models (or is damaged).
-    """
-    models_dir = models_dir or get_models_dir()
-    if not source.is_file():
-        raise ValueError("That file doesn't exist.")
-    size = source.stat().st_size
-    candidates = [k for k, s in ON_DEMAND_MODELS.items() if int(s["size"]) == size]
-    digest = sha256_of(source) if candidates else ""
-    key = next((k for k in candidates if ON_DEMAND_MODELS[k]["sha256"] == digest), None)
-    if key is None:
-        raise ValueError("This file isn't one of SecurePhotos' old-photo models, or it is damaged.")
-    spec = ON_DEMAND_MODELS[key]
-    models_dir.mkdir(parents=True, exist_ok=True)
-    dest = models_dir / spec["file"]
-    tmp = dest.with_name(dest.name + ".import")
-    try:
-        shutil.copyfile(source, tmp)
-        if sha256_of(tmp) != spec["sha256"]:
-            raise ValueError("The copy didn't match; please try again.")
-        os.replace(tmp, dest)
-    finally:
-        tmp.unlink(missing_ok=True)
-    _verified_cache[str(dest)] = (_stat_key(dest), spec["sha256"])
-    return key
+def check_all_models() -> Dict[str, bool]:
+    """Engine start: verifies every old-photo model once so the app knows which features work."""
+    return {key: is_model_ready(key) for key in ON_DEMAND_MODELS}

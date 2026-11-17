@@ -34,6 +34,31 @@
 !macro NSIS_HOOK_POSTINSTALL
   ; Guarantee that the public desktop does not contain a duplicate
   Delete "$COMMONDESKTOP\SecurePhotos.lnk"
+
+  ; H10 / A2c: download the old-photo models (about 2.3 GB, once). Each model is checked by
+  ; SHA-256; one already in place is skipped, so upgrades are quick. A failed download never
+  ; fails the install: the app asks later, before the first feature that needs that model.
+  ; Progress and per-model status go into the details list.
+  SetDetailsPrint both
+  DetailPrint "Getting the old-photo models (about 2.3 GB, once). This can take a while..."
+  nsExec::ExecToLog '"$INSTDIR\securephotos-engine.exe" --fetch-models "$INSTDIR\data\models"'
+  Pop $0
+  ; Show the per-model status, except in silent / passive installs (updates).
+  ${IfNot} ${Silent}
+  ${AndIf} $PassiveMode <> 1
+    ${If} ${FileExists} "$INSTDIR\data\models\install_status.txt"
+      StrCpy $1 ""
+      FileOpen $2 "$INSTDIR\data\models\install_status.txt" r
+      sp_status_loop:
+        FileRead $2 $3
+        StrCmp $3 "" sp_status_done
+        StrCpy $1 "$1$3"
+        Goto sp_status_loop
+      sp_status_done:
+      FileClose $2
+      MessageBox MB_ICONINFORMATION|MB_OK "Old-photo models:$\r$\n$\r$\n$1"
+    ${EndIf}
+  ${EndIf}
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL

@@ -2,7 +2,7 @@
  * H10 / A3: old-photo improvements in the viewer. Nothing shows until asked; the result comes
  * first; then Keep both / Replace / Discard (or the remembered choice).
  */
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../store/useAppStore";
@@ -145,15 +145,69 @@ describe("Old photos in the viewer", () => {
     expect(handlers.onLibraryChanged).not.toHaveBeenCalled();
   });
 
-  it("offers the one-time model download when the models are missing", async () => {
+  it("locks an action whose model is missing and asks before downloading; Not now keeps it locked", async () => {
+    const calls = mockEngine({ "/api/restore/photos/1/state": () => ({ options: { colour: true, fade: false }, downloads: { colour: 1.96e9 }, members: [], job: null }) });
+    renderViewer();
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    const item = screen.getByRole("menuitem", { name: /Add colour/ });
+    expect(item).toHaveTextContent("Needs a one-time download · 2.0 GB");
+    fireEvent.click(item);
+    const dialog = await screen.findByRole("dialog", { name: "Add colour needs a one-time download" });
+    expect(dialog).toHaveTextContent("(2.0 GB)");
+    expect(dialog).toHaveTextContent("everything else in SecurePhotos works as usual");
+    fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+    expect(screen.queryByRole("dialog", { name: /needs a one-time download/ })).not.toBeInTheDocument();
+    expect(calls.some((c) => c.url.startsWith("/api/restore/jobs") || c.url.startsWith("/api/restore/models"))).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Add colour/ }));
+    expect(await screen.findByRole("dialog", { name: /needs a one-time download/ })).toBeInTheDocument();
+  });
+
+  it("downloads in the popup with progress, then starts the action", async () => {
+    let tick = 0;
     const calls = mockEngine({
-      "/api/restore/photos/1/state": () => ({ options: { colour: true, fade: false }, members: [], job: { ...reviewJob, status: "failed", error: "models_missing" } }),
-      "/api/restore/models": () => ({ models: [], download: { model: "ddcolor_large", done: 5e8, total: 1e9 } }),
+      "/api/restore/photos/1/state": () => ({ options: { colour: true, fade: false }, downloads: { colour: 2e9 }, members: [], job: null }),
+      "/api/restore/models/download": () => ({ started: true, bytes: 2e9 }),
+      "/api/restore/models": () => (++tick === 1 ? { models: [], download: { model: "ddcolor_large", done: 1e9, total: 2e9 }, result: null } : { models: [], download: null, result: "done" }),
+      "/api/restore/jobs": (_u, init) => (init?.method === "POST" ? { job_ids: [9] } : { working: [], waiting: [], review: [], finished_today: [], download: null }),
     });
     renderViewer();
-    expect(await screen.findByText(/one-time download of about 2 GB/)).toBeInTheDocument();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Download now" })));
-    expect(calls.some((c) => c.url === "/api/restore/models/download")).toBe(true);
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Add colour/ }));
+    await act(async () => fireEvent.click(within(await screen.findByRole("dialog", { name: /needs a one-time download/ })).getByRole("button", { name: "Download" })));
+    expect(calls.find((c) => c.url === "/api/restore/models/download")?.body).toEqual({ kind: "colour" });
+    expect(await screen.findByText(/1\.0 GB of 2\.0 GB/, {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Keep browsing" })).toBeInTheDocument();
+    await waitFor(() => expect(calls.find((c) => c.url === "/api/restore/jobs" && c.body)?.body).toEqual({ photo_ids: [1], kind: "colour", params: { style: "natural" } }), { timeout: 4000 });
+    expect(screen.queryByRole("dialog", { name: /needs a one-time download/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole("complementary", { name: "Add colour" })).toBeInTheDocument();
+  });
+
+  it("says so when the download fails and offers to try again; Cancel download stops it", async () => {
+    const calls = mockEngine({
+      "/api/restore/photos/1/state": () => ({ options: { colour: true, fade: false }, downloads: { colour: 2e9 }, members: [], job: null }),
+      "/api/restore/models/download": () => ({ started: true, bytes: 2e9 }),
+      "/api/restore/models/cancel-download": () => ({ cancelling: true }),
+      "/api/restore/models": () => ({ models: [], download: null, result: "failed" }),
+    });
+    renderViewer();
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Add colour/ }));
+    await act(async () => fireEvent.click(within(await screen.findByRole("dialog", { name: /needs a one-time download/ })).getByRole("button", { name: "Download" })));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel download" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/api/restore/models/cancel-download")).toBe(true));
+    expect(await screen.findByRole("alert", {}, { timeout: 3000 })).toHaveTextContent("Couldn't download it");
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    expect(calls.some((c) => c.url === "/api/restore/jobs" && c.body)).toBe(false);
+  });
+
+  it("a job that needed a model offers the same popup", async () => {
+    mockEngine({
+      "/api/restore/photos/1/state": () => ({ options: { colour: true, fade: false }, members: [], job: { ...reviewJob, status: "failed", error: "models_missing" } }),
+    });
+    renderViewer();
+    fireEvent.click(await screen.findByRole("button", { name: "Download…" }));
+    expect(await screen.findByRole("dialog", { name: "Add colour needs a one-time download" })).toBeInTheDocument();
   });
 
   it("switches between the original and the improved photo", async () => {
