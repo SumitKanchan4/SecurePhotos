@@ -328,6 +328,9 @@ def _faces_view(job_id: int, status: str, stored: Optional[str], private: bool) 
     return {"faces": faces, "faces_waiting": int(info.get("faces_waiting", 0)), "marked": info.get("marked")}
 
 
+CHOICES_LISTED = 60  # Activity shows this many "choose what to keep" tiles; the count covers all.
+
+
 async def list_jobs() -> Dict[str, Any]:
     """Everything the Activity screen shows for old-photo work."""
     async with db_connection() as conn:
@@ -341,7 +344,15 @@ async def list_jobs() -> Dict[str, Any]:
             """
         ) as cur:
             rows = [_job_view(r) for r in await cur.fetchall()]
+        from engine.services.photo_versions import count_pending_choices, pending_choices
+
+        conn.row_factory = None
+        choices = await pending_choices(conn, CHOICES_LISTED)
+        choices_total = await count_pending_choices(conn) if len(choices) >= CHOICES_LISTED else len(choices)
     return {
+        # A8: improved photos kept automatically, waiting for "improved, original or both".
+        "choices": choices,
+        "choices_total": choices_total,
         "working": [r for r in rows if r["status"] == "working"],
         "waiting": [r for r in rows if r["status"] == "queued"],
         "review": [r for r in rows if r["status"] == "review"],
@@ -677,6 +688,8 @@ async def keep_result(
             del staged, key
             if choice == "replace":
                 await photo_versions.trash_photo(conn, job["photo_id"])
+            elif job["origin"] == "auto":  # A8: nobody chose yet; the app asks later.
+                await conn.execute("UPDATE photos SET choice_pending = 1 WHERE id = ?;", (new_id,))
         _remove_staged(job["result_path"])
         _private_info.pop(job_id, None)
         await _set(

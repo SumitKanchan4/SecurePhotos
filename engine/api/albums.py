@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
 from engine.database import get_db_connection
-from engine.services.photo_versions import pair_order
+from engine.services.photo_versions import pair_order, stack_top
 from engine.api.photos import PhotoResponse
 
 logger = logging.getLogger("securephotos.api.albums")
@@ -237,6 +237,7 @@ async def get_album_detail(album_id: int) -> AlbumDetailResponse:
             FROM photo_album pa
             JOIN photos p ON pa.photo_id = p.id
             WHERE pa.album_id = ? AND p.trashed_at IS NULL AND p.is_encrypted = 0
+              AND """ + stack_top("p") + """
             ORDER BY pa.added_at DESC, p.taken_at DESC, """ + pair_order("p") + """;
         """
         async with conn.execute(query, (album_id,)) as cursor:

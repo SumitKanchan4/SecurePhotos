@@ -24,7 +24,7 @@ from pydantic import BaseModel
 
 from engine.database import db_connection, get_db_connection
 from engine.config import settings, resolve_media_path
-from engine.services.photo_versions import pair_order
+from engine.services.photo_versions import pair_order, stack_top
 from engine.services import vault_storage
 from engine.services.work_queues import vault_files
 from engine.services.crypto_vault import (
@@ -851,7 +851,7 @@ async def list_vault_album_photos(album_id: int) -> List[dict]:
             SELECT {_VAULT_PHOTO_COLUMNS}
             FROM photo_album pa
             JOIN photos p ON pa.photo_id = p.id
-            WHERE pa.album_id = ? AND p.is_encrypted = 1 AND p.trashed_at IS NULL
+            WHERE pa.album_id = ? AND p.is_encrypted = 1 AND p.trashed_at IS NULL AND {stack_top('p')}
             ORDER BY pa.added_at DESC, p.taken_at DESC, {pair_order('p')};
             """,
             (album_id,),
@@ -875,7 +875,7 @@ async def list_vault_photos() -> List[dict]:
                        WHERE pa.photo_id = p.id
                    ) AS album_names
             FROM photos p
-            WHERE p.is_encrypted = 1 AND p.vault_type = 'private' AND p.trashed_at IS NULL
+            WHERE p.is_encrypted = 1 AND p.vault_type = 'private' AND p.trashed_at IS NULL AND {stack_top('p')}
             ORDER BY p.taken_at DESC, {pair_order('p')};
             """
         ) as cursor:

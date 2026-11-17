@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from engine.database import get_db_connection
 from engine.config import settings, resolve_media_path
-from engine.services.photo_versions import pair_order
+from engine.services.photo_versions import pair_order, stack_top
 from engine.services.ingestion_service import ingest_single_photo
 
 logger = logging.getLogger("securephotos.api.photos")
@@ -546,7 +546,7 @@ async def list_photos(
     query = f"""
         SELECT {_PHOTO_COLUMNS}
         FROM photos
-        WHERE is_encrypted = ? AND trashed_at IS NULL
+        WHERE is_encrypted = ? AND trashed_at IS NULL AND {stack_top()}
     """
     params = [1 if is_encrypted else 0]
 
@@ -582,7 +582,7 @@ async def get_photo_timeline() -> TimelineResponse:
             f"""
             SELECT id, taken_at, width, height, mime_type, is_favorite, is_optimized, is_enhanced, ai_kind
             FROM photos
-            WHERE is_encrypted = 0 AND trashed_at IS NULL
+            WHERE is_encrypted = 0 AND trashed_at IS NULL AND {stack_top()}
             ORDER BY taken_at DESC, {pair_order()};
             """
         ) as cursor:
@@ -637,21 +637,21 @@ async def get_timeline_years() -> TimelineYearsResponse:
     try:
         # Total count of active, non-trashed, non-encrypted photos
         async with conn.execute(
-            "SELECT COUNT(*) AS total FROM photos WHERE is_encrypted = 0 AND trashed_at IS NULL;"
+            f"SELECT COUNT(*) AS total FROM photos WHERE is_encrypted = 0 AND trashed_at IS NULL AND {stack_top()};"
         ) as cursor:
             row = await cursor.fetchone()
             total_count = row["total"] if row else 0
 
         # Aggregated photo count grouped by year
-        query = """
-            SELECT 
-                CASE 
+        query = f"""
+            SELECT
+                CASE
                     WHEN taken_at IS NULL OR taken_at = '' THEN 'Undated'
                     ELSE strftime('%Y', taken_at)
                 END AS year_label,
                 COUNT(*) AS photo_count
             FROM photos
-            WHERE is_encrypted = 0 AND trashed_at IS NULL
+            WHERE is_encrypted = 0 AND trashed_at IS NULL AND {stack_top()}
             GROUP BY year_label
             ORDER BY 
                 CASE WHEN year_label = 'Undated' THEN 1 ELSE 0 END ASC,

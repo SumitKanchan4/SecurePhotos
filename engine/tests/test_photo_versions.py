@@ -205,17 +205,96 @@ async def test_the_plain_colour_fix_is_labelled_as_enhanced_not_ai_made(lib):
         assert b"digitalsourcetype/algorithmicallyEnhanced" in im.info["xmp"]
 
 
-async def test_the_copy_sits_right_after_its_original_in_photos(lib):
-    original_id, other_id = lib["ids"]
+async def test_photos_shows_one_tile_per_pair_the_improved_one(lib):
+    """A8: the original is stacked behind its improved copy (no duplicates in the library);
+    the viewer's Original / Improved switch still reaches it."""
+    conn, (original_id, other_id) = lib["conn"], lib["ids"]
     new_id = (await restore_queue.keep_result(await _finish(original_id), "keep_both"))["photo_id"]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         items = (await client.get("/api/photos/timeline")).json()["items"]
         details = (await client.get(f"/api/photos/details?ids={new_id}")).json()
-    order = [i[0] for i in items if i[0] in (original_id, other_id, new_id)]
-    assert order == [other_id, original_id, new_id]  # Same date: the pair stays together, original first.
+        listed = [p["id"] for p in (await client.get(f"/api/photos?limit=1000&year={TAKEN[:4]}")).json()]
+        album = [p["id"] for p in (await client.get(f"/api/albums/{lib['album_id']}")).json()["photos"]]
+    shown = [i[0] for i in items if i[0] in (original_id, other_id, new_id)]
+    assert shown == [other_id, new_id]
+    assert original_id not in listed and new_id in listed
+    assert album == [new_id]
     flags = {i[0]: i[5] for i in items}
-    assert flags[new_id] & 8 and not flags[original_id] & 8  # AI badge flag on the copy only.
+    assert flags[new_id] & 8  # AI badge flag on the copy.
     assert details[0]["derived_from_id"] == original_id and details[0]["ai_kind"] == "colour"
+    assert [m["id"] for m in (await photo_versions.versions_of(conn, new_id))["members"]] == [original_id, new_id]
+
+    # A second improvement: only the newest copy shows.
+    newer = (await restore_queue.keep_result(await _finish(new_id, kind="faces"), "keep_both"))["photo_id"]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        items = (await client.get("/api/photos/timeline")).json()["items"]
+    assert [i[0] for i in items if i[0] in (original_id, new_id, newer)] == [newer]
+
+    # Trashing the copies brings the original back as the tile.
+    await photo_versions.trash_photo(conn, newer)
+    await photo_versions.trash_photo(conn, new_id)
+    await conn.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        items = (await client.get("/api/photos/timeline")).json()["items"]
+    assert [i[0] for i in items if i[0] in (original_id, new_id, newer)] == [original_id]
+
+
+async def test_an_improved_original_offers_no_second_copy(lib, monkeypatch):
+    original_id = lib["ids"][0]
+    await restore_queue.keep_result(await _finish(original_id), "keep_both")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        options = (await client.get(f"/api/restore/photos/{original_id}/options")).json()
+    assert options == {"colour": False, "fade": False, "faces": False, "scratches": False}
+
+
+async def _pending(conn):
+    return [c["photo_id"] for c in await photo_versions.pending_choices(conn)]
+
+
+async def test_automatic_copies_wait_for_a_choice_manual_ones_do_not(lib):
+    conn, (first, second) = lib["conn"], lib["ids"]
+    manual = (await restore_queue.keep_result(await _finish(first), "keep_both"))["photo_id"]
+    job_id = await _finish(second, origin="auto")
+    async with conn.execute("SELECT result_photo_id FROM restore_jobs WHERE id = ?;", (job_id,)) as cur:
+        auto_copy = (await cur.fetchone())[0]
+    assert await _pending(conn) == [auto_copy]
+    assert manual not in await _pending(conn)
+    report = await restore_queue.list_jobs()
+    assert report["choices_total"] == 1 and report["choices"][0] == {"photo_id": auto_copy, "original_id": second, "ai_kind": "colour"}
+    members = (await photo_versions.versions_of(conn, auto_copy))["members"]
+    assert [m["choice_pending"] for m in members] == [False, True]
+
+
+@pytest.mark.parametrize(
+    ("choice", "original_trashed", "copy_trashed"),
+    [("keep_improved", True, False), ("keep_both", False, False), ("keep_original", False, True)],
+)
+async def test_the_three_choices(lib, choice, original_trashed, copy_trashed):
+    conn, original_id = lib["conn"], lib["ids"][0]
+    job_id = await _finish(original_id, origin="auto")
+    async with conn.execute("SELECT result_photo_id FROM restore_jobs WHERE id = ?;", (job_id,)) as cur:
+        copy_id = (await cur.fetchone())[0]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post("/api/restore/choices", json={"photo_ids": [copy_id, 999999], "choice": choice})
+        bad = await client.post("/api/restore/choices", json={"photo_ids": [copy_id], "choice": "delete_everything"})
+    assert res.status_code == 200 and res.json() == {"applied": 1}  # Unknown ids are skipped.
+    assert bad.status_code == 400
+    assert ((await _photo(conn, original_id))["trashed_at"] is not None) is original_trashed
+    assert ((await _photo(conn, copy_id))["trashed_at"] is not None) is copy_trashed
+    assert await _pending(conn) == []
+    for photo_id in (original_id, copy_id):  # Trash is never "deleted for good".
+        assert resolve_stored_path((await _photo(conn, photo_id))["filepath"]).is_file()
+
+
+async def test_a_pair_the_user_already_split_is_not_asked_about(lib):
+    conn, original_id = lib["conn"], lib["ids"][0]
+    job_id = await _finish(original_id, origin="auto")
+    async with conn.execute("SELECT result_photo_id FROM restore_jobs WHERE id = ?;", (job_id,)) as cur:
+        copy_id = (await cur.fetchone())[0]
+    await photo_versions.trash_photo(conn, original_id)  # Deleted the original by hand.
+    await conn.commit()
+    assert await _pending(conn) == []
+    assert copy_id
 
 
 async def test_people_count_the_pair_once_and_show_the_copy(lib):
