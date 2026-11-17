@@ -11,6 +11,7 @@ export const FLAG_FAVORITE = 1;
 export const FLAG_OPTIMIZED = 2;
 export const FLAG_ENHANCED = 4;
 export const FLAG_AI = 8; // H10: an improved copy (colour, faces...).
+export const FLAG_PREPARING = 16; // After-import P4: still being prepared (quiet dot in the grid).
 
 export function parseTimeline(data: TimelineResponse): TimelinePhoto[] {
   return data.items.map(([id, takenAt, width, height, kind, flags]) => ({
@@ -23,6 +24,7 @@ export function parseTimeline(data: TimelineResponse): TimelinePhoto[] {
     is_optimized: (flags & FLAG_OPTIMIZED) !== 0,
     is_enhanced: (flags & FLAG_ENHANCED) !== 0,
     is_ai: (flags & FLAG_AI) !== 0,
+    is_preparing: (flags & FLAG_PREPARING) !== 0,
   }));
 }
 

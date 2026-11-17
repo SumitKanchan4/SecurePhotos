@@ -24,13 +24,14 @@ describe("parseTimeline", () => {
       items: [
         [7, "2026-05-14 10:00:00", 4000, 3000, "p", 1 | 4],
         [8, null, 0, 0, "v", 2],
-        [9, "2026-05-14 10:00:00", 4000, 3000, "p", 8],
+        [9, "2026-05-14 10:00:00", 4000, 3000, "p", 8 | 16],
       ],
     });
     expect(parsed[0]).toEqual({
       id: 7, taken_at: "2026-05-14 10:00:00", width: 4000, height: 3000,
-      is_video: false, is_favorite: true, is_optimized: false, is_enhanced: true, is_ai: false,
+      is_video: false, is_favorite: true, is_optimized: false, is_enhanced: true, is_ai: false, is_preparing: false,
     });
+    expect(parsed[2].is_preparing).toBe(true); // P4: still being prepared (quiet dot).
     expect(parsed[1]).toMatchObject({ id: 8, is_video: true, is_favorite: false, is_optimized: true, is_enhanced: false });
     expect(parsed[2]).toMatchObject({ id: 9, is_ai: true, is_favorite: false });  // H10: improved copy.
   });

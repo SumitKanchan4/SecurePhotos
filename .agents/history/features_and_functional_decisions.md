@@ -6347,3 +6347,23 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 
 ### State & Lifecycle Impact
 - New table `story_dismissals`; setting `stories_daily_on` (the day's stories were made).
+
+## 161. After-Import Process, Step P4: What You See
+
+### Functionality Overview
+- **One Activity card** for everything new photos go through: "Getting 124 photos ready", with the step it is on (Reading text, Finding faces, Checking old prints, Looking for duplicates, Enhancing to 8K) and the photo being worked on; it replaces the separate 8K card and counts each photo once.
+- **A quiet dot** (lime, softly pulsing; still with reduced motion) on photos in the grid that still have a step to go, 8K included. The photo can be used already.
+- **Import summary** once the import's quick steps are done: "Your new photos are ready: 124 added · 18 people · 3 documents · 5 old photos improved" (once per import).
+- **"Add more"** in the import panel: after a first choice the buttons read "Add files" / "Add a folder" and add to it; several places go in one import (the engine walks folders in the list; a file picked twice is imported once); "Clear" starts again; a big selection (500+ items or 10+ GB) says big imports are fine.
+
+### Functional Decision Points & Rationale
+- Designed and built without a mock-up, as agreed with the owner before the overnight session; the owner reviews it in the joint test.
+- The summary doesn't wait for 8K (it takes much longer and changes nothing the summary says).
+
+### Technical Touchpoints
+- Engine: `after_import.py` (`PREPARING`, `remember_import`, `import_summary`), `api/photos.py` (timeline flag 16, `/preparing` adds `preparing_total` and `import_summary`, folders in `file_paths`, "N places" preview name).
+- Frontend: `activityFormat.ts` (one card, `importSummaryLine`), `App.tsx` (summary toast), `photoTimeline.ts`, `PhotoTimeline.tsx` (dot), `ImportModal.tsx` (`addToSelection`), `importFormat.ts` (`largeImportNote`), `index.css`, `types/index.ts`.
+- Checks: engine 445, frontend 195; production build.
+
+### State & Lifecycle Impact
+- No schema change. The last import's ids are kept in memory for its summary (gone after a restart).
