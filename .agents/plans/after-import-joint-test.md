@@ -1,0 +1,39 @@
+# After-import process · joint test (P5) before merging to master
+
+Run together in the real desktop app on the test library (`C:\Sumit\Code\SecurePhotos-JointTest`,
+via `data_location.txt`). Import with **Copy**, never Move. Tick each box; note what went wrong.
+
+## 0 · Set-up
+- [ ] Restart the dev app (`scripts\run-desktop-app.ps1`) so the engine runs the new code from a clean start.
+- [ ] Settings → Photos & AI: check "Pause background work on battery" (it was reset to Below 20% overnight; see the note below).
+
+## 1 · Straight after an import (P1, P4)
+- [ ] Import a few scans and phone photos (and a receipt or ID photo if you have one).
+- [ ] The import panel: "Add files" / "Add a folder" add to the first choice; totals and size update; "Clear" starts again.
+- [ ] Activity shows one card "Getting N photos ready" with the step (Reading text → Finding faces → Checking old prints → Looking for duplicates → Enhancing to 8K) and the photo.
+- [ ] New photos show a quiet dot in the grid until they're done; the dot goes away by itself.
+- [ ] People fills in without pressing anything; "Looking for faces" shows progress.
+- [ ] Documents: a receipt/ID is found by itself; ordinary photos are not documents.
+- [ ] When the quick steps are done: "Your new photos are ready: … added · … people · … documents · … old photos improved".
+
+## 2 · Order and speed (P2)
+- [ ] With "Add colour" on Automatically: a grey scan is coloured first, then the improved copy and the original both get 8K (copy first). Original/Improved compare like for like.
+- [ ] Only one heavy job at a time: the app stays smooth while work runs; something you ask for in the viewer starts next.
+- [ ] Below the battery level: everything waits; plugged in, it carries on.
+
+## 3 · Duplicates and stories (P3)
+- [ ] Importing a near-identical shot makes the "N duplicates" pill appear.
+- [ ] Stories → For you: about 6 suggestions, including "This week, N years ago"; after the import, its trip/event and "Old photos, brought back".
+- [ ] Deleting a suggestion: it never comes back after "Make new stories".
+- [ ] No documents, screenshots or restored scans in dated stories.
+
+## After the test
+- [ ] Fixes on this branch; PR `feature/after-import` → `master`; CI green; owner approves.
+
+## Note from the overnight session (2026-11-18)
+A test script of mine wrongly ran against this test library once (it read `data_location.txt`
+before being pointed at its throwaway folder). It imported one copy of a scan thumbnail
+(photo 99), coloured it (photo 100, job 24), and saved two settings. All of it was removed
+again (2 photos, 4 files, 1 job); "Add colour" kept its value (Automatically); "Pause on
+battery" had been set to Never and was put back to the default (Below 20%): please check it.
+Your `photos/` originals were never involved (checksums verified).
