@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../store/useAppStore";
 import { IconRail } from "../shell/IconRail";
 import { ActivityView } from "./ActivityView";
-import { buildActivity, type RestoreJobView, type RestoreJobsReport } from "./activityFormat";
+import { buildActivity, improvedLabel, type RestoreJobView, type RestoreJobsReport } from "./activityFormat";
 
 const job = (id: number, extra: Partial<RestoreJobView> = {}): RestoreJobView => ({
   id,
@@ -143,30 +143,18 @@ describe("ActivityView", () => {
     expect(screen.queryByText("Colour added")).not.toBeInTheDocument();
   });
 
-  it("asks what to keep of photos improved automatically, one by one or all at once", () => {
-    const handlers = { ...props(), onChoose: vi.fn() };
+  it("counts photos waiting for 'what to keep' (for the Photos pill) but doesn't ask in Activity", () => {
     const model = buildActivity({
-      restore: report({
-        choices: [
-          { photo_id: 70, original_id: 7, ai_kind: "colour,faces" },
-          { photo_id: 80, original_id: 8, ai_kind: "fade" },
-        ],
-        choices_total: 2,
-      }),
+      restore: report({ choices: [{ photo_id: 70, original_id: 7, ai_kind: "colour,faces" }], choices_total: 12 }),
     });
-    expect(model.headline).toBe("2 improved photos: choose what to keep");
+    expect(model.choicesTotal).toBe(12);
+    expect(model.headline).toBeNull();
     expect(model.remaining).toBe(0);
-    render(<ActivityView model={model} {...handlers} />);
-    const section = screen.getByRole("region", { name: "Choose what to keep" });
-    expect(section).toHaveTextContent("Colour added · faces sharpened");
-    expect(section).toHaveTextContent("Colours fixed");
-    expect(screen.queryByRole("heading", { name: "All done" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Keep improved for these 2" }));
-    expect(handlers.onChoose).toHaveBeenCalledWith("keep_improved", [70, 80]);
-    fireEvent.click(screen.getByRole("button", { name: "Keep both" }));
-    expect(handlers.onChoose).toHaveBeenCalledWith("keep_both", [70, 80]);
-    fireEvent.click(screen.getAllByRole("button", { name: "Compare" })[1]);
-    expect(handlers.onOpenPhoto).toHaveBeenCalledWith(80);
+    render(<ActivityView model={model} {...props()} />);
+    expect(screen.queryByRole("region", { name: /what to keep/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "All done" })).toBeInTheDocument();
+    expect(improvedLabel("colour,faces")).toBe("Colour added · faces sharpened");
+    expect(improvedLabel("fade")).toBe("Colours fixed");
   });
 
   it("offers Resume when paused and Stop import for an import", () => {

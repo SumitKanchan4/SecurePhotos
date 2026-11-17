@@ -10,6 +10,8 @@ import {
   X,
   CheckSquare,
   Search,
+  Sparkles,
+  Copy,
 } from "lucide-react";
 import { SearchPage } from "./components/search/SearchPage";
 import { useBackgroundProgress } from "./hooks/useBackgroundProgress";
@@ -26,7 +28,7 @@ import { VaultUnlockModal } from "./components/VaultUnlockModal";
 import { VaultView } from "./components/VaultView";
 import { StoriesCarousel } from "./components/StoriesCarousel";
 import { StoryPlayerModal } from "./components/StoryPlayerModal";
-import { DashboardView } from "./components/DashboardView";
+import { DashboardView, type DashboardPage } from "./components/DashboardView";
 import { StoriesView } from "./components/StoriesView";
 import { PeopleView } from "./components/PeopleView";
 import { AlbumsView } from "./components/AlbumsView";
@@ -84,6 +86,9 @@ export const App: React.FC = () => {
   // The list the open viewer steps through (Photos timeline or Search results), for paging.
   const [viewerSource, setViewerSource] = useState<TimelinePhoto[] | null>(null);
   const hasRegeneratedThumbnailsRef = useRef(false);
+  // A8: a Photos header pill opens its Dashboard page directly ("12 improved", "3 duplicates").
+  const [dashboardPage, setDashboardPage] = useState<DashboardPage | null>(null);
+  const [duplicateGroups, setDuplicateGroups] = useState(0);
   // Load the whole library (not vault, not trash) as compact timeline rows.
   const loadPhotos = async () => {
     try {
@@ -104,6 +109,12 @@ export const App: React.FC = () => {
         if (items.some((p) => !p.is_optimized && !p.is_video)) {
           apiFetch("/api/photos/start-optimization", { method: "POST" }).catch(() => {});
         }
+
+        // A8: the "N duplicates" pill (reads the last check; cheap).
+        apiFetch("/api/duplicates/summary")
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => setDuplicateGroups(Number(d?.total_groups) || 0))
+          .catch(() => {});
       }
     } catch {
       // Backend may be starting or offline
@@ -456,6 +467,15 @@ export const App: React.FC = () => {
     setActivitySummary(remaining > 0 || paused || headline ? { remaining, paused, headline } : null);
   }, [activity, setActivitySummary]);
 
+  const openDashboardPage = (page: DashboardPage) => {
+    setDashboardPage(page);
+    setActiveTab("dashboard");
+  };
+  // Any other way to the Dashboard (the rail) starts on its overview.
+  useEffect(() => {
+    if (activeTab !== "dashboard") setDashboardPage(null);
+  }, [activeTab]);
+
   // A8: the library shows one tile per improved pair. The viewer's Original / Improved switch
   // swaps the other member of the stack into the current photo's place.
   const showVersionInViewer = async (photoId: number) => {
@@ -543,12 +563,19 @@ export const App: React.FC = () => {
         >
           {activeTab === "dashboard" ? (
             /* System & Storage Telemetry Dashboard */
-            <DashboardView 
+            <DashboardView
               onNavigate={(tab) => setActiveTab(tab)}
               onPhotoClick={(idx, customPhotos) => {
                 setLightboxPhotos(customPhotos);
                 setLightboxIndex(idx);
               }}
+              initialPage={dashboardPage ?? "overview"}
+              backTo={dashboardPage ? { label: "Photos", onBack: () => { setDashboardPage(null); setActiveTab("photos"); } } : undefined}
+              onOpenPhoto={(id) => void openPhotoById(id)}
+              onLibraryChanged={() => {
+                loadPhotos();
+              }}
+              choicesTotal={activity.choicesTotal}
             />
           ) : activeTab === "vault" ? (
             /* Dedicated Zero-Trust Private Vault Gallery */
@@ -605,7 +632,7 @@ export const App: React.FC = () => {
             <ActivityView
               model={activity}
               onOpenPhoto={(id) => {
-                const item = [...activity.ready, ...activity.attention, ...activity.choices].find((i) => i.photoId === id);
+                const item = [...activity.ready, ...activity.attention].find((i) => i.photoId === id);
                 void openPhotoById(id, item?.private);
               }}
               onCancelJob={(id) => void postQuietly(`/api/restore/jobs/${id}/cancel`)}
@@ -617,24 +644,6 @@ export const App: React.FC = () => {
               onResumeAll={() => {
                 void postQuietly("/api/restore/resume");
                 void postQuietly("/api/system/optimization/resume");
-              }}
-              onChoose={(choice, photoIds) => {
-                void apiFetch("/api/restore/choices", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ photo_ids: photoIds, choice }),
-                })
-                  .then((res) => {
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    showToast(
-                      choice === "keep_improved"
-                        ? "Kept the improved photos. The originals are in Trash for 30 days."
-                        : "Kept both. Each improved photo shows in your library with its original behind it.",
-                      "success",
-                    );
-                    loadPhotos();
-                  })
-                  .catch(() => showToast("Couldn't save your choice. Please try again.", "warning"));
               }}
             />
           ) : activeTab === "trash" ? (
@@ -716,6 +725,28 @@ export const App: React.FC = () => {
                   >
                     {activity.remaining > 0 && !activity.paused && <Loader2 size={12} className="spin" style={{ flexShrink: 0 }} />}
                     {activity.headline} ›
+                  </button>
+                )}
+                {activity.choicesTotal > 0 && (
+                  <button
+                    type="button"
+                    className="photos-pill"
+                    title="Photos improved automatically: choose what to keep"
+                    aria-label={`${activity.choicesTotal} improved photos: choose what to keep`}
+                    onClick={() => openDashboardPage("keep")}
+                  >
+                    <Sparkles size={12} /> {activity.choicesTotal.toLocaleString()} improved
+                  </button>
+                )}
+                {duplicateGroups > 0 && (
+                  <button
+                    type="button"
+                    className="photos-pill"
+                    title="Copies and near-identical shots: review duplicates"
+                    aria-label={`${duplicateGroups} groups of duplicates: review them`}
+                    onClick={() => openDashboardPage("duplicates")}
+                  >
+                    <Copy size={12} /> {duplicateGroups.toLocaleString()} {duplicateGroups === 1 ? "duplicate" : "duplicates"}
                   </button>
                 )}
 

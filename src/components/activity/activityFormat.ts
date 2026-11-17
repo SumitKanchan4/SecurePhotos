@@ -54,9 +54,8 @@ export interface ActivityModel {
   ready: ActivityItem[];
   /** Finished today but needing the user (a download, or a photo that couldn't be improved). */
   attention: ActivityItem[];
-  /** A8: improved photos kept automatically: keep the improved one, the original, or both? */
-  choices: ActivityItem[];
-  /** All of them (the tiles show the newest few). */
+  /** A8: improved photos kept automatically, waiting for "what to keep" (the Photos pill;
+   *  the choice itself is made on the What to keep page, not in Activity). */
   choicesTotal: number;
   /** Items still to do (shown on the rail ring). */
   remaining: number;
@@ -174,15 +173,7 @@ export function buildActivity({ restore, enhance, video, importing }: ActivityIn
     .reverse()
     .map((job) => ({ ...jobItem(job), cancel: undefined, progress: null, outcome: finishedOutcome(job) }));
 
-  const choices: ActivityItem[] = (restore?.choices ?? []).map((c) => ({
-    key: `choice-${c.photo_id}`,
-    kind: (c.ai_kind?.split(",")[0] as ActivityKind) || "colour",
-    title: improvedLabel(c.ai_kind),
-    detail: "",
-    progress: null,
-    photoId: c.photo_id,
-  }));
-  const choicesTotal = Math.max(restore?.choices_total ?? 0, choices.length);
+  const choicesTotal = Math.max(restore?.choices_total ?? 0, restore?.choices?.length ?? 0);
 
   const paused = Boolean(restore?.paused);
   const first = working[0] ?? waiting[0];
@@ -194,11 +185,9 @@ export function buildActivity({ restore, enhance, video, importing }: ActivityIn
       : first.title
     : ready.length
     ? `${plural(ready.length, "photo")} ready to look at`
-    : choicesTotal
-    ? `${plural(choicesTotal, "improved photo")}: choose what to keep`
     : null;
 
-  return { working, waiting, ready, attention, choices, choicesTotal, remaining, paused, headline };
+  return { working, waiting, ready, attention, choicesTotal, remaining, paused, headline };
 }
 
 /** "Colour added · faces sharpened" from an improved copy's kinds. */

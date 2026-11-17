@@ -755,13 +755,23 @@ html, body, #root {
 /* A8: "12 photos to enhance" stands for a group; the icon sits over a stacked-cards look. */
 .act-thumb.is-group { flex-direction: column; gap: 4px; color: var(--accent-fill); box-shadow: 6px -6px 0 -1px var(--glass-pill-bg), 12px -12px 0 -2px var(--bg-surface); margin: 12px 12px 0 0; width: calc(100% - 12px); }
 .act-thumb.is-group strong { font-family: var(--font-display, inherit); font-size: 22px; font-weight: 900; color: var(--text-primary); line-height: 1; }
-/* A8: "Choose what to keep": improved automatically, waiting for the owner. */
-.act-choose { padding: 16px; border-radius: 18px; background: var(--bg-surface); border: 1px solid var(--accent-fill); }
-.act-choose-head { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 12px 20px; margin-bottom: 14px; }
-.act-choose-head > div:first-child { flex: 1; min-width: 240px; }
-.act-choose-head .dash-section-title { margin: 0 0 4px; }
-.act-choose-note { margin: 0; font-size: 13px; color: var(--text-secondary); }
-.act-choose-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+/* A8: What to keep (Dashboard page): original | improved side by side, three plain choices. */
+.keep-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+.keep-card { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+.keep-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.keep-side { position: relative; padding: 0; border: 1px solid var(--glass-border); border-radius: 12px; overflow: hidden; background: var(--bg-surface-elevated); cursor: zoom-in; aspect-ratio: 4 / 3; }
+.keep-side img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.keep-side.is-improved { border-color: var(--accent-fill); }
+.keep-side:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.keep-tag { position: absolute; left: 8px; bottom: 8px; padding: 3px 8px; border-radius: var(--radius-full); background: rgba(0, 0, 0, 0.65); color: #fff; font-size: 11px; font-weight: 800; }
+.keep-side.is-improved .keep-tag { background: var(--accent-fill); color: var(--on-accent); }
+.keep-what { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.keep-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+/* A8: Photos header pills ("12 improved", "3 duplicates"). */
+.photos-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radius-full); font-size: 11px; font-weight: 700; white-space: nowrap; cursor: pointer; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--glass-border); }
+.photos-pill:hover { border-color: var(--accent-ink); }
+.photos-pill:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.photos-pill svg { color: var(--accent-ink); flex-shrink: 0; }
 .act-tile-sub { font-size: 11px; color: var(--text-tertiary, var(--text-secondary)); margin-top: -4px; }
 .act-tile-link { align-self: flex-start; padding: 0; border: none; background: none; font-size: 12px; font-weight: 700; color: var(--text-primary); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .act-tile-link.is-strong { font-weight: 800; }

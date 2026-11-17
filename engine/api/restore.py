@@ -222,6 +222,20 @@ class ChoiceRequest(BaseModel):
     choice: str  # "keep_improved" | "keep_both" | "keep_original"
 
 
+@router.get("/choices")
+async def list_choices(limit: int = 500) -> Dict[str, Any]:
+    """A8: improved photos the app kept automatically, waiting for "improved, original or both"
+    (newest first), for the What to keep page and the Photos header pill."""
+    from engine.database import db_connection
+    from engine.services import photo_versions
+
+    limit = max(1, min(int(limit), 2000))
+    async with db_connection() as conn:
+        items = await photo_versions.pending_choices(conn, limit)
+        total = await photo_versions.count_pending_choices(conn) if len(items) >= limit else len(items)
+    return {"items": items, "total": total}
+
+
 @router.post("/choices")
 async def choose_versions(payload: ChoiceRequest) -> Dict[str, int]:
     """A8: what to keep of improved photos the app kept automatically (one pair or many)."""
