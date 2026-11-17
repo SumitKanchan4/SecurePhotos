@@ -1,4 +1,5 @@
 import asyncio
+import os
 import time
 import logging
 from pathlib import Path
@@ -9,6 +10,7 @@ from pydantic import BaseModel
 
 from engine.database import get_db_connection
 from engine.config import settings, resolve_media_path
+from engine.services.after_import import PREPARING
 from engine.services.photo_versions import pair_order, stack_top
 from engine.services.ingestion_service import ingest_single_photo
 
@@ -94,6 +96,7 @@ TIMELINE_FAVORITE = 1
 TIMELINE_OPTIMIZED = 2
 TIMELINE_ENHANCED = 4
 TIMELINE_AI = 8  # H10: an improved copy (the grid shows the AI badge).
+TIMELINE_PREPARING = 16  # After-import P4: still being prepared (the grid's quiet dot).
 DETAILS_MAX_IDS = 500
 
 
@@ -652,7 +655,8 @@ async def get_photo_timeline() -> TimelineResponse:
     try:
         async with conn.execute(
             f"""
-            SELECT id, taken_at, width, height, mime_type, is_favorite, is_optimized, is_enhanced, ai_kind
+            SELECT id, taken_at, width, height, mime_type, is_favorite, is_optimized, is_enhanced, ai_kind,
+                   CASE WHEN {PREPARING} THEN 1 ELSE 0 END AS preparing
             FROM photos
             WHERE is_encrypted = 0 AND trashed_at IS NULL AND {stack_top()}
             ORDER BY taken_at DESC, {pair_order()};
@@ -671,7 +675,8 @@ async def get_photo_timeline() -> TimelineResponse:
             (TIMELINE_FAVORITE if r["is_favorite"] else 0)
             | (TIMELINE_OPTIMIZED if r["is_optimized"] else 0)
             | (TIMELINE_ENHANCED if r["is_enhanced"] else 0)
-            | (TIMELINE_AI if r["ai_kind"] else 0),
+            | (TIMELINE_AI if r["ai_kind"] else 0)
+            | (TIMELINE_PREPARING if r["preparing"] else 0),
         ]
         for r in rows
     ]
@@ -1222,12 +1227,21 @@ async def get_preparing_progress() -> dict:
     from engine.services import after_import
 
     counts = await after_import.counts()
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(f"SELECT COUNT(*) FROM photos WHERE trashed_at IS NULL AND {PREPARING};") as cursor:
+            preparing_total = (await cursor.fetchone())[0]
+    finally:
+        await conn.close()
     return {
         "active": bool(after_import.state["active"]),
         "step": after_import.state["step"],
         "photo_id": after_import.state["photo_id"],
         "paused_reason": after_import.state["paused_reason"],
         **counts,
+        # P4: photos with any step left (8K included), and the last import's summary when ready.
+        "preparing_total": int(preparing_total),
+        "import_summary": await after_import.import_summary(),
     }
 
 
@@ -1258,16 +1272,28 @@ def _collect_import_files(source_directory: Optional[str], file_paths: Optional[
     from engine.services.ingestion_service import SUPPORTED_EXTENSIONS
 
     found: List[Path] = []
+    # P4 ("Add more"): file_paths may also hold folders (several places in one import); a file
+    # picked twice (on its own and inside a chosen folder) is counted and imported once.
     for fp in file_paths or []:
         path = Path(fp)
         if path.exists() and path.is_file():
             found.append(path)
+        elif path.exists() and path.is_dir():
+            found.extend(child for child in path.rglob("*") if child.is_file())
         else:
             logger.warning("Specified file path could not be located on disk: %s", fp)
     if source_directory:
         source_dir = Path(source_directory)
         if source_dir.exists() and source_dir.is_dir():
             found.extend(path for path in source_dir.rglob("*") if path.is_file())
+    seen: set = set()
+    unique: List[Path] = []
+    for path in found:
+        key = os.path.normcase(str(path.resolve()))
+        if key not in seen:
+            seen.add(key)
+            unique.append(path)
+    found = unique
     supported = [path for path in found if path.suffix.lower() in SUPPORTED_EXTENSIONS]
     return supported, len(found) - len(supported), bool(found)
 
@@ -1305,8 +1331,14 @@ async def preview_import(payload: ImportPreviewRequest) -> ImportPreviewResponse
 
     videos = sum(1 for path in files if path.suffix.lower() in VIDEO_EXTENSIONS)
     documents = sum(1 for path in files if path.suffix.lower() in DOCUMENT_EXTENSIONS)
-    if payload.source_directory:
+    sources = (1 if payload.source_directory else 0) + len(payload.file_paths or [])
+    folders = [p for p in (payload.file_paths or []) if Path(p).is_dir()]
+    if payload.source_directory and not payload.file_paths:
         name, is_folder = Path(payload.source_directory).name or payload.source_directory, True
+    elif len(folders) == 1 and sources == 1:
+        name, is_folder = Path(folders[0]).name or folders[0], True
+    elif folders:  # P4: several places chosen with "Add more".
+        name, is_folder = f"{sources} places", True
     elif len(files) == 1:
         name, is_folder = files[0].name, False
     else:
@@ -1493,6 +1525,7 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
         # then 8K, which it starts itself once a photo's earlier steps are done.
         from engine.services import after_import
 
+        after_import.remember_import(imported_photo_ids)  # For the summary once it's ready (P4).
         after_import.wake()
 
     return ImportResponse(

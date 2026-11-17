@@ -53,6 +53,14 @@ describe("PhotoTimeline", () => {
     expect(tiles.length).toBeLessThan(200);
   });
 
+  it("marks photos still being prepared with a quiet dot (P4), and only those", () => {
+    const photos = makeLibrary(6).map((p, i) => ({ ...p, is_preparing: i < 2 }));
+    render(<PhotoTimeline photos={photos} onOpen={vi.fn()} />);
+    const dots = screen.getAllByRole("img", { name: "Still being prepared" });
+    expect(dots).toHaveLength(2);
+    expect(dots.map((d) => d.closest("[data-photo-id]")?.getAttribute("data-photo-id")).sort()).toEqual(["1", "2"]);
+  });
+
   it("opens a photo, but selects instead while a selection is active", () => {
     const onOpen = vi.fn();
     render(<PhotoTimeline photos={makeLibrary(20)} onOpen={onOpen} />);

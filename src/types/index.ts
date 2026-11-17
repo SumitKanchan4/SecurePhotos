@@ -74,6 +74,8 @@ export interface TimelinePhoto {
   is_enhanced: boolean;
   /** H10: an improved copy made with AI (grid shows the "AI" badge). */
   is_ai?: boolean;
+  /** After-import P4: text, faces, old-photo check, duplicates or 8K still to do (quiet dot). */
+  is_preparing?: boolean;
 }
 
 /** /api/photos/timeline: rows are [id, taken_at, width, height, "p" | "v", flags]. */
