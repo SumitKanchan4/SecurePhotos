@@ -54,7 +54,7 @@ export function railStatus(
 }
 
 export const IconRail: React.FC = () => {
-  const { activeTab, setActiveTab, openSearch, isDriveConnected, prerequisites } = useAppStore();
+  const { activeTab, setActiveTab, openSearch, isDriveConnected, prerequisites, activitySummary } = useAppStore();
 
   // Ctrl+K (Cmd+K) opens the Search page from anywhere, even while typing in a field.
   useEffect(() => {
@@ -133,19 +133,35 @@ export const IconRail: React.FC = () => {
 
       <div style={{ flex: 1 }} data-tauri-drag-region />
 
-      <button
-        type="button"
-        className="rail-btn clickable"
-        data-label={status.text}
-        aria-label={`Status: ${status.text}`}
-        onClick={() => setActiveTab("settings")}
-      >
-        <span
-          data-testid="rail-status-dot"
-          data-tone={status.tone}
-          style={{ width: "10px", height: "10px", borderRadius: "var(--radius-full)", backgroundColor: dotColor }}
-        />
-      </button>
+      {activitySummary && status.tone === "ok" ? (
+        // H10 / A4: while background work runs, the status dot becomes a ring with what's left.
+        <button
+          type="button"
+          className={`rail-btn clickable rail-activity${activitySummary.paused ? " is-paused" : ""}${activeTab === "activity" ? " rail-btn-active" : ""}`}
+          data-label={activitySummary.headline ?? "Activity"}
+          aria-label={`Activity: ${activitySummary.headline ?? "background work"}`}
+          aria-current={activeTab === "activity" ? "page" : undefined}
+          onClick={() => setActiveTab("activity")}
+        >
+          <span className="rail-ring" data-testid="rail-activity-ring" aria-hidden="true">
+            {activitySummary.remaining > 0 ? (activitySummary.remaining > 99 ? "99+" : activitySummary.remaining) : "✓"}
+          </span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="rail-btn clickable"
+          data-label={status.text}
+          aria-label={`Status: ${status.text}`}
+          onClick={() => setActiveTab("settings")}
+        >
+          <span
+            data-testid="rail-status-dot"
+            data-tone={status.tone}
+            style={{ width: "10px", height: "10px", borderRadius: "var(--radius-full)", backgroundColor: dotColor }}
+          />
+        </button>
+      )}
     </aside>
   );
 };
