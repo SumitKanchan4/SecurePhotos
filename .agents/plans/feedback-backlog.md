@@ -5,6 +5,11 @@ fixed on a branch (with what to re-check), planned for this branch, or planned f
 New feedback is added here the same day. Status: **Done** (needs owner re-check), **This branch**,
 **Next phase** (after H10 is merged), **Open question**.
 
+## Housekeeping
+| Item | Status | Notes |
+|------|--------|-------|
+| CI allows npm advisory GHSA-fc5q-39xc-vjpf (picomatch ReDoS, dev tooling only, no fix released) | Temporary until 2026-12-31 | Owner approved 2026-11-17. `scripts/ci/npm-audit-check.mjs`; remove once picomatch ships a fix (CI fails after the date). |
+
 ## Round 1: A8 joint test (2026-11-17)
 
 | # | Feedback | Status | Notes / where |
