@@ -60,6 +60,20 @@ def format_file_size(size_bytes: int) -> str:
     return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
 
 
+def load_onnxruntime_first() -> None:
+    """ONNX Runtime must be loaded before Windows OCR runs in this process.
+
+    Measured 2026-11-17 (onnxruntime 1.29, winocr): once WinRT's OCR has run, importing
+    onnxruntime fails ("DLL initialization routine failed") for the life of the process, which
+    would stop faces, 8K enhancement and every old-photo improvement. Loading it first is fine.
+    The engine does this at start; this is the safety net for any other entry point.
+    """
+    try:
+        import onnxruntime  # noqa: F401
+    except Exception as err:  # Not installed (some tests): OCR still works.
+        logger.debug("onnxruntime not loaded before OCR: %s", err)
+
+
 async def extract_ocr_text_on_device(filepath: Path | str) -> str:
     """Extracts text tokens from an image using local on-device hardware-accelerated OCR.
 
@@ -75,6 +89,7 @@ async def extract_ocr_text_on_device(filepath: Path | str) -> str:
     if not path.exists() or path.stat().st_size == 0 or path.suffix.lower() == ".enc":
         return ""
 
+    load_onnxruntime_first()
     try:
         from PIL import Image
         import winocr
@@ -226,7 +241,7 @@ async def scan_library_for_documents() -> Dict[str, Any]:
         await recheck_scanned_documents(conn)  # Earlier scan marks the current rules reject.
         async with conn.execute(
             """
-            SELECT id, filename, filepath, file_size, mime_type, is_document, ocr_text, content_tags
+            SELECT id, filename, filepath, file_size, mime_type, is_document, ocr_text, content_tags, document_source
             FROM photos
             WHERE trashed_at IS NULL AND is_encrypted = 0
             ORDER BY id ASC;
@@ -247,7 +262,8 @@ async def scan_library_for_documents() -> Dict[str, Any]:
             current_is_doc = bool(r["is_document"])
 
             # If OCR text not yet extracted for this image, run local on-device OCR
-            if not ocr_text and filepath and (not mime_type or not mime_type.startswith("video/")):
+            # ('' = read before, no text: not read again; the after-import process records it).
+            if r["ocr_text"] is None and filepath and (not mime_type or not mime_type.startswith("video/")):
                 # Stored paths are relative to the library folder (A8: OCR never ran before this).
                 from engine.services.media_paths import resolve_stored_path
 
@@ -259,8 +275,8 @@ async def scan_library_for_documents() -> Dict[str, Any]:
                         (ocr_text, photo_id),
                     )
 
-            # Check if this item qualifies as a document
-            if not current_is_doc and is_candidate_document(filename, ocr_text, mime_type):
+            # Check if this item qualifies as a document (never against the owner's own choice)
+            if not current_is_doc and r["document_source"] != "user" and is_candidate_document(filename, ocr_text, mime_type):
                 category = classify_document(filename, ocr_text, mime_type)
                 await conn.execute(
                     """
@@ -421,14 +437,20 @@ async def toggle_document_status(photo_id: int, is_doc: bool) -> bool:
     """
     conn = await get_db_connection()
     try:
+        # 'user': the owner decided; "Find in photos" and the after-import check leave it alone.
         cursor = await conn.execute(
-            "UPDATE photos SET is_document = ? WHERE id = ? AND trashed_at IS NULL;",
+            "UPDATE photos SET is_document = ?, document_source = 'user' WHERE id = ? AND trashed_at IS NULL;",
             (1 if is_doc else 0, photo_id),
         )
         await conn.commit()
-        return cursor.rowcount > 0
+        changed = cursor.rowcount > 0
     finally:
         await conn.close()
+    if changed and not is_doc:  # Now a photo: its faces are found (skipped while a document; D1).
+        from engine.services import after_import
+
+        after_import.wake()
+    return changed
 
 
 async def toggle_document_pin(photo_id: int) -> bool:
@@ -516,6 +538,9 @@ async def _import_documents(file_paths: List[str]) -> List[Dict[str, Any]]:
 
     if not imported_ids:
         return []
+    from engine.services import after_import
+
+    after_import.wake()  # Their text is read straight away (faces skipped: documents; D1).
 
     # Retrieve all newly imported documents formatted
     all_docs = await list_documents()

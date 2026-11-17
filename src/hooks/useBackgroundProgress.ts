@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { ImportProgressState, OptimizationProgress, VideoOptimizationProgress } from "../types";
-import type { RestoreJobsReport } from "../components/activity/activityFormat";
+import type { PreparingProgress, RestoreJobsReport } from "../components/activity/activityFormat";
 import { apiFetch } from "../services/api";
 
 interface BackgroundProgressHandlers {
@@ -20,6 +20,7 @@ export function useBackgroundProgress(onEvents: BackgroundProgressHandlers) {
   const [videoProgress, setVideoProgress] = useState<VideoOptimizationProgress | null>(null);
   const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null);
   const [restoreJobs, setRestoreJobs] = useState<RestoreJobsReport | null>(null);
+  const [preparing, setPreparing] = useState<PreparingProgress | null>(null);
   const handlers = useRef(onEvents);
   handlers.current = onEvents;
 
@@ -29,15 +30,27 @@ export function useBackgroundProgress(onEvents: BackgroundProgressHandlers) {
     let wasImportActive = false;
     let lastPhotoCompletedCount = 0;
     let lastKeptCount = -1;
+    let wasPreparing = false;
 
     const interval = setInterval(async () => {
       try {
-        const [photoRes, videoRes, importRes, restoreRes] = await Promise.all([
+        const [photoRes, videoRes, importRes, restoreRes, preparingRes] = await Promise.all([
           apiFetch("/api/photos/optimization-progress").catch(() => null),
           apiFetch("/api/videos/optimization-progress").catch(() => null),
           apiFetch("/api/photos/import-progress").catch(() => null),
           apiFetch("/api/restore/jobs").catch(() => null),
+          apiFetch("/api/photos/preparing").catch(() => null),
         ]);
+
+        // After-import process (P1): reading text and finding faces. When a run ends, People,
+        // Documents and search have new results, so the library reloads once.
+        if (preparingRes && preparingRes.ok) {
+          const prep: PreparingProgress = await preparingRes.json();
+          setPreparing(prep);
+          const left = (prep.text_waiting ?? 0) + (prep.faces_waiting ?? 0);
+          if (wasPreparing && left === 0) handlers.current.onBatchFinished();
+          wasPreparing = left > 0;
+        }
 
         // H10 / A4: old-photo jobs for Activity. A newly kept improved copy (e.g. made by the
         // automatic rules) appears in the library, so reload once when one is added.
@@ -97,5 +110,5 @@ export function useBackgroundProgress(onEvents: BackgroundProgressHandlers) {
     return () => clearInterval(interval);
   }, []);
 
-  return { optimizationProgress, videoProgress, importProgress, restoreJobs };
+  return { optimizationProgress, videoProgress, importProgress, restoreJobs, preparing };
 }

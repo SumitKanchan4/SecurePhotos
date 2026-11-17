@@ -434,8 +434,17 @@ async def get_face_crop(face_id: int):
 
 @router.post("/scan", response_model=ScanStatusResponse, status_code=status.HTTP_202_ACCEPTED)
 async def trigger_face_scan(force: bool = False) -> ScanStatusResponse:
-    """Manually triggers or resumes the background face recognition scan worker."""
-    start_background_scan(force=force)
+    """Manually triggers or resumes the background face recognition scan worker.
+
+    Without ``force`` the after-import process does it (photos still waiting for faces, newest
+    first, alongside everything else); ``force`` re-scans the whole library from scratch.
+    """
+    if force:
+        start_background_scan(force=True)
+    else:
+        from engine.services import after_import
+
+        after_import.wake()
     return ScanStatusResponse(**get_scan_status())
 
 

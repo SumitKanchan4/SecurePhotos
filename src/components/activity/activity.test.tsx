@@ -66,6 +66,19 @@ describe("buildActivity", () => {
     expect(m.waiting[0].detail).toBe("Grandma wedding");
   });
 
+  it("shows the after-import process (text, then faces) and counts each photo once", () => {
+    const reading = buildActivity({
+      preparing: { active: true, step: "text", photo_id: 31, paused_reason: null, text_waiting: 40, faces_waiting: 12 },
+    });
+    expect(reading.working[0]).toMatchObject({ kind: "prepare", title: "Getting photos ready", detail: "Reading text · 52 photos left", photoId: 31 });
+    expect(reading.remaining).toBe(52);
+    const faces = buildActivity({
+      preparing: { active: true, step: "faces", photo_id: 9, paused_reason: "on_battery", text_waiting: 0, faces_waiting: 1 },
+    });
+    expect(faces.working[0].detail).toBe("Finding faces · 1 photo left · waiting: battery low");
+    expect(buildActivity({ preparing: { active: false, step: null, photo_id: null, paused_reason: null, text_waiting: 0, faces_waiting: 0 } }).working).toEqual([]);
+  });
+
   it("never names a vault photo", () => {
     const m = buildActivity({ restore: report({ working: [job(1, { status: "working", private: true, filename: null })] }) });
     expect(m.working[0]).toMatchObject({ detail: "Private photo", private: true });

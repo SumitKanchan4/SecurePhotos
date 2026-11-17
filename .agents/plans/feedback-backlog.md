@@ -34,11 +34,11 @@ New feedback is added here the same day. Status: **Done** (needs owner re-check)
 | 18 | (same as 16) Album header hides on scroll; same for all screens | Next phase | |
 | 19 | Storage section doesn't look good; more interactive design | Next phase | With the Dashboard revamp (round 2, #6). |
 | 20 | Do we need "Finished today"? | Done (A8) | Replaced by "Needs attention" (problems only). |
-| 21 | Face detection wasn't started after import | Next phase | Ordered after-import process. |
-| 22 | "Looking for faces" works but doesn't show as working until all faces are done | Next phase | Same process; Activity card for faces. |
+| 21 | Face detection wasn't started after import | Done (P1) | After-import process finds faces for new photos straight away (no restart), newest first. |
+| 22 | "Looking for faces" works but doesn't show as working until all faces are done | Done (P1) | People's progress and Activity's "Getting photos ready · Finding faces" card update per photo. |
 | 23 | Naming a person: no way to pick the relationship | Next phase | |
 | 24 | "Same person?" isn't clear; faces too small to compare | Next phase | Bigger faces, 3-4 examples per side. |
-| 25 | Documents were imported but none recognised; Documents tab empty | Next phase | Document check runs only from its own scan today; ordered process runs it on import. |
+| 25 | Documents were imported but none recognised; Documents tab empty | Done (P1) | Text is read on import and documents are found (receipt test: 0.17 s). |
 | 26 | Plan all the after-import processes so no photo misses one | Next phase | Ordered steps per photo with a record of what's done; one Activity card. |
 
 ## Round 2: after A8 fixes (2026-11-17)
