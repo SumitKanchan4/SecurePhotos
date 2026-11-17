@@ -1579,6 +1579,18 @@ html, body, #root {
 }
 .settings-pill.is-on { background: var(--accent-fill); color: var(--on-accent); font-weight: 800; }
 .settings-pill:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+/* Settings → Old photos (H10 / A6): a tiny CSS before → after picture per row. */
+.oldset-intro { padding: 12px 16px 0; margin: 0; }
+.oldset-title { display: inline-flex; align-items: center; gap: 10px; }
+.oldset-chip { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.oldset-before, .oldset-after { width: 26px; height: 20px; border-radius: 5px; border: 1px solid var(--glass-border); }
+.oldset-arrow { font-size: 11px; color: var(--text-secondary); }
+.oldset-chip.is-colour .oldset-before { background: linear-gradient(180deg, #b5b5b5 0 40%, #7a7a7a 40% 70%, #555 70%); }
+.oldset-chip.is-colour .oldset-after { background: linear-gradient(180deg, #8fb8de 0 40%, #7fa36a 40% 70%, #a8574a 70%); }
+.oldset-chip.is-fade .oldset-before { background: linear-gradient(180deg, #d9c99a 0 40%, #b5a070 40% 70%, #9c7e55 70%); }
+.oldset-chip.is-fade .oldset-after { background: linear-gradient(180deg, #9ec3e6 0 40%, #7fa36a 40% 70%, #3e5c8a 70%); }
+.oldset-chip.is-faces .oldset-before, .oldset-chip.is-faces .oldset-after { background: radial-gradient(circle at 50% 42%, #d9a98a 0 30%, #8c7a65 31% 100%); }
+.oldset-chip.is-faces .oldset-before { filter: blur(1.5px); }
 .settings-btn {
   display: inline-flex;
   align-items: center;

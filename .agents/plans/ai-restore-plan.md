@@ -87,7 +87,7 @@ Sizes: S ≈ half a day of my work, M ≈ 1 day, L ≈ 2 days (each including te
 | A3 ✅ | **Colorize** and **Fix faded colours** on demand (built 2026-11-16, branch `feature/a3-colour`; see "A3 notes") (DDColor, Lab chroma transfer at full resolution, intensity slider, Natural/Vivid). Recipe chosen by the owner in A0 (2026-11-16), see "Colorize recipe" below. | M | First visible feature; good first joint test. |
 | A4 ✅ | **Activity screen** (built 2026-11-16, branch `feature/a4-activity`) + indicator (rail + header), vault items blurred. | M | |
 | A5 ✅ | **Restore faces** on demand (built 2026-11-17, branch `feature/a5-faces`; see "A5 notes") (GFPGAN, align with YuNet landmarks, feathered paste-back, strength + per-face toggles, SFace identity check). | L | |
-| A6 | **Auto rules**: B&W and blur detection on import, Settings "Old photos" (manual / automatic, keep original), the "replace or keep a copy" prompt with remember-my-choice, hidden original + "Restore original". | M | |
+| A6 ✅ | **Auto rules** (built 2026-11-17, branch `feature/a6-auto-rules`; see "A6 notes"): B&W and blur detection on import, Settings "Old photos" (manual / automatic, keep original), the "replace or keep a copy" prompt with remember-my-choice, hidden original + "Restore original". | M | |
 | A7 | **Remove scratches and spots** (detector → LaMa on damaged crops; result first; optional Touch up with brush/eraser; strict threshold for Automatic). | L | Most UI work (Touch up editor). Could move after the first merge if the rest is ready. Needs a few scratched test photos from the owner. |
 | A8 | **Full test round with the owner** on real photos; fixes; docs (design system, history, THIRD_PARTY_NOTICES, licences); then PR `feature/ai-restore` → `master` with owner approval. | M | |
 
@@ -161,6 +161,14 @@ Built as planned, with these choices: an improved photo always links to the **fi
 - The queue never downloads by itself; `POST /jobs` answers 409 `models_missing`; `/state` lists `downloads` (bytes per locked action); `POST /models/download {kind}` fetches only what that action needs; `GET /models` gives overall progress and `result` (done / failed / cancelled).
 - Removed: `import_model_file`, `/api/restore/models/import`. For the joint test (repo still private), the model files can be copied into the test library's `data/models`; they are accepted only if their SHA-256 matches.
 - Found in the browser check and fixed: the old-photo dialogs (Keep, and the new popup) were 920px wide because the general dialog rule comes later in the CSS.
+
+## A6 notes (built 2026-11-17)
+- **Only scans of prints (owner decision 2026-11-17):** "Automatically" acts only on new photos with no camera exposure data (no ISO, aperture or shutter speed) — how PhotoScan and flatbed scans look; all 19 of the owner's scans qualify (no make/model, `GooglePhotoScan`). Phone and camera photos are never changed automatically. Vault photos, videos, documents and improved copies are skipped. `engine/services/old_photo_rules.py`, called after every import.
+- One job per photo: grey scan -> Add colour (Natural); colour scan -> Fix faded colours; faces are folded into that job when "Sharpen blurry faces" is Automatic too (one copy, labelled `colour,faces` / `fade,faces`), else left alone; only faces Automatic -> a Sharpen faces job for scans with faces.
+- No separate "faded" detector: within scans of colour prints the colour fix is mild when a print isn't faded (per-channel levels).
+- Automatic jobs run after what the user asked for, wait on battery, and keep their result by "Keep original" (existing queue rules). Verified end to end: on battery the job waited ("on_battery"); with the guard off it ran in 8 s and kept a linked `fade,faces` copy; the phone photo was untouched.
+- Settings → Photos & AI → **Old photos** as on the A1 board: three rows with a small CSS before → after picture and When I ask / Automatically, the Keep original switch and the footnote. The fourth row (Remove scratches and spots) comes with A7.
+- "Remember my choice" stays in the keep dialog (the board has no setting for it).
 
 ## A5 notes (built 2026-11-17)
 - Recipe as approved in A0: YuNet faces (>= 24 px wide) with landmarks, similarity transform to GFPGAN's 512 px template, GFPGAN v1.4, feathered paste at 80%. `engine/services/face_sharpen.py`.
