@@ -39,7 +39,7 @@ import {
 import { ViewerDetails } from "./viewer/ViewerDetails";
 import { useVolumeBooster } from "./viewer/useVolumeBooster";
 import { useOldPhoto } from "./viewer/useOldPhoto";
-import { BeforeAfter, ImproveMenu, ModelDialog, OldPhotoPanel, VersionSwitch } from "./viewer/OldPhotoPanel";
+import { BeforeAfter, ChoiceBar, ImproveMenu, ModelDialog, OldPhotoPanel, VersionSwitch } from "./viewer/OldPhotoPanel";
 import { TouchUpEditor, useMarks } from "./viewer/TouchUp";
 
 interface LightboxProps {
@@ -60,6 +60,9 @@ interface LightboxProps {
   totalCount?: number;
   /** H10: an improved copy was kept (or an original replaced), so the lists should reload. */
   onLibraryChanged?: () => void;
+  /** A8: shows another member of this photo's stack (the original behind an improved copy,
+   *  which the library doesn't list) in the current photo's place. */
+  onShowVersion?: (photoId: number) => void;
 }
 
 export const Lightbox: React.FC<LightboxProps> = ({
@@ -78,6 +81,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
   onVaultStatusChange,
   isDocumentView = false,
   onLibraryChanged,
+  onShowVersion,
 }) => {
   const showToast = useAppStore((state) => state.showToast);
   const isVaultUnlocked = useAppStore((state) => state.isVaultUnlocked);
@@ -537,7 +541,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
             onOpen={(id) => {
               const index = photos.findIndex((p) => p.id === id);
               if (index >= 0) onNavigate(index);
-              return index >= 0;
+              else if (onShowVersion) onShowVersion(id); // Stacked behind: swap it into this place.
+              return index >= 0 || Boolean(onShowVersion);
             }}
           />
 
@@ -671,6 +676,26 @@ export const Lightbox: React.FC<LightboxProps> = ({
             {isVaultItem ? <Unlock size={17} /> : <Lock size={17} strokeWidth={2.4} />}
           </button>
         </header>
+
+        <ChoiceBar
+          old={old}
+          onChosen={(keepId, choice) => {
+            if (keepId === null) {
+              showToast("Couldn't save your choice. Please try again.", "warning");
+              return;
+            }
+            showToast(
+              choice === "keep_both"
+                ? "Both kept. The improved photo shows in your library; the original is behind it."
+                : choice === "keep_improved"
+                ? "Kept the improved photo. The original is in Trash for 30 days."
+                : "Kept the original. The improved photo is in Trash for 30 days.",
+              "success",
+            );
+            if (keepId !== currentPhoto.id) onShowVersion?.(keepId);
+            onLibraryChanged?.();
+          }}
+        />
 
         <div className="viewer-stage" onWheel={isVideo ? undefined : handleWheel}>
           {currentIndex > 0 && (

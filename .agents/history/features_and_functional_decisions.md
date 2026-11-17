@@ -6255,3 +6255,27 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 
 ### State & Lifecycle Impact
 - No schema change. Staging files: `job_N.extra(.enc)` (was `.faces`) and `mask_<token>.png(.enc)` for a Touch-up job, removed when the job ends, kept for waiting jobs across a restart.
+
+## 157. Old Photos, Step A8: Fixes From the Joint Test (H10)
+
+### Functionality Overview
+- **One tile per improved photo.** Photos, albums, the vault and the year counts show the improved photo in its original's place (the newest copy when there are several). The viewer's Original / Improved switch swaps the original into view. An original that already has an improved copy offers no second improvement.
+- **Choose what to keep.** Copies made by an automatic rule wait for the owner: the viewer shows "Improved automatically. Which do you want to keep?" (Keep improved, Keep both, Keep original), Activity has a "Choose what to keep" section with Keep improved / Keep both for all, and the header pill reminds when nothing else runs. Keep improved / Keep original move the other photo to Trash (30 days).
+- **Drawings, pages of text and screenshots** that look like scans are improved like any scan but always keep their original, even with Keep original off.
+- **Battery:** background work pauses on battery only below a chosen level: Below 20% (default), Below 50%, Always, Never. Photos the owner improves themselves always run.
+- **No device-made file names** (timestamps, GUIDs, IMG_1234, PXL_…) anywhere; a name a person wrote still shows. Titles fall back to Photo / Improved photo / Video / Document.
+- **Activity** counts what the rail ring counts; every card shows the photo or video being worked on; what waits behind the current photo or video is one group tile ("7 photos"); Finished today became Needs attention (problems only); the footer line is gone.
+
+### Functional Decision Points & Rationale
+- Owner (2026-11-17): fix the old-photo issues on this branch and merge; the ordered after-import process (documents, faces, old-photo fixes, 8K, stories), sticky headers, year bar, albums, storage, stories and People changes are the next phase.
+- Stacking instead of asking the owner to delete one of each pair: no duplicates, nothing deleted by surprise. Automatic results are a suggestion until chosen, so the app asks.
+- The "not a photo" check was calibrated on the owner's 19 scans and the imported text screenshots; a coloured-pencil drawing on tinted paper measures like a scan and isn't caught (its original stays anyway while Keep original is on, the default).
+- The library "original" is already the 8K AVIF made at import (the imported file isn't kept); Keep original keeps that.
+
+### Technical Touchpoints
+- Engine: `photo_versions.py` (`stack_top`, `pending_choices`, `choose`, `choice_pending` in `versions_of`), `restore_queue.py` (`keep_both` param, `choice_pending` on automatic keeps, `choices` in `GET /jobs`), `api/restore.py` (`POST /choices`; no options on an improved original), `api/photos.py` / `albums.py` / `vault.py` (stack), `old_photo_processors.py` (`looks_like_a_graphic`), `old_photo_rules.py`, `api/photos.py` (`battery_guard_applies`), `vault_enhancer.py`, `api/system.py` (`battery_pause_below`), `database.py` (`choice_pending` + migration).
+- Frontend: `src/utils/displayName.ts` (new), `activityFormat.ts`, `ActivityView.tsx`, `OldPhotoPanel.tsx` (`ChoiceBar`), `useOldPhoto.ts` (`pendingCopy`, `chooseVersion`), `Lightbox.tsx` (`onShowVersion`), `App.tsx`, `viewerFormat.ts`, `ViewerDetails.tsx`, Duplicates, Trash, People, Stories, Videos, `PhotosAISettings.tsx`, `useAppSettings.ts`, `index.css`.
+- Tests: engine 403, frontend 188.
+
+### State & Lifecycle Impact
+- New column `photos.choice_pending` (migration marks copies made earlier by automatic jobs). New setting `battery_pause_below` (20).

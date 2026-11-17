@@ -67,6 +67,18 @@ fixed on this branch and re-tested before the PR `feature/ai-restore` → `maste
 ## 11 · Speed and comfort on this laptop (CPU only)
 - [ ] Add colour ~10-16 s; faces ~2 s per face; scratches ~20-40 s; the app stays usable meanwhile.
 
+## 12 · Fixes from round 1 (re-test)
+Owner feedback 2026-11-17. The ordered after-import process, sticky headers, year bar, albums,
+storage, stories and People are the **next phase**, not this branch.
+- [ ] Photos shows one tile per improved photo (the improved one); Original / Improved in the viewer swaps the original in.
+- [ ] A photo improved automatically asks "Which do you want to keep?" in the viewer; Keep improved / Keep both / Keep original do what they say (Trash for 30 days).
+- [ ] Activity → Choose what to keep lists them; Keep improved for these / Keep both work; the header pill reminds when nothing else runs.
+- [ ] An original that already has an improved copy offers no "…" improvements.
+- [ ] Text screenshots imported as scans: improved, but the original is kept even with Keep original off.
+- [ ] No GUID / IMG_ names anywhere (viewer title, Info, Activity, Trash, Duplicates, Stories, People, Videos).
+- [ ] Settings → Photos & AI → Pause background work on battery: Below 20% (default), Below 50%, Always, Never.
+- [ ] Activity: header count = ring count; enhancing and video cards show the photo; waiting photos/videos as one group tile; no footer line; problems under Needs attention.
+
 ## After the test
 - [ ] All boxes ticked or fixed; `data_location.txt` removed; test library kept or deleted (owner's choice).
 - [ ] PR `feature/ai-restore` → `master` opened; CI green; owner approves the merge.

@@ -44,7 +44,12 @@ export interface VersionMember {
   is_original: boolean;
   ai_kind: string | null;
   trashed: boolean;
+  /** A8: kept automatically; the user hasn't chosen improved / original / both yet. */
+  choice_pending?: boolean;
 }
+
+/** A8: what to keep of an improved photo the app kept automatically. */
+export type VersionChoice = "keep_improved" | "keep_both" | "keep_original";
 
 export interface ModelDownload {
   model: string;
@@ -310,6 +315,34 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
   const needsModels = job?.status === "failed" && job.error === "models_missing";
   const locked = (Object.keys(downloads) as ImproveKind[]).filter((k) => downloads[k]);
 
+  // A8: a copy the app kept automatically, while its original is still in the library.
+  const liveVersions = versions.filter((m) => !m.trashed);
+  const originalMember = liveVersions.find((m) => m.is_original);
+  const pendingCopy = originalMember ? liveVersions.find((m) => !m.is_original && m.choice_pending) ?? null : null;
+
+  /** Applies the choice; returns the id of the photo that stays in front (to show), or null. */
+  const chooseVersion = useCallback(
+    async (choice: VersionChoice): Promise<number | null> => {
+      if (!pendingCopy || !originalMember) return null;
+      setBusy(true);
+      try {
+        const res = await apiFetch("/api/restore/choices", jsonPost({ photo_ids: [pendingCopy.id], choice }));
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setVersions((list) =>
+          list.map((m) => ({
+            ...m,
+            choice_pending: false,
+            trashed: m.trashed || (choice === "keep_improved" && m.id === originalMember.id) || (choice === "keep_original" && m.id === pendingCopy.id),
+          })),
+        );
+        return choice === "keep_original" ? originalMember.id : pendingCopy.id;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [pendingCopy, originalMember],
+  );
+
   return {
     options,
     job,
@@ -342,6 +375,8 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
     cancelDownload,
     closeModelPrompt,
     restoreOriginal,
+    pendingCopy,
+    chooseVersion,
     dismiss: () => setJob(null),
   };
 }

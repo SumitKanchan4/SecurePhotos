@@ -143,6 +143,32 @@ describe("ActivityView", () => {
     expect(screen.queryByText("Colour added")).not.toBeInTheDocument();
   });
 
+  it("asks what to keep of photos improved automatically, one by one or all at once", () => {
+    const handlers = { ...props(), onChoose: vi.fn() };
+    const model = buildActivity({
+      restore: report({
+        choices: [
+          { photo_id: 70, original_id: 7, ai_kind: "colour,faces" },
+          { photo_id: 80, original_id: 8, ai_kind: "fade" },
+        ],
+        choices_total: 2,
+      }),
+    });
+    expect(model.headline).toBe("2 improved photos: choose what to keep");
+    expect(model.remaining).toBe(0);
+    render(<ActivityView model={model} {...handlers} />);
+    const section = screen.getByRole("region", { name: "Choose what to keep" });
+    expect(section).toHaveTextContent("Colour added · faces sharpened");
+    expect(section).toHaveTextContent("Colours fixed");
+    expect(screen.queryByRole("heading", { name: "All done" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Keep improved for these 2" }));
+    expect(handlers.onChoose).toHaveBeenCalledWith("keep_improved", [70, 80]);
+    fireEvent.click(screen.getByRole("button", { name: "Keep both" }));
+    expect(handlers.onChoose).toHaveBeenCalledWith("keep_both", [70, 80]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Compare" })[1]);
+    expect(handlers.onOpenPhoto).toHaveBeenCalledWith(80);
+  });
+
   it("offers Resume when paused and Stop import for an import", () => {
     const handlers = props();
     const model = buildActivity({
