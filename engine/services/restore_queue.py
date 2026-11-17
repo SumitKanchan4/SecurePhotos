@@ -545,7 +545,7 @@ async def result_image(conn: aiosqlite.Connection, job: aiosqlite.Row, key: Opti
     staged = await asyncio.to_thread(photo_versions.read_photo_bytes, job["result_path"], bool(job["is_encrypted"]), key)
     info = result_info(job["id"], job["result_info"], bool(job["is_encrypted"]))
     off = sorted({int(i) for i in faces_off if 0 <= int(i) < len(info.get("faces", []))})
-    if not off:
+    if not off or job["kind"] not in ("faces", "fade"):  # Only these can rebuild the image before sharpening.
         return staged
     from engine.services.old_photo_processors import without_faces
 

@@ -170,3 +170,29 @@ def test_a_nearly_flat_photo_is_lifted_gently_not_turned_black(models):
     L = np.linspace(40, 60, 1000)
     assert np.ptp(op.stretch_brightness(L)) <= 20 * op.MAX_STRETCH + 1  # Gain capped.
     assert np.ptp(op.stretch_brightness(np.linspace(10, 85, 1000))) > 95  # Normal prints: full range.
+
+
+def test_automatic_colour_with_faces_sharpens_the_coloured_photo_in_the_same_job(models, monkeypatch):
+    """A6: "Add colour" and "Sharpen blurry faces" both Automatic -> one job, one copy."""
+    from engine.services import ai_models
+    from engine.services.restore_queue import Outcome
+
+    models["colours"].update({"ddcolor_large": BLUE, "ddcolor_artistic": BLUE})
+    seen = []
+
+    def faces_outcome(rgb, progress, cancelled, span=(5, 95)):
+        seen.append(rgb.copy())
+        return Outcome(image=op.encode_jpeg(rgb), info={"faces": [{"strength": 0.8}]})
+
+    monkeypatch.setattr(op, "_faces_outcome", faces_outcome)
+    monkeypatch.setattr(ai_models, "is_model_ready", lambda key, d=None: True)
+    out = op.add_colour(_grey_photo(), {"style": "natural", "faces": True}, lambda v: None, lambda: False)
+    assert isinstance(out, Outcome) and len(seen) == 1
+    assert seen[0][..., 2].mean() > seen[0][..., 0].mean() + 10  # Faces were done on the coloured photo.
+    assert op.kinds_kept("colour", out.info, []) == "colour,faces"
+    def colour_only(params):
+        return op.add_colour(_grey_photo(), params, lambda v: None, lambda: False)
+
+    assert isinstance(colour_only({"style": "natural"}), bytes)  # Asked from the viewer: colour only.
+    monkeypatch.setattr(ai_models, "is_model_ready", lambda key, d=None: False)
+    assert isinstance(colour_only({"style": "natural", "faces": True}), bytes) and len(seen) == 1  # No face model: colour only.
