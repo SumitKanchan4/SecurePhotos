@@ -14,17 +14,27 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, getApiUrl } from "../../services/api";
 import type { PhotoItem } from "../../types";
 
-export type ImproveKind = "colour" | "fade";
+export type ImproveKind = "colour" | "fade" | "faces";
+
+/** A face in a result waiting for a decision: its box in 0-1 of the picture (x, y, w, h). */
+export interface ResultFace {
+  box: [number, number, number, number];
+  /** False when the identity check left it as it was (it no longer looked like the same person). */
+  sharpened: boolean;
+}
 export type KeepChoice = "keep_both" | "replace" | "discard";
 
 export interface RestoreJob {
   id: number;
   photo_id: number;
-  kind: ImproveKind | "faces" | "scratches";
+  kind: ImproveKind | "scratches";
   status: "queued" | "working" | "review" | "done" | "discarded" | "failed" | "cancelled";
   progress: number;
   error: string | null;
   result_photo_id: number | null;
+  faces?: ResultFace[];
+  /** Faces that could be sharpened too once the face model is downloaded (Fix faded colours). */
+  faces_waiting?: number;
 }
 
 export interface VersionMember {
@@ -42,7 +52,10 @@ export interface ModelDownload {
 
 /** The popup asking to download the models an action needs. */
 export interface ModelPrompt {
+  /** The feature whose model is missing (names the popup). */
   kind: ImproveKind;
+  /** What starts once it's downloaded (e.g. "Also sharpen faces" runs Fix faded colours again). */
+  action: ImproveKind;
   style: "natural" | "vivid";
   bytes: number;
   phase: "ask" | "downloading" | "failed";
@@ -60,7 +73,8 @@ const POLL_MS = 1000;
 
 export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
   const photoId = photo?.id;
-  const [options, setOptions] = useState<{ colour: boolean; fade: boolean } | null>(null);
+  const [options, setOptions] = useState<{ colour: boolean; fade: boolean; faces?: boolean } | null>(null);
+  const [facesOff, setFacesOff] = useState<number[]>([]);
   const [job, setJob] = useState<RestoreJob | null>(null);
   const [versions, setVersions] = useState<VersionMember[]>([]);
   const [style, setStyle] = useState<"natural" | "vivid">("natural");
@@ -79,6 +93,7 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
   useEffect(() => {
     setOptions(null);
     setDownloads({});
+    setFacesOff([]);
     setJob(null);
     setVersions([]);
     setIntensity(1);
@@ -117,7 +132,10 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
         setDownload(data.download ?? null);
         if (found) {
           setJob(found);
-          if (found.status === "review") setResultVersion((v) => v + 1);
+          if (found.status === "review") {
+            setFacesOff([]);
+            setResultVersion((v) => v + 1);
+          }
         }
       } catch {
         /* The engine is busy; try again next tick. */
@@ -133,7 +151,7 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
       if (!photoId) return;
       const bytes = downloads[kind];
       if (bytes && !modelsJustArrived) {
-        setModelPrompt({ kind, style: nextStyle, bytes, phase: "ask" });
+        setModelPrompt({ kind, action: kind, style: nextStyle, bytes, phase: "ask" });
         return;
       }
       setBusy(true);
@@ -144,7 +162,7 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
         if (res.status === 409) {
           // A model went missing since the photo was opened: ask for it.
           setJob(null);
-          setModelPrompt({ kind, style: nextStyle, bytes: 0, phase: "ask" });
+          setModelPrompt({ kind, action: kind, style: nextStyle, bytes: 0, phase: "ask" });
           return;
         }
         if (!res.ok) throw new Error(await res.text());
@@ -171,7 +189,7 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
       if (!job) return null;
       setBusy(true);
       try {
-        const res = await apiFetch(`/api/restore/jobs/${job.id}/keep`, jsonPost({ choice, remember, intensity }));
+        const res = await apiFetch(`/api/restore/jobs/${job.id}/keep`, jsonPost({ choice, remember, intensity, faces_off: facesOff }));
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail ?? "Could not save the result.");
         const { photo_id } = await res.json();
         setJob(null);
@@ -180,7 +198,7 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
         setBusy(false);
       }
     },
-    [job, intensity],
+    [job, intensity, facesOff],
   );
 
   const stopDownloadTimer = () => {
@@ -189,11 +207,11 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
   };
   useEffect(() => stopDownloadTimer, []);
 
-  /** Asks the model popup for this action (e.g. from the panel after a job needed a model). */
-  const askForModels = useCallback((kind: ImproveKind) => {
-    setJob(null);
-    setModelPrompt({ kind, style: "natural", bytes: downloads[kind] ?? 0, phase: "ask" });
-  }, [downloads]);
+  /** Asks the model popup for ``kind``'s model; ``action`` runs once it's here (default: the same).
+   *  "Also sharpen faces" asks for the face model and then runs Fix faded colours again. */
+  const askForModels = useCallback((kind: ImproveKind, action: ImproveKind = kind) => {
+    setModelPrompt({ kind, action, style: style, bytes: downloads[kind] ?? 0, phase: "ask" });
+  }, [downloads, style]);
 
   /** The popup's Download: fetches only what the action needs, then starts it. */
   const downloadModels = useCallback(async () => {
@@ -220,7 +238,7 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
         // Still in the popup: go straight on with what the user asked for.
         const stillWaiting = promptRef.current?.phase === "downloading";
         setModelPrompt(null);
-        if (stillWaiting) void startRef.current(prompt.kind, prompt.style, true);
+        if (stillWaiting) void startRef.current(prompt.action, prompt.style, true);
       } else {
         setModelPrompt((current) => (current ? { ...current, phase: data.result === "cancelled" ? "ask" : "failed" } : current));
       }
@@ -248,8 +266,15 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
     return (await res.json()).original_id as number;
   }, [photoId]);
 
+  /** The per-face switch: a face switched off is kept as it was (the preview follows). */
+  const toggleFace = useCallback((index: number) => {
+    setFacesOff((off) => (off.includes(index) ? off.filter((i) => i !== index) : [...off, index].sort((a, b) => a - b)));
+  }, []);
+
   const reviewUrl =
-    job?.status === "review" ? getApiUrl(`/api/restore/jobs/${job.id}/result?v=${resultVersion}`) : null;
+    job?.status === "review"
+      ? getApiUrl(`/api/restore/jobs/${job.id}/result?v=${resultVersion}${facesOff.length ? `&faces_off=${facesOff.join(",")}` : ""}`)
+      : null;
   const label = job ? IMPROVE_LABELS[job.kind] : null;
   const statusText =
     job && label && (job.status === "queued" || job.status === "working")
@@ -270,6 +295,8 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
     download,
     downloads,
     locked,
+    facesOff,
+    toggleFace,
     modelPrompt,
     busy,
     reviewUrl,

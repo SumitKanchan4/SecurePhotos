@@ -6188,3 +6188,26 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 
 ### State & Lifecycle Impact
 - No schema change. New files next to the models: `verified.json` and, after an install, `install_status.txt`. Models stay with the data folder on uninstall, like the library.
+
+## 154. Old Photos, Step A5: Sharpen Faces (H10)
+
+### Functionality Overview
+- **Sharpen faces** in the viewer's "…" menu for photos with faces ("Clearer faces in blurry or old photos"). Each face is lined up, sharpened by GFPGAN v1.4 and pasted back softly at 80% (the recipe the owner approved in A0).
+- **Identity check:** each sharpened face is compared with the original by the app's face recogniser; one that no longer looks like the same person (likeness below 0.45) is left as it was.
+- **Per-face switch:** in the result every face has an outline (lime = sharpened, white dashed = switched off, grey dotted = left by the identity check). Clicking a face keeps it as it was; the preview and the kept copy follow. The panel's "Faces" section says what happened ("2 faces sharpened · 1 switched off · 1 left as it was (no longer looked like the same person)").
+- **Fix faded colours** now also sharpens faces when the face model is on the computer (recipe R). Without it the colour fix still runs and the panel offers **Also sharpen faces** (download popup, then the fix runs again).
+- Everything else is as for the other improvements: queue, Activity, result first, Keep both / Replace / Discard, vault photos stay encrypted, copies linked to the original and labelled as AI-made.
+
+### Functional Decision Points & Rationale
+- Owner (2026-11-17), from a local comparison page of their own faces grouped by likeness: below 0.45 left as it was, otherwise 80%; no half-way 50% (looked like a ghosted double image). Large faces scored 0.70-0.93; tiny or motion-blurred ones 0.2-0.45, where GFPGAN invents a face.
+- Owner (2026-11-17): Fix faded colours is never locked; faces are added only when the model is there.
+- Switching a face off rebuilds the result from the stored sharpened faces instead of putting old pixels back, because in group photos the soft edges of neighbouring faces overlap.
+- A faded-colour fix with sharpened faces is labelled AI-made (`fade,faces`); with every face switched off it stays an enhancement (`fade`).
+
+### Technical Touchpoints
+- New: `engine/services/face_sharpen.py`, `engine/tests/test_face_sharpen.py`.
+- Changed: `engine/services/old_photo_processors.py` (`sharpen`, recipe R in `fade`, `without_faces`, `kinds_kept`, "faces" registered), `engine/services/restore_queue.py` (`Outcome` with info + extra file, `result_info`, vault info in memory only, `result_image`, `faces_off` on keep, clean-up of `.faces` files), `engine/services/photo_versions.py` (`merged_kinds` accepts "fade,faces"), `engine/api/restore.py` (faces option from the thumbnail, `faces_off` on keep and on `/jobs/{id}/result`), `engine/database.py` (`restore_jobs.result_info`), `engine/requirements.in` / `.txt` / `requirements-dev.txt` (OpenCV pinned; it was used since A3 but missing), `src/components/viewer/useOldPhoto.ts`, `src/components/viewer/OldPhotoPanel.tsx` (menu item, face outlines, Faces section, Also sharpen faces), `src/components/Lightbox.tsx`, `src/index.css` (`.ba-face`), docs.
+- Tests: engine 351 (+12 face tests), frontend 174 (+3). Mutation checks: 13 deliberate breaks each caught. Real GFPGAN on the owner's 19 photos (read only, checksums verified; numbers only): 143 faces, ~2 s per face, rebuild exact. Browser check with real models on a throwaway library (a public-domain NASA portrait made old, two faces) in both themes: menu, outlines, switch and preview, keep with one face off (`faces`), recipe R, Also sharpen faces with the model hidden; no console errors.
+
+### State & Lifecycle Impact
+- New column `restore_jobs.result_info` (migration adds it). Staged `job_N.faces` files live and die with their result (keep, discard, cancel, restart clean-up).
