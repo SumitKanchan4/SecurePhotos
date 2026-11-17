@@ -120,7 +120,7 @@ async def photo_state(photo_id: int) -> Dict[str, Any]:
     except HTTPException as err:
         if err.status_code != 409:
             raise
-        options = {"colour": False, "fade": False, "faces": False}  # Vault locked: nothing to offer until it opens.
+        options = {"colour": False, "fade": False, "faces": False, "scratches": False}  # Vault locked: nothing to offer until it opens.
     async with db_connection() as conn:
         try:
             family = await photo_versions.versions_of(conn, photo_id)
@@ -146,7 +146,8 @@ async def _downloads_for(options: Dict[str, Any]) -> Dict[str, int]:
 @router.get("/photos/{photo_id}/options")
 async def photo_options(photo_id: int) -> Dict[str, Any]:
     """Which improvements fit this photo: "Add colour" for grey photos, "Fix faded colours" otherwise,
-    and "Sharpen faces" when it has faces (found on the 1024 px thumbnail)."""
+    "Sharpen faces" when it has faces (found on the 1024 px thumbnail), and "Remove scratches
+    and spots" for scans of prints (no camera exposure data) and black-and-white photos."""
     from engine.database import db_connection
     from engine.services import photo_versions
     from engine.services.face_sharpen import count_faces
@@ -154,7 +155,7 @@ async def photo_options(photo_id: int) -> Dict[str, Any]:
 
     async with db_connection() as conn:
         async with conn.execute(
-            "SELECT thumbnail_path, filepath, is_encrypted, mime_type, ai_kind FROM photos WHERE id = ? AND trashed_at IS NULL;",
+            "SELECT thumbnail_path, filepath, is_encrypted, mime_type, ai_kind, iso, aperture, shutter_speed FROM photos WHERE id = ? AND trashed_at IS NULL;",
             (photo_id,),
         ) as cur:
             row = await cur.fetchone()
@@ -181,6 +182,7 @@ async def photo_options(photo_id: int) -> Dict[str, Any]:
         "colour": grey and "colour" not in done,
         "fade": not grey and not done & {"fade", "colour"},
         "faces": has_faces,
+        "scratches": "scratches" not in done and (grey or (row[5] is None and row[6] is None and row[7] is None)),
     }
 
 
@@ -255,3 +257,78 @@ async def download_models(payload: Optional[DownloadRequest] = None) -> Dict[str
 async def cancel_download() -> Dict[str, bool]:
     restore_queue.cancel_download()
     return {"cancelling": True}
+
+
+@router.get("/jobs/{job_id}/mask")
+async def job_mask(job_id: int) -> Response:
+    """The damage marks of a "Remove scratches and spots" result (white = repaired), for the
+    viewer's "Show marks" and Touch up. Never cached."""
+    import aiosqlite
+
+    from engine.database import db_connection
+    from engine.services import photo_versions
+    from engine.services.media_paths import to_db_path
+
+    async with db_connection() as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT j.status, j.kind, j.result_path, p.is_encrypted FROM restore_jobs j JOIN photos p ON p.id = j.photo_id WHERE j.id = ?;",
+            (job_id,),
+        ) as cur:
+            job = await cur.fetchone()
+    if job is None or job["status"] != "review" or job["kind"] != "scratches":
+        raise HTTPException(status_code=404, detail="No marks for this result.")
+    key = restore_queue._vault_key() if job["is_encrypted"] else None
+    if job["is_encrypted"] and key is None:
+        raise HTTPException(status_code=409, detail="vault_locked")
+    stored = to_db_path(restore_queue._extra_path(restore_queue.resolve_stored_path(job["result_path"])))
+    try:
+        data = await asyncio.to_thread(photo_versions.read_photo_bytes, stored, bool(job["is_encrypted"]), key)
+    except photo_versions.VersionError as err:
+        raise HTTPException(status_code=404, detail=str(err))
+    return Response(content=data, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+MAX_MASK_BYTES = 8 * 1024 * 1024
+
+
+class TouchUpRequest(BaseModel):
+    mask_png: str = Field(..., max_length=MAX_MASK_BYTES * 4 // 3 + 8)  # base64; white = repair.
+
+
+@router.post("/jobs/{job_id}/touch-up")
+async def touch_up(job_id: int, payload: TouchUpRequest) -> Dict[str, int]:
+    """Touch up: repair again with the marks the user painted. The old result is discarded
+    and a new job (same photo) uses exactly these marks."""
+    import base64
+    import io
+
+    import aiosqlite
+    from PIL import Image
+
+    from engine.database import db_connection
+
+    try:
+        data = base64.b64decode(payload.mask_png, validate=True)
+        with Image.open(io.BytesIO(data)) as im:
+            if im.format != "PNG" or max(im.size) > 8192:
+                raise ValueError("not a mask")
+            im.load()
+    except Exception:
+        raise HTTPException(status_code=400, detail="The marks must be a PNG picture.")
+    async with db_connection() as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT j.status, j.kind, j.photo_id, p.is_encrypted FROM restore_jobs j JOIN photos p ON p.id = j.photo_id WHERE j.id = ?;",
+            (job_id,),
+        ) as cur:
+            job = await cur.fetchone()
+    if job is None or job["status"] != "review" or job["kind"] != "scratches":
+        raise HTTPException(status_code=404, detail="No result to touch up.")
+    key = restore_queue._vault_key() if job["is_encrypted"] else None
+    if job["is_encrypted"] and key is None:
+        raise HTTPException(status_code=409, detail="vault_locked")
+    token = await asyncio.to_thread(restore_queue.stage_mask, data, key)
+    await restore_queue.keep_result(job_id, "discard")
+    (new_id,) = await restore_queue.enqueue([job["photo_id"]], "scratches", {"mask_in": token}, origin="manual")
+    return {"job_id": new_id}

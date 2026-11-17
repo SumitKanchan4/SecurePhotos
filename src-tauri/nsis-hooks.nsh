@@ -35,12 +35,12 @@
   ; Guarantee that the public desktop does not contain a duplicate
   Delete "$COMMONDESKTOP\SecurePhotos.lnk"
 
-  ; H10 / A2c: download the old-photo models (about 2.3 GB, once). Each model is checked by
+  ; H10 / A2c: download the old-photo models (about 2.7 GB, once). Each model is checked by
   ; SHA-256; one already in place is skipped, so upgrades are quick. A failed download never
   ; fails the install: the app asks later, before the first feature that needs that model.
   ; Progress and per-model status go into the details list.
   SetDetailsPrint both
-  DetailPrint "Getting the old-photo models (about 2.3 GB, once). This can take a while..."
+  DetailPrint "Getting the old-photo models (about 2.7 GB, once). This can take a while..."
   nsExec::ExecToLog '"$INSTDIR\securephotos-engine.exe" --fetch-models "$INSTDIR\data\models"'
   Pop $0
   ; Show the per-model status, except in silent / passive installs (updates).

@@ -70,11 +70,11 @@ describe("buildActivity", () => {
     const m = buildActivity({
       restore: report({
         review: [job(4, { status: "review" })],
-        finished_today: [job(5, { status: "done", result_photo_id: 77 }), job(6, { status: "discarded" }), job(7, { status: "failed", error: "models_missing" })],
+        finished_today: [job(5, { status: "done", result_photo_id: 77 }), job(6, { status: "discarded" }), job(7, { status: "failed", error: "models_missing" }), job(8, { kind: "scratches", status: "discarded", error: "nothing_to_fix" })],
       }),
     });
     expect(m.ready[0]).toMatchObject({ title: "Colour added · ready to look at", photoId: 104 });
-    expect(m.finished.map((i) => [i.outcome, i.photoId])).toEqual([["Needs a download", 107], ["Not kept", 106], ["Colour added", 77]]);
+    expect(m.finished.map((i) => [i.outcome, i.photoId])).toEqual([["Nothing to fix", 108], ["Needs a download", 107], ["Not kept", 106], ["Colour added", 77]]);
     expect(m.headline).toBe("1 photo ready to look at");
     expect(m.remaining).toBe(0);
   });

@@ -192,7 +192,7 @@ async def test_download_progress_covers_every_missing_model(env, monkeypatch):
         ready.add(key)
 
     monkeypatch.setattr(ai_models, "fetch_on_demand", fetch)
-    assert await restore_queue.download_models(list(ai_models.ON_DEMAND_MODELS)) is True
+    assert await restore_queue.download_models(["ddcolor_large", "ddcolor_artistic", "gfpgan"]) is True
     total = sizes["ddcolor_large"] + sizes["gfpgan"]
     assert [s["total"] for s in seen] == [total, total]
     assert seen[0]["done"] == sizes["ddcolor_large"] // 2

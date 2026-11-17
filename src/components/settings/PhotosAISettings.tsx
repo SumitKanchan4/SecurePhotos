@@ -21,13 +21,14 @@ export function qualityTier(level: number): { label: string; description: string
   return { label: "Smallest files", description: "Saves the most space. Fine detail softens noticeably when zoomed in." };
 }
 
-type OldPhotoKey = "old_photos_colour" | "old_photos_fade" | "old_photos_faces";
+type OldPhotoKey = "old_photos_colour" | "old_photos_fade" | "old_photos_faces" | "old_photos_scratches";
 
 /** Settings → Old photos (H10, A1 board): plain words, a small before → after picture each. */
 const OLD_PHOTO_ROWS: { key: OldPhotoKey; title: string; description: string; look: string }[] = [
   { key: "old_photos_colour", title: "Add colour to old grey photos", description: "Black-and-white and brownish old prints get natural colours.", look: "colour" },
   { key: "old_photos_fade", title: "Fix faded or yellowed colours", description: "Old colour prints get their colours back.", look: "fade" },
   { key: "old_photos_faces", title: "Sharpen blurry faces", description: "Faces look clearer, and still like the same person.", look: "faces" },
+  { key: "old_photos_scratches", title: "Remove scratches and spots", description: "Creases, scratches and dust on old prints disappear.", look: "scratches" },
 ];
 
 const RULE_OPTIONS: { value: OldPhotoRule; label: string }[] = [
