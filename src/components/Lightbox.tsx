@@ -131,8 +131,11 @@ export const Lightbox: React.FC<LightboxProps> = ({
     ? getApiUrl(`/api/vault/thumbnail/${currentPhoto?.id}`) 
     : getApiUrl(`/api/photos/${currentPhoto?.id}/thumbnail`);
 
-  // Display the enhanced proxy if completed; otherwise display the unprocessed original
-  const primaryImageUrl = isCompleted ? previewUrl : originalUrl;
+  // A8 (smooth loading): a 2560 px preview at "fit" (the engine makes it once; ~7x faster to
+  // decode than the 8K photo); the full photo only once the user zooms in. The grid's thumbnail
+  // shows at once underneath while either loads.
+  const isZoomedIn = zoom > 1.2;
+  const primaryImageUrl = isVaultItem ? vaultStreamUrl : isZoomedIn ? originalUrl : previewUrl;
 
   useEffect(() => {
     if (currentPhoto) {
@@ -147,6 +150,21 @@ export const Lightbox: React.FC<LightboxProps> = ({
       setIsDownloadMenuOpen(false);
     }
   }, [currentIndex, currentPhoto?.id, currentPhoto?.is_pinned]);
+
+  // A8: get the photos either side ready, so stepping through is instant.
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = setTimeout(() => {
+      for (const i of [currentIndex + 1, currentIndex - 1]) {
+        const next = photos[i];
+        if (!next || next.is_encrypted || next.mime_type?.startsWith("video/")) continue;
+        const img = new Image();
+        img.decoding = "async";
+        img.src = getApiUrl(`/api/photos/${next.id}/preview`);
+      }
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [isOpen, currentIndex, photos]);
 
   // People, albums and import date for the details panel (library photos only, loaded when shown).
   const contextPhotoId = currentPhoto && !currentPhoto.is_encrypted && !isDocumentView ? currentPhoto.id : null;
@@ -1085,11 +1103,32 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   alignItems: "center",
                   justifyContent: "center",
                   overflow: "hidden",
+                  position: "relative",
                 }}
               >
+                {!isPreviewLoaded && (
+                  // The grid's thumbnail (already cached) shows at once while the photo loads.
+                  <img
+                    src={thumbnailUrl}
+                    alt=""
+                    aria-hidden="true"
+                    data-testid="viewer-placeholder"
+                    draggable={false}
+                    style={{
+                      maxWidth: "100%",
+                      maxHeight: "calc(100vh - 168px)",
+                      width: currentPhoto.width && currentPhoto.height ? `min(100%, calc((100vh - 168px) * ${currentPhoto.width / currentPhoto.height}))` : undefined,
+                      aspectRatio: currentPhoto.width && currentPhoto.height ? `${currentPhoto.width} / ${currentPhoto.height}` : undefined,
+                      objectFit: "contain",
+                      borderRadius: "10px",
+                      userSelect: "none",
+                    }}
+                  />
+                )}
                 <img
                   src={previewHasError ? thumbnailUrl : primaryImageUrl}
                   alt={title}
+                  decoding="async"
                   onLoad={() => setIsPreviewLoaded(true)}
                   onError={() => {
                     setPreviewHasError(true);
@@ -1104,7 +1143,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
                     objectFit: "contain",
                     transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
                     transition: isDragging ? "none" : zoom === 1 ? "transform 0.15s ease, opacity 0.25s ease" : "transform 0.08s ease-out",
-                    opacity: isPreviewLoaded ? 1 : 0.4,
+                    // Until it has loaded it sits invisibly over the thumbnail, then fades in.
+                    opacity: isPreviewLoaded ? 1 : 0,
+                    ...(isPreviewLoaded ? {} : { position: "absolute" as const, inset: 0, margin: "auto" }),
                     borderRadius: "10px",
                     cursor: zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default",
                     userSelect: "none",
@@ -1113,8 +1154,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
               </div>
             )}
 
-            {/* Loading Spinner */}
-            {!isPreviewLoaded && (
+            {/* Loading Spinner (videos; a photo shows its thumbnail at once instead) */}
+            {!isPreviewLoaded && isVideo && (
               <div 
                 style={{
                   position: "absolute",

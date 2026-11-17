@@ -404,6 +404,8 @@ async def run_background_optimization():
                     old_preview = resolve_stored_path(row["preview_path"])
                     if old_preview is not None and old_preview.resolve() != result.path.resolve():
                         old_preview.unlink(missing_ok=True)
+                    # A8: the viewer's 2560 px preview now, so the first view is quick too.
+                    await ensure_display_preview(photo_id, to_db_path(result.path), new_hash)
 
                 except Exception as err:
                     logger.warning("Could not enhance photo %s (%s): %s", photo_id, filename, err)
@@ -435,6 +437,33 @@ thumbnail_regen_state = {
 _thumbnail_regen_lock = asyncio.Lock()
 
 
+THUMBNAIL_LONG_EDGE = 1024
+
+
+def _thumbnail_is_current(stored: Optional[str], mime_type: str, photo_long_edge: int) -> bool:
+    """True when the thumbnail exists and is already the current size (only its header is read).
+
+    A video's thumbnail only needs to exist. A photo's must be 1024 px on its long side, or as
+    big as the photo itself when the photo is smaller than that.
+    """
+    from PIL import Image
+
+    from engine.services.media_paths import resolve_stored_path
+
+    path = resolve_stored_path(stored) if stored else None
+    if path is None or not path.is_file():
+        return False
+    if mime_type.startswith("video/"):
+        return True
+    try:
+        with Image.open(path) as im:
+            thumb_long_edge = max(im.size)
+    except Exception:
+        return False
+    wanted = min(THUMBNAIL_LONG_EDGE, photo_long_edge) if photo_long_edge > 0 else THUMBNAIL_LONG_EDGE
+    return thumb_long_edge >= wanted - 2  # Rounding when scaling.
+
+
 async def run_background_thumbnail_regeneration():
     """Iterates through photos in the library and regenerates 512px Retina thumbnails with UnsharpMask."""
     global thumbnail_regen_state
@@ -448,8 +477,8 @@ async def run_background_thumbnail_regeneration():
             try:
                 async with conn.execute(
                     """
-                    SELECT id, filename, filepath, file_hash, thumbnail_path, mime_type, is_encrypted 
-                    FROM photos 
+                    SELECT id, filename, filepath, file_hash, thumbnail_path, mime_type, is_encrypted, width, height
+                    FROM photos
                     WHERE trashed_at IS NULL AND is_encrypted = 0 
                     ORDER BY id ASC;
                     """
@@ -487,6 +516,12 @@ async def run_background_thumbnail_regeneration():
                 try:
                     # Stored paths are relative to the data folder, not the working directory.
                     from engine.services.media_paths import resolve_stored_path, to_db_path
+                    # A8: this runs at every start; rebuilding good thumbnails (decoding every 8K
+                    # photo and every video) kept the CPU busy while the grid was loading.
+                    long_edge = max(row["width"] or 0, row["height"] or 0)
+                    if await asyncio.to_thread(_thumbnail_is_current, row["thumbnail_path"], mime_type, long_edge):
+                        thumbnail_regen_state["completed_count"] += 1
+                        continue
                     target_file = resolve_stored_path(filepath) or Path(filepath)
                     if target_file.exists() and target_file.suffix.lower() != ".enc":
                         is_video = bool(
@@ -783,6 +818,44 @@ async def get_photo_thumbnail(photo_id: int):
     )
 
 
+_preview_locks: Dict[int, asyncio.Lock] = {}
+
+
+async def ensure_display_preview(photo_id: int, stored_path: Optional[str], file_hash: Optional[str]) -> Optional[Path]:
+    """The photo's 2560 px viewer preview, made and recorded on first use. None: show the photo itself.
+
+    Never for vault photos (callers check), never changes the photo.
+    """
+    from engine.services import display_preview
+    from engine.services.media_paths import resolve_stored_path, to_db_path
+
+    source = resolve_stored_path(stored_path) if stored_path else None
+    if source is None or not source.exists():
+        return None
+    dest = display_preview.preview_path_for(settings.previews_dir, photo_id, file_hash)
+    lock = _preview_locks.setdefault(photo_id, asyncio.Lock())
+    async with lock:
+        try:
+            if not dest.exists() and not await asyncio.to_thread(display_preview.make_preview, source, dest):
+                return None
+        except Exception as err:
+            logger.warning("Couldn't make a preview for photo %s: %s", photo_id, err)
+            return None
+        finally:
+            _preview_locks.pop(photo_id, None)
+    conn = await get_db_connection()
+    try:
+        # Only if the photo is still the same file and still outside the vault.
+        await conn.execute(
+            "UPDATE photos SET preview_path = ? WHERE id = ? AND is_encrypted = 0 AND COALESCE(file_hash, '') = COALESCE(?, '');",
+            (to_db_path(dest), photo_id, file_hash),
+        )
+        await conn.commit()
+    finally:
+        await conn.close()
+    return dest
+
+
 @router.get("/{photo_id}/preview")
 async def get_photo_preview(photo_id: int):
     """Streams the display image for Lightbox rendering.
@@ -792,7 +865,9 @@ async def get_photo_preview(photo_id: int):
     """
     conn = await get_db_connection()
     try:
-        async with conn.execute("SELECT preview_path, filepath, mime_type, is_encrypted FROM photos WHERE id = ?;", (photo_id,)) as cursor:
+        async with conn.execute(
+            "SELECT preview_path, filepath, mime_type, is_encrypted, file_hash FROM photos WHERE id = ?;", (photo_id,)
+        ) as cursor:
             row = await cursor.fetchone()
     finally:
         await conn.close()
@@ -810,6 +885,10 @@ async def get_photo_preview(photo_id: int):
         p_prev = raw_prev if raw_prev.is_absolute() else (settings.data_dir / raw_prev)
         if p_prev.exists():
             preview_file = p_prev
+
+    if not preview_file and (row["mime_type"] or "").startswith("image/"):
+        # A8: a 2560 px preview, made once, instead of decoding the 8K photo on every view.
+        preview_file = await ensure_display_preview(photo_id, row["filepath"], row["file_hash"])
 
     if not preview_file:
         preview_file = resolve_media_path(row["filepath"])
