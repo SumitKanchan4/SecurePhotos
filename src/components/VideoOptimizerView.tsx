@@ -12,6 +12,7 @@ import { useAppStore } from "../store/useAppStore";
 import { apiFetch, getThumbnailUrl } from "../services/api";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { formatDuration, formatSize, plural } from "./dashboard/dashFormat";
+import { humanName } from "../utils/displayName";
 
 interface VideoOptimizerViewProps {
   onBack: () => void;
@@ -89,7 +90,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({ onBack, 
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success) {
-        showToast(`Made ${video.filename} smaller. ${formatSize(data.saved_bytes)} freed.`, "success");
+        showToast(`Made the video smaller. ${formatSize(data.saved_bytes)} freed.`, "success");
         await load();
         onRefreshTelemetry?.();
       } else {
@@ -143,7 +144,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({ onBack, 
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success) {
         showToast(
-          `Enhanced ${video.filename} to ${ENHANCE_TARGETS.find((t) => t.value === target)?.label ?? `${target}p`}. The original is in Trash for 30 days.`,
+          `Enhanced the video to ${ENHANCE_TARGETS.find((t) => t.value === target)?.label ?? `${target}p`}. The original is in Trash for 30 days.`,
           "success",
         );
         await load();
@@ -181,7 +182,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({ onBack, 
           )}
         </span>
         <span className="vid-text">
-          <span className="vid-name">{video.filename}</span>
+          <span className="vid-name">{humanName(video.filename) ?? "Video"}</span>
           <span className="dash-muted">
             {plan.action === "compress"
               ? `${formatSize(video.file_size)} now · about ${formatSize(Math.max(0, video.file_size - plan.projected_savings_bytes))} after`
@@ -260,7 +261,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({ onBack, 
                     v,
                     <span className="vid-actions">
                       <select
-                        aria-label={`Enhance ${v.filename} to`}
+                        aria-label={`Enhance ${humanName(v.filename) ?? "video"} to`}
                         className="vid-select"
                         value={targets[v.id] ?? 720}
                         onChange={(e) => setTargets((prev) => ({ ...prev, [v.id]: Number(e.target.value) }))}
@@ -285,7 +286,7 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({ onBack, 
 
       {confirmOne && (
         <ConfirmDialog
-          title={`Make ${confirmOne.filename} smaller?`}
+          title="Make this video smaller?"
           message={`About ${formatSize(confirmOne.optimization_plan.projected_savings_bytes || 0)} will be freed. The original is deleted once the smaller copy has been checked; this can't be undone.`}
           confirmLabel="Make smaller"
           onConfirm={() => {

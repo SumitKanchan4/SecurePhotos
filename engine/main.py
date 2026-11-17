@@ -21,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from engine.config import settings
 from engine.database import run_migrations
 from engine.middleware import LocalIPCSecurityMiddleware
-from engine.api import health, system, photos, vault, stories, people, albums, creatives, trash, duplicates, videos, search, documents, auth
+from engine.api import health, system, photos, vault, stories, people, albums, creatives, trash, duplicates, videos, search, documents, auth, restore
 
 # Configure enterprise structured logging
 logging.basicConfig(
@@ -70,9 +70,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         start_background_scan()
         from engine.services.video_queue_service import start_video_queue_worker
         start_video_queue_worker()
+        # Old-photo improvements (H10): one job at a time on the CPU.
+        from engine.services.restore_queue import start_worker as start_restore_worker
+        start_restore_worker()
+        # A2c: check every old-photo model once (skipped quickly when already verified), so the
+        # viewer knows straight away which improvements need a download.
+        from engine.services.ai_models import check_all_models
+        asyncio.create_task(asyncio.to_thread(check_all_models))
         # One-off: handle video originals left in hidden .trash folders by older versions (R7c2).
         from engine.services.video_leftovers import run_once as clean_up_old_video_originals
         asyncio.create_task(clean_up_old_video_originals())
+
+    # H10: plug in "Add colour" and "Fix faded colours" (the worker runs them; tests use fakes).
+    from engine.services import old_photo_processors
+    old_photo_processors.register()
 
     yield
 
@@ -83,6 +94,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     purge_vault_key()
     from engine.services.video_queue_service import stop_video_queue_worker
     await stop_video_queue_worker()
+    from engine.services.restore_queue import stop_worker as stop_restore_worker
+    await stop_restore_worker()
 
 
 def create_app() -> FastAPI:
@@ -127,6 +140,7 @@ def create_app() -> FastAPI:
     app.include_router(videos.router)
     app.include_router(search.router)
     app.include_router(documents.router)
+    app.include_router(restore.router)
 
     return app
 

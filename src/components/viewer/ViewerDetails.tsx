@@ -8,6 +8,7 @@ import { Check, Copy, ExternalLink, Loader2, Printer, Sparkles, X } from "lucide
 import type { PhotoContext, PhotoItem } from "../../types";
 import { getApiUrl } from "../../services/api";
 import { openExternal } from "../../services/external";
+import { humanName } from "../../utils/displayName";
 import {
   cameraName,
   coordinatesLine,
@@ -123,7 +124,7 @@ export const ViewerDetails: React.FC<ViewerDetailsProps> = ({
       </DetailSection>
 
       <DetailSection label="File">
-        <p className="viewer-value viewer-break">{photo.filename}</p>
+        {humanName(photo.filename) && <p className="viewer-value viewer-break">{humanName(photo.filename)}</p>}
         <button type="button" className="viewer-text-btn" onClick={onCopyPath} title={photo.filepath}>
           {isCopied ? <Check size={13} /> : <Copy size={13} />}
           {isCopied ? "Location copied" : "Copy file location"}

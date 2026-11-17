@@ -10,6 +10,8 @@ import {
   X,
   CheckSquare,
   Search,
+  Sparkles,
+  Copy,
 } from "lucide-react";
 import { SearchPage } from "./components/search/SearchPage";
 import { useBackgroundProgress } from "./hooks/useBackgroundProgress";
@@ -26,12 +28,14 @@ import { VaultUnlockModal } from "./components/VaultUnlockModal";
 import { VaultView } from "./components/VaultView";
 import { StoriesCarousel } from "./components/StoriesCarousel";
 import { StoryPlayerModal } from "./components/StoryPlayerModal";
-import { DashboardView } from "./components/DashboardView";
+import { DashboardView, type DashboardPage } from "./components/DashboardView";
 import { StoriesView } from "./components/StoriesView";
 import { PeopleView } from "./components/PeopleView";
 import { AlbumsView } from "./components/AlbumsView";
 import { DocumentsView } from "./components/DocumentsView";
 import { TrashView } from "./components/TrashView";
+import { ActivityView } from "./components/activity/ActivityView";
+import { buildActivity } from "./components/activity/activityFormat";
 import { SettingsView } from "./components/SettingsView";
 import { CollageModal } from "./components/CollageModal";
 import { AddToAlbumModal } from "./components/AddToAlbumModal";
@@ -82,6 +86,9 @@ export const App: React.FC = () => {
   // The list the open viewer steps through (Photos timeline or Search results), for paging.
   const [viewerSource, setViewerSource] = useState<TimelinePhoto[] | null>(null);
   const hasRegeneratedThumbnailsRef = useRef(false);
+  // A8: a Photos header pill opens its Dashboard page directly ("12 improved", "3 duplicates").
+  const [dashboardPage, setDashboardPage] = useState<DashboardPage | null>(null);
+  const [duplicateGroups, setDuplicateGroups] = useState(0);
   // Load the whole library (not vault, not trash) as compact timeline rows.
   const loadPhotos = async () => {
     try {
@@ -102,6 +109,12 @@ export const App: React.FC = () => {
         if (items.some((p) => !p.is_optimized && !p.is_video)) {
           apiFetch("/api/photos/start-optimization", { method: "POST" }).catch(() => {});
         }
+
+        // A8: the "N duplicates" pill (reads the last check; cheap).
+        apiFetch("/api/duplicates/summary")
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => setDuplicateGroups(Number(d?.total_groups) || 0))
+          .catch(() => {});
       }
     } catch {
       // Backend may be starting or offline
@@ -117,7 +130,7 @@ export const App: React.FC = () => {
   const displayedPhotos = photos;
 
   // Background work for the Photos header (enhancing, preparing videos, importing).
-  const { optimizationProgress, videoProgress, importProgress } = useBackgroundProgress({
+  const { optimizationProgress, videoProgress, importProgress, restoreJobs } = useBackgroundProgress({
     onPhotoEnhanced: (id) => setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, is_optimized: true, is_enhanced: true } : p))),
     onBatchFinished: () => loadPhotos(),
   });
@@ -442,31 +455,64 @@ export const App: React.FC = () => {
     }
   };
 
-  // One plain-language line for background work, shown next to the Photos title.
-  const libraryActivity: { text: string; title?: string } | null = importProgress?.is_active
-    ? {
-        text: importProgress.album_name
-          ? `Adding to "${importProgress.album_name}" (${importProgress.completed_count} of ${importProgress.total_count})`
-          : `Importing (${importProgress.completed_count} of ${importProgress.total_count})`,
-        title: importProgress.current_filename ? `Importing: ${importProgress.current_filename}` : undefined,
+  // H10 / A4: everything working in the background, for the Activity page, the header pill
+  // and the rail's status ring.
+  const activity = useMemo(
+    () => buildActivity({ restore: restoreJobs, enhance: optimizationProgress, video: videoProgress, importing: importProgress }),
+    [restoreJobs, optimizationProgress, videoProgress, importProgress],
+  );
+  const setActivitySummary = useAppStore((s) => s.setActivitySummary);
+  useEffect(() => {
+    const { remaining, paused, headline } = activity;
+    setActivitySummary(remaining > 0 || paused || headline ? { remaining, paused, headline } : null);
+  }, [activity, setActivitySummary]);
+
+  const openDashboardPage = (page: DashboardPage) => {
+    setDashboardPage(page);
+    setActiveTab("dashboard");
+  };
+  // Any other way to the Dashboard (the rail) starts on its overview.
+  useEffect(() => {
+    if (activeTab !== "dashboard") setDashboardPage(null);
+  }, [activeTab]);
+
+  // A8: the library shows one tile per improved pair. The viewer's Original / Improved switch
+  // swaps the other member of the stack into the current photo's place.
+  const showVersionInViewer = async (photoId: number) => {
+    const at = lightboxIndex;
+    if (at === null) return;
+    try {
+      const res = await apiFetch(`/api/photos/details?ids=${photoId}`);
+      const details: PhotoItem[] = res.ok ? await res.json() : [];
+      if (!details.length) return;
+      setLightboxPhotos((prev) => (prev ? prev.map((p, i) => (i === at ? details[0] : p)) : prev));
+    } catch {
+      showToast("Couldn't open the other version. Please try again.", "warning");
+    }
+  };
+
+  // Opens one photo from Activity. Vault photos open in the Private Vault (they need it unlocked).
+  const openPhotoById = async (photoId: number, isPrivate?: boolean) => {
+    if (isPrivate) {
+      setActiveTab("vault");
+      return;
+    }
+    try {
+      const res = await apiFetch(`/api/photos/details?ids=${photoId}`);
+      const details: PhotoItem[] = res.ok ? await res.json() : [];
+      if (!details.length) {
+        showToast("This photo is no longer in your library.", "info");
+        return;
       }
-    : videoProgress?.is_active
-    ? {
-        text: videoProgress.total_count > 1
-          ? `Preparing videos (${videoProgress.completed_count + 1} of ${videoProgress.total_count})`
-          : "Preparing a video",
-        title: videoProgress.active_filename ? `Processing: ${videoProgress.active_filename}` : undefined,
-      }
-    : optimizationProgress?.is_active
-    ? {
-        text: optimizationProgress.paused_reason === "on_battery"
-          ? `Enhancing paused on battery (${optimizationProgress.completed_count} of ${optimizationProgress.total_count} done)`
-          : optimizationProgress.completed_count >= optimizationProgress.total_count
-          ? `Finishing enhancements (${optimizationProgress.completed_count} of ${optimizationProgress.total_count})`
-          : `Enhancing photos (${optimizationProgress.completed_count + 1} of ${optimizationProgress.total_count})`,
-        title: optimizationProgress.active_filename ? `Processing: ${optimizationProgress.active_filename}` : undefined,
-      }
-    : null;
+      setLightboxPhotos(details);
+      setLightboxIndex(0);
+      setViewerWindowStart(null);
+      setViewerSource(null);
+    } catch {
+      showToast("Couldn't open this photo. Please try again.", "warning");
+    }
+  };
+  const postQuietly = (path: string) => apiFetch(path, { method: "POST" }).catch(() => null);
 
   const selectedPhotosList = useMemo(
     () => photos.filter((p) => selectedPhotoIds.has(p.id)),
@@ -517,12 +563,19 @@ export const App: React.FC = () => {
         >
           {activeTab === "dashboard" ? (
             /* System & Storage Telemetry Dashboard */
-            <DashboardView 
+            <DashboardView
               onNavigate={(tab) => setActiveTab(tab)}
               onPhotoClick={(idx, customPhotos) => {
                 setLightboxPhotos(customPhotos);
                 setLightboxIndex(idx);
               }}
+              initialPage={dashboardPage ?? "overview"}
+              backTo={dashboardPage ? { label: "Photos", onBack: () => { setDashboardPage(null); setActiveTab("photos"); } } : undefined}
+              onOpenPhoto={(id) => void openPhotoById(id)}
+              onLibraryChanged={() => {
+                loadPhotos();
+              }}
+              choicesTotal={activity.choicesTotal}
             />
           ) : activeTab === "vault" ? (
             /* Dedicated Zero-Trust Private Vault Gallery */
@@ -573,6 +626,24 @@ export const App: React.FC = () => {
                 }));
                 setLightboxPhotos(photoItems);
                 setLightboxIndex(idx);
+              }}
+            />
+          ) : activeTab === "activity" ? (
+            <ActivityView
+              model={activity}
+              onOpenPhoto={(id) => {
+                const item = [...activity.ready, ...activity.attention].find((i) => i.photoId === id);
+                void openPhotoById(id, item?.private);
+              }}
+              onCancelJob={(id) => void postQuietly(`/api/restore/jobs/${id}/cancel`)}
+              onStopImport={() => void postQuietly("/api/photos/import/cancel")}
+              onPauseAll={() => {
+                void postQuietly("/api/restore/pause");
+                void postQuietly("/api/system/optimization/pause");
+              }}
+              onResumeAll={() => {
+                void postQuietly("/api/restore/resume");
+                void postQuietly("/api/system/optimization/resume");
               }}
             />
           ) : activeTab === "trash" ? (
@@ -627,11 +698,15 @@ export const App: React.FC = () => {
                 <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
                   {`${displayedPhotos.length.toLocaleString()} ${displayedPhotos.length === 1 ? "photo" : "photos"}`}
                 </span>
-                {libraryActivity && (
-                  <span
-                    title={libraryActivity.title}
-                    role="status"
+                {activity.headline && (
+                  <button
+                    type="button"
+                    className="clickable"
+                    title="Open Activity"
+                    aria-label={`${activity.headline}. Open Activity`}
+                    onClick={() => setActiveTab("activity")}
                     style={{
+                      cursor: "pointer",
                       display: "inline-flex",
                       alignItems: "center",
                       gap: "6px",
@@ -648,9 +723,31 @@ export const App: React.FC = () => {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    <Loader2 size={12} className="spin" style={{ flexShrink: 0 }} />
-                    {libraryActivity.text}
-                  </span>
+                    {activity.remaining > 0 && !activity.paused && <Loader2 size={12} className="spin" style={{ flexShrink: 0 }} />}
+                    {activity.headline} ›
+                  </button>
+                )}
+                {activity.choicesTotal > 0 && (
+                  <button
+                    type="button"
+                    className="photos-pill"
+                    title="Photos improved automatically: choose what to keep"
+                    aria-label={`${activity.choicesTotal} improved photos: choose what to keep`}
+                    onClick={() => openDashboardPage("keep")}
+                  >
+                    <Sparkles size={12} /> {activity.choicesTotal.toLocaleString()} improved
+                  </button>
+                )}
+                {duplicateGroups > 0 && (
+                  <button
+                    type="button"
+                    className="photos-pill"
+                    title="Copies and near-identical shots: review duplicates"
+                    aria-label={`${duplicateGroups} groups of duplicates: review them`}
+                    onClick={() => openDashboardPage("duplicates")}
+                  >
+                    <Copy size={12} /> {duplicateGroups.toLocaleString()} {duplicateGroups === 1 ? "duplicate" : "duplicates"}
+                  </button>
                 )}
 
                 <div style={{ flex: 1 }} />
@@ -1056,6 +1153,8 @@ export const App: React.FC = () => {
         }}
         onToggleFavorite={handleToggleFavorite}
         isDocumentView={activeTab === "documents"}
+        onLibraryChanged={() => loadPhotos()}
+        onShowVersion={(photoId) => void showVersionInViewer(photoId)}
         onTogglePin={handleTogglePin}
         onUnlockRequest={(action) => {
           if (action) {

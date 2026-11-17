@@ -10,6 +10,7 @@ import type { PhotoItem, TimelinePhoto, TimelineResponse } from "../types";
 export const FLAG_FAVORITE = 1;
 export const FLAG_OPTIMIZED = 2;
 export const FLAG_ENHANCED = 4;
+export const FLAG_AI = 8; // H10: an improved copy (colour, faces...).
 
 export function parseTimeline(data: TimelineResponse): TimelinePhoto[] {
   return data.items.map(([id, takenAt, width, height, kind, flags]) => ({
@@ -21,6 +22,7 @@ export function parseTimeline(data: TimelineResponse): TimelinePhoto[] {
     is_favorite: (flags & FLAG_FAVORITE) !== 0,
     is_optimized: (flags & FLAG_OPTIMIZED) !== 0,
     is_enhanced: (flags & FLAG_ENHANCED) !== 0,
+    is_ai: (flags & FLAG_AI) !== 0,
   }));
 }
 

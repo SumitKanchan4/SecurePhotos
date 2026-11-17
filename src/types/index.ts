@@ -47,6 +47,10 @@ export interface PhotoItem {
   duration?: number;
   is_optimized: boolean;
   is_enhanced: boolean;
+  /** H10: set on an improved copy; points to its original. */
+  derived_from_id?: number | null;
+  /** H10: what was improved ('colour', 'fade', 'faces', 'scratches', comma-joined). */
+  ai_kind?: string | null;
   caption?: string;
   content_tags?: string;
   is_document?: boolean;
@@ -68,6 +72,8 @@ export interface TimelinePhoto {
   is_favorite: boolean;
   is_optimized: boolean;
   is_enhanced: boolean;
+  /** H10: an improved copy made with AI (grid shows the "AI" badge). */
+  is_ai?: boolean;
 }
 
 /** /api/photos/timeline: rows are [id, taken_at, width, height, "p" | "v", flags]. */

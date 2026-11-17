@@ -251,7 +251,41 @@ def run_preflight_checks() -> bool:
         return False
     print("  [+] All Python tests passed successfully")
 
+    # H10: users download the old-photo models from this repo's Release; while the repo
+    # is private (or a file is missing) those downloads would fail for everyone.
+    print("  -> Checking that the old-photo models can be downloaded without a login...")
+    unreachable = check_on_demand_models_public()
+    if unreachable:
+        print("  [!] These model files can't be downloaded anonymously (repo private, or not uploaded to the models-v1 Release):")
+        for url in unreachable:
+            print(f"      {url}")
+        return False
+    print("  [+] Old-photo models are downloadable")
+
     return True
+
+
+def check_on_demand_models_public(opener=None) -> list:
+    """Returns the on-demand model URLs that an anonymous user can't fetch (empty = all fine).
+
+    Sends a HEAD request without any GitHub credentials, as a user's app would.
+    """
+    import urllib.request
+
+    sys.path.insert(0, str(ROOT_DIR))
+    from engine.services.ai_models import ON_DEMAND_MODELS
+
+    opener = opener or urllib.request.build_opener()
+    failed = []
+    for spec in ON_DEMAND_MODELS.values():
+        req = urllib.request.Request(spec["url"], method="HEAD", headers={"User-Agent": "SecurePhotos"})
+        try:
+            with opener.open(req, timeout=30) as resp:
+                if resp.status != 200:
+                    failed.append(spec["url"])
+        except Exception:
+            failed.append(spec["url"])
+    return failed
 
 
 def execute_git_release(new_ver: str, branch: str, dry_run: bool = False) -> bool:

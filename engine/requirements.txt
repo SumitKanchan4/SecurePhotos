@@ -32,7 +32,10 @@ numpy==2.5.2
     # via
     #   -r engine/requirements.in
     #   onnxruntime
+    #   opencv-python-headless
 onnxruntime==1.29.0
+    # via -r engine/requirements.in
+opencv-python-headless==5.0.0.93
     # via -r engine/requirements.in
 packaging==26.3
     # via onnxruntime

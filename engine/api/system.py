@@ -506,17 +506,21 @@ async def get_optimization_status() -> MediaOptimizationStatus:
 
 @router.post("/optimization/pause", status_code=status.HTTP_200_OK)
 async def pause_optimization():
-    """Pauses background video and media transcoding."""
+    """Pauses background video and media transcoding, and photo enhancement (A4)."""
+    from engine.api.photos import pause_enhancement
     from engine.services.video_queue_service import pause_video_queue
     pause_video_queue()
+    pause_enhancement(True)
     return {"status": "paused"}
 
 
 @router.post("/optimization/resume", status_code=status.HTTP_200_OK)
 async def resume_optimization():
     """Resumes background video and media transcoding."""
+    from engine.api.photos import pause_enhancement
     from engine.services.video_queue_service import resume_video_queue, start_video_queue_worker
     resume_video_queue()
+    pause_enhancement(False)
     start_video_queue_worker()
     return {"status": "running"}
 
@@ -558,9 +562,17 @@ DEFAULT_APP_SETTINGS: Dict[str, Any] = {
     "auto_lock_duration": 300,
     "quality_crf": 18,
     "pause_on_battery": True,
+    "battery_pause_below": 20,       # Pause only below this charge; 100 = whenever on battery.
     "face_clustering": True,
     "ambient_music": True,
     "ken_burns_motion": True,
+    # H10 Settings › Old photos: "ask" (only when I ask) or "auto" per improvement.
+    "old_photos_colour": "ask",
+    "old_photos_fade": "ask",
+    "old_photos_faces": "ask",
+    "old_photos_scratches": "ask",
+    "old_photos_keep_original": True,   # Off: the original goes to Trash for 30 days.
+    "old_photos_keep_choice": "ask",    # "Remember my choice": "ask" | "keep_both" | "replace".
 }
 
 

@@ -6069,3 +6069,219 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 - `engine/database.py` (`db_connection`), `engine/api/vault.py` (`_VAULT_PHOTO_COLUMNS`, `_vault_photo_dict`, `list_vault_album_photos`, `list_vault_photos`).
 - Tests: `engine/tests/test_key_handling.py` (+1: a vault photo's sealed details are decrypted once and fill latitude, longitude and document text). Mutation check: going back to a second decryption fails it. Vault and key-handling tests (53) and the engine suite pass; ruff passes.
 
+
+## 149. Old Photos, Step A2a: Downloadable Models and the Improvement Queue (H10)
+
+### Functionality Overview (no visible change yet)
+- Foundation for improving old photos (add colour, fix faded colours, sharpen faces, remove scratches). The viewer panel (A3) and the Activity screen (A4) build on it.
+- **Models on demand:** three ONNX files (DDColor large and artistic, GFPGAN v1.4; ~2.3 GB) are not in the installer. They are downloaded from this repo's Release `models-v1` the first time they are needed, with progress and cancel, or imported from a file the user picks (recognised by checksum, not name). A file that doesn't match its pinned SHA-256 is never loaded.
+- **One DDColor file for both styles:** exported with a variable input size, it gives the same output as the fixed 512 and 768 exports (max difference 0.0003) at the same speed, so Natural and Vivid share one ~1 GB download.
+- **Queue:** one job at a time on the CPU; only one large model in memory (A0 peak with all loaded: 7.3 GB); jobs that use the loaded model go first; photos the user asked for go before automatic ones; automatic jobs wait while on battery, requested ones don't; pause / resume; cancel at any point; a crash puts unfinished jobs back in the queue and removes stray files.
+- **Vault photos:** processed only while the vault is open, decrypted in memory only, result written encrypted; if the vault locks during a job, the result is dropped and the job waits for the next unlock. The Activity list marks them private (no file name).
+
+### Functional Decision Points & Rationale
+- **Hosting (owner, 2026-11-16):** Release attachments of this repo, not git (100 MB file limit) or Git LFS (~1 GB free quota). The repo stays private until it is stable, so `scripts/create_release.py` refuses to release while any model URL needs a login; meanwhile testing uses "import from file".
+- **Rebuildable:** `scripts/model_export/` rebuilds the three files from the upstream code (pinned commits) and official weights; with the recorded tool versions they come out byte-identical (checked).
+- **Manual before automatic, battery only holds automatic work:** a photo the user explicitly asked to improve shouldn't wait for the charger.
+- **Licensing finding (decided):** GFPGAN's licence is Apache-2.0 except for third-party parts; its StyleGAN2 code carries NVIDIA's non-commercial licence. The exported model uses only the "clean" pure-PyTorch architecture (no NVIDIA CUDA code), but the licence doesn't say whether the NVIDIA terms still apply. Recorded in THIRD_PARTY_NOTICES. Owner decision (2026-11-16): keep GFPGAN with this note; revisit before the app is ever sold or the repo goes public.
+
+### Technical Touchpoints
+- `engine/services/ai_models.py` (`ON_DEMAND_MODELS`, `fetch_on_demand`, `is_model_ready` with a (size, mtime) cache, `model_path`, `import_model_file`, download progress / cancel), `engine/services/onnx_sessions.py` (new), `engine/services/restore_queue.py` (new; processors plug in with `register_processor`), `engine/api/restore.py` (new: `/api/restore/jobs`, cancel, pause / resume, `/models`, download, import), `engine/main.py` (router + worker start / stop), `engine/database.py` + `docs/database_schema.md` (`restore_jobs`), `scripts/create_release.py` (model URL gate), `scripts/model_export/`, THIRD_PARTY_NOTICES.md.
+- Tests: `engine/tests/test_restore_queue.py` (17, fake processor), `engine/tests/test_ai_models.py` (+8). Mutation checks: 12 deliberate breaks (vault filter, plain-text vault result, battery rule, discard, vault lock mid-job and mid-save, stray files, private names, checksum, cache, partial download, model reload) are each caught. Engine suite passes; ruff passes.
+
+### State & Lifecycle Impact
+- New table only; existing libraries get it on start (`CREATE TABLE IF NOT EXISTS`). New folder `data/restore_staging`. Nothing changes for existing photos until A2b / A3.
+
+## 150. Old Photos, Step A2b: Improved Copies Linked to Their Originals (H10)
+
+### Functionality Overview (engine; the viewer UI comes in A3)
+- After the user has seen a result, they choose **Keep both**, **Replace the photo** or **Discard** (optionally "Remember my choice"). Automatic jobs don't ask: the "Keep original" setting decides (on = keep both, off = replace).
+- An improved copy is its own photo linked to the original (`derived_from_id`, `ai_kind`, `ai_params`, `edited_at`). It keeps the original's date, place, camera, caption, favourite, albums (same date added) and named faces, so it sits right after the original in Photos, albums, search, the vault and person pages.
+- **Replace** moves the original to Trash for 30 days, still linked; **Restore original** brings it back (both then kept). Nothing is deleted on the spot.
+- **Vault photos:** the copy is created encrypted in the vault (file and thumbnail), its sealed details re-sealed for the new photo; nothing is written in plain form; keeping needs the vault open.
+- **Counted once:** People, Stories and the duplicate finder treat an original and its copies as one photo (the newest copy), so a person's count doesn't double and the duplicate finder can't offer either half for Trash.
+- **Labelled:** the copy is AVIF with the original's EXIF and colour profile plus IPTC `DigitalSourceType` in XMP (`compositeWithTrainedAlgorithmicMedia`; the non-AI faded-colour fix alone is `algorithmicallyEnhanced`). Photo responses carry `derived_from_id` and `ai_kind`; timeline rows flag AI copies (8) for the badge.
+
+### Functional Decision Points & Rationale
+- **Owner decisions (2026-11-16):** same metadata as the original so the pair is side by side; "Keep original" off sends the original to Trash for 30 days (like Enhance), not an immediate delete; the question comes after the result is shown.
+- **Links always point to the first original:** improving an improved photo adds up its kinds (`colour,faces`) and keeps one family, so the viewer's Original / Improved switch stays simple.
+- **Duplicate finder sees one member per family:** excluding only the pair wasn't enough (a third look-alike joined both into one group).
+- **Per-photo actions are not filtered:** People queries that act on one specific photo (the viewer) still see an original's faces.
+
+### Technical Touchpoints
+- New `engine/services/photo_versions.py` (`create_version`, `encode_version`, `versions_of`, `restore_original`, `pair_order`, `not_superseded`); `engine/services/restore_queue.py` (`keep_result`, auto-apply, status `discarded`); `engine/api/restore.py` (`/jobs/{id}/keep`, `/photos/{id}/versions`, `/photos/{id}/restore-original`); `engine/database.py` (photos columns + index, one-time add); `engine/api/system.py` (old-photo settings defaults); ordering in `api/photos.py`, `api/albums.py`, `api/vault.py`, `api/search.py`; pair-as-one in `api/people.py`, `services/stories_service.py`, `services/duplicate_service.py`; `docs/database_schema.md`.
+- Tests: `engine/tests/test_photo_versions.py` (15). Mutation checks: 14 deliberate breaks (plain vault copy, replace without Trash, metadata, album date, order, people count, duplicates, re-sealing, Keep original switch, AI label, first-original link, faded-fix label, Stories, faces) are each caught. Engine suite (308) and ruff pass.
+
+### State & Lifecycle Impact
+- Existing libraries get four nullable columns and an index on start; nothing changes for existing photos. Deleting an original for good (Trash after 30 days) unlinks its copies (`ON DELETE SET NULL`); the copies stay.
+
+## 151. Old Photos, Step A3: Add Colour and Fix Faded Colours in the Viewer (H10)
+
+### Functionality Overview
+- The viewer gets a "…" button that offers only what fits the photo: **Add colour** (black-and-white or sepia photos) or **Fix faded colours** (colour photos with a yellow cast or fading). Nothing else changes in the viewer until one is picked.
+- While it works, the date line reads "Adding colour · 45%"; it keeps running if the user looks at other photos or closes the viewer (the result is picked up again when the photo is reopened).
+- The result appears over the photo with a draggable before/after divider, and a side panel: Natural / Vivid (colour only), Strength, and "Keep this…". The dialog offers **Keep both** (default) or **Replace the photo** (the original goes to Trash for 30 days), plus Discard and "Remember my choice"; a remembered choice turns the button into "Keep both" / "Replace the photo" directly.
+- A photo with an improved copy shows **Original / Improved** in the top bar; improved copies carry a lime **AI** badge in the grid.
+- The first use downloads the models once (~2 GB) with a progress bar.
+
+### Functional Decision Points & Rationale
+- **Recipes** are the ones the owner approved on their own photos (A0): Natural = recipe F, Vivid = 768 px, automatic Vivid try for photos that stay sepia; Fix faded colours = recipe Q (no AI).
+- **"Black-and-white" means one uniform tint** (Lab a/b spread), not low saturation: a strongly toned sepia print failed the old rule in the browser test. On the owner's 19 photos the new rule picks exactly the 11 grey ones with a wide margin.
+- **Contrast stretch capped at 2.5x** around the photo's mid-tone: a nearly flat image turned black; the owner's prints need 1.3-1.4x, so their results are unchanged.
+- **Strength = mix with the original**, shown instantly as the result's opacity over the photo and applied the same way when kept.
+- **Natural / Vivid re-runs** the colouring (about 13 s for Vivid) rather than caching both; the result waiting for a decision is replaced.
+- **One request per opened photo** (`/state`) for the menu, the switch and any open job, so moving through photos stays light.
+- **Keyboard:** the viewer ignores its shortcuts while a dialog is on top (Esc closes only the dialog) or while a slider/checkbox/field has focus (arrows used to switch photos while adjusting Strength).
+
+### Technical Touchpoints
+- Engine: `engine/services/old_photo_processors.py` (new; `register()` in `engine/main.py`), `engine/api/restore.py` (`/photos/{id}/state`, `/photos/{id}/options`, `/jobs/{id}/result`, `intensity` on keep), `engine/services/restore_queue.py` (`keep_result(..., intensity)`).
+- Frontend: `src/components/viewer/useOldPhoto.ts`, `src/components/viewer/OldPhotoPanel.tsx` (ImproveMenu, VersionSwitch, BeforeAfter, OldPhotoPanel, KeepDialog), `src/components/Lightbox.tsx` (wiring, key guard, `onLibraryChanged`), `src/App.tsx`, `src/components/photos/PhotoTimeline.tsx` + `src/utils/photoTimeline.ts` (AI badge, flag 8), `src/types/index.ts`, `src/index.css` (`.viewer-segment`, `.ba-*`, `.op-*`, `.timeline-ai`), `docs/design_system.md`.
+- Tests: `engine/tests/test_old_photo_processors.py` (12, fake models), `engine/tests/test_photo_versions.py` (+4), `src/components/viewer/oldPhoto.test.tsx` (10), timeline and Lightbox tests updated. Mutation checks: 17 deliberate breaks each caught (after strengthening five weak tests). Engine 323, frontend 156, ruff and tsc pass. Browser check on a throwaway library in both themes (menu, progress, before/after, panel, dialog, Keep both, grid badge, Original / Improved switch); contrast checks clean.
+
+### State & Lifecycle Impact
+- No schema change. Results waiting for a decision survive a restart (A2a). The models are fetched once into `data/models`; "import from file" exists in the API but has no button yet (needs Tauri's file dialog).
+
+## 152. Old Photos, Step A4: Activity (H10)
+
+### Functionality Overview
+- **Activity** is one page for all background work: importing, enhancing photos, preparing videos, old-photo improvements and the one-time model download. Header: "1 working · 4 waiting" and **Pause all** / **Resume**.
+- Sections: **Working now** (thumbnail, what is being done, which photo, progress bar, Cancel; Stop import for an import), **Waiting** (tiles with Cancel), **Ready to look at** (results waiting for Keep both / Replace / Discard, with Open), **Finished today** (what happened: "Colour added", "Not kept", "Cancelled", "Needs a download"; Open shows the kept copy).
+- **Vault photos** appear as a striped tile with a lock and no file name; opening one goes to the Private Vault.
+- **Reaching it** (board decision D3): no rail item. The rail's status dot becomes a turning lime ring with the number of items left (dashed when paused) and opens Activity; the Photos header pill now reads e.g. "Adding colour · 5 items left ›" and opens Activity too. When nothing runs, the rail shows the usual status dot.
+- **Pause all** now also pauses photo enhancement (before, only video preparation could be paused). Work pauses after the current item; nothing is lost.
+- When an automatic job keeps an improved copy, the library reloads once so the copy appears.
+
+### Functional Decision Points & Rationale
+- One model (`buildActivity`) feeds the page, the header pill and the rail, so they never disagree.
+- "Items left" counts imports, enhancements, videos and old-photo jobs still to do; results waiting for a decision are not "left" (they are "ready to look at").
+- The pill replaced the older Photos-only status line (it covered imports, enhancing and videos) so every kind of work reads the same way.
+- On the active (filled) rail button the ring and count take the button's text colour; otherwise the ring was invisible on lime (dark) and the count black on black (light).
+
+### Technical Touchpoints
+- New: `src/components/activity/activityFormat.ts`, `src/components/activity/ActivityView.tsx`, `src/components/activity/activity.test.tsx`, `engine/tests/test_activity_pause.py`.
+- Changed: `src/App.tsx` (Activity tab, model, pill, open photo), `src/components/shell/IconRail.tsx` (ring), `src/store/useAppStore.ts` (`activity` tab, `activitySummary`), `src/hooks/useBackgroundProgress.ts` (polls `/api/restore/jobs`; tolerant of odd answers; reload when a copy is kept), `src/index.css` (`.rail-ring`, `.act-*`), `engine/api/photos.py` (`pause_enhancement`, `_wait_while_paused_by_user`), `engine/api/system.py` (pause / resume also cover enhancement), `docs/design_system.md`.
+- Tests: frontend 168 (Activity 11, hook +1), engine 325 (+2). Mutation checks: 10 deliberate breaks each caught. Browser check on a throwaway library in both themes with five real jobs (one on a vault photo): pill, ring, page, Pause all / Resume, Cancel, Finished today; contrast clean; ring checked on the active button in both themes.
+
+### State & Lifecycle Impact
+- No schema change. The enhancement pause lives in memory: a restart resumes work (the queue's own pause also resets on restart).
+
+## 153. Old Photos, Step A2c: Models With the Installer (H10)
+
+### Functionality Overview
+- **The installer downloads the old-photo models** (Add colour, its second pass, Sharpen faces; about 2.3 GB) after it copies the app, on install and on every upgrade. A model already in place and verified is skipped. If a download fails (offline, or the release isn't public yet), the install still completes and shows each model's status: ready / already up to date / couldn't download (the app will ask later). Silent and passive installs (updates) skip the message box.
+- **In the app:** an action whose model is missing shows a lock and "Needs a one-time download · 1.0 GB" in the viewer's "…" menu. Choosing it opens a popup, "Add colour needs a one-time download", that downloads right there with a progress bar ("1.0 GB of 2.0 GB"), Cancel download and Keep browsing (it carries on in Activity). When it finishes, the action starts. If it fails: "Couldn't download it. Check your internet connection and try again." with Try again.
+- **Not now** locks only the actions that need that model; pressing one shows the popup again. Everything else (import, browsing, the vault, People, albums, Stories, enhancing, Fix faded colours) keeps working.
+- **Only our models:** "import from file" is gone. A model is used only if it is the exact pinned file (SHA-256).
+- An interrupted download continues where it stopped next time.
+
+### Functional Decision Points & Rationale
+- Owner decisions (2026-11-16/17): models with the installer, not on first use; only our own models; when one is missing, lock only the features that need it (the owner first suggested a view-only app; agreed on feature-level locking after discussion); the popup itself downloads.
+- The installer runs the engine itself (`--fetch-models`) instead of an NSIS download plugin: the same tested code (HTTPS, SHA-256, resume) and no extra plugin.
+- The queue never downloads on its own (no surprise 2 GB downloads from automatic rules); a job whose model is missing fails with "Needs a download".
+- Verified files are remembered next to them (`verified.json`), so starts and upgrades don't re-hash 2.3 GB; a stamp is only trusted for the same size, time and checksum.
+
+### Technical Touchpoints
+- New: `engine/services/model_installer.py`.
+- Changed: `engine/services/ai_models.py` (both folders, `find_model`, `missing_models`, `download_size`, resume, `verified.json`, `check_all_models`; `import_model_file` removed), `engine/services/restore_queue.py` (`models_for`, `missing_for`, `download_models` with overall progress and `download_result`; no downloads from the worker), `engine/api/restore.py` (409 `models_missing`, `downloads` in `/state`, `/models/download {kind}`, `result` in `/models`; `/models/import` removed), `engine/main.py` (model check at start), `run_engine.py` (`--fetch-models` before the server loads), `scripts/build-engine.py`, `src-tauri/nsis-hooks.nsh`, `src/components/viewer/useOldPhoto.ts`, `src/components/viewer/OldPhotoPanel.tsx` (`ModelDialog`, locked menu items), `src/components/Lightbox.tsx`, `src/index.css`, `THIRD_PARTY_NOTICES.md`, `docs/design_system.md`.
+- Tests: engine 339 (+14: resume, range ignored, network drop, damaged file, remembered check, foreign stamp, app folder, installer statuses / library elsewhere / never fails, launcher and hook, queue never downloads, overall progress, failed / cancelled, 409 and per-action download), frontend 171 (+3). Mutation checks: 10 deliberate breaks each caught. The installer hook compiles with Tauri's NSIS; the real `--fetch-models` run: release answers 404 while the repo is private → three "couldn't download" lines, exit 0; on a library that has the models → "already up to date", a second run in 0.9 s. Browser check in both themes on a throwaway library with one colour model hidden: lock in the menu, popup, failed download, Not now, no job queued, contrast clean.
+- Fixed on the way: the old-photo dialogs were 920px wide (the general dialog width overrode `.op-dialog`).
+
+### State & Lifecycle Impact
+- No schema change. New files next to the models: `verified.json` and, after an install, `install_status.txt`. Models stay with the data folder on uninstall, like the library.
+
+## 154. Old Photos, Step A5: Sharpen Faces (H10)
+
+### Functionality Overview
+- **Sharpen faces** in the viewer's "…" menu for photos with faces ("Clearer faces in blurry or old photos"). Each face is lined up, sharpened by GFPGAN v1.4 and pasted back softly at 80% (the recipe the owner approved in A0).
+- **Identity check:** each sharpened face is compared with the original by the app's face recogniser; one that no longer looks like the same person (likeness below 0.45) is left as it was.
+- **Per-face switch:** in the result every face has an outline (lime = sharpened, white dashed = switched off, grey dotted = left by the identity check). Clicking a face keeps it as it was; the preview and the kept copy follow. The panel's "Faces" section says what happened ("2 faces sharpened · 1 switched off · 1 left as it was (no longer looked like the same person)").
+- **Fix faded colours** now also sharpens faces when the face model is on the computer (recipe R). Without it the colour fix still runs and the panel offers **Also sharpen faces** (download popup, then the fix runs again).
+- Everything else is as for the other improvements: queue, Activity, result first, Keep both / Replace / Discard, vault photos stay encrypted, copies linked to the original and labelled as AI-made.
+
+### Functional Decision Points & Rationale
+- Owner (2026-11-17), from a local comparison page of their own faces grouped by likeness: below 0.45 left as it was, otherwise 80%; no half-way 50% (looked like a ghosted double image). Large faces scored 0.70-0.93; tiny or motion-blurred ones 0.2-0.45, where GFPGAN invents a face.
+- Owner (2026-11-17): Fix faded colours is never locked; faces are added only when the model is there.
+- Switching a face off rebuilds the result from the stored sharpened faces instead of putting old pixels back, because in group photos the soft edges of neighbouring faces overlap.
+- A faded-colour fix with sharpened faces is labelled AI-made (`fade,faces`); with every face switched off it stays an enhancement (`fade`).
+
+### Technical Touchpoints
+- New: `engine/services/face_sharpen.py`, `engine/tests/test_face_sharpen.py`.
+- Changed: `engine/services/old_photo_processors.py` (`sharpen`, recipe R in `fade`, `without_faces`, `kinds_kept`, "faces" registered), `engine/services/restore_queue.py` (`Outcome` with info + extra file, `result_info`, vault info in memory only, `result_image`, `faces_off` on keep, clean-up of `.faces` files), `engine/services/photo_versions.py` (`merged_kinds` accepts "fade,faces"), `engine/api/restore.py` (faces option from the thumbnail, `faces_off` on keep and on `/jobs/{id}/result`), `engine/database.py` (`restore_jobs.result_info`), `engine/requirements.in` / `.txt` / `requirements-dev.txt` (OpenCV pinned; it was used since A3 but missing), `src/components/viewer/useOldPhoto.ts`, `src/components/viewer/OldPhotoPanel.tsx` (menu item, face outlines, Faces section, Also sharpen faces), `src/components/Lightbox.tsx`, `src/index.css` (`.ba-face`), docs.
+- Tests: engine 351 (+12 face tests), frontend 174 (+3). Mutation checks: 13 deliberate breaks each caught. Real GFPGAN on the owner's 19 photos (read only, checksums verified; numbers only): 143 faces, ~2 s per face, rebuild exact. Browser check with real models on a throwaway library (a public-domain NASA portrait made old, two faces) in both themes: menu, outlines, switch and preview, keep with one face off (`faces`), recipe R, Also sharpen faces with the model hidden; no console errors.
+
+### State & Lifecycle Impact
+- New column `restore_jobs.result_info` (migration adds it). Staged `job_N.faces` files live and die with their result (keep, discard, cancel, restart clean-up).
+
+## 155. Old Photos, Step A6: Automatic Rules and Settings → Old Photos (H10)
+
+### Functionality Overview
+- **Settings → Photos & AI → Old photos** ("Make old photos look better."): Add colour to old grey photos, Fix faded or yellowed colours, Sharpen blurry faces — each **When I ask** (default) or **Automatically**, with a small before → after picture; and **Keep original** (on: both kept and linked; off: the original goes to Trash for 30 days once the improved photo is ready). Remove scratches and spots joins with A7.
+- **Automatically** works on new photos after import, in the background, after anything the user asked for, waiting while the laptop is on battery; progress in Activity. The result is kept by the Keep original switch.
+- **Only scans of prints:** photos with no camera exposure data (how PhotoScan and scanner images look). Photos taken with a phone or camera are never changed automatically; they can still be improved from the viewer.
+- One improved copy per photo: when faces are Automatic too, a grey scan gets colour and sharper faces in one job ("colour,faces"); a colour scan its faded colours fixed and sharper faces ("fade,faces").
+
+### Functional Decision Points & Rationale
+- Owner (2026-11-17): automatic work only on scans of prints, so a black-and-white photo taken on purpose with a phone isn't coloured and phone portraits aren't "sharpened". Signal checked on the owner's scans: none carries camera make, model or exposure data.
+- Faces folded into the colour job instead of a second job on the copy: one copy, no chain of copies.
+- With faces on "When I ask", automatic colour fixes leave faces alone (the user didn't ask for face changes).
+- No extra "is it faded?" detector for colour scans: the colour fix barely changes a print that isn't faded.
+
+### Technical Touchpoints
+- New: `engine/services/old_photo_rules.py` (`looks_like_a_scan`, `plan`, `on_imported`), `engine/tests/test_old_photo_rules.py`.
+- Changed: `engine/api/photos.py` (import hands new photo ids to the rules), `engine/services/old_photo_processors.py` (`add_colour` with `faces`; `kinds_kept` for colour), `engine/services/restore_queue.py` (per-face rebuild only for faces / fade), `src/hooks/useAppSettings.ts` (old-photo keys), `src/components/settings/PhotosAISettings.tsx` (Old photos group), `src/index.css` (`.oldset-*`), docs.
+- Tests: engine 368 (+17), frontend 175 (+1). Mutation checks: 10 deliberate breaks each caught (one found a weak assertion, fixed). Browser check on a throwaway library in both themes: the group matches the board, settings save; import of a faded two-face "scan" and a grey "phone" photo: only the scan was queued (automatic Fix faded colours with faces); on battery it waited; with the battery guard off it ran in 8 s and kept a linked `fade,faces` copy; the phone photo was untouched. Settings restored afterwards.
+
+### State & Lifecycle Impact
+- No schema change. Uses the existing settings keys (`old_photos_colour`, `old_photos_fade`, `old_photos_faces`, `old_photos_keep_original`). Turning a row to Automatically affects only photos imported afterwards.
+
+## 156. Old Photos, Step A7: Remove Scratches and Spots, with Touch Up (H10)
+
+### Functionality Overview
+- **Remove scratches and spots** in the viewer's "…" menu for scans of prints and black-and-white photos ("Creases, scratches and dust on old prints"). The app finds the damage and fills it in; only the marked pixels change, the rest keeps full detail.
+- The result shows what was repaired **in lime** ("Show marks"). **Touch up** opens a dark editor on the result: Brush paints a missed scratch, Eraser brings a detail back, Size, Hide marks, Undo; Apply repairs again (from the original) with exactly those marks. Faces are never marked by the app; they are repaired only if painted.
+- Settings → Old photos gains its fourth row, **Remove scratches and spots** (When I ask / Automatically). Automatically repairs only clear scratches (strict detector, at least 0.4% of the scan) and keeps nothing when there's nothing to fix (Activity: "Nothing to fix"); with other rows Automatic too, scratches are repaired first in the same job.
+- The two models (~360 MB) download with the others at install (total ~2.7 GB); if missing, the usual popup offers them and only this feature is locked.
+
+### Functional Decision Points & Rationale
+- The owner has no scratched photos (phone scanning cleans them), so damage was drawn onto copies of the owner's scans with an exact damage map: the detector finds light scratches well but only about half of all damage by area (dark lines, dust, torn corners poorly), while the fill-in is near perfect with correct marks.
+- Owner (2026-11-17): **careful marks + Touch up** — detector plus a dust finder, faces protected; anything missed is painted in Touch up. Marking more (coarse pass) would find 73% but a third of the marks would be wrong and more real detail would be smoothed away.
+- Fill-in at 1024 px: half the time of 1536 px with the same look (only marked pixels are replaced).
+- Models rebuilt from the official weights (owner approved running the upstream model code for the conversion); the LaMa checkpoint is read without running anything from it.
+
+### Technical Touchpoints
+- New: `engine/services/scratch_repair.py`, `engine/tests/test_scratch_repair.py`, `scripts/model_export/export_scratch_models.py`, `src/components/viewer/TouchUp.tsx`.
+- Changed: `engine/services/ai_models.py` (`scratch_detector`, `lama`), `engine/services/model_installer.py`, `src-tauri/nsis-hooks.nsh` (2.7 GB), `engine/services/old_photo_processors.py` (`remove_scratches`, scratches first in automatic jobs, labels), `engine/services/restore_queue.py` (generic `.extra` file, Touch-up masks, nothing to fix, `marked`), `engine/api/restore.py` (option, `/jobs/{id}/mask`, `/jobs/{id}/touch-up`), `engine/services/old_photo_rules.py`, `src/components/viewer/useOldPhoto.ts`, `OldPhotoPanel.tsx`, `src/components/Lightbox.tsx`, `src/components/activity/activityFormat.ts`, `src/components/settings/PhotosAISettings.tsx`, `src/hooks/useAppSettings.ts`, `src/index.css`, THIRD_PARTY_NOTICES.md (MIT text for BOPBTL, LaMa), `scripts/model_export/README.md`, docs.
+- Tests: engine 386 (+18), frontend 177 (+2). Mutation checks: 11 deliberate breaks each caught (one exposed a missing test for full detail outside the marks on large photos; added). Browser check with the real models on a throwaway library (a public-domain picture with drawn damage): menu, result in 42 s, lime marks, Touch up painting a missed dark line, new result in 23 s, kept copy labelled `scratches`; Settings row in both themes; no console errors.
+
+### State & Lifecycle Impact
+- No schema change. Staging files: `job_N.extra(.enc)` (was `.faces`) and `mask_<token>.png(.enc)` for a Touch-up job, removed when the job ends, kept for waiting jobs across a restart.
+
+## 157. Old Photos, Step A8: Fixes From the Joint Test (H10)
+
+### Functionality Overview
+- **One tile per improved photo.** Photos, albums, the vault and the year counts show the improved photo in its original's place (the newest copy when there are several). The viewer's Original / Improved switch swaps the original into view. An original that already has an improved copy offers no second improvement.
+- **Choose what to keep.** Copies made by an automatic rule wait for the owner: the viewer shows "Improved automatically. Which do you want to keep?" (Keep improved, Keep both, Keep original), Activity has a "Choose what to keep" section with Keep improved / Keep both for all, and the header pill reminds when nothing else runs. Keep improved / Keep original move the other photo to Trash (30 days).
+- **Drawings, pages of text and screenshots** that look like scans are improved like any scan but always keep their original, even with Keep original off.
+- **Battery:** background work pauses on battery only below a chosen level: Below 20% (default), Below 50%, Always, Never. Photos the owner improves themselves always run.
+- **No device-made file names** (timestamps, GUIDs, IMG_1234, PXL_…) anywhere; a name a person wrote still shows. Titles fall back to Photo / Improved photo / Video / Document.
+- **Activity** counts what the rail ring counts; every card shows the photo or video being worked on; what waits behind the current photo or video is one group tile ("7 photos"); Finished today became Needs attention (problems only); the footer line is gone.
+
+### Functional Decision Points & Rationale
+- Owner (2026-11-17): fix the old-photo issues on this branch and merge; the ordered after-import process (documents, faces, old-photo fixes, 8K, stories), sticky headers, year bar, albums, storage, stories and People changes are the next phase.
+- Stacking instead of asking the owner to delete one of each pair: no duplicates, nothing deleted by surprise. Automatic results are a suggestion until chosen, so the app asks.
+- The "not a photo" check was calibrated on the owner's 19 scans and the imported text screenshots; a coloured-pencil drawing on tinted paper measures like a scan and isn't caught (its original stays anyway while Keep original is on, the default).
+- The library "original" is already the 8K AVIF made at import (the imported file isn't kept); Keep original keeps that.
+
+### Technical Touchpoints
+- Engine: `photo_versions.py` (`stack_top`, `pending_choices`, `choose`, `choice_pending` in `versions_of`), `restore_queue.py` (`keep_both` param, `choice_pending` on automatic keeps, `choices` in `GET /jobs`), `api/restore.py` (`POST /choices`; no options on an improved original), `api/photos.py` / `albums.py` / `vault.py` (stack), `old_photo_processors.py` (`looks_like_a_graphic`), `old_photo_rules.py`, `api/photos.py` (`battery_guard_applies`), `vault_enhancer.py`, `api/system.py` (`battery_pause_below`), `database.py` (`choice_pending` + migration).
+- Frontend: `src/utils/displayName.ts` (new), `activityFormat.ts`, `ActivityView.tsx`, `OldPhotoPanel.tsx` (`ChoiceBar`), `useOldPhoto.ts` (`pendingCopy`, `chooseVersion`), `Lightbox.tsx` (`onShowVersion`), `App.tsx`, `viewerFormat.ts`, `ViewerDetails.tsx`, Duplicates, Trash, People, Stories, Videos, `PhotosAISettings.tsx`, `useAppSettings.ts`, `index.css`.
+- Tests: engine 403, frontend 188.
+
+### Round 2 (same day)
+- **What to keep** moved out of Activity to its own Dashboard page next to Duplicates (owner); the Photos header shows "N improved" and "N duplicates" pills that open those pages.
+- **Smooth loading** (measured): library queries take < 0.2 ms; the time went into rebuilding every thumbnail at each start, and decoding the 8K photo on every view (~735 ms vs ~100 ms for a 2560 px preview). Now: thumbnails rebuilt only when missing or old; a 2560 px WebP preview made once per photo (`display_preview.py`, `preview_path`, encrypted with the photo if it moves to the vault); the viewer shows the cached thumbnail at once, preloads neighbours, loads the full 8K only when zoomed.
+- **Find in photos** flagged 20 ordinary photos: "1040" sat inside phone timestamp names, and OCR never ran (relative path). Whole-word rules, device-made names ignored, real text required; `document_source = 'scan'` lets later rule changes re-check scan-made marks; the migration sent the wrong ones back to Photos.
+- All owner feedback is tracked in `.agents/plans/feedback-backlog.md`.
+
+### State & Lifecycle Impact
+- New columns `photos.choice_pending` (migration marks copies made earlier by automatic jobs) and `photos.document_source`. New setting `battery_pause_below` (20). Preview files in `previews/display/`.

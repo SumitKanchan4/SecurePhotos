@@ -10,14 +10,17 @@ import { useAppStore } from "../store/useAppStore";
 import { apiFetch, getThumbnailUrl } from "../services/api";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { formatSize, groupTitle, plural, reclaimableBytes, resolveLabel } from "./dashboard/dashFormat";
+import { itemTitle } from "../utils/displayName";
 
 interface DuplicatesViewProps {
   onBack: () => void;
+  /** Where Back goes ("Dashboard", or "Photos" when opened from the Photos pill). */
+  backLabel?: string;
   onPhotoClick?: (index: number, photos: PhotoItem[]) => void;
   onRefreshTelemetry?: () => void;
 }
 
-export const DuplicatesView: React.FC<DuplicatesViewProps> = ({ onBack, onPhotoClick, onRefreshTelemetry }) => {
+export const DuplicatesView: React.FC<DuplicatesViewProps> = ({ onBack, backLabel = "Dashboard", onPhotoClick, onRefreshTelemetry }) => {
   const showToast = useAppStore((s) => s.showToast);
   const [groups, setGroups] = useState<DuplicateGroupItem[]>([]);
   const [keep, setKeep] = useState<Record<string, number[]>>({});
@@ -129,7 +132,7 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({ onBack, onPhotoC
     <div className="dash-page">
       <div>
         <button type="button" className="dash-back" onClick={onBack}>
-          <ArrowLeft size={15} /> Dashboard
+          <ArrowLeft size={15} /> {backLabel}
         </button>
       </div>
       <div className="dash-header">
@@ -187,7 +190,7 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({ onBack, onPhotoC
                       <button
                         type="button"
                         className={`dup-photo${best && keeping ? " is-best" : ""}`}
-                        aria-label={`Open ${p.filename}`}
+                        aria-label={`Open ${itemTitle(p)} ${i + 1}`}
                         onClick={() => onPhotoClick?.(i, g.photos)}
                       >
                         <img src={getThumbnailUrl(p.id)} alt="" loading="lazy" draggable={false} />
@@ -196,7 +199,7 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({ onBack, onPhotoC
                         type="button"
                         role="checkbox"
                         aria-checked={keeping}
-                        aria-label={`Keep ${p.filename}`}
+                        aria-label={`Keep ${itemTitle(p)} ${i + 1}`}
                         className={`dup-check${keeping ? " is-on" : ""}`}
                         onClick={() => toggle(g, p.id)}
                       >

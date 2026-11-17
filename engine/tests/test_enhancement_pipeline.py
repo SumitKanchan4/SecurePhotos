@@ -160,6 +160,7 @@ async def test_battery_guard_pauses_then_resumes(monkeypatch):
     seen = []
     monkeypatch.setattr(photos, "BATTERY_RECHECK_SECONDS", 0)
     monkeypatch.setattr(photos, "_running_on_battery", lambda: next(readings))
+    monkeypatch.setattr(photos, "_battery_percent", lambda: 12.0)  # Below the default 20%.
 
     real_sleep = photos.asyncio.sleep
 
@@ -182,6 +183,34 @@ async def test_battery_guard_off_never_pauses(monkeypatch):
     monkeypatch.setattr(photos, "_load_enhancement_settings", guard_off)
     await photos._wait_while_on_battery()  # Returns immediately; would hang otherwise.
     assert photos.optimization_state["paused_reason"] is None
+
+
+@pytest.mark.parametrize(
+    ("plugged_in", "percent", "below", "guard_on", "waits"),
+    [
+        (False, 19.0, 20, True, True),     # Low battery: waits.
+        (False, 20.0, 20, True, False),    # At the level: runs.
+        (False, 85.0, 20, True, False),    # Plenty of charge: runs.
+        (False, 85.0, 100, True, True),    # "Whenever on battery".
+        (False, None, 20, True, True),     # Charge unknown: safe side.
+        (True, 5.0, 20, True, False),      # Plugged in: always runs.
+        (False, 5.0, 20, False, False),    # Guard off: never waits.
+        (False, 25.0, "junk", True, False),  # A bad stored value falls back to 20%.
+    ],
+)
+def test_battery_guard_uses_charge_level(monkeypatch, plugged_in, percent, below, guard_on, waits):
+    monkeypatch.setattr(photos, "_running_on_battery", lambda: not plugged_in)
+    monkeypatch.setattr(photos, "_battery_percent", lambda: percent)
+    settings = {"pause_on_battery": guard_on, "battery_pause_below": below}
+    assert photos.battery_guard_applies(settings) is waits
+
+
+def test_battery_guard_defaults_to_twenty_percent(monkeypatch):
+    monkeypatch.setattr(photos, "_running_on_battery", lambda: True)
+    monkeypatch.setattr(photos, "_battery_percent", lambda: 21.0)
+    assert photos.battery_guard_applies({}) is False
+    monkeypatch.setattr(photos, "_battery_percent", lambda: 19.0)
+    assert photos.battery_guard_applies({}) is True
 
 
 async def test_requeue_migration_runs_exactly_once(work_dir):

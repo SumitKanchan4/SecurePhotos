@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 from engine.database import db_connection, get_db_connection
 from engine.config import settings, resolve_media_path
+from engine.services.photo_versions import pair_order, stack_top
 from engine.services import vault_storage
 from engine.services.work_queues import vault_files
 from engine.services.crypto_vault import (
@@ -800,7 +801,8 @@ _VAULT_PHOTO_COLUMNS = """
     p.taken_at, p.camera_make, p.camera_model, p.latitude, p.longitude,
     p.iso, p.aperture, p.shutter_speed, p.focal_length, p.is_favorite,
     p.is_encrypted, p.is_optimized, p.is_enhanced, p.caption,
-    p.thumbnail_path, p.preview_path, p.is_document, p.ocr_text, p.vault_meta_enc
+    p.thumbnail_path, p.preview_path, p.is_document, p.ocr_text, p.vault_meta_enc,
+    p.derived_from_id, p.ai_kind
 """
 
 
@@ -834,6 +836,8 @@ def _vault_photo_dict(row: Any, mvk: bytes) -> Dict[str, Any]:
         "preview_path": row["preview_path"],
         "is_document": bool(row["is_document"]),
         "ocr_text": sealed["ocr_text"],
+        "derived_from_id": row["derived_from_id"],
+        "ai_kind": row["ai_kind"],
     }
 
 
@@ -847,8 +851,8 @@ async def list_vault_album_photos(album_id: int) -> List[dict]:
             SELECT {_VAULT_PHOTO_COLUMNS}
             FROM photo_album pa
             JOIN photos p ON pa.photo_id = p.id
-            WHERE pa.album_id = ? AND p.is_encrypted = 1 AND p.trashed_at IS NULL
-            ORDER BY pa.added_at DESC, p.taken_at DESC;
+            WHERE pa.album_id = ? AND p.is_encrypted = 1 AND p.trashed_at IS NULL AND {stack_top('p')}
+            ORDER BY pa.added_at DESC, p.taken_at DESC, {pair_order('p')};
             """,
             (album_id,),
         ) as cursor:
@@ -871,8 +875,8 @@ async def list_vault_photos() -> List[dict]:
                        WHERE pa.photo_id = p.id
                    ) AS album_names
             FROM photos p
-            WHERE p.is_encrypted = 1 AND p.vault_type = 'private' AND p.trashed_at IS NULL
-            ORDER BY p.taken_at DESC, p.id DESC;
+            WHERE p.is_encrypted = 1 AND p.vault_type = 'private' AND p.trashed_at IS NULL AND {stack_top('p')}
+            ORDER BY p.taken_at DESC, {pair_order('p')};
             """
         ) as cursor:
             rows = await cursor.fetchall()

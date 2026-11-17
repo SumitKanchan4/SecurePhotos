@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from engine.database import get_db_connection
 from engine.config import settings, resolve_media_path
+from engine.services.photo_versions import pair_order, stack_top
 from engine.services.ingestion_service import ingest_single_photo
 
 logger = logging.getLogger("securephotos.api.photos")
@@ -42,6 +43,8 @@ class PhotoResponse(BaseModel):
     caption: Optional[str] = None
     thumbnail_path: Optional[str] = None
     preview_path: Optional[str] = None
+    derived_from_id: Optional[int] = None  # H10: set on an improved copy (points to the original).
+    ai_kind: Optional[str] = None          # H10: 'colour', 'fade', 'faces', 'scratches' (comma-joined).
 
 
 _PHOTO_COLUMNS = """
@@ -49,7 +52,8 @@ _PHOTO_COLUMNS = """
     taken_at, camera_make, camera_model,
     latitude, longitude, iso, aperture, shutter_speed, focal_length,
     is_favorite, is_encrypted,
-    is_optimized, is_enhanced, caption, thumbnail_path, preview_path
+    is_optimized, is_enhanced, caption, thumbnail_path, preview_path,
+    derived_from_id, ai_kind
 """
 
 
@@ -80,6 +84,8 @@ def _photo_from_row(row) -> "PhotoResponse":
         caption=row["caption"],
         thumbnail_path=row["thumbnail_path"],
         preview_path=row["preview_path"],
+        derived_from_id=row["derived_from_id"],
+        ai_kind=row["ai_kind"],
     )
 
 
@@ -87,6 +93,7 @@ def _photo_from_row(row) -> "PhotoResponse":
 TIMELINE_FAVORITE = 1
 TIMELINE_OPTIMIZED = 2
 TIMELINE_ENHANCED = 4
+TIMELINE_AI = 8  # H10: an improved copy (the grid shows the AI badge).
 DETAILS_MAX_IDS = 500
 
 
@@ -186,8 +193,11 @@ optimization_state = {
     "completed_count": 0,
     "total_count": 0,
     "last_completed_photo_id": None,
-    "paused_reason": None,  # "on_battery" while waiting for the charger
+    "paused_reason": None,  # "on_battery" while waiting for the charger, "by_user" from Activity's Pause all
 }
+
+# H10 / A4: "Pause all" in Activity also pauses photo enhancement (it had no pause before).
+enhancement_paused_by_user = False
 
 _optimization_lock = asyncio.Lock()
 
@@ -205,11 +215,59 @@ def _running_on_battery() -> bool:
     return bool(battery) and not battery.power_plugged
 
 
+def _battery_percent() -> Optional[float]:
+    """The battery charge in percent, or None if the PC doesn't report one."""
+    try:
+        import psutil
+
+        battery = psutil.sensors_battery()
+    except Exception:
+        return None
+    return float(battery.percent) if battery and battery.percent is not None else None
+
+
+# Settings → "Pause background work on battery": waits only below this charge (100 = always on battery).
+DEFAULT_BATTERY_PAUSE_BELOW = 20
+
+
+def battery_guard_applies(app_settings: Dict[str, Any]) -> bool:
+    """True while background work must wait: unplugged, guard on, and the charge below the chosen level.
+
+    A battery that doesn't report its charge is treated as low (safe side).
+    """
+    if not app_settings.get("pause_on_battery", True) or not _running_on_battery():
+        return False
+    try:
+        below = int(app_settings.get("battery_pause_below", DEFAULT_BATTERY_PAUSE_BELOW))
+    except (TypeError, ValueError):
+        below = DEFAULT_BATTERY_PAUSE_BELOW
+    if below >= 100:
+        return True
+    percent = _battery_percent()
+    return percent is None or percent < below
+
+
 async def _load_enhancement_settings() -> Dict[str, Any]:
     """Reads the enhancement-related user settings (quality slider, battery guard)."""
     from engine.api.system import get_app_settings
 
     return (await get_app_settings())["settings"]
+
+
+def pause_enhancement(paused: bool) -> None:
+    """Pauses or resumes photo enhancement after the current photo (Activity's Pause all)."""
+    global enhancement_paused_by_user
+    enhancement_paused_by_user = paused
+
+
+async def _wait_while_paused_by_user() -> None:
+    """Waits while the user has paused background work; the photo in progress is never cut off."""
+    if not enhancement_paused_by_user:
+        return
+    optimization_state["paused_reason"] = "by_user"
+    while enhancement_paused_by_user:
+        await asyncio.sleep(1)
+    optimization_state["paused_reason"] = None
 
 
 async def _wait_while_on_battery() -> None:
@@ -219,10 +277,10 @@ async def _wait_while_on_battery() -> None:
     """
     while True:
         app_settings = await _load_enhancement_settings()
-        if not (app_settings.get("pause_on_battery", True) and _running_on_battery()):
+        if not battery_guard_applies(app_settings):
             break
         if optimization_state["paused_reason"] != "on_battery":
-            logger.info("Photo enhancement paused: running on battery.")
+            logger.info("Photo enhancement paused: running on low battery.")
         optimization_state["paused_reason"] = "on_battery"
         await asyncio.sleep(BATTERY_RECHECK_SECONDS)
     if optimization_state["paused_reason"]:
@@ -287,6 +345,7 @@ async def run_background_optimization():
                 photo_id = row["id"]
                 filename = row["filename"]
 
+                await _wait_while_paused_by_user()
                 await _wait_while_on_battery()
 
                 optimization_state["active_photo_id"] = photo_id
@@ -345,6 +404,8 @@ async def run_background_optimization():
                     old_preview = resolve_stored_path(row["preview_path"])
                     if old_preview is not None and old_preview.resolve() != result.path.resolve():
                         old_preview.unlink(missing_ok=True)
+                    # A8: the viewer's 2560 px preview now, so the first view is quick too.
+                    await ensure_display_preview(photo_id, to_db_path(result.path), new_hash)
 
                 except Exception as err:
                     logger.warning("Could not enhance photo %s (%s): %s", photo_id, filename, err)
@@ -376,6 +437,33 @@ thumbnail_regen_state = {
 _thumbnail_regen_lock = asyncio.Lock()
 
 
+THUMBNAIL_LONG_EDGE = 1024
+
+
+def _thumbnail_is_current(stored: Optional[str], mime_type: str, photo_long_edge: int) -> bool:
+    """True when the thumbnail exists and is already the current size (only its header is read).
+
+    A video's thumbnail only needs to exist. A photo's must be 1024 px on its long side, or as
+    big as the photo itself when the photo is smaller than that.
+    """
+    from PIL import Image
+
+    from engine.services.media_paths import resolve_stored_path
+
+    path = resolve_stored_path(stored) if stored else None
+    if path is None or not path.is_file():
+        return False
+    if mime_type.startswith("video/"):
+        return True
+    try:
+        with Image.open(path) as im:
+            thumb_long_edge = max(im.size)
+    except Exception:
+        return False
+    wanted = min(THUMBNAIL_LONG_EDGE, photo_long_edge) if photo_long_edge > 0 else THUMBNAIL_LONG_EDGE
+    return thumb_long_edge >= wanted - 2  # Rounding when scaling.
+
+
 async def run_background_thumbnail_regeneration():
     """Iterates through photos in the library and regenerates 512px Retina thumbnails with UnsharpMask."""
     global thumbnail_regen_state
@@ -389,8 +477,8 @@ async def run_background_thumbnail_regeneration():
             try:
                 async with conn.execute(
                     """
-                    SELECT id, filename, filepath, file_hash, thumbnail_path, mime_type, is_encrypted 
-                    FROM photos 
+                    SELECT id, filename, filepath, file_hash, thumbnail_path, mime_type, is_encrypted, width, height
+                    FROM photos
                     WHERE trashed_at IS NULL AND is_encrypted = 0 
                     ORDER BY id ASC;
                     """
@@ -428,6 +516,12 @@ async def run_background_thumbnail_regeneration():
                 try:
                     # Stored paths are relative to the data folder, not the working directory.
                     from engine.services.media_paths import resolve_stored_path, to_db_path
+                    # A8: this runs at every start; rebuilding good thumbnails (decoding every 8K
+                    # photo and every video) kept the CPU busy while the grid was loading.
+                    long_edge = max(row["width"] or 0, row["height"] or 0)
+                    if await asyncio.to_thread(_thumbnail_is_current, row["thumbnail_path"], mime_type, long_edge):
+                        thumbnail_regen_state["completed_count"] += 1
+                        continue
                     target_file = resolve_stored_path(filepath) or Path(filepath)
                     if target_file.exists() and target_file.suffix.lower() != ".enc":
                         is_video = bool(
@@ -487,7 +581,7 @@ async def list_photos(
     query = f"""
         SELECT {_PHOTO_COLUMNS}
         FROM photos
-        WHERE is_encrypted = ? AND trashed_at IS NULL
+        WHERE is_encrypted = ? AND trashed_at IS NULL AND {stack_top()}
     """
     params = [1 if is_encrypted else 0]
 
@@ -500,7 +594,7 @@ async def list_photos(
         query += " AND strftime('%Y', taken_at) = ?"
         params.append(year)
 
-    query += " ORDER BY taken_at DESC, id DESC LIMIT ? OFFSET ?;"
+    query += f" ORDER BY taken_at DESC, {pair_order()} LIMIT ? OFFSET ?;"
     params.extend([limit, offset])
 
     async with conn.execute(query, params) as cursor:
@@ -520,11 +614,11 @@ async def get_photo_timeline() -> TimelineResponse:
     conn = await get_db_connection()
     try:
         async with conn.execute(
-            """
-            SELECT id, taken_at, width, height, mime_type, is_favorite, is_optimized, is_enhanced
+            f"""
+            SELECT id, taken_at, width, height, mime_type, is_favorite, is_optimized, is_enhanced, ai_kind
             FROM photos
-            WHERE is_encrypted = 0 AND trashed_at IS NULL
-            ORDER BY taken_at DESC, id DESC;
+            WHERE is_encrypted = 0 AND trashed_at IS NULL AND {stack_top()}
+            ORDER BY taken_at DESC, {pair_order()};
             """
         ) as cursor:
             rows = await cursor.fetchall()
@@ -539,7 +633,8 @@ async def get_photo_timeline() -> TimelineResponse:
             "v" if (r["mime_type"] or "").startswith("video/") else "p",
             (TIMELINE_FAVORITE if r["is_favorite"] else 0)
             | (TIMELINE_OPTIMIZED if r["is_optimized"] else 0)
-            | (TIMELINE_ENHANCED if r["is_enhanced"] else 0),
+            | (TIMELINE_ENHANCED if r["is_enhanced"] else 0)
+            | (TIMELINE_AI if r["ai_kind"] else 0),
         ]
         for r in rows
     ]
@@ -577,21 +672,21 @@ async def get_timeline_years() -> TimelineYearsResponse:
     try:
         # Total count of active, non-trashed, non-encrypted photos
         async with conn.execute(
-            "SELECT COUNT(*) AS total FROM photos WHERE is_encrypted = 0 AND trashed_at IS NULL;"
+            f"SELECT COUNT(*) AS total FROM photos WHERE is_encrypted = 0 AND trashed_at IS NULL AND {stack_top()};"
         ) as cursor:
             row = await cursor.fetchone()
             total_count = row["total"] if row else 0
 
         # Aggregated photo count grouped by year
-        query = """
-            SELECT 
-                CASE 
+        query = f"""
+            SELECT
+                CASE
                     WHEN taken_at IS NULL OR taken_at = '' THEN 'Undated'
                     ELSE strftime('%Y', taken_at)
                 END AS year_label,
                 COUNT(*) AS photo_count
             FROM photos
-            WHERE is_encrypted = 0 AND trashed_at IS NULL
+            WHERE is_encrypted = 0 AND trashed_at IS NULL AND {stack_top()}
             GROUP BY year_label
             ORDER BY 
                 CASE WHEN year_label = 'Undated' THEN 1 ELSE 0 END ASC,
@@ -723,6 +818,44 @@ async def get_photo_thumbnail(photo_id: int):
     )
 
 
+_preview_locks: Dict[int, asyncio.Lock] = {}
+
+
+async def ensure_display_preview(photo_id: int, stored_path: Optional[str], file_hash: Optional[str]) -> Optional[Path]:
+    """The photo's 2560 px viewer preview, made and recorded on first use. None: show the photo itself.
+
+    Never for vault photos (callers check), never changes the photo.
+    """
+    from engine.services import display_preview
+    from engine.services.media_paths import resolve_stored_path, to_db_path
+
+    source = resolve_stored_path(stored_path) if stored_path else None
+    if source is None or not source.exists():
+        return None
+    dest = display_preview.preview_path_for(settings.previews_dir, photo_id, file_hash)
+    lock = _preview_locks.setdefault(photo_id, asyncio.Lock())
+    async with lock:
+        try:
+            if not dest.exists() and not await asyncio.to_thread(display_preview.make_preview, source, dest):
+                return None
+        except Exception as err:
+            logger.warning("Couldn't make a preview for photo %s: %s", photo_id, err)
+            return None
+        finally:
+            _preview_locks.pop(photo_id, None)
+    conn = await get_db_connection()
+    try:
+        # Only if the photo is still the same file and still outside the vault.
+        await conn.execute(
+            "UPDATE photos SET preview_path = ? WHERE id = ? AND is_encrypted = 0 AND COALESCE(file_hash, '') = COALESCE(?, '');",
+            (to_db_path(dest), photo_id, file_hash),
+        )
+        await conn.commit()
+    finally:
+        await conn.close()
+    return dest
+
+
 @router.get("/{photo_id}/preview")
 async def get_photo_preview(photo_id: int):
     """Streams the display image for Lightbox rendering.
@@ -732,7 +865,9 @@ async def get_photo_preview(photo_id: int):
     """
     conn = await get_db_connection()
     try:
-        async with conn.execute("SELECT preview_path, filepath, mime_type, is_encrypted FROM photos WHERE id = ?;", (photo_id,)) as cursor:
+        async with conn.execute(
+            "SELECT preview_path, filepath, mime_type, is_encrypted, file_hash FROM photos WHERE id = ?;", (photo_id,)
+        ) as cursor:
             row = await cursor.fetchone()
     finally:
         await conn.close()
@@ -750,6 +885,10 @@ async def get_photo_preview(photo_id: int):
         p_prev = raw_prev if raw_prev.is_absolute() else (settings.data_dir / raw_prev)
         if p_prev.exists():
             preview_file = p_prev
+
+    if not preview_file and (row["mime_type"] or "").startswith("image/"):
+        # A8: a 2560 px preview, made once, instead of decoding the 8K photo on every view.
+        preview_file = await ensure_display_preview(photo_id, row["filepath"], row["file_hash"])
 
     if not preview_file:
         preview_file = resolve_media_path(row["filepath"])
@@ -1299,6 +1438,11 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
 
     if imported > 0:
         background_tasks.add_task(run_background_optimization)
+    if imported_photo_ids:
+        # H10 / A6: the "Automatically" rows of Settings → Old photos (scans of prints only).
+        from engine.services.old_photo_rules import on_imported
+
+        background_tasks.add_task(on_imported, list(imported_photo_ids))
 
     return ImportResponse(
         total_found=total_found,
