@@ -263,6 +263,9 @@ async def test_automatic_copies_wait_for_a_choice_manual_ones_do_not(lib):
     assert report["choices_total"] == 1 and report["choices"][0] == {"photo_id": auto_copy, "original_id": second, "ai_kind": "colour"}
     members = (await photo_versions.versions_of(conn, auto_copy))["members"]
     assert [m["choice_pending"] for m in members] == [False, True]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        page = (await client.get("/api/restore/choices")).json()
+    assert page == {"items": [{"photo_id": auto_copy, "original_id": second, "ai_kind": "colour"}], "total": 1}
 
 
 @pytest.mark.parametrize(

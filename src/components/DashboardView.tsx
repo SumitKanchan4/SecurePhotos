@@ -10,22 +10,36 @@ import type { DashboardOverview, DuplicateSummaryResponse, OptimizationStatusRes
 import type { NavTab } from "../store/useAppStore";
 import { apiFetch } from "../services/api";
 import { DuplicatesView } from "./DuplicatesView";
+import { WhatToKeepView } from "./WhatToKeepView";
 import { VideoOptimizerView } from "./VideoOptimizerView";
 import { formatSize, oldOriginalsNote, plural, storageSegments } from "./dashboard/dashFormat";
 import { StorageBreakdown } from "./dashboard/StorageBreakdown";
 import type { OldOriginalsCleanup } from "./dashboard/dashFormat";
 
+export type DashboardPage = "overview" | "duplicates" | "videos" | "keep";
+
 interface DashboardViewProps {
   onNavigate: (tab: NavTab) => void;
   onPhotoClick?: (index: number, photos: PhotoItem[]) => void;
+  /** A8: opened from a Photos header pill ("12 improved", "3 duplicates"). */
+  initialPage?: DashboardPage;
+  /** Back from a page opened by a pill returns to Photos. */
+  backTo?: { label: string; onBack: () => void };
+  onOpenPhoto?: (photoId: number) => void;
+  /** Something in the library changed (a choice, duplicates removed). */
+  onLibraryChanged?: () => void;
+  /** Improved photos waiting for "what to keep". */
+  choicesTotal?: number;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhotoClick }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhotoClick, initialPage = "overview", backTo, onOpenPhoto, onLibraryChanged, choicesTotal = 0 }) => {
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [dupes, setDupes] = useState<DuplicateSummaryResponse | null>(null);
   const [videos, setVideos] = useState<VideoSummary | null>(null);
   const [enhance, setEnhance] = useState<OptimizationStatusResponse | null>(null);
-  const [page, setPage] = useState<"overview" | "duplicates" | "videos">("overview");
+  const [page, setPage] = useState<DashboardPage>(initialPage);
+  useEffect(() => setPage(initialPage), [initialPage]);
+  const back = backTo && page === initialPage && page !== "overview" ? backTo : { label: "Dashboard", onBack: () => setPage("overview") };
   const [refreshing, setRefreshing] = useState(false);
   const [failed, setFailed] = useState(false);
   const [cleanup, setCleanup] = useState<OldOriginalsCleanup | null>(null);
@@ -92,7 +106,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
   };
 
   if (page === "duplicates") {
-    return <DuplicatesView onBack={() => setPage("overview")} onPhotoClick={onPhotoClick} onRefreshTelemetry={load} />;
+    return (
+      <DuplicatesView
+        onBack={back.onBack}
+        backLabel={back.label}
+        onPhotoClick={onPhotoClick}
+        onRefreshTelemetry={() => {
+          void load();
+          onLibraryChanged?.();
+        }}
+      />
+    );
+  }
+  if (page === "keep") {
+    return (
+      <WhatToKeepView
+        onBack={back.onBack}
+        backLabel={back.label}
+        onOpenPhoto={(id) => onOpenPhoto?.(id)}
+        onChanged={onLibraryChanged}
+      />
+    );
   }
   if (page === "videos") {
     return <VideoOptimizerView onBack={() => setPage("overview")} onPhotoClick={onPhotoClick} onRefreshTelemetry={load} />;
@@ -207,6 +241,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
             </button>
           </div>
         </section>
+
+        {choicesTotal > 0 && (
+          <section className="dash-card" aria-labelledby="dash-keep">
+            <h2 id="dash-keep">What to keep</h2>
+            <p className="dash-muted">
+              {plural(choicesTotal, "photo")} improved automatically. Keep the improved one, the original, or both.
+            </p>
+            <div>
+              <button type="button" className="dash-btn dash-btn-primary" onClick={() => setPage("keep")}>
+                Choose
+              </button>
+            </div>
+          </section>
+        )}
 
         <section className="dash-card" aria-labelledby="dash-videos">
           <h2 id="dash-videos">Big videos</h2>

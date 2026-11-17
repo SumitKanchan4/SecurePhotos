@@ -249,7 +249,8 @@ describe("Old photos in the viewer", () => {
     expect(screen.getByRole("button", { name: "Face 1: as it was" })).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("img", { name: "After" }).getAttribute("src")).toContain("faces_off=0");
     expect(panel).toHaveTextContent("1 face sharpened · 1 switched off");
-    fireEvent.click(screen.getByRole("button", { name: "Keep both" }));
+    // The remembered choice arrives with the settings request; the button follows it.
+    fireEvent.click(await screen.findByRole("button", { name: "Keep both" }));
     await waitFor(() => expect(calls.find((c) => c.url === "/api/restore/jobs/5/keep")?.body).toMatchObject({ choice: "keep_both", faces_off: [0] }));
   });
 

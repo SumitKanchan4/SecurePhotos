@@ -17,8 +17,6 @@ interface ActivityViewProps {
   onStopImport: () => void;
   onPauseAll: () => void;
   onResumeAll: () => void;
-  /** A8: applies one choice to the improved photos listed under "Choose what to keep". */
-  onChoose?: (choice: "keep_improved" | "keep_both", photoIds: number[]) => void;
 }
 
 const KIND_ICONS: Record<string, React.ReactNode> = {
@@ -51,15 +49,13 @@ const Thumb: React.FC<{ item: ActivityItem; size?: "row" | "tile" }> = ({ item, 
   return <span className={`${cls} is-icon`} aria-hidden="true">{KIND_ICONS[item.kind] ?? <Sparkles size={20} />}</span>;
 };
 
-export const ActivityView: React.FC<ActivityViewProps> = ({ model, onOpenPhoto, onCancelJob, onStopImport, onPauseAll, onResumeAll, onChoose }) => {
-  const { working, waiting, ready, attention, choices, choicesTotal, remaining, paused } = model;
+export const ActivityView: React.FC<ActivityViewProps> = ({ model, onOpenPhoto, onCancelJob, onStopImport, onPauseAll, onResumeAll }) => {
+  const { working, waiting, ready, attention, remaining, paused } = model;
   const busy = working.length + waiting.length > 0;
   const meta = busy
     ? [`${remaining.toLocaleString()} to do`, paused ? "paused" : null].filter(Boolean).join(" · ")
     : ready.length
     ? `${ready.length} ready to look at`
-    : choicesTotal
-    ? `${choicesTotal} to choose`
     : "Nothing running";
 
   return (
@@ -76,41 +72,7 @@ export const ActivityView: React.FC<ActivityViewProps> = ({ model, onOpenPhoto, 
         )}
       </div>
 
-      {choices.length > 0 && (
-        <section className="act-section act-choose" aria-label="Choose what to keep">
-          <div className="act-choose-head">
-            <div>
-              <h2 className="dash-section-title">Choose what to keep · {choicesTotal.toLocaleString()}</h2>
-              <p className="act-choose-note">
-                These were improved automatically. Your library shows the improved photo with the original behind it until you choose.
-              </p>
-            </div>
-            {onChoose && (
-              <div className="act-choose-actions">
-                <button type="button" className="dash-btn dash-btn-primary" onClick={() => onChoose("keep_improved", choices.map((c) => c.photoId!))}>
-                  Keep improved for {choices.length === 1 ? "this one" : `these ${choices.length}`}
-                </button>
-                <button type="button" className="dash-btn" onClick={() => onChoose("keep_both", choices.map((c) => c.photoId!))}>
-                  Keep both
-                </button>
-              </div>
-            )}
-          </div>
-          <ul className="act-tiles">
-            {choices.map((item) => (
-              <li key={item.key} className="act-tile">
-                <Thumb item={item} size="tile" />
-                <span className="act-tile-label">{item.title}</span>
-                <button type="button" className="act-tile-link is-strong" onClick={() => onOpenPhoto(item.photoId!)}>
-                  Compare
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {!busy && !ready.length && !attention.length && !choices.length && (
+      {!busy && !ready.length && !attention.length && (
         <div className="dash-empty">
           <h2>All done</h2>
           <p>Imports, enhancing, video preparation and old-photo improvements show here while they run.</p>
