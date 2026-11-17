@@ -1179,6 +1179,21 @@ async def trigger_optimization(background_tasks: BackgroundTasks) -> dict:
     return {"status": "started"}
 
 
+@router.get("/preparing", status_code=status.HTTP_200_OK)
+async def get_preparing_progress() -> dict:
+    """The after-import process (P1): what it is doing and how many photos still wait per step."""
+    from engine.services import after_import
+
+    counts = await after_import.counts()
+    return {
+        "active": bool(after_import.state["active"]),
+        "step": after_import.state["step"],
+        "photo_id": after_import.state["photo_id"],
+        "paused_reason": after_import.state["paused_reason"],
+        **counts,
+    }
+
+
 @router.post("/regenerate-thumbnails", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_thumbnail_regeneration(background_tasks: BackgroundTasks) -> dict:
     """Triggers background regeneration of all library thumbnails to 512px Retina resolution."""
@@ -1438,6 +1453,9 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
 
     if imported > 0:
         background_tasks.add_task(run_background_optimization)
+        from engine.services import after_import
+
+        after_import.wake()  # Text and faces for the new photos, straight away.
     if imported_photo_ids:
         # H10 / A6: the "Automatically" rows of Settings → Old photos (scans of prints only).
         from engine.services.old_photo_rules import on_imported

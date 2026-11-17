@@ -28,7 +28,7 @@ export interface RestoreJobsReport {
   choices_total?: number;
 }
 
-export type ActivityKind = "colour" | "fade" | "faces" | "scratches" | "import" | "enhance" | "video" | "models";
+export type ActivityKind = "colour" | "fade" | "faces" | "scratches" | "import" | "enhance" | "video" | "models" | "prepare";
 
 export interface ActivityItem {
   key: string;
@@ -64,11 +64,22 @@ export interface ActivityModel {
   headline: string | null;
 }
 
+/** The after-import process (P1): reading text and finding faces, newest photos first. */
+export interface PreparingProgress {
+  active: boolean;
+  step: "text" | "faces" | null;
+  photo_id: number | null;
+  paused_reason: string | null;
+  text_waiting: number;
+  faces_waiting: number;
+}
+
 export interface ActivityInput {
   restore?: RestoreJobsReport | null;
   enhance?: OptimizationProgress | null;
   video?: VideoOptimizationProgress | null;
   importing?: ImportProgressState | null;
+  preparing?: PreparingProgress | null;
 }
 
 const plural = (n: number, word: string) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
@@ -97,10 +108,27 @@ function finishedOutcome(job: RestoreJobView): string {
   return job.error === "models_missing" ? "Needs a download" : "Couldn't be improved";
 }
 
-export function buildActivity({ restore, enhance, video, importing }: ActivityInput): ActivityModel {
+const PAUSED_NOTE: Record<string, string> = { on_battery: " · waiting: battery low", by_user: " · paused" };
+
+export function buildActivity({ restore, enhance, video, importing, preparing }: ActivityInput): ActivityModel {
   const working: ActivityItem[] = [];
   const waiting: ActivityItem[] = [];
   let remaining = 0;
+
+  // A photo waits for faces only once its text is read, so the two counts never overlap.
+  const preparingLeft = preparing ? preparing.text_waiting + preparing.faces_waiting : 0;
+  if (preparing && preparingLeft > 0) {
+    const doing = preparing.step === "faces" || (!preparing.step && preparing.text_waiting === 0) ? "Finding faces" : "Reading text";
+    working.push({
+      key: "prepare",
+      kind: "prepare",
+      title: "Getting photos ready",
+      detail: `${doing} · ${plural(preparingLeft, "photo")} left${PAUSED_NOTE[preparing.paused_reason ?? ""] ?? ""}`,
+      progress: null,
+      photoId: preparing.photo_id ?? undefined,
+    });
+    remaining += preparingLeft;
+  }
 
   if (importing?.is_active) {
     const left = Math.max(importing.total_count - importing.completed_count, 0);

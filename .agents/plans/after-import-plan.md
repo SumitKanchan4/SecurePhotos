@@ -74,6 +74,13 @@ Videos: basics → preparation (existing queue) → duplicates. Vault items: nev
 | P4 | What the user sees: Activity batch card with steps, "preparing" mark, import summary; import "Add more" keeps the earlier selection with totals | R1 #2, #3 |
 | P5 | Joint test with the owner on the test library; PR → master | |
 
+## Working agreement (owner, 2026-11-17, before an overnight session)
+- Step PRs (P1-P4) are merged into `feature/after-import` by Claude once all tests pass; nothing
+  reaches `master` without the owner's approval after the joint test.
+- The story rules under D4 are approved as written.
+- P4 is designed and built by Claude as described (Activity card per import with its step,
+  quiet "preparing" dot, import summary, "Add more" in the import panel); the owner reviews it.
+
 ## Decisions for the owner (asked one at a time)
 
 - D1: Faces on documents (an ID card has a face): **skip** (owner, 2026-11-17). A photo found to be a document gets `faces` = skipped; if it is later un-marked as a document, its faces step runs then.
