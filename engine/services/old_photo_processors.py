@@ -28,7 +28,7 @@ Each processor takes the photo's file bytes and returns a high-quality JPEG of t
 from __future__ import annotations
 
 import io
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Tuple
 
 import numpy as np
 from PIL import Image, ImageOps
@@ -69,6 +69,36 @@ def is_black_and_white(rgb: np.ndarray) -> bool:
     small = cv2.resize(rgb, (256, max(1, int(256 * rgb.shape[0] / rgb.shape[1]))))
     lab = cv2.cvtColor(small.astype(np.float32) / 255.0, cv2.COLOR_RGB2Lab)
     return float(lab[..., 1].std()) < TINT_STD_A and float(lab[..., 2].std()) < TINT_STD_B
+
+
+# A8: drawings, documents and screenshots are mostly one plain background (paper or screen).
+# Calibrated 2026-11-17 on the owner's 19 scans (background at most 0.41, flat at most 0.56) and
+# text screenshots (0.81-0.89 and 0.76). A coloured-pencil drawing on tinted paper measures like
+# a scan and is not caught; with "Keep original" on (the default) its original stays anyway.
+GRAPHIC_BACKGROUND = 0.6   # Share of pixels within a few grey levels of the commonest one.
+GRAPHIC_FLAT = 0.7         # Share of side-by-side pixels that are exactly equal (screens, clean scans).
+
+
+def graphic_measures(rgb: np.ndarray) -> Tuple[float, float]:
+    """(background share, flat share) on a 512 px copy; see :func:`looks_like_a_graphic`."""
+    cv2 = _cv2()
+    scale = 512 / max(rgb.shape[:2])
+    small = cv2.resize(rgb, (max(1, int(rgb.shape[1] * scale)), max(1, int(rgb.shape[0] * scale))), interpolation=cv2.INTER_AREA) if scale < 1 else rgb
+    grey = small.astype(np.float32).mean(axis=2)
+    hist = np.bincount(np.clip(grey, 0, 255).astype(np.uint8).ravel(), minlength=256).astype(np.float64)
+    background = float((np.convolve(hist, np.ones(17), mode="same") / grey.size).max())
+    flat = float(np.mean(np.abs(np.diff(grey, axis=1)) < 1.0)) if grey.shape[1] > 1 else 1.0
+    return background, flat
+
+
+def looks_like_a_graphic(rgb: np.ndarray) -> bool:
+    """A drawing, document or screenshot rather than a photo of a scene (A8).
+
+    These can still be improved, but their original is always kept: an AI guess at the
+    colours of a drawing or a page of text is a bonus, never a replacement.
+    """
+    background, flat = graphic_measures(rgb)
+    return background >= GRAPHIC_BACKGROUND or flat >= GRAPHIC_FLAT
 
 
 # ── Add colour ──────────────────────────────────────────────────────────────

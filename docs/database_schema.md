@@ -289,8 +289,14 @@ CREATE TABLE IF NOT EXISTS photos (
     derived_from_id INTEGER REFERENCES photos(id) ON DELETE SET NULL, -- H10: improved copy of this original
     ai_kind TEXT,                   -- H10: 'colour' | 'fade' | 'faces' | 'scratches' (comma-joined when combined)
     ai_params TEXT,                 -- H10: JSON settings used, e.g. {"style": "natural"}
-    edited_at DATETIME              -- H10: when the improved copy was made
+    edited_at DATETIME,             -- H10: when the improved copy was made
+    choice_pending INTEGER NOT NULL DEFAULT 0 -- A8: kept by an automatic rule; the owner hasn't chosen
+                                    -- improved / original / both. Migration marks earlier automatic copies.
+    document_source TEXT            -- A8: 'scan' when "Find in photos" marked it a document (re-checked when
+                                    -- the rules change); NULL = the user or added as a document.
 );
+-- A8: the library lists one tile per group (photo_versions.stack_top): an original with an
+-- improved copy outside Trash is hidden behind it, and of several copies only the newest shows.
 
 -- ── 2. Albums Table ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS albums (

@@ -5,6 +5,7 @@ import { useAppStore } from "../store/useAppStore";
 import { PeopleOverview } from "./people/PeopleOverview";
 import { PersonPage } from "./people/PersonPage";
 import { apiFetch, getApiUrl } from "../services/api";
+import { humanName } from "../utils/displayName";
 
 // Priority hierarchy for organizing and surfacing recognized people (Family=10, Friends=8, Relatives=6, Colleagues=4, Acquaintances=2)
 export const RELATION_PRIORITY: Record<string, number> = {
@@ -442,7 +443,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
               }}
             >
               <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-                {inspectingFaceData?.filename ? inspectingFaceData.filename : ""}
+                {humanName(inspectingFaceData?.filename) ?? ""}
               </span>
               <button
                 onClick={() => {

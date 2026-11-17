@@ -3,6 +3,7 @@
  * quality chip, sizes and the filmstrip range. Pure functions, unit-tested.
  */
 import type { PhotoItem } from "../../types";
+import { itemTitle } from "../../utils/displayName";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -34,11 +35,11 @@ export function formatTakenLine(value: string | null | undefined): string {
   return hasTime ? `${formatDay(date)} · ${formatTime(date)}` : formatDay(date);
 }
 
-/** Short caption when there is one, otherwise the file name without its extension. */
-export function viewerTitle(photo: Pick<PhotoItem, "caption" | "filename">): string {
+/** Short caption when there is one, then a name a person wrote, otherwise what it is ("Photo"). */
+export function viewerTitle(photo: Pick<PhotoItem, "caption" | "filename"> & Partial<Pick<PhotoItem, "mime_type" | "is_document" | "derived_from_id">>): string {
   const caption = photo.caption?.trim();
   if (caption && caption.length <= 80) return caption.charAt(0).toUpperCase() + caption.slice(1);
-  return photo.filename.replace(/\.[^/.]+$/, "") || photo.filename;
+  return itemTitle(photo);
 }
 
 export function cameraName(photo: Pick<PhotoItem, "camera_make" | "camera_model">): string | null {

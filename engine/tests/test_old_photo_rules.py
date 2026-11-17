@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 import aiosqlite
+import numpy as np
 import pytest
 from httpx import ASGITransport, AsyncClient
 from PIL import Image
@@ -47,6 +48,33 @@ def test_one_job_per_photo(grey, faces, auto, expected):
     assert old_photo_rules.plan(grey, faces, auto) == expected
 
 
+def _graphic(rgb):
+    from engine.services.old_photo_processors import looks_like_a_graphic
+
+    return looks_like_a_graphic(np.ascontiguousarray(rgb, dtype=np.uint8))
+
+
+def test_drawings_text_and_screenshots_are_told_apart_from_photos():
+    rng = np.random.default_rng(7)
+    # A page of dark-mode text: black screen, a few white lines of letters.
+    screen = np.zeros((600, 400, 3), np.uint8)
+    for y in range(40, 560, 30):
+        screen[y:y + 8, 30:30 + int(rng.integers(150, 360))] = 230
+    # A pencil drawing on paper, scanned (paper grain, a few lines).
+    paper = np.clip(rng.normal(240, 3, (600, 800, 3)), 0, 255)
+    for x in range(100, 700, 40):
+        paper[150:450, x:x + 3] = 80
+    # A grainy old print of a scene: light, shade and film grain everywhere.
+    scene = np.clip(np.linspace(40, 210, 800)[None, :, None] + np.linspace(-30, 30, 600)[:, None, None] + rng.normal(0, 18, (600, 800, 3)), 0, 255)
+    # A photo with a big, even sky still has a gradient and grain.
+    sky = scene.copy()
+    sky[:300] = np.clip(np.linspace(150, 200, 300)[:, None, None] + rng.normal(0, 6, (300, 800, 3)), 0, 255)
+    assert _graphic(screen)
+    assert _graphic(paper)
+    assert not _graphic(scene)
+    assert not _graphic(sky)
+
+
 @pytest.fixture
 async def library(monkeypatch):
     await run_migrations()
@@ -62,11 +90,20 @@ async def library(monkeypatch):
             ("grey_phone.jpg", (128, 128, 128), (100, 1.8, "1/120"), {}),
             ("grey_vault.jpg", (128, 128, 128), (None, None, None), {"is_encrypted": 1}),
             ("grey_doc.jpg", (128, 128, 128), (None, None, None), {"is_document": 1}),
+            ("drawing.png", None, (None, None, None), {}),
         ):
-            img = Image.new("RGB", (96, 72), colour)
-            if colour != (128, 128, 128):
-                img.paste((40, 90, 200), (48, 0, 96, 72))  # Varied colours: a colour photo.
-            img.save(folder / name, "JPEG")
+            if colour is None:  # A pencil drawing: white paper, a few grey lines.
+                img = Image.new("RGB", (192, 144), (246, 244, 240))
+                for x in range(20, 180, 16):
+                    img.paste((90, 90, 90), (x, 30, x + 2, 120))
+            else:
+                img = Image.new("RGB", (96, 72), colour)
+                if colour != (128, 128, 128):
+                    img.paste((40, 90, 200), (48, 0, 96, 72))  # Varied colours: a colour photo.
+                # Film grain and real-world light: a photo is never one flat background.
+                grain = np.random.default_rng(len(name)).normal(0, 22, (72, 96, 1)) + np.linspace(-40, 40, 96)[None, :, None]
+                img = Image.fromarray(np.clip(np.asarray(img, np.float32) + grain, 0, 255).astype(np.uint8))
+            img.save(folder / name, "PNG" if name.endswith(".png") else "JPEG")
             cols = {"filename": name, "filepath": to_db_path(folder / name), "file_size": 1, "mime_type": "image/jpeg",
                     "iso": exposure[0], "aperture": exposure[1], "shutter_speed": exposure[2], **extra}
             cur = await conn.execute(
@@ -106,11 +143,13 @@ async def test_automatic_rows_touch_only_scans_and_fold_faces_into_the_colour_jo
     await update_app_settings(SettingsUpdatePayload(settings={"old_photos_colour": "auto", "old_photos_fade": "auto", "old_photos_faces": "auto"}))
     queued = await old_photo_rules.on_imported(ids.values())
     jobs = await _jobs(list(ids.values()))
-    assert len(queued) == len(jobs) == 2
+    assert len(queued) == len(jobs) == 3
     assert (ids["grey_scan.jpg"], "colour", '{"faces": true, "style": "natural"}', "auto") in jobs
     assert (ids["colour_scan.jpg"], "fade", '{"faces": true}', "auto") in jobs
+    # A8: a drawing is improved too, but always keeps its original.
+    assert (ids["drawing.png"], "colour", '{"faces": true, "keep_both": true, "style": "natural"}', "auto") in jobs
     # Never: the phone's own black-and-white photo, the vault photo, the document.
-    assert {j[0] for j in jobs} == {ids["grey_scan.jpg"], ids["colour_scan.jpg"]}
+    assert {j[0] for j in jobs} == {ids["grey_scan.jpg"], ids["colour_scan.jpg"], ids["drawing.png"]}
 
 
 async def test_faces_alone_sharpens_scans_with_faces_only(library):
@@ -119,7 +158,7 @@ async def test_faces_alone_sharpens_scans_with_faces_only(library):
     assert await old_photo_rules.on_imported(ids.values()) == []  # No faces found.
     library["faces"]["count"] = 1
     await old_photo_rules.on_imported(ids.values())
-    assert {(j[0], j[1]) for j in await _jobs(list(ids.values()))} == {(ids["grey_scan.jpg"], "faces"), (ids["colour_scan.jpg"], "faces")}
+    assert {(j[0], j[1]) for j in await _jobs(list(ids.values()))} == {(ids["grey_scan.jpg"], "faces"), (ids["colour_scan.jpg"], "faces"), (ids["drawing.png"], "faces")}
 
 
 async def test_automatic_jobs_go_after_what_the_user_asked_for(library, monkeypatch):

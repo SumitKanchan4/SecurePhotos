@@ -9,6 +9,8 @@ export interface AppSettings {
   auto_lock_duration: number;
   quality_crf: number;
   pause_on_battery: boolean;
+  /** Background work waits on battery only below this charge (%); 100 = whenever on battery. */
+  battery_pause_below: number;
   face_clustering: boolean;
   ambient_music: boolean;
   ken_burns_motion: boolean;
@@ -30,6 +32,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   auto_lock_duration: 300,
   quality_crf: 18,
   pause_on_battery: true,
+  battery_pause_below: 20,
   face_clustering: true,
   ambient_music: true,
   ken_burns_motion: true,

@@ -27,7 +27,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import aiosqlite
 from PIL import Image, ImageFilter, ImageOps
@@ -63,6 +63,79 @@ def pair_order(alias: str = "") -> str:
 def not_superseded(alias: str = "p") -> str:
     """SQL condition: this photo has no improved copy outside Trash (so the pair counts once)."""
     return f"NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = {alias}.id AND v.trashed_at IS NULL)"
+
+
+def stack_top(alias: str = "") -> str:
+    """SQL condition (A8): the one tile a photo group shows in the library.
+
+    An original with an improved copy outside Trash is hidden behind it, and of several
+    copies only the newest shows. The viewer's Original / Improved switch reaches the rest.
+    """
+    a = f"{alias}." if alias else "photos."
+    return (
+        "NOT EXISTS (SELECT 1 FROM photos stk WHERE stk.trashed_at IS NULL AND ("
+        f"stk.derived_from_id = {a}id OR ({a}derived_from_id IS NOT NULL "
+        f"AND stk.derived_from_id = {a}derived_from_id AND stk.id > {a}id)))"
+    )
+
+
+CHOICES = ("keep_improved", "keep_both", "keep_original")
+
+
+async def pending_choices(conn: aiosqlite.Connection, limit: int = 200) -> List[Dict[str, Any]]:
+    """Improved copies kept automatically whose owner hasn't chosen yet (newest first).
+
+    Only pairs where both photos are still in the library; vault photos are never listed.
+    """
+    async with conn.execute(
+        """
+        SELECT c.id, c.derived_from_id, c.ai_kind FROM photos c
+        JOIN photos o ON o.id = c.derived_from_id
+        WHERE c.choice_pending = 1 AND c.trashed_at IS NULL AND o.trashed_at IS NULL
+          AND COALESCE(c.is_encrypted, 0) = 0
+        ORDER BY c.id DESC LIMIT ?;
+        """,
+        (limit,),
+    ) as cur:
+        return [{"photo_id": r[0], "original_id": r[1], "ai_kind": r[2]} for r in await cur.fetchall()]
+
+
+async def count_pending_choices(conn: aiosqlite.Connection) -> int:
+    async with conn.execute(
+        """
+        SELECT COUNT(*) FROM photos c JOIN photos o ON o.id = c.derived_from_id
+        WHERE c.choice_pending = 1 AND c.trashed_at IS NULL AND o.trashed_at IS NULL
+          AND COALESCE(c.is_encrypted, 0) = 0;
+        """
+    ) as cur:
+        return int((await cur.fetchone())[0])
+
+
+async def choose(conn: aiosqlite.Connection, copy_ids: Sequence[int], choice: str) -> int:
+    """The user's choice for improved copies (A8). Returns how many pairs it applied to.
+
+    - ``keep_improved``: the original goes to Trash (30 days; "Restore original" brings it back).
+    - ``keep_both``: both stay (one tile in the library, the original behind the improved one).
+    - ``keep_original``: the improved copy goes to Trash.
+
+    Raises:
+        ValueError: Unknown choice.
+    """
+    if choice not in CHOICES:
+        raise ValueError(f"Unknown choice {choice!r}")
+    done = 0
+    for copy_id in dict.fromkeys(int(i) for i in copy_ids):
+        row = await _row(conn, copy_id)
+        if row is None or row["derived_from_id"] is None or row["trashed_at"] is not None:
+            continue
+        if choice == "keep_improved":
+            await trash_photo(conn, row["derived_from_id"])
+        elif choice == "keep_original":
+            await trash_photo(conn, copy_id)
+        await conn.execute("UPDATE photos SET choice_pending = 0 WHERE id = ?;", (copy_id,))
+        done += 1
+    await conn.commit()
+    return done
 
 
 def merged_kinds(previous: Optional[str], kind: str) -> str:
@@ -335,7 +408,7 @@ async def versions_of(conn: aiosqlite.Connection, photo_id: int) -> Dict[str, An
     root_id = row["derived_from_id"] or row["id"]
     async with conn.execute(
         f"""
-        SELECT id, ai_kind, derived_from_id, trashed_at, edited_at FROM photos
+        SELECT id, ai_kind, derived_from_id, trashed_at, edited_at, choice_pending FROM photos
         WHERE id = ? OR derived_from_id = ? ORDER BY {pair_order()};
         """,
         (root_id, root_id),
@@ -347,6 +420,7 @@ async def versions_of(conn: aiosqlite.Connection, photo_id: int) -> Dict[str, An
                 "ai_kind": r["ai_kind"],
                 "trashed": r["trashed_at"] is not None,
                 "edited_at": r["edited_at"],
+                "choice_pending": bool(r["choice_pending"]),
             }
             for r in await cur.fetchall()
         ]

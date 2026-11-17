@@ -19,6 +19,9 @@ or "Automatically". After an import, every new photo is looked at once, in the b
 Jobs are queued as ``origin="auto"``: they run after anything the user asked for, wait while
 the laptop is on battery, and keep their result by the "Keep original" switch (see
 ``restore_queue``). Vault photos, videos, documents and improved copies are skipped.
+
+Drawings, pages of text and screenshots that look like scans (A8, owner decision 2026-11-17)
+are improved like any scan, but always keep their original, even with "Keep original" off.
 """
 
 from __future__ import annotations
@@ -62,17 +65,17 @@ async def automatic_rows() -> Dict[str, bool]:
     return {row: settings.get(f"old_photos_{row}") == "auto" for row in ROWS}
 
 
-def _look(stored: str) -> Tuple[bool, int]:
-    """(grey?, number of faces) from the photo's thumbnail."""
+def _look(stored: str) -> Tuple[bool, int, bool]:
+    """(grey?, number of faces, drawing / document / screenshot?) from the photo's thumbnail."""
     from engine.services import face_sharpen, photo_versions
-    from engine.services.old_photo_processors import decode_rgb, is_black_and_white
+    from engine.services.old_photo_processors import decode_rgb, is_black_and_white, looks_like_a_graphic
 
     rgb = decode_rgb(photo_versions.read_photo_bytes(stored, False, None))
     try:
         faces = face_sharpen.count_faces(rgb, 10)  # Small on a 1024 px thumbnail is fine.
     except Exception:  # Face finder unavailable: colour rules still work.
         faces = 0
-    return is_black_and_white(rgb), faces
+    return is_black_and_white(rgb), faces, looks_like_a_graphic(rgb)
 
 
 async def on_imported(photo_ids: Iterable[int]) -> List[int]:
@@ -95,7 +98,7 @@ async def on_imported(photo_ids: Iterable[int]) -> List[int]:
         if row is None or not looks_like_a_scan(row[2], row[3], row[4]):
             continue
         try:
-            grey, faces = await asyncio.to_thread(_look, row[0] or row[1])
+            grey, faces, graphic = await asyncio.to_thread(_look, row[0] or row[1])
         except Exception as err:
             logger.warning("Couldn't look at photo %s for the automatic rules: %s", photo_id, err)
             continue
@@ -103,5 +106,7 @@ async def on_imported(photo_ids: Iterable[int]) -> List[int]:
         if job is None:
             continue
         kind, params = job
+        if graphic:  # A8: improved too, but the original always stays, whatever "Keep original" says.
+            params = {**params, "keep_both": True}
         queued += await restore_queue.enqueue([photo_id], kind, params, origin="auto")
     return queued
