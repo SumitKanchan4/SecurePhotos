@@ -55,7 +55,7 @@ async def lib(monkeypatch):
     folder.mkdir(parents=True)
     conn = await get_db_connection()
     # Only this test's photos are waiting: everything else in the shared test database is done.
-    await conn.execute("UPDATE photos SET ocr_text = COALESCE(ocr_text, ''), faces_scanned = 1;")
+    await conn.execute("UPDATE photos SET ocr_text = COALESCE(ocr_text, ''), faces_scanned = 1, restore_checked = 1;")
     ids = {}
     for name, extra in (
         ("old.jpg", {}),
@@ -106,7 +106,11 @@ async def test_text_then_faces_newest_first_documents_without_faces(lib):
     assert await _row(conn, ids["vault.jpg"]) == (None, 0, 0, None)  # The vault is never touched.
     assert await _row(conn, ids["trashed.jpg"]) == (None, 0, 0, None)
     assert lib["reclusters"] == [1]  # Grouped once after the run, not per photo.
-    assert await after_import.counts() == {"text_waiting": 0, "faces_waiting": 0}
+    assert await after_import.counts() == {"text_waiting": 0, "faces_waiting": 0, "rules_waiting": 0}
+    # The old-photo rules looked at every original last (P2): 8K waits for this.
+    async with conn.execute(f"SELECT filename, restore_checked FROM photos WHERE id IN ({','.join('?' * len(ids))});", tuple(ids.values())) as cur:
+        checked = dict(await cur.fetchall())
+    assert checked == {"old.jpg": 1, "receipt.jpg": 1, "broken.jpg": 1, "new.jpg": 1, "vault.jpg": 0, "trashed.jpg": 0, "clip.mp4": 0}
 
 
 async def test_a_document_the_owner_makes_a_photo_gets_faces_and_stays_a_photo(lib):
@@ -153,4 +157,4 @@ async def test_pause_all_and_the_battery_setting_hold_everything(monkeypatch):
 async def test_new_photos_are_waiting_straight_after_import(lib):
     # Nothing to flag on import: a new photo simply has no text read and no faces yet.
     counts = await after_import.counts()
-    assert counts == {"text_waiting": 4, "faces_waiting": 1}  # Only the video can go to faces now.
+    assert counts == {"text_waiting": 4, "faces_waiting": 1, "rules_waiting": 0}  # Only the video can go to faces now.

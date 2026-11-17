@@ -48,6 +48,7 @@ COPIED_COLUMNS = (
     "taken_at", "camera_make", "camera_model", "latitude", "longitude", "iso", "aperture",
     "shutter_speed", "focal_length", "is_favorite", "caption", "content_tags", "folder_name",
     "is_document", "volume_uuid", "is_encrypted", "vault_type", "is_enhanced",
+    "ocr_text", "document_source",  # After-import P2: the copy's text needn't be read again.
 )
 
 
@@ -328,7 +329,9 @@ async def create_version(
     values = (
         f"{Path(src['filename']).stem}_{kind}.avif", to_db_path(dest), len(avif), len(avif), "image/avif",
         width, height, width, height, to_db_path(thumb_dest), file_hash, file_hash, phash,
-        1, 1, 0 if encrypted else 1, root_id, kinds, json.dumps(params or {}, sort_keys=True), None,
+        # is_optimized: a library copy gets 8K like its original (owner D3; the vault enhancer
+        # handles vault copies as before).
+        1, 1 if encrypted else 0, 0 if encrypted else 1, root_id, kinds, json.dumps(params or {}, sort_keys=True), None,
         *copied.values(),
     )
     try:
