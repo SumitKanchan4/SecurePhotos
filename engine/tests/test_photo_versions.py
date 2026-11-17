@@ -337,8 +337,8 @@ async def test_viewer_gets_the_waiting_result_and_the_actions_that_fit(lib):
         grey_id = cur.lastrowid
         await conn.commit()
         try:
-            assert (await client.get(f"/api/restore/photos/{grey_id}/options")).json() == {"colour": True, "fade": False, "faces": False}
-            assert (await client.get(f"/api/restore/photos/{colour_id}/options")).json() == {"colour": False, "fade": True, "faces": False}
+            assert (await client.get(f"/api/restore/photos/{grey_id}/options")).json() == {"colour": True, "fade": False, "faces": False, "scratches": True}
+            assert (await client.get(f"/api/restore/photos/{colour_id}/options")).json() == {"colour": False, "fade": True, "faces": False, "scratches": True}
             assert (await client.get("/api/restore/photos/999999/options")).status_code == 404
         finally:
             await conn.execute("DELETE FROM photos WHERE id = ?;", (grey_id,))
@@ -373,11 +373,12 @@ async def test_viewer_state_in_one_request(lib, monkeypatch):
     job_id = await _finish(original_id)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         state = (await client.get(f"/api/restore/photos/{original_id}/state")).json()
-        assert state["options"] == {"colour": False, "fade": True, "faces": False}
+        assert state["options"] == {"colour": False, "fade": True, "faces": False, "scratches": True}
         assert state["job"]["id"] == job_id and state["job"]["status"] == "review"
         assert [m["id"] for m in state["members"]] == [original_id]
         new_id = (await client.post(f"/api/restore/jobs/{job_id}/keep", json={"choice": "keep_both"})).json()["photo_id"]
         state = (await client.get(f"/api/restore/photos/{new_id}/state")).json()
         assert state["job"] is None and [m["id"] for m in state["members"]] == [original_id, new_id]
-        assert state["options"] == {"colour": False, "fade": False, "faces": False}  # Already coloured: nothing more to offer.
+        # Already coloured: no colour fix again; a scan can still have scratches.
+        assert state["options"] == {"colour": False, "fade": False, "faces": False, "scratches": True}
         assert (await client.get("/api/restore/photos/999999/state")).status_code == 404

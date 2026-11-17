@@ -25,6 +25,8 @@ MODEL_NAMES: Dict[str, str] = {
     "ddcolor_large": "Add colour",
     "ddcolor_artistic": "Add colour (second pass)",
     "gfpgan": "Sharpen faces",
+    "scratch_detector": "Remove scratches (finding them)",
+    "lama": "Remove scratches (filling in)",
 }
 
 READY, UP_TO_DATE, FAILED = "ready", "already up to date", "couldn't download (the app will ask later)"
@@ -88,7 +90,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     def say(line: str) -> None:
         print(line, flush=True)
 
-    say("Getting the old-photo models (about 2.3 GB, once).")
+    say("Getting the old-photo models (about 2.7 GB, once).")
     try:
         library = [ai_models.get_models_dir()]  # Honours data_location.txt next to the app.
     except Exception:

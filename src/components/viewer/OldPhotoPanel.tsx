@@ -10,7 +10,8 @@
  *   (progress, cancel, keep browsing) and then starts. "Not now" keeps only that action locked.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { Download, Loader2, Lock, MoreHorizontal, Palette, ScanFace, SunMedium, X } from "lucide-react";
+import { Brush, Download, Eraser, Loader2, Lock, MoreHorizontal, Palette, ScanFace, SunMedium, X } from "lucide-react";
+import { LimeMarks } from "./TouchUp";
 import { apiFetch } from "../../services/api";
 import { IMPROVE_LABELS, type ImproveKind, type KeepChoice, type ModelPrompt, type OldPhotoState, type ResultFace } from "./useOldPhoto";
 
@@ -22,6 +23,7 @@ export const ImproveMenu: React.FC<{ old: OldPhotoState }> = ({ old }) => {
     old.options?.colour && { kind: "colour" as const, icon: <Palette size={15} />, hint: "Natural colours for a black-and-white photo" },
     old.options?.fade && { kind: "fade" as const, icon: <SunMedium size={15} />, hint: "Removes a yellow cast and brings colours back" },
     old.options?.faces && { kind: "faces" as const, icon: <ScanFace size={15} />, hint: "Clearer faces in blurry or old photos" },
+    old.options?.scratches && { kind: "scratches" as const, icon: <Eraser size={15} />, hint: "Creases, scratches and dust on old prints" },
   ].filter(Boolean) as { kind: ImproveKind; icon: React.ReactNode; hint: string }[];
   if (!items.length) return null;
   return (
@@ -101,7 +103,9 @@ export const BeforeAfter: React.FC<{
   faces?: ResultFace[];
   facesOff?: number[];
   onToggleFace?: (index: number) => void;
-}> = ({ before, after, intensity, faces = [], facesOff = [], onToggleFace }) => {
+  /** Remove scratches and spots: what was repaired, shown in lime. */
+  marks?: HTMLCanvasElement | null;
+}> = ({ before, after, intensity, faces = [], facesOff = [], onToggleFace, marks = null }) => {
   const [split, setSplit] = useState(50);
   const boxRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
@@ -130,6 +134,7 @@ export const BeforeAfter: React.FC<{
           draggable={false}
           style={{ opacity: intensity, clipPath: `inset(0 0 0 ${split}%)` }}
         />
+        {marks && <LimeMarks marks={marks} />}
         <span className="ba-tag ba-tag-before">Before</span>
         <span className="ba-tag ba-tag-after">AI · After</span>
         {faces.map((face, i) => {
@@ -249,6 +254,7 @@ export const OldPhotoPanel: React.FC<{
             </div>
           )}
           <FacesSection old={old} />
+          <ScratchesSection old={old} />
           <div className="op-section">
             <label className="op-label" htmlFor="op-strength">Strength</label>
             <input id="op-strength" type="range" min={0} max={100} value={Math.round(old.intensity * 100)} onChange={(e) => old.setIntensity(Number(e.target.value) / 100)} className="op-range" />
@@ -425,6 +431,29 @@ const FacesSection: React.FC<{ old: OldPhotoState }> = ({ old }) => {
       <span className="op-label">Faces</span>
       <p className="op-text">{parts.join(" · ")}.</p>
       {faces.some((f) => f.sharpened) && <p className="op-hint">Click a face on the photo to keep it as it was.</p>}
+    </div>
+  );
+};
+
+/** Remove scratches and spots (A7): what was found, Show marks, and Touch up. */
+const ScratchesSection: React.FC<{ old: OldPhotoState }> = ({ old }) => {
+  const job = old.job;
+  if (!job || job.kind !== "scratches") return null;
+  const found = (job.marked ?? 0) > 0;
+  return (
+    <div className="op-section">
+      <span className="op-label">Scratches and spots</span>
+      <p className="op-text">{found ? "What was repaired is shown in lime." : "No scratches or spots were found."}</p>
+      {found && (
+        <label className="op-check">
+          <input type="checkbox" checked={old.showMarks} onChange={(e) => old.setShowMarks(e.target.checked)} />
+          Show marks
+        </label>
+      )}
+      <button type="button" className="op-btn" onClick={() => old.setTouchUpOpen(true)} disabled={old.busy}>
+        <Brush size={14} /> Touch up
+      </button>
+      <p className="op-hint">Missed a scratch, or a detail removed by mistake? Paint or erase it, then apply.</p>
     </div>
   );
 };

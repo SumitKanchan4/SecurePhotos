@@ -118,11 +118,12 @@ def _on_demand(monkeypatch, data: bytes, key: str = "gfpgan") -> dict:
 
 
 def test_old_photo_models_are_pinned_to_this_repos_release_and_not_bundled():
-    assert set(ai_models.ON_DEMAND_MODELS) == {"ddcolor_large", "ddcolor_artistic", "gfpgan"}
+    assert set(ai_models.ON_DEMAND_MODELS) == {"ddcolor_large", "ddcolor_artistic", "gfpgan", "scratch_detector", "lama"}
     for spec in ai_models.ON_DEMAND_MODELS.values():
         assert spec["url"] == "https://github.com/SumitKanchan4/SecurePhotos/releases/download/models-v1/" + spec["file"]
         assert re.fullmatch(r"[0-9a-f]{64}", spec["sha256"]) and int(spec["size"]) > 100_000_000
-        assert spec["license"] == "Apache-2.0"
+    # Permissive licences only (owner decision D1): the scratch detector is MIT, the rest Apache-2.0.
+    assert {k: s["license"] for k, s in ai_models.ON_DEMAND_MODELS.items() if s["license"] != "Apache-2.0"} == {"scratch_detector": "MIT"}
     assert not set(ai_models.ON_DEMAND_MODELS) & set(ai_models.MODELS)  # The installer stays small.
 
 
@@ -280,7 +281,8 @@ def _all_small(monkeypatch, payloads: dict) -> None:
 def test_installer_skips_verified_models_downloads_the_rest_and_never_fails(tmp_path, monkeypatch):
     from engine.services import model_installer
 
-    payloads = {"ddcolor_large": b"L" * 2_000_000, "ddcolor_artistic": b"A" * 1_000, "gfpgan": b"G" * 1_000}
+    payloads = {"ddcolor_large": b"L" * 2_000_000, "ddcolor_artistic": b"A" * 1_000, "gfpgan": b"G" * 1_000,
+                "scratch_detector": b"S" * 1_000, "lama": b"M" * 1_000}
     _all_small(monkeypatch, payloads)
     dest = tmp_path / "app" / "data" / "models"
     dest.mkdir(parents=True)
@@ -308,7 +310,7 @@ def test_installer_skips_verified_models_downloads_the_rest_and_never_fails(tmp_
 def test_installer_counts_models_already_in_a_library_kept_elsewhere(tmp_path, monkeypatch):
     from engine.services import model_installer
 
-    payloads = {"ddcolor_large": b"L" * 10, "ddcolor_artistic": b"A" * 10, "gfpgan": b"G" * 10}
+    payloads = {"ddcolor_large": b"L" * 10, "ddcolor_artistic": b"A" * 10, "gfpgan": b"G" * 10, "scratch_detector": b"S" * 10, "lama": b"M" * 10}
     _all_small(monkeypatch, payloads)
     library = tmp_path / "external" / "models"
     library.mkdir(parents=True)
@@ -320,7 +322,7 @@ def test_installer_counts_models_already_in_a_library_kept_elsewhere(tmp_path, m
     dest = tmp_path / "app" / "data" / "models"
     assert model_installer.main(["--fetch-models", str(dest)]) == 0
     status = (dest / model_installer.STATUS_FILE).read_text(encoding="utf-8")
-    assert status.count("already up to date") == 3 and "offer the download" not in status
+    assert status.count("already up to date") == 5 and "offer the download" not in status
 
 
 def test_installer_survives_anything(tmp_path, monkeypatch):

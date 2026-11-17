@@ -80,7 +80,7 @@ function jobItem(job: RestoreJobView): ActivityItem {
 function finishedOutcome(job: RestoreJobView): string {
   const label = IMPROVE_LABELS[job.kind] ?? IMPROVE_LABELS.colour;
   if (job.status === "done") return label.done;
-  if (job.status === "discarded") return "Not kept";
+  if (job.status === "discarded") return job.error === "nothing_to_fix" ? "Nothing to fix" : "Not kept";
   if (job.status === "cancelled") return "Cancelled";
   return job.error === "models_missing" ? "Needs a download" : "Couldn't be improved";
 }
