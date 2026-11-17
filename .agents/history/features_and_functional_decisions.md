@@ -6140,3 +6140,27 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 
 ### State & Lifecycle Impact
 - No schema change. Results waiting for a decision survive a restart (A2a). The models are fetched once into `data/models`; "import from file" exists in the API but has no button yet (needs Tauri's file dialog).
+
+## 152. Old Photos, Step A4: Activity (H10)
+
+### Functionality Overview
+- **Activity** is one page for all background work: importing, enhancing photos, preparing videos, old-photo improvements and the one-time model download. Header: "1 working · 4 waiting" and **Pause all** / **Resume**.
+- Sections: **Working now** (thumbnail, what is being done, which photo, progress bar, Cancel; Stop import for an import), **Waiting** (tiles with Cancel), **Ready to look at** (results waiting for Keep both / Replace / Discard, with Open), **Finished today** (what happened: "Colour added", "Not kept", "Cancelled", "Needs a download"; Open shows the kept copy).
+- **Vault photos** appear as a striped tile with a lock and no file name; opening one goes to the Private Vault.
+- **Reaching it** (board decision D3): no rail item. The rail's status dot becomes a turning lime ring with the number of items left (dashed when paused) and opens Activity; the Photos header pill now reads e.g. "Adding colour · 5 items left ›" and opens Activity too. When nothing runs, the rail shows the usual status dot.
+- **Pause all** now also pauses photo enhancement (before, only video preparation could be paused). Work pauses after the current item; nothing is lost.
+- When an automatic job keeps an improved copy, the library reloads once so the copy appears.
+
+### Functional Decision Points & Rationale
+- One model (`buildActivity`) feeds the page, the header pill and the rail, so they never disagree.
+- "Items left" counts imports, enhancements, videos and old-photo jobs still to do; results waiting for a decision are not "left" (they are "ready to look at").
+- The pill replaced the older Photos-only status line (it covered imports, enhancing and videos) so every kind of work reads the same way.
+- On the active (filled) rail button the ring and count take the button's text colour; otherwise the ring was invisible on lime (dark) and the count black on black (light).
+
+### Technical Touchpoints
+- New: `src/components/activity/activityFormat.ts`, `src/components/activity/ActivityView.tsx`, `src/components/activity/activity.test.tsx`, `engine/tests/test_activity_pause.py`.
+- Changed: `src/App.tsx` (Activity tab, model, pill, open photo), `src/components/shell/IconRail.tsx` (ring), `src/store/useAppStore.ts` (`activity` tab, `activitySummary`), `src/hooks/useBackgroundProgress.ts` (polls `/api/restore/jobs`; tolerant of odd answers; reload when a copy is kept), `src/index.css` (`.rail-ring`, `.act-*`), `engine/api/photos.py` (`pause_enhancement`, `_wait_while_paused_by_user`), `engine/api/system.py` (pause / resume also cover enhancement), `docs/design_system.md`.
+- Tests: frontend 168 (Activity 11, hook +1), engine 325 (+2). Mutation checks: 10 deliberate breaks each caught. Browser check on a throwaway library in both themes with five real jobs (one on a vault photo): pill, ring, page, Pause all / Resume, Cancel, Finished today; contrast clean; ring checked on the active button in both themes.
+
+### State & Lifecycle Impact
+- No schema change. The enhancement pause lives in memory: a restart resumes work (the queue's own pause also resets on restart).

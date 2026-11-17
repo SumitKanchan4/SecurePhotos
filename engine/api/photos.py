@@ -193,8 +193,11 @@ optimization_state = {
     "completed_count": 0,
     "total_count": 0,
     "last_completed_photo_id": None,
-    "paused_reason": None,  # "on_battery" while waiting for the charger
+    "paused_reason": None,  # "on_battery" while waiting for the charger, "by_user" from Activity's Pause all
 }
+
+# H10 / A4: "Pause all" in Activity also pauses photo enhancement (it had no pause before).
+enhancement_paused_by_user = False
 
 _optimization_lock = asyncio.Lock()
 
@@ -217,6 +220,22 @@ async def _load_enhancement_settings() -> Dict[str, Any]:
     from engine.api.system import get_app_settings
 
     return (await get_app_settings())["settings"]
+
+
+def pause_enhancement(paused: bool) -> None:
+    """Pauses or resumes photo enhancement after the current photo (Activity's Pause all)."""
+    global enhancement_paused_by_user
+    enhancement_paused_by_user = paused
+
+
+async def _wait_while_paused_by_user() -> None:
+    """Waits while the user has paused background work; the photo in progress is never cut off."""
+    if not enhancement_paused_by_user:
+        return
+    optimization_state["paused_reason"] = "by_user"
+    while enhancement_paused_by_user:
+        await asyncio.sleep(1)
+    optimization_state["paused_reason"] = None
 
 
 async def _wait_while_on_battery() -> None:
@@ -294,6 +313,7 @@ async def run_background_optimization():
                 photo_id = row["id"]
                 filename = row["filename"]
 
+                await _wait_while_paused_by_user()
                 await _wait_while_on_battery()
 
                 optimization_state["active_photo_id"] = photo_id
