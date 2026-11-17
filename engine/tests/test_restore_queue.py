@@ -158,6 +158,27 @@ async def test_photos_the_user_asked_for_go_before_automatic_ones(env):
     assert (await _job(env["conn"], auto_job))[0] == "queued"
 
 
+async def test_automatic_results_follow_keep_original_except_drawings_and_documents(env, monkeypatch):
+    """A8: with "Keep original" off an automatic result replaces the photo, but a drawing,
+    document or screenshot (``keep_both``) always keeps its original."""
+    a, b = env["ids"]
+    choices = {}
+
+    async def keep_off():
+        return {"old_photos_keep_original": False}
+
+    async def record(job_id, choice, *args, **kwargs):
+        choices[job_id] = choice
+
+    monkeypatch.setattr(restore_queue, "_old_photo_settings", keep_off)
+    monkeypatch.setattr(restore_queue, "keep_result", record)
+    (photo_job,) = await restore_queue.enqueue([a], "colour", {"style": "natural"}, origin="auto")
+    (drawing_job,) = await restore_queue.enqueue([b], "colour", {"style": "natural", "keep_both": True}, origin="auto")
+    await restore_queue.process_next_job()
+    await restore_queue.process_next_job()
+    assert choices == {photo_job: "replace", drawing_job: "keep_both"}
+
+
 async def test_jobs_using_the_loaded_model_go_first(env, monkeypatch):
     a, b = env["ids"]
     monkeypatch.setitem(restore_queue.PROCESSORS, "faces", restore_queue.Processor(models=("gfpgan",), run=lambda *x: RESULT))
