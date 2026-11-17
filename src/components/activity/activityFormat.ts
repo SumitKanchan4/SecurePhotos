@@ -23,6 +23,9 @@ export interface RestoreJobsReport {
   paused: boolean;
   paused_reason: string | null;
   download: { model: string; done: number; total: number } | null;
+  /** A8: improved copies kept automatically, waiting for "improved, original or both". */
+  choices?: { photo_id: number; original_id: number; ai_kind: string | null }[];
+  choices_total?: number;
 }
 
 export type ActivityKind = "colour" | "fade" | "faces" | "scratches" | "import" | "enhance" | "video" | "models";
@@ -51,6 +54,10 @@ export interface ActivityModel {
   ready: ActivityItem[];
   /** Finished today but needing the user (a download, or a photo that couldn't be improved). */
   attention: ActivityItem[];
+  /** A8: improved photos kept automatically: keep the improved one, the original, or both? */
+  choices: ActivityItem[];
+  /** All of them (the tiles show the newest few). */
+  choicesTotal: number;
   /** Items still to do (shown on the rail ring). */
   remaining: number;
   paused: boolean;
@@ -167,6 +174,16 @@ export function buildActivity({ restore, enhance, video, importing }: ActivityIn
     .reverse()
     .map((job) => ({ ...jobItem(job), cancel: undefined, progress: null, outcome: finishedOutcome(job) }));
 
+  const choices: ActivityItem[] = (restore?.choices ?? []).map((c) => ({
+    key: `choice-${c.photo_id}`,
+    kind: (c.ai_kind?.split(",")[0] as ActivityKind) || "colour",
+    title: improvedLabel(c.ai_kind),
+    detail: "",
+    progress: null,
+    photoId: c.photo_id,
+  }));
+  const choicesTotal = Math.max(restore?.choices_total ?? 0, choices.length);
+
   const paused = Boolean(restore?.paused);
   const first = working[0] ?? waiting[0];
   const headline = first
@@ -177,7 +194,17 @@ export function buildActivity({ restore, enhance, video, importing }: ActivityIn
       : first.title
     : ready.length
     ? `${plural(ready.length, "photo")} ready to look at`
+    : choicesTotal
+    ? `${plural(choicesTotal, "improved photo")}: choose what to keep`
     : null;
 
-  return { working, waiting, ready, attention, remaining, paused, headline };
+  return { working, waiting, ready, attention, choices, choicesTotal, remaining, paused, headline };
+}
+
+/** "Colour added · faces sharpened" from an improved copy's kinds. */
+export function improvedLabel(aiKind: string | null | undefined): string {
+  const kinds = (aiKind ?? "").split(",").filter((k) => IMPROVE_LABELS[k]);
+  if (!kinds.length) return "Improved";
+  const words = kinds.map((k) => IMPROVE_LABELS[k].done.toLowerCase());
+  return words.join(" · ").replace(/^./, (c) => c.toUpperCase());
 }

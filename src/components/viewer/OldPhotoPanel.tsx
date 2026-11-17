@@ -13,7 +13,15 @@ import React, { useEffect, useRef, useState } from "react";
 import { Brush, Download, Eraser, Loader2, Lock, MoreHorizontal, Palette, ScanFace, SunMedium, X } from "lucide-react";
 import { LimeMarks } from "./TouchUp";
 import { apiFetch } from "../../services/api";
-import { IMPROVE_LABELS, type ImproveKind, type KeepChoice, type ModelPrompt, type OldPhotoState, type ResultFace } from "./useOldPhoto";
+import {
+  IMPROVE_LABELS,
+  type ImproveKind,
+  type KeepChoice,
+  type ModelPrompt,
+  type OldPhotoState,
+  type ResultFace,
+  type VersionChoice,
+} from "./useOldPhoto";
 
 const formatGb = (bytes: number) => `${(bytes / 1e9).toFixed(1)} GB`;
 
@@ -92,6 +100,42 @@ export const VersionSwitch: React.FC<{
       <button type="button" aria-pressed={!onOriginal} className={!onOriginal ? "is-on" : ""} onClick={() => onOriginal && onOpen(improved.id)}>
         Improved
       </button>
+    </div>
+  );
+};
+
+/**
+ * A8: an improved photo the app kept automatically waits for the owner's choice, so the
+ * library never quietly fills with pairs. Shown on both members of the pair.
+ */
+export const ChoiceBar: React.FC<{
+  old: OldPhotoState;
+  onChosen: (keepId: number | null, choice: VersionChoice) => void;
+}> = ({ old, onChosen }) => {
+  if (!old.pendingCopy) return null;
+  const pick = async (choice: VersionChoice) => {
+    try {
+      onChosen(await old.chooseVersion(choice), choice);
+    } catch {
+      onChosen(null, choice);
+    }
+  };
+  return (
+    <div className="viewer-choice" role="region" aria-label="Choose what to keep">
+      <span className="viewer-choice-text">
+        <strong>Improved automatically.</strong> Which do you want to keep?
+      </span>
+      <div className="viewer-choice-actions">
+        <button type="button" className="viewer-choice-btn is-primary" disabled={old.busy} onClick={() => void pick("keep_improved")}>
+          Keep improved
+        </button>
+        <button type="button" className="viewer-choice-btn" disabled={old.busy} onClick={() => void pick("keep_both")}>
+          Keep both
+        </button>
+        <button type="button" className="viewer-choice-btn" disabled={old.busy} onClick={() => void pick("keep_original")}>
+          Keep original
+        </button>
+      </div>
     </div>
   );
 };

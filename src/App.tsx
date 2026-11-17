@@ -456,6 +456,21 @@ export const App: React.FC = () => {
     setActivitySummary(remaining > 0 || paused || headline ? { remaining, paused, headline } : null);
   }, [activity, setActivitySummary]);
 
+  // A8: the library shows one tile per improved pair. The viewer's Original / Improved switch
+  // swaps the other member of the stack into the current photo's place.
+  const showVersionInViewer = async (photoId: number) => {
+    const at = lightboxIndex;
+    if (at === null) return;
+    try {
+      const res = await apiFetch(`/api/photos/details?ids=${photoId}`);
+      const details: PhotoItem[] = res.ok ? await res.json() : [];
+      if (!details.length) return;
+      setLightboxPhotos((prev) => (prev ? prev.map((p, i) => (i === at ? details[0] : p)) : prev));
+    } catch {
+      showToast("Couldn't open the other version. Please try again.", "warning");
+    }
+  };
+
   // Opens one photo from Activity. Vault photos open in the Private Vault (they need it unlocked).
   const openPhotoById = async (photoId: number, isPrivate?: boolean) => {
     if (isPrivate) {
@@ -590,7 +605,7 @@ export const App: React.FC = () => {
             <ActivityView
               model={activity}
               onOpenPhoto={(id) => {
-                const item = [...activity.ready, ...activity.attention].find((i) => i.photoId === id);
+                const item = [...activity.ready, ...activity.attention, ...activity.choices].find((i) => i.photoId === id);
                 void openPhotoById(id, item?.private);
               }}
               onCancelJob={(id) => void postQuietly(`/api/restore/jobs/${id}/cancel`)}
@@ -602,6 +617,24 @@ export const App: React.FC = () => {
               onResumeAll={() => {
                 void postQuietly("/api/restore/resume");
                 void postQuietly("/api/system/optimization/resume");
+              }}
+              onChoose={(choice, photoIds) => {
+                void apiFetch("/api/restore/choices", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ photo_ids: photoIds, choice }),
+                })
+                  .then((res) => {
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    showToast(
+                      choice === "keep_improved"
+                        ? "Kept the improved photos. The originals are in Trash for 30 days."
+                        : "Kept both. Each improved photo shows in your library with its original behind it.",
+                      "success",
+                    );
+                    loadPhotos();
+                  })
+                  .catch(() => showToast("Couldn't save your choice. Please try again.", "warning"));
               }}
             />
           ) : activeTab === "trash" ? (
@@ -1090,6 +1123,7 @@ export const App: React.FC = () => {
         onToggleFavorite={handleToggleFavorite}
         isDocumentView={activeTab === "documents"}
         onLibraryChanged={() => loadPhotos()}
+        onShowVersion={(photoId) => void showVersionInViewer(photoId)}
         onTogglePin={handleTogglePin}
         onUnlockRequest={(action) => {
           if (action) {
