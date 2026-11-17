@@ -65,7 +65,8 @@ def _mean_ab(jpeg: bytes):
 
 
 def _run(fn, data, params=None):
-    return fn(data, params or {}, lambda v: None, lambda: False)
+    out = fn(data, params or {}, lambda v: None, lambda: False)
+    return getattr(out, "image", out)  # Fix faded colours returns an Outcome (A5: faces).
 
 
 def test_natural_uses_both_models_at_512_and_keeps_the_size(models):

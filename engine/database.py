@@ -407,6 +407,7 @@ CREATE TABLE IF NOT EXISTS restore_jobs (
     status TEXT NOT NULL DEFAULT 'queued',
     progress INTEGER NOT NULL DEFAULT 0,    -- 0-100
     result_path TEXT,
+    result_info TEXT,               -- JSON for the viewer, e.g. the faces sharpened (A5); NULL for vault photos
     result_photo_id INTEGER,
     error_message TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -788,6 +789,12 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
         if "edited_at" not in existing_photo_cols:
             await conn.execute("ALTER TABLE photos ADD COLUMN edited_at DATETIME;")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_photos_derived_from ON photos (derived_from_id);")
+
+        # H10 / A5: details of a result waiting for a decision (faces sharpened, for per-face on/off).
+        async with conn.execute("PRAGMA table_info(restore_jobs);") as cursor:
+            existing_job_cols = {row["name"] for row in await cursor.fetchall()}
+        if existing_job_cols and "result_info" not in existing_job_cols:
+            await conn.execute("ALTER TABLE restore_jobs ADD COLUMN result_info TEXT;")
 
         # Stories lifecycle migration: dynamically add is_saved and covering indexes
         async with conn.execute("PRAGMA table_info(stories);") as cursor:
