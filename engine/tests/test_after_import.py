@@ -55,7 +55,7 @@ async def lib(monkeypatch):
     folder.mkdir(parents=True)
     conn = await get_db_connection()
     # Only this test's photos are waiting: everything else in the shared test database is done.
-    await conn.execute("UPDATE photos SET ocr_text = COALESCE(ocr_text, ''), faces_scanned = 1, restore_checked = 1;")
+    await conn.execute("UPDATE photos SET ocr_text = COALESCE(ocr_text, ''), faces_scanned = 1, restore_checked = 1, phash = COALESCE(phash, '');")
     ids = {}
     for name, extra in (
         ("old.jpg", {}),
@@ -106,7 +106,7 @@ async def test_text_then_faces_newest_first_documents_without_faces(lib):
     assert await _row(conn, ids["vault.jpg"]) == (None, 0, 0, None)  # The vault is never touched.
     assert await _row(conn, ids["trashed.jpg"]) == (None, 0, 0, None)
     assert lib["reclusters"] == [1]  # Grouped once after the run, not per photo.
-    assert await after_import.counts() == {"text_waiting": 0, "faces_waiting": 0, "rules_waiting": 0}
+    assert await after_import.counts() == {"text_waiting": 0, "faces_waiting": 0, "rules_waiting": 0, "dups_waiting": 0}
     # The old-photo rules looked at every original last (P2): 8K waits for this.
     async with conn.execute(f"SELECT filename, restore_checked FROM photos WHERE id IN ({','.join('?' * len(ids))});", tuple(ids.values())) as cur:
         checked = dict(await cur.fetchall())
@@ -157,4 +157,48 @@ async def test_pause_all_and_the_battery_setting_hold_everything(monkeypatch):
 async def test_new_photos_are_waiting_straight_after_import(lib):
     # Nothing to flag on import: a new photo simply has no text read and no faces yet.
     counts = await after_import.counts()
-    assert counts == {"text_waiting": 4, "faces_waiting": 1, "rules_waiting": 0}  # Only the video can go to faces now.
+    assert counts == {"text_waiting": 4, "faces_waiting": 1, "rules_waiting": 0, "dups_waiting": 0}  # Only the video can go to faces now.
+
+
+async def test_fingerprints_for_duplicates_then_one_regrouping_and_stories(lib, monkeypatch):
+    """P3: after the text, each photo gets its duplicate fingerprint (from the thumbnail); at the
+    end of the run duplicates are regrouped once and the new photos' stories are suggested."""
+    from PIL import Image
+
+    from engine.services import duplicate_service, stories_planner
+
+    conn, ids = lib["conn"], lib["ids"]
+    thumb = settings.data_dir / "thumbnails" / f"p3_{ids['old.jpg']}.webp"
+    thumb.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (64, 48), (200, 30, 30)).save(thumb, "WEBP")
+    await conn.execute("UPDATE photos SET thumbnail_path = ? WHERE id = ?;", (f"thumbnails/{thumb.name}", ids["old.jpg"]))
+    await conn.commit()
+    events = []
+
+    async def regroup(c):
+        events.append("duplicates")
+        return []
+
+    async def stories_after():
+        events.append("stories")
+
+    async def daily(today=None):
+        events.append("daily")
+        return False
+
+    monkeypatch.setattr(duplicate_service, "scan_and_cluster_duplicates", regroup)
+    monkeypatch.setattr(stories_planner, "after_import", stories_after)
+    monkeypatch.setattr(stories_planner, "daily_if_due", daily)
+    monkeypatch.setattr(after_import, "_start_enhancement", lambda: events.append("8K"))
+    try:
+        assert (await after_import.counts())["dups_waiting"] == 0  # Not before its text is read.
+        await _run_all()
+        async with conn.execute("SELECT phash FROM photos WHERE id = ?;", (ids["old.jpg"],)) as cur:
+            assert len((await cur.fetchone())[0]) == 16  # A 64-bit fingerprint.
+        await after_import.finish_run()
+        assert events == ["duplicates", "8K", "stories", "daily"]
+        events.clear()
+        await after_import.finish_run()  # Nothing new: only the daily check.
+        assert events == ["daily"]
+    finally:
+        thumb.unlink(missing_ok=True)
