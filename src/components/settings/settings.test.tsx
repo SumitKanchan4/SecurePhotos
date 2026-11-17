@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../store/useAppStore";
 import { DEFAULT_SETTINGS } from "../../hooks/useAppSettings";
@@ -152,6 +152,23 @@ describe("Photos & AI and Storage", () => {
     expect(screen.getByText("Balanced (Recommended)")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Photo quality"), { target: { value: "25" } });
     expect(updateSetting).toHaveBeenCalledWith("quality_crf", 25);
+  });
+
+  it("has the Old photos rows in plain words, each When I ask or Automatically, and Keep original", () => {
+    const updateSetting = vi.fn();
+    render(<PhotosAISettings settings={DEFAULT_SETTINGS} updateSetting={updateSetting} />);
+    for (const title of ["Add colour to old grey photos", "Fix faded or yellowed colours", "Sharpen blurry faces"]) {
+      const group = screen.getByRole("radiogroup", { name: title });
+      expect(within(group).getByRole("radio", { name: "When I ask" })).toHaveAttribute("aria-checked", "true");
+    }
+    expect(screen.queryByText(/Remove scratches/)).not.toBeInTheDocument(); // Comes with that feature (A7).
+    expect(screen.getByText(/not on photos taken with a phone or camera/)).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("radiogroup", { name: "Sharpen blurry faces" })).getByRole("radio", { name: "Automatically" }));
+    expect(updateSetting).toHaveBeenCalledWith("old_photos_faces", "auto");
+    const keep = screen.getByRole("switch", { name: "Keep original" });
+    expect(keep).toBeChecked();
+    fireEvent.click(keep);
+    expect(updateSetting).toHaveBeenCalledWith("old_photos_keep_original", false);
   });
 
   it("shows the folder the engine really uses and what the space is used for", async () => {

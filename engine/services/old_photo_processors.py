@@ -130,8 +130,10 @@ def _models_in_loading_order() -> List[str]:
     return sorted(COLOUR_MODELS, key=lambda k: k != loaded)
 
 
-def add_colour(data: bytes, params: Dict[str, Any], progress: Callable[[int], None], cancelled: Callable[[], bool]) -> bytes:
-    """Recipe F (Natural) or the 768 px variant (Vivid), with the sepia fallback."""
+def add_colour(data: bytes, params: Dict[str, Any], progress: Callable[[int], None], cancelled: Callable[[], bool]) -> Any:
+    """Recipe F (Natural) or the 768 px variant (Vivid), with the sepia fallback. With
+    ``faces`` (automatic rules, A6, when "Sharpen blurry faces" is Automatic too) the faces of
+    the coloured photo are sharpened in the same job, if the face model is here."""
     rgb = decode_rgb(data)
     Ls = stretch_brightness(_lab_l(rgb))
     vivid = params.get("style") == "vivid"
@@ -150,8 +152,11 @@ def add_colour(data: bytes, params: Dict[str, Any], progress: Callable[[int], No
             vivid_ab = merge_more_colourful(predict_ab(session, Ls, VIVID_SIZE), predictions["ddcolor_artistic"])
         if brown_share(vivid_ab) < brown_share(ab):
             ab = vivid_ab
+    coloured = lab_to_rgb(Ls, ab)
+    if params.get("faces") and not cancelled() and ai_models.is_model_ready(face_sharpen.FACE_MODEL):
+        return _faces_outcome(coloured, progress, cancelled, (85, 98))
     progress(95)
-    return encode_jpeg(lab_to_rgb(Ls, ab))
+    return encode_jpeg(coloured)
 
 
 # ── Fix faded colours ───────────────────────────────────────────────────────
@@ -210,9 +215,10 @@ def without_faces(kind: str, source: bytes, info: Dict[str, Any], extra: bytes, 
 
 
 def kinds_kept(kind: str, info: Dict[str, Any], off: List[int]) -> str:
-    """The label of the kept copy: a faded-colour fix whose faces were sharpened is AI-made."""
+    """The label of the kept copy: a colour fix whose faces were sharpened says so too
+    (and a faded-colour fix with sharpened faces is AI-made)."""
     sharpened = [i for i, f in enumerate(info.get("faces", [])) if f["strength"] > 0 and i not in set(off)]
-    return f"{kind},faces" if kind == "fade" and sharpened else kind
+    return f"{kind},faces" if kind in ("fade", "colour") and sharpened else kind
 
 
 def apply_intensity(result: bytes, source: bytes, intensity: float) -> bytes:

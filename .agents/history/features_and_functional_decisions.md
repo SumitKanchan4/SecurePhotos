@@ -6211,3 +6211,25 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 
 ### State & Lifecycle Impact
 - New column `restore_jobs.result_info` (migration adds it). Staged `job_N.faces` files live and die with their result (keep, discard, cancel, restart clean-up).
+
+## 155. Old Photos, Step A6: Automatic Rules and Settings → Old Photos (H10)
+
+### Functionality Overview
+- **Settings → Photos & AI → Old photos** ("Make old photos look better."): Add colour to old grey photos, Fix faded or yellowed colours, Sharpen blurry faces — each **When I ask** (default) or **Automatically**, with a small before → after picture; and **Keep original** (on: both kept and linked; off: the original goes to Trash for 30 days once the improved photo is ready). Remove scratches and spots joins with A7.
+- **Automatically** works on new photos after import, in the background, after anything the user asked for, waiting while the laptop is on battery; progress in Activity. The result is kept by the Keep original switch.
+- **Only scans of prints:** photos with no camera exposure data (how PhotoScan and scanner images look). Photos taken with a phone or camera are never changed automatically; they can still be improved from the viewer.
+- One improved copy per photo: when faces are Automatic too, a grey scan gets colour and sharper faces in one job ("colour,faces"); a colour scan its faded colours fixed and sharper faces ("fade,faces").
+
+### Functional Decision Points & Rationale
+- Owner (2026-11-17): automatic work only on scans of prints, so a black-and-white photo taken on purpose with a phone isn't coloured and phone portraits aren't "sharpened". Signal checked on the owner's scans: none carries camera make, model or exposure data.
+- Faces folded into the colour job instead of a second job on the copy: one copy, no chain of copies.
+- With faces on "When I ask", automatic colour fixes leave faces alone (the user didn't ask for face changes).
+- No extra "is it faded?" detector for colour scans: the colour fix barely changes a print that isn't faded.
+
+### Technical Touchpoints
+- New: `engine/services/old_photo_rules.py` (`looks_like_a_scan`, `plan`, `on_imported`), `engine/tests/test_old_photo_rules.py`.
+- Changed: `engine/api/photos.py` (import hands new photo ids to the rules), `engine/services/old_photo_processors.py` (`add_colour` with `faces`; `kinds_kept` for colour), `engine/services/restore_queue.py` (per-face rebuild only for faces / fade), `src/hooks/useAppSettings.ts` (old-photo keys), `src/components/settings/PhotosAISettings.tsx` (Old photos group), `src/index.css` (`.oldset-*`), docs.
+- Tests: engine 368 (+17), frontend 175 (+1). Mutation checks: 10 deliberate breaks each caught (one found a weak assertion, fixed). Browser check on a throwaway library in both themes: the group matches the board, settings save; import of a faded two-face "scan" and a grey "phone" photo: only the scan was queued (automatic Fix faded colours with faces); on battery it waited; with the battery guard off it ran in 8 s and kept a linked `fade,faces` copy; the phone photo was untouched. Settings restored afterwards.
+
+### State & Lifecycle Impact
+- No schema change. Uses the existing settings keys (`old_photos_colour`, `old_photos_fade`, `old_photos_faces`, `old_photos_keep_original`). Turning a row to Automatically affects only photos imported afterwards.

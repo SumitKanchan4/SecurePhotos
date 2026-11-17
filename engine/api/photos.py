@@ -1327,6 +1327,11 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
 
     if imported > 0:
         background_tasks.add_task(run_background_optimization)
+    if imported_photo_ids:
+        # H10 / A6: the "Automatically" rows of Settings → Old photos (scans of prints only).
+        from engine.services.old_photo_rules import on_imported
+
+        background_tasks.add_task(on_imported, list(imported_photo_ids))
 
     return ImportResponse(
         total_found=total_found,
