@@ -12,7 +12,15 @@ export interface AppSettings {
   face_clustering: boolean;
   ambient_music: boolean;
   ken_burns_motion: boolean;
+  /** Old photos (H10 / A6): "ask" = only from the viewer, "auto" = after import (scans of prints). */
+  old_photos_colour: OldPhotoRule;
+  old_photos_fade: OldPhotoRule;
+  old_photos_faces: OldPhotoRule;
+  /** Off: once the improved photo is made, the original goes to Trash for 30 days. */
+  old_photos_keep_original: boolean;
 }
+
+export type OldPhotoRule = "ask" | "auto";
 
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: "dark",
@@ -24,6 +32,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   face_clustering: true,
   ambient_music: true,
   ken_burns_motion: true,
+  old_photos_colour: "ask",
+  old_photos_fade: "ask",
+  old_photos_faces: "ask",
+  old_photos_keep_original: true,
 };
 
 /**
