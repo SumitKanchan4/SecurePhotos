@@ -47,9 +47,13 @@ Videos: basics → preparation (existing queue) → duplicates. Vault items: nev
 
 ## How it runs
 
-- **Record per photo:** table `photo_steps(photo_id, step, state, tries, error, updated_at)`;
-  state `waiting | done | skipped | failed`. Import adds the rows; old libraries are backfilled
-  from today's flags (`is_optimized`, `faces_scanned`, …). A restart resumes where it stopped.
+- **Record per photo:** one flag per step on the photo itself, like the ones that exist
+  (`faces_scanned`, `is_optimized`): text read = `ocr_text IS NOT NULL` ('' = read, no text);
+  new flags only where a step has none. (Changed from a separate `photo_steps` table during P1:
+  two records of the same fact could drift apart.) A restart resumes where it stopped; existing
+  libraries need no backfill (unread text and unscanned faces are simply still waiting).
+  The order is in the conditions: faces wait until the text is read (documents are known first;
+  D1), and never run on documents.
 - **One scheduler** (replaces the separate triggers; the existing workers become its steps):
   - Quick steps (read text, faces: well under a second per photo) go first for the whole batch,
     so People, Documents and search are complete soon after an import.
@@ -72,8 +76,13 @@ Videos: basics → preparation (existing queue) → duplicates. Vault items: nev
 
 ## Decisions for the owner (asked one at a time)
 
-- D1: Faces on documents (an ID card has a face): skip, or add to People?
-- D2: Heavy work strictly one at a time (smoothest, slower overall) or two at a time?
-- D3: 8K for an original stacked behind an improved copy: wait for "What to keep", or always?
-- D4: Stories after an import: suggest automatically, or keep it to "Make new stories"?
-- D5: Quick steps on battery: run anyway (light), or follow the battery setting like heavy ones?
+- D1: Faces on documents (an ID card has a face): **skip** (owner, 2026-11-17). A photo found to be a document gets `faces` = skipped; if it is later un-marked as a document, its faces step runs then.
+- D2: Heavy work **one at a time** (owner, 2026-11-17): smoothest; quick steps still finish early, user requests go first.
+- D3: 8K for an original stacked behind an improved copy: **always** (owner, 2026-11-17): Original vs Improved is then like for like in the viewer, and nothing is left to do if the original is restored later. Order per photo stays: old-photo fix on the scan's own size → 8K for both (copy first, it is in front).
+- D4: Stories: **suggested automatically** (owner, 2026-11-17), and *wisely*: stories are about the whole library and old memories, not only the latest import. Proposed rules (P3, shown to the owner before building):
+  - **Every day** (first open of the day): "On this day" from any year, and a "years ago" memory, so For you changes daily even with no import.
+  - **After an import is ready**: stories the new photos make possible: the trip or event they belong to (date + place), "Through the years" for a person who gained photos, and old memories from newly added scans of prints.
+  - **At their time**: "Year in review" at the turn of the year, a season's highlights when it ends.
+  - **Good taste**: a handful at a time (For you shows the best ~6, newest reasons first); never the same story twice, never one the owner dismissed; enough good photos or none (blurry, duplicates, documents, screenshots and the stacked original of an improved pair left out); named people and places preferred; vault never.
+  - Scans of prints carry the scan date, not the year they were taken: they never make a "this week" or "trip" story from the scan date; they go to old-memories stories (by decade when the date is known, otherwise "Old photos").
+- D5: Quick steps on battery: **follow the battery setting** like heavy ones (owner, 2026-11-17): one rule for all background work.
