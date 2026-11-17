@@ -46,6 +46,17 @@ RULES_WAITING = (
     "AND ocr_text IS NOT NULL AND (faces_scanned = 1 OR COALESCE(is_document, 0) = 1)"
 )
 
+# A photo still being prepared (P4: the grid's quiet "preparing" dot): any step not done yet,
+# 8K included. Plain columns of the photos table, for use in any library query.
+PREPARING = (
+    "(COALESCE(is_encrypted, 0) = 0 AND ("
+    "(ocr_text IS NULL AND COALESCE(mime_type, '') LIKE 'image/%') "
+    "OR (faces_scanned = 0 AND COALESCE(is_document, 0) = 0) "
+    "OR (restore_checked = 0 AND derived_from_id IS NULL AND COALESCE(mime_type, '') LIKE 'image/%') "
+    "OR (phash IS NULL AND thumbnail_path IS NOT NULL) "
+    "OR (is_optimized = 0 AND COALESCE(mime_type, '') NOT LIKE 'video/%')))"
+)
+
 IDLE_RECHECK_SECONDS = 60  # Also picks up anything a missed wake-up left behind.
 BATTERY_RECHECK_SECONDS = 30
 
@@ -61,6 +72,48 @@ state: Dict[str, Any] = {
 
 _wake: Optional[asyncio.Event] = None
 _task: Optional[asyncio.Task] = None
+
+
+# P4: the last import, for its summary once its photos are ready ("124 added · 18 people ...").
+last_import: Dict[str, Any] = {"batch": 0, "ids": []}
+
+
+def remember_import(photo_ids) -> None:
+    ids = [int(i) for i in photo_ids]
+    if ids:
+        last_import.update(batch=last_import["batch"] + 1, ids=ids)
+
+
+async def import_summary() -> Optional[Dict[str, Any]]:
+    """What the last import brought, once its quick steps (text, faces, rules, duplicates) are
+    done; None while it is still being prepared (or when nothing was imported this session).
+    8K is not waited for: it takes much longer and changes nothing the summary says."""
+    ids = last_import["ids"]
+    if not ids:
+        return None
+    marks = ",".join("?" * len(ids))
+    quick = f"({TEXT_WAITING}) OR ({FACES_WAITING}) OR ({RULES_WAITING}) OR ({DUPS_WAITING})"
+    async with db_connection() as conn:
+        async with conn.execute(f"SELECT COUNT(*) FROM photos WHERE id IN ({marks}) AND ({quick});", ids) as cur:
+            if (await cur.fetchone())[0]:
+                return None
+        async with conn.execute(f"SELECT COUNT(*) FROM photos WHERE id IN ({marks}) AND trashed_at IS NULL;", ids) as cur:
+            added = (await cur.fetchone())[0]
+        async with conn.execute(
+            f"SELECT COUNT(DISTINCT COALESCE('p' || person_id, 'c' || cluster_id, 'f' || id)) FROM faces WHERE photo_id IN ({marks});", ids
+        ) as cur:
+            people = (await cur.fetchone())[0]
+        async with conn.execute(f"SELECT COUNT(*) FROM photos WHERE id IN ({marks}) AND COALESCE(is_document, 0) = 1;", ids) as cur:
+            documents = (await cur.fetchone())[0]
+        async with conn.execute(
+            f"SELECT COUNT(DISTINCT photo_id) FROM restore_jobs WHERE photo_id IN ({marks}) AND origin = 'auto' AND status IN ('queued', 'working', 'done');",
+            ids,
+        ) as cur:
+            improved = (await cur.fetchone())[0]
+        async with conn.execute(f"SELECT COUNT(DISTINCT photo_id) FROM duplicate_groups WHERE photo_id IN ({marks});", ids) as cur:
+            duplicates = (await cur.fetchone())[0]
+    return {"batch": last_import["batch"], "added": added, "people": people, "documents": documents,
+            "old_photos": improved, "duplicates": duplicates}
 
 
 def wake() -> None:

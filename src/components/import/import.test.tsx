@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../store/useAppStore";
-import { ImportModal, selectionFromPaths } from "../ImportModal";
+import { ImportModal, addToSelection, selectionFromPaths } from "../ImportModal";
 import {
   contentsLine,
   duplicatesLine,
@@ -68,6 +68,10 @@ describe("import wording", () => {
   it("treats one dropped item without an extension as a folder", () => {
     expect(selectionFromPaths(["D:/Pictures/Goa trip"])).toEqual({ folder: "D:/Pictures/Goa trip", files: [] });
     expect(selectionFromPaths(["D:/a.jpg", "D:/b.jpg"])).toEqual({ folder: null, files: ["D:/a.jpg", "D:/b.jpg"] });
+    // P4 "Add more": a new choice adds to the earlier one; the same place twice counts once.
+    const one = addToSelection({ folder: null, files: [] }, ["D:/Pictures/Goa trip"]);
+    expect(one).toEqual({ folder: "D:/Pictures/Goa trip", files: [] });
+    expect(addToSelection(one, ["E:/Scans/a.jpg", "D:/Pictures/Goa trip/"])).toEqual({ folder: null, files: ["D:/Pictures/Goa trip", "E:/Scans/a.jpg"] });
   });
 });
 

@@ -35,7 +35,7 @@ import { AlbumsView } from "./components/AlbumsView";
 import { DocumentsView } from "./components/DocumentsView";
 import { TrashView } from "./components/TrashView";
 import { ActivityView } from "./components/activity/ActivityView";
-import { buildActivity } from "./components/activity/activityFormat";
+import { buildActivity, importSummaryLine } from "./components/activity/activityFormat";
 import { SettingsView } from "./components/SettingsView";
 import { CollageModal } from "./components/CollageModal";
 import { AddToAlbumModal } from "./components/AddToAlbumModal";
@@ -461,6 +461,27 @@ export const App: React.FC = () => {
     () => buildActivity({ restore: restoreJobs, enhance: optimizationProgress, video: videoProgress, importing: importProgress, preparing }),
     [restoreJobs, optimizationProgress, videoProgress, importProgress, preparing],
   );
+  // P4: once the last import's photos are ready, say what it brought (once per import).
+  const shownImportBatch = useRef<number | null>(null);
+  useEffect(() => {
+    const summary = preparing?.import_summary;
+    if (!summary || shownImportBatch.current === summary.batch) return;
+    let seen: string | null = null;
+    try {
+      seen = sessionStorage.getItem("securephotos:import-summary-shown");
+    } catch {
+      /* Private mode or blocked storage: show it once for this window. */
+    }
+    shownImportBatch.current = summary.batch;
+    if (seen === String(summary.batch)) return;
+    try {
+      sessionStorage.setItem("securephotos:import-summary-shown", String(summary.batch));
+    } catch {
+      /* As above. */
+    }
+    showToast(`Your new photos are ready: ${importSummaryLine(summary)}.`, "success");
+  }, [preparing?.import_summary, showToast]);
+
   const setActivitySummary = useAppStore((s) => s.setActivitySummary);
   useEffect(() => {
     const { remaining, paused, headline } = activity;

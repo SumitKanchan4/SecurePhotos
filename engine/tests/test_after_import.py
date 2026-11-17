@@ -54,7 +54,10 @@ async def lib(monkeypatch):
     folder = settings.data_dir / "originals" / tag
     folder.mkdir(parents=True)
     conn = await get_db_connection()
-    # Only this test's photos are waiting: everything else in the shared test database is done.
+    # Only this test's photos are waiting: everything else in the shared test database counts as
+    # done for the test, and is put back exactly as it was afterwards (other tests rely on it).
+    async with conn.execute("SELECT id, ocr_text, faces_scanned, restore_checked, phash FROM photos;") as cur:
+        saved = [tuple(r) for r in await cur.fetchall()]
     await conn.execute("UPDATE photos SET ocr_text = COALESCE(ocr_text, ''), faces_scanned = 1, restore_checked = 1, phash = COALESCE(phash, '');")
     ids = {}
     for name, extra in (
@@ -74,6 +77,10 @@ async def lib(monkeypatch):
     yield {"conn": conn, "ids": ids, "order": order, "reclusters": reclusters}
     marks = ",".join("?" * len(ids))
     await conn.execute(f"DELETE FROM photos WHERE id IN ({marks});", tuple(ids.values()))
+    await conn.executemany(
+        "UPDATE photos SET ocr_text = ?, faces_scanned = ?, restore_checked = ?, phash = ? WHERE id = ?;",
+        [(text, faces, checked, phash, pid) for pid, text, faces, checked, phash in saved],
+    )
     await conn.commit()
     await conn.close()
     shutil.rmtree(folder, ignore_errors=True)
@@ -202,3 +209,45 @@ async def test_fingerprints_for_duplicates_then_one_regrouping_and_stories(lib, 
         assert events == ["daily"]
     finally:
         thumb.unlink(missing_ok=True)
+
+
+async def test_the_grid_marks_photos_still_being_prepared(lib):
+    """P4: the timeline's 'preparing' flag (16) is set until every step is done, 8K included."""
+    from httpx import ASGITransport, AsyncClient
+
+    from engine.main import app
+
+    conn, ids = lib["conn"], lib["ids"]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        flags = {i[0]: i[5] for i in (await client.get("/api/photos/timeline")).json()["items"]}
+    assert flags[ids["new.jpg"]] & 16  # Text not read yet.
+    await conn.execute(
+        "UPDATE photos SET ocr_text = '', faces_scanned = 1, restore_checked = 1, phash = '', is_optimized = 1 WHERE id = ?;",
+        (ids["new.jpg"],),
+    )
+    await conn.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = (await client.get("/api/photos/timeline")).json()["items"]
+        progress = (await client.get("/api/photos/preparing")).json()
+    flags = {i[0]: i[5] for i in res}
+    assert not flags[ids["new.jpg"]] & 16  # Ready.
+    assert progress["preparing_total"] >= 4  # The others still are.
+
+
+async def test_the_import_summary_comes_once_its_photos_are_ready(lib):
+    conn, ids = lib["conn"], lib["ids"]
+    batch = [ids["old.jpg"], ids["receipt.jpg"], ids["new.jpg"]]
+    after_import.remember_import(batch)
+    assert await after_import.import_summary() is None  # Still being prepared.
+    await _run_all()
+    await conn.execute("UPDATE photos SET phash = '' WHERE id IN (?, ?, ?);", tuple(batch))
+    await conn.execute("INSERT INTO faces (photo_id, box_x, box_y, box_w, box_h, cluster_id, embedding) VALUES (?, 0, 0, 0.1, 0.1, 'c1', '[0.1]');", (ids["old.jpg"],))
+    await conn.execute("INSERT INTO faces (photo_id, box_x, box_y, box_w, box_h, cluster_id, embedding) VALUES (?, 0.5, 0, 0.1, 0.1, 'c1', '[0.1]');", (ids["new.jpg"],))
+    await conn.commit()
+    try:
+        summary = await after_import.import_summary()
+        assert summary == {"batch": after_import.last_import["batch"], "added": 3, "people": 1, "documents": 1, "old_photos": 0, "duplicates": 0}
+    finally:
+        await conn.execute(f"DELETE FROM faces WHERE photo_id IN ({ids['old.jpg']}, {ids['new.jpg']});")
+        await conn.commit()
+        after_import.last_import.update(ids=[])

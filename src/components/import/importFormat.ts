@@ -49,6 +49,12 @@ export function duplicatesLine(p: ImportPreview): string | null {
     : `${p.already_in_library.toLocaleString()} are already in your library and will be skipped`;
 }
 
+/** P4: a big selection is fine; say so, so "Add more" never feels risky. Null for small ones. */
+export function largeImportNote(p: ImportPreview): string | null {
+  if (p.to_import < 500 && p.total_bytes < 10 * 1024 ** 3) return null;
+  return "A big import is fine: everything is added first, then prepared in the background, newest first. You can keep using the app.";
+}
+
 export function importButtonLabel(p: ImportPreview | null): string {
   if (!p) return "Import";
   if (p.to_import === 0) return "Nothing new to import";

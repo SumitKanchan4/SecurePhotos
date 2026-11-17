@@ -96,6 +96,14 @@ const Tile: React.FC<TileProps> = React.memo(
               AI
             </span>
           )}
+          {photo.is_preparing && !photo.is_video && (
+            <span
+              className="timeline-preparing"
+              role="img"
+              aria-label="Still being prepared"
+              title="Still being prepared: reading text, finding faces, enhancing. You can use it already."
+            />
+          )}
         </div>
 
         {selectable && (

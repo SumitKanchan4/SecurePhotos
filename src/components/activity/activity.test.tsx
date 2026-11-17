@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../store/useAppStore";
 import { IconRail } from "../shell/IconRail";
 import { ActivityView } from "./ActivityView";
-import { buildActivity, improvedLabel, type RestoreJobView, type RestoreJobsReport } from "./activityFormat";
+import { buildActivity, improvedLabel, importSummaryLine, type RestoreJobView, type RestoreJobsReport } from "./activityFormat";
 
 const job = (id: number, extra: Partial<RestoreJobView> = {}): RestoreJobView => ({
   id,
@@ -66,17 +66,32 @@ describe("buildActivity", () => {
     expect(m.waiting[0].detail).toBe("Grandma wedding");
   });
 
-  it("shows the after-import process (text, then faces) and counts each photo once", () => {
+  it("shows one card for everything a new photo goes through, with the step it is on", () => {
     const reading = buildActivity({
-      preparing: { active: true, step: "text", photo_id: 31, paused_reason: null, text_waiting: 40, faces_waiting: 12 },
+      preparing: { active: true, step: "text", photo_id: 31, paused_reason: null, text_waiting: 40, faces_waiting: 12, preparing_total: 124 },
     });
-    expect(reading.working[0]).toMatchObject({ kind: "prepare", title: "Getting photos ready", detail: "Reading text · 52 photos left", photoId: 31 });
-    expect(reading.remaining).toBe(52);
+    expect(reading.working[0]).toMatchObject({ kind: "prepare", title: "Getting 124 photos ready", detail: "Reading text", photoId: 31 });
+    expect(reading.remaining).toBe(124);
     const faces = buildActivity({
-      preparing: { active: true, step: "faces", photo_id: 9, paused_reason: "on_battery", text_waiting: 0, faces_waiting: 1 },
+      preparing: { active: true, step: "faces", photo_id: 9, paused_reason: "on_battery", text_waiting: 0, faces_waiting: 1, preparing_total: 1 },
     });
-    expect(faces.working[0].detail).toBe("Finding faces · 1 photo left · waiting: battery low");
-    expect(buildActivity({ preparing: { active: false, step: null, photo_id: null, paused_reason: null, text_waiting: 0, faces_waiting: 0 } }).working).toEqual([]);
+    expect(faces.working[0]).toMatchObject({ title: "Getting 1 photo ready", detail: "Finding faces · waiting: battery low" });
+    // Quick steps done, 8K running: the same card shows it (no second card, counted once).
+    const enhancing = buildActivity({
+      preparing: { active: false, step: null, photo_id: null, paused_reason: null, text_waiting: 0, faces_waiting: 0, preparing_total: 7 },
+      enhance: { is_active: true, active_photo_id: 5, active_filename: null, item_progress: 40, completed_count: 0, total_count: 7 },
+    });
+    expect(enhancing.working.map((i) => [i.title, i.detail, i.photoId, i.progress])).toEqual([["Getting 7 photos ready", "Enhancing to 8K", 5, 40]]);
+    expect(enhancing.waiting).toEqual([]);
+    expect(enhancing.remaining).toBe(7);
+    expect(buildActivity({ preparing: { active: false, step: null, photo_id: null, paused_reason: null, text_waiting: 0, faces_waiting: 0, preparing_total: 0 } }).working).toEqual([]);
+  });
+
+  it("sums up an import in a few words", () => {
+    expect(importSummaryLine({ batch: 1, added: 124, people: 18, documents: 3, old_photos: 5, duplicates: 0 })).toBe(
+      "124 added · 18 people · 3 documents · 5 old photos improved",
+    );
+    expect(importSummaryLine({ batch: 2, added: 1, people: 1, documents: 0, old_photos: 0, duplicates: 2 })).toBe("1 added · 1 person · 2 possible duplicates");
   });
 
   it("never names a vault photo", () => {
