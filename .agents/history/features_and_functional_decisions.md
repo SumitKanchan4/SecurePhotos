@@ -6327,3 +6327,23 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 
 ### State & Lifecycle Impact
 - New column `photos.restore_checked` (existing photos count as checked).
+
+## 160. After-Import Process, Step P3: Duplicates and Stories
+
+### Functionality Overview
+- **Duplicates** are found for new photos: each photo's fingerprint is made from its thumbnail as a step of the after-import process, and the groups are rebuilt once when a batch is done (the Photos "N duplicates" pill follows).
+- **Stories are suggested automatically** under the owner-approved rules: every day "This week, years ago" (For you changes as the weeks go by); after an import, the trip or event, "Through the years" for the people who matter most, highlights, and "Old photos, brought back" for prints the app improved; "Year in review" around the new year; a season's highlights after it ends.
+- **Good taste:** For you keeps about 6 suggestions (saved stories untouched); a story the owner deletes is never suggested again; dated stories use only photos the library shows, no documents, one photo per duplicate group, and no restored old prints (their date is the scan date); generic folders ("Camera", "misc", dates) are not trips unless there are at least 5 photos.
+
+### Functional Decision Points & Rationale
+- The near-duplicate comparison is vectorised (numpy popcount): 10,000 photos in 0.2 s instead of ~50 million Python comparisons; same pairs (tested against the old function).
+- Fingerprints come from the thumbnail (same 9x8 result, no 8K decode).
+- "Make new stories" makes "This week" last, so the 6-suggestion limit never drops it.
+
+### Technical Touchpoints
+- New: `engine/services/stories_planner.py`, tests `test_stories_planner.py`, `test_duplicate_speed.py`.
+- Changed: `after_import.py` (fingerprint step, `finish_run`), `duplicate_service.py` (`_close_pairs`, thumbnail first), `stories_service.py` (`story_photo`, `generate_old_photos_story`, week window, dismissals, generic folders, titles), `api/stories.py`, `database.py` (`story_dismissals`), `StoryPlayerModal.tsx` (Old Photos badge).
+- Checks: engine 443, frontend 193; end to end in a throwaway library with synthetic photos: one duplicate group, "Escape to Goa", "This Week, 2 Years Ago", highlights without the duplicate.
+
+### State & Lifecycle Impact
+- New table `story_dismissals`; setting `stories_daily_on` (the day's stories were made).
