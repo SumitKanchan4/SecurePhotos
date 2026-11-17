@@ -249,7 +249,8 @@ describe("Old photos in the viewer", () => {
     expect(screen.getByRole("button", { name: "Face 1: as it was" })).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("img", { name: "After" }).getAttribute("src")).toContain("faces_off=0");
     expect(panel).toHaveTextContent("1 face sharpened · 1 switched off");
-    fireEvent.click(screen.getByRole("button", { name: "Keep both" }));
+    // The remembered choice arrives with the settings request; the button follows it.
+    fireEvent.click(await screen.findByRole("button", { name: "Keep both" }));
     await waitFor(() => expect(calls.find((c) => c.url === "/api/restore/jobs/5/keep")?.body).toMatchObject({ choice: "keep_both", faces_off: [0] }));
   });
 
@@ -340,6 +341,53 @@ describe("Old photos in the viewer", () => {
     expect(screen.getByRole("button", { name: "Original" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(improved);
     expect(handlers.onNavigate).toHaveBeenCalledWith(1);
+  });
+
+  it("swaps in the original when the library shows only the improved photo (A8 stack)", async () => {
+    mockEngine({
+      "/api/restore/photos/2/state": () => ({
+        options: { colour: false, fade: false },
+        members: [{ id: 1, is_original: true, ai_kind: null, trashed: false }, { id: 2, is_original: false, ai_kind: "colour", trashed: false }],
+        job: null,
+      }),
+    });
+    const onShowVersion = vi.fn();
+    const handlers = renderViewer([photo(2, { derived_from_id: 1, ai_kind: "colour" }), photo(9)], { onShowVersion });
+    fireEvent.click(await screen.findByRole("button", { name: "Original" }));
+    expect(onShowVersion).toHaveBeenCalledWith(1);
+    expect(handlers.onNavigate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("region", { name: "Choose what to keep" })).not.toBeInTheDocument(); // Chosen already.
+  });
+
+  it.each([
+    ["Keep improved", "keep_improved", 2, "The original is in Trash for 30 days."],
+    ["Keep both", "keep_both", 2, "Both kept."],
+    ["Keep original", "keep_original", 1, "The improved photo is in Trash for 30 days."],
+  ])("asks what to keep of a photo improved automatically: %s", async (label, choice, keepId, message) => {
+    const calls = mockEngine({
+      "/api/restore/photos/2/state": () => ({
+        options: { colour: false, fade: false },
+        members: [
+          { id: 1, is_original: true, ai_kind: null, trashed: false, choice_pending: false },
+          { id: 2, is_original: false, ai_kind: "colour", trashed: false, choice_pending: true },
+        ],
+        job: null,
+      }),
+      "/api/restore/choices": () => ({ applied: 1 }),
+    });
+    const showToast = vi.fn();
+    useAppStore.setState({ showToast });
+    const onShowVersion = vi.fn();
+    const handlers = renderViewer([photo(2, { derived_from_id: 1, ai_kind: "colour" })], { onShowVersion });
+    const bar = await screen.findByRole("region", { name: "Choose what to keep" });
+    expect(bar).toHaveTextContent("Improved automatically. Which do you want to keep?");
+    fireEvent.click(within(bar).getByRole("button", { name: label }));
+    await waitFor(() => expect(handlers.onLibraryChanged).toHaveBeenCalled());
+    expect(calls.find((c) => c.url === "/api/restore/choices")?.body).toEqual({ photo_ids: [2], choice });
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining(message), "success");
+    if (keepId === 2) expect(onShowVersion).not.toHaveBeenCalled();
+    else expect(onShowVersion).toHaveBeenCalledWith(1); // The improved one went to Trash: show the original.
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Choose what to keep" })).not.toBeInTheDocument());
   });
 });
 

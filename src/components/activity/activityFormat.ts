@@ -2,9 +2,12 @@
  * Activity (H10 / A4): turns the engine's background-work reports into one list of plain
  * items for the Activity page, the rail's status ring and the Photos header pill.
  * Pure functions, unit-tested. Vault photos are never named (the page blurs them).
+ * A8: the page, the ring and the pill count the same things (every photo or video still to do);
+ * every card shows the photo being worked on; names made by devices are never shown.
  */
 import type { ImportProgressState, OptimizationProgress, VideoOptimizationProgress } from "../../types";
 import { IMPROVE_LABELS, type RestoreJob } from "../viewer/useOldPhoto";
+import { humanName } from "../../utils/displayName";
 
 export interface RestoreJobView extends RestoreJob {
   private: boolean;
@@ -20,6 +23,9 @@ export interface RestoreJobsReport {
   paused: boolean;
   paused_reason: string | null;
   download: { model: string; done: number; total: number } | null;
+  /** A8: improved copies kept automatically, waiting for "improved, original or both". */
+  choices?: { photo_id: number; original_id: number; ai_kind: string | null }[];
+  choices_total?: number;
 }
 
 export type ActivityKind = "colour" | "fade" | "faces" | "scratches" | "import" | "enhance" | "video" | "models";
@@ -38,13 +44,19 @@ export interface ActivityItem {
   cancel?: "job" | "import";
   /** Finished items: what happened, in a few words. */
   outcome?: string;
+  /** Waiting groups ("12 photos to enhance"): how many items the tile stands for. */
+  count?: number;
 }
 
 export interface ActivityModel {
   working: ActivityItem[];
   waiting: ActivityItem[];
   ready: ActivityItem[];
-  finished: ActivityItem[];
+  /** Finished today but needing the user (a download, or a photo that couldn't be improved). */
+  attention: ActivityItem[];
+  /** A8: improved photos kept automatically, waiting for "what to keep" (the Photos pill;
+   *  the choice itself is made on the What to keep page, not in Activity). */
+  choicesTotal: number;
   /** Items still to do (shown on the rail ring). */
   remaining: number;
   paused: boolean;
@@ -63,7 +75,7 @@ const plural = (n: number, word: string) => `${n.toLocaleString()} ${word}${n ==
 
 function jobItem(job: RestoreJobView): ActivityItem {
   const label = IMPROVE_LABELS[job.kind] ?? IMPROVE_LABELS.colour;
-  const name = job.private ? "Private photo" : job.filename ?? "Photo";
+  const name = job.private ? "Private photo" : humanName(job.filename) ?? "";
   return {
     key: `job-${job.id}`,
     kind: job.kind,
@@ -121,23 +133,31 @@ export function buildActivity({ restore, enhance, video, importing }: ActivityIn
     working.push({
       key: "video",
       kind: "video",
-      title: video.total_count > 1 ? "Preparing videos" : "Preparing a video",
-      detail: video.total_count > 1 ? `${(video.completed_count + 1).toLocaleString()} of ${video.total_count.toLocaleString()} · for smooth playback` : "For smooth playback",
+      title: "Preparing a video",
+      detail: "For smooth playback",
       progress: video.item_progress ?? null,
+      photoId: video.active_video_id ?? undefined,
     });
     remaining += left;
+    if (left > 1) {
+      waiting.push({ key: "video-waiting", kind: "video", title: "Videos to prepare", detail: plural(left - 1, "video"), progress: null, count: left - 1 });
+    }
   }
   if (enhance?.is_active) {
     const left = Math.max(enhance.total_count - enhance.completed_count, 0);
-    const pausedNote = enhance.paused_reason === "on_battery" ? " · waiting for the charger" : enhance.paused_reason === "by_user" ? " · paused" : "";
+    const pausedNote = enhance.paused_reason === "on_battery" ? " · waiting: battery low" : enhance.paused_reason === "by_user" ? " · paused" : "";
     working.push({
       key: "enhance",
       kind: "enhance",
-      title: "Enhancing photos",
+      title: "Enhancing to 8K",
       detail: `${Math.min(enhance.completed_count + 1, enhance.total_count).toLocaleString()} of ${enhance.total_count.toLocaleString()}${pausedNote}`,
       progress: enhance.item_progress ?? null,
+      photoId: enhance.active_photo_id ?? undefined,
     });
     remaining += left;
+    if (left > 1) {
+      waiting.push({ key: "enhance-waiting", kind: "enhance", title: "Photos to enhance", detail: plural(left - 1, "photo"), progress: null, count: left - 1 });
+    }
   }
 
   const ready = (restore?.review ?? []).map((job) => ({
@@ -145,11 +165,15 @@ export function buildActivity({ restore, enhance, video, importing }: ActivityIn
     title: `${(IMPROVE_LABELS[job.kind] ?? IMPROVE_LABELS.colour).done} · ready to look at`,
     progress: null,
   }));
-  const finished = (restore?.finished_today ?? [])
+  // Only what still needs the user: a download, or a photo that couldn't be improved.
+  // Kept results are in the library; "nothing to fix", cancelled and not-kept need nothing.
+  const attention = (restore?.finished_today ?? [])
+    .filter((job) => job.status === "failed")
     .slice()
     .reverse()
-    // A kept result opens the improved photo; anything else opens the photo it was for.
-    .map((job) => ({ ...jobItem(job), photoId: job.result_photo_id ?? job.photo_id, cancel: undefined, progress: null, outcome: finishedOutcome(job) }));
+    .map((job) => ({ ...jobItem(job), cancel: undefined, progress: null, outcome: finishedOutcome(job) }));
+
+  const choicesTotal = Math.max(restore?.choices_total ?? 0, restore?.choices?.length ?? 0);
 
   const paused = Boolean(restore?.paused);
   const first = working[0] ?? waiting[0];
@@ -163,5 +187,13 @@ export function buildActivity({ restore, enhance, video, importing }: ActivityIn
     ? `${plural(ready.length, "photo")} ready to look at`
     : null;
 
-  return { working, waiting, ready, finished, remaining, paused, headline };
+  return { working, waiting, ready, attention, choicesTotal, remaining, paused, headline };
+}
+
+/** "Colour added · faces sharpened" from an improved copy's kinds. */
+export function improvedLabel(aiKind: string | null | undefined): string {
+  const kinds = (aiKind ?? "").split(",").filter((k) => IMPROVE_LABELS[k]);
+  if (!kinds.length) return "Improved";
+  const words = kinds.map((k) => IMPROVE_LABELS[k].done.toLowerCase());
+  return words.join(" · ").replace(/^./, (c) => c.toUpperCase());
 }

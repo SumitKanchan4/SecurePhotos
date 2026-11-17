@@ -50,7 +50,7 @@ async def _wait_for_power() -> bool:
 
     while True:
         settings = await photos_api._load_enhancement_settings()
-        if not (settings.get("pause_on_battery", True) and photos_api._running_on_battery()):
+        if not photos_api.battery_guard_applies(settings):
             vault_enhancement_state["paused_reason"] = None
             return True
         vault_enhancement_state["paused_reason"] = "on_battery"

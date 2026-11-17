@@ -35,8 +35,9 @@ describe("dates", () => {
 describe("title and camera", () => {
   it("prefers a short caption and falls back to the file name", () => {
     expect(viewerTitle({ caption: "baga beach, sunset", filename: "IMG_1.jpg" })).toBe("Baga beach, sunset");
-    expect(viewerTitle({ caption: "x".repeat(81), filename: "IMG_1.jpg" })).toBe("IMG_1");
+    expect(viewerTitle({ caption: "x".repeat(81), filename: "IMG_1.jpg" })).toBe("Photo");
     expect(viewerTitle({ caption: "  ", filename: "holiday.photo.HEIC" })).toBe("holiday.photo");
+    expect(viewerTitle({ filename: "1792341321410-1c9bc690-7433-41b8-b05b-6742f8547d2f_fade,scratches,faces.avif", derived_from_id: 3 })).toBe("Improved photo");
   });
 
   it("names the camera once and lists only recorded settings", () => {

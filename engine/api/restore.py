@@ -147,7 +147,8 @@ async def _downloads_for(options: Dict[str, Any]) -> Dict[str, int]:
 async def photo_options(photo_id: int) -> Dict[str, Any]:
     """Which improvements fit this photo: "Add colour" for grey photos, "Fix faded colours" otherwise,
     "Sharpen faces" when it has faces (found on the 1024 px thumbnail), and "Remove scratches
-    and spots" for scans of prints (no camera exposure data) and black-and-white photos."""
+    and spots" for scans of prints (no camera exposure data) and black-and-white photos.
+    None for an original that already has an improved copy (A8): improve the copy instead."""
     from engine.database import db_connection
     from engine.services import photo_versions
     from engine.services.face_sharpen import count_faces
@@ -155,12 +156,16 @@ async def photo_options(photo_id: int) -> Dict[str, Any]:
 
     async with db_connection() as conn:
         async with conn.execute(
-            "SELECT thumbnail_path, filepath, is_encrypted, mime_type, ai_kind, iso, aperture, shutter_speed FROM photos WHERE id = ? AND trashed_at IS NULL;",
+            "SELECT thumbnail_path, filepath, is_encrypted, mime_type, ai_kind, iso, aperture, shutter_speed,"
+            " EXISTS (SELECT 1 FROM photos c WHERE c.derived_from_id = photos.id AND c.trashed_at IS NULL)"
+            " FROM photos WHERE id = ? AND trashed_at IS NULL;",
             (photo_id,),
         ) as cur:
             row = await cur.fetchone()
     if row is None or (row[3] or "").startswith("video/"):
         raise HTTPException(status_code=404, detail="Not a photo.")
+    if row[8]:  # A8: already improved; the improved photo is where to go on (no second copy).
+        return {"colour": False, "fade": False, "faces": False, "scratches": False}
     key = restore_queue._vault_key() if row[2] else None
     if row[2] and key is None:
         raise HTTPException(status_code=409, detail="vault_locked")
@@ -210,6 +215,38 @@ async def restore_original(photo_id: int) -> Dict[str, int]:
             return {"original_id": await photo_versions.restore_original(conn, photo_id)}
         except photo_versions.VersionError as err:
             raise HTTPException(status_code=404, detail=str(err))
+
+
+class ChoiceRequest(BaseModel):
+    photo_ids: List[int] = Field(..., min_length=1, max_length=5000)  # Improved copies.
+    choice: str  # "keep_improved" | "keep_both" | "keep_original"
+
+
+@router.get("/choices")
+async def list_choices(limit: int = 500) -> Dict[str, Any]:
+    """A8: improved photos the app kept automatically, waiting for "improved, original or both"
+    (newest first), for the What to keep page and the Photos header pill."""
+    from engine.database import db_connection
+    from engine.services import photo_versions
+
+    limit = max(1, min(int(limit), 2000))
+    async with db_connection() as conn:
+        items = await photo_versions.pending_choices(conn, limit)
+        total = await photo_versions.count_pending_choices(conn) if len(items) >= limit else len(items)
+    return {"items": items, "total": total}
+
+
+@router.post("/choices")
+async def choose_versions(payload: ChoiceRequest) -> Dict[str, int]:
+    """A8: what to keep of improved photos the app kept automatically (one pair or many)."""
+    from engine.database import db_connection
+    from engine.services import photo_versions
+
+    async with db_connection() as conn:
+        try:
+            return {"applied": await photo_versions.choose(conn, payload.photo_ids, payload.choice)}
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail=str(err))
 
 
 @router.post("/pause")
