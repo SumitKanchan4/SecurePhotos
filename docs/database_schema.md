@@ -285,8 +285,18 @@ CREATE TABLE IF NOT EXISTS photos (
     file_hash TEXT,                 -- SHA-256 checksum for deduplication & verification
     folder_name TEXT,
     trashed_at DATETIME,
-    trash_expires_at DATETIME
+    trash_expires_at DATETIME,
+    derived_from_id INTEGER REFERENCES photos(id) ON DELETE SET NULL, -- H10: improved copy of this original
+    ai_kind TEXT,                   -- H10: 'colour' | 'fade' | 'faces' | 'scratches' (comma-joined when combined)
+    ai_params TEXT,                 -- H10: JSON settings used, e.g. {"style": "natural"}
+    edited_at DATETIME,             -- H10: when the improved copy was made
+    choice_pending INTEGER NOT NULL DEFAULT 0 -- A8: kept by an automatic rule; the owner hasn't chosen
+                                    -- improved / original / both. Migration marks earlier automatic copies.
+    document_source TEXT            -- A8: 'scan' when "Find in photos" marked it a document (re-checked when
+                                    -- the rules change); NULL = the user or added as a document.
 );
+-- A8: the library lists one tile per group (photo_versions.stack_top): an original with an
+-- improved copy outside Trash is hidden behind it, and of several copies only the newest shows.
 
 -- ── 2. Albums Table ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS albums (
@@ -489,6 +499,38 @@ CREATE TABLE IF NOT EXISTS duplicate_groups (
     distance INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ── Old-photo improvements queue (H10 / A2a) ───────────────────────────────
+-- One row per request to add colour, fix faded colours, sharpen faces or remove
+-- scratches. queued -> working -> review (manual: waits for keep both / replace /
+-- discard) or done; failed / cancelled. A crash turns working back into queued.
+-- result_path is the staged result in data/restore_staging (encrypted .enc for vault photos); a face
+-- result also stages an extra file next to it (job_N.extra / job_N.extra.enc): the sharpened faces (A5)
+-- or the scratch marks (A7). A Touch-up mask waits as mask_<token>.png(.enc), named in the job's params.
+-- result_info (A5): JSON for the viewer while a result waits (faces: landmarks, box, strength, likeness;
+-- faces_waiting). Always NULL for vault photos: theirs is kept in memory only.
+CREATE TABLE IF NOT EXISTS restore_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    photo_id INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,             -- 'colour' | 'fade' | 'faces' | 'scratches'
+    params TEXT,                    -- JSON, e.g. {"style": "natural"}
+    origin TEXT NOT NULL DEFAULT 'manual',  -- 'manual' | 'auto' (auto waits while on battery)
+    status TEXT NOT NULL DEFAULT 'queued',
+    progress INTEGER NOT NULL DEFAULT 0,
+    result_path TEXT,
+    result_info TEXT,
+    result_photo_id INTEGER,
+    error_message TEXT,             -- e.g. 'models_missing'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    finished_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_restore_jobs_status ON restore_jobs (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_restore_jobs_photo ON restore_jobs (photo_id);
+CREATE INDEX IF NOT EXISTS idx_photos_derived_from ON photos (derived_from_id);
+-- H10: an improved copy keeps its original's date, place, camera, caption, favourite, albums
+-- (same added_at) and named faces. Lists sort it right after the original; People, Stories and
+-- the duplicate finder count the pair once (the newest copy). status 'discarded' = result thrown away.
 ```
 
 ---

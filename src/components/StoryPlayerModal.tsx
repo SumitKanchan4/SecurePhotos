@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { StoryModel, MusicTrackItem } from "../types";
 import { apiFetch, getApiUrl } from "../services/api";
+import { humanName } from "../utils/displayName";
 
 interface StoryPlayerModalProps {
   storyId: number | null;
@@ -1145,7 +1146,7 @@ export const StoryPlayerModal: React.FC<StoryPlayerModalProps> = ({
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <span>{currentSlideIndex + 1} of {slides.length}</span>
           <span>•</span>
-          <span>{currentSlide?.filename || ""}</span>
+          <span>{humanName(currentSlide?.filename) ?? ""}</span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>

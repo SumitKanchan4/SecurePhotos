@@ -38,6 +38,9 @@ import {
 } from "./viewer/viewerFormat";
 import { ViewerDetails } from "./viewer/ViewerDetails";
 import { useVolumeBooster } from "./viewer/useVolumeBooster";
+import { useOldPhoto } from "./viewer/useOldPhoto";
+import { BeforeAfter, ChoiceBar, ImproveMenu, ModelDialog, OldPhotoPanel, VersionSwitch } from "./viewer/OldPhotoPanel";
+import { TouchUpEditor, useMarks } from "./viewer/TouchUp";
 
 interface LightboxProps {
   photos: PhotoItem[];
@@ -55,6 +58,11 @@ interface LightboxProps {
   /** When `photos` is a window of a longer list: position of photos[0] in it, and its length. */
   indexOffset?: number;
   totalCount?: number;
+  /** H10: an improved copy was kept (or an original replaced), so the lists should reload. */
+  onLibraryChanged?: () => void;
+  /** A8: shows another member of this photo's stack (the original behind an improved copy,
+   *  which the library doesn't list) in the current photo's place. */
+  onShowVersion?: (photoId: number) => void;
 }
 
 export const Lightbox: React.FC<LightboxProps> = ({
@@ -72,6 +80,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
   onUnlockRequest,
   onVaultStatusChange,
   isDocumentView = false,
+  onLibraryChanged,
+  onShowVersion,
 }) => {
   const showToast = useAppStore((state) => state.showToast);
   const isVaultUnlocked = useAppStore((state) => state.isVaultUnlocked);
@@ -121,8 +131,11 @@ export const Lightbox: React.FC<LightboxProps> = ({
     ? getApiUrl(`/api/vault/thumbnail/${currentPhoto?.id}`) 
     : getApiUrl(`/api/photos/${currentPhoto?.id}/thumbnail`);
 
-  // Display the enhanced proxy if completed; otherwise display the unprocessed original
-  const primaryImageUrl = isCompleted ? previewUrl : originalUrl;
+  // A8 (smooth loading): a 2560 px preview at "fit" (the engine makes it once; ~7x faster to
+  // decode than the 8K photo); the full photo only once the user zooms in. The grid's thumbnail
+  // shows at once underneath while either loads.
+  const isZoomedIn = zoom > 1.2;
+  const primaryImageUrl = isVaultItem ? vaultStreamUrl : isZoomedIn ? originalUrl : previewUrl;
 
   useEffect(() => {
     if (currentPhoto) {
@@ -137,6 +150,21 @@ export const Lightbox: React.FC<LightboxProps> = ({
       setIsDownloadMenuOpen(false);
     }
   }, [currentIndex, currentPhoto?.id, currentPhoto?.is_pinned]);
+
+  // A8: get the photos either side ready, so stepping through is instant.
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = setTimeout(() => {
+      for (const i of [currentIndex + 1, currentIndex - 1]) {
+        const next = photos[i];
+        if (!next || next.is_encrypted || next.mime_type?.startsWith("video/")) continue;
+        const img = new Image();
+        img.decoding = "async";
+        img.src = getApiUrl(`/api/photos/${next.id}/preview`);
+      }
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [isOpen, currentIndex, photos]);
 
   // People, albums and import date for the details panel (library photos only, loaded when shown).
   const contextPhotoId = currentPhoto && !currentPhoto.is_encrypted && !isDocumentView ? currentPhoto.id : null;
@@ -175,6 +203,12 @@ export const Lightbox: React.FC<LightboxProps> = ({
   // always calls the latest handler: re-adding it on every render meant a key that caused a
   // re-render mid-event (Escape also clears the selection) never reached the viewer.
   keyHandlerRef.current = (e: KeyboardEvent) => {
+    // A dialog on top of the viewer (e.g. "Keep the improved photo?") handles its own keys:
+    // Escape closes only the dialog, and arrows never switch photos behind it.
+    if (document.querySelector(".alb-dialog-backdrop, .danger-dialog-backdrop, .op-touchup")) return;
+    // Sliders, checkboxes and text fields keep their own keys (arrows move the strength slider).
+    const target = e.target as HTMLElement | null;
+    if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) && e.key !== "Escape") return;
     if (e.key === "Escape") {
       if (isDownloadMenuOpen) setIsDownloadMenuOpen(false);
       else onClose();
@@ -251,6 +285,10 @@ export const Lightbox: React.FC<LightboxProps> = ({
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isOpen, isDragging, zoom]);
+
+  // H10: old-photo improvements for the open photo (nothing shows until the user asks).
+  const old = useOldPhoto(currentPhoto, isOpen);
+  const marks = useMarks(old.maskUrl);
 
   if (!isOpen || !currentPhoto) return null;
 
@@ -448,9 +486,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
     const mediaTypeLabel = isVideo ? "video" : "photo";
 
     if (mode === "studio_print") {
-      showToast(`🖨️ Downloading print-ready photo "${filename}" to your computer's Downloads folder...`, "info");
+      showToast("Saving a print-ready copy to your Downloads folder…", "info");
     } else {
-      showToast(`📥 Downloading ${mediaTypeLabel} "${filename}" to your computer's Downloads folder...`, "info");
+      showToast(`Saving the ${mediaTypeLabel} to your Downloads folder…`, "info");
     }
 
     const downloadUrl = getApiUrl(`/api/photos/${currentPhoto.id}/download?mode=${mode}`);
@@ -464,7 +502,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
   const title = viewerTitle(currentPhoto);
   const chip = qualityChip(currentPhoto);
-  const statusText = isOptimizingThis
+  const statusText = old.statusText
+    ? old.statusText
+    : isOptimizingThis
     ? `Enhancing to 8K · ${optimizationProgress?.item_progress ?? 0}%`
     : isQueued
     ? "Waiting to be enhanced"
@@ -488,7 +528,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
           </button>
           <div className="viewer-title-block">
             <div className="viewer-title-row">
-              <h2 className="viewer-title" title={currentPhoto.filename}>{title}</h2>
+              <h2 className="viewer-title">{title}</h2>
               {chip && (
                 <span className="viewer-chip" title={chip.title}>
                   {chip.label}
@@ -504,7 +544,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
               ) : null}
               {statusText && (
                 <span className="viewer-status">
-                  {isOptimizingThis ? <Loader2 size={11} className="spin" /> : <Clock size={11} />}
+                  {isOptimizingThis || old.statusText ? <Loader2 size={11} className="spin" /> : <Clock size={11} />}
                   {statusText}
                 </span>
               )}
@@ -512,6 +552,17 @@ export const Lightbox: React.FC<LightboxProps> = ({
           </div>
 
           <div style={{ flex: 1 }} />
+
+          <VersionSwitch
+            old={old}
+            currentId={currentPhoto.id}
+            onOpen={(id) => {
+              const index = photos.findIndex((p) => p.id === id);
+              if (index >= 0) onNavigate(index);
+              else if (onShowVersion) onShowVersion(id); // Stacked behind: swap it into this place.
+              return index >= 0 || Boolean(onShowVersion);
+            }}
+          />
 
           {zoom > 1 && (
             <button
@@ -556,6 +607,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
               <Heart size={17} fill={isFavorite ? "currentColor" : "none"} />
             </button>
           )}
+
+          {!isDocumentView && !isVideo && <ImproveMenu old={old} />}
 
           <div className="viewer-menu-anchor">
             <button
@@ -642,6 +695,26 @@ export const Lightbox: React.FC<LightboxProps> = ({
           </button>
         </header>
 
+        <ChoiceBar
+          old={old}
+          onChosen={(keepId, choice) => {
+            if (keepId === null) {
+              showToast("Couldn't save your choice. Please try again.", "warning");
+              return;
+            }
+            showToast(
+              choice === "keep_both"
+                ? "Both kept. The improved photo shows in your library; the original is behind it."
+                : choice === "keep_improved"
+                ? "Kept the improved photo. The original is in Trash for 30 days."
+                : "Kept the original. The improved photo is in Trash for 30 days.",
+              "success",
+            );
+            if (keepId !== currentPhoto.id) onShowVersion?.(keepId);
+            onLibraryChanged?.();
+          }}
+        />
+
         <div className="viewer-stage" onWheel={isVideo ? undefined : handleWheel}>
           {currentIndex > 0 && (
             <button type="button" className="viewer-nav viewer-nav-prev" aria-label="Previous photo" title="Previous (←)" onClick={() => onNavigate(currentIndex - 1)}>
@@ -658,7 +731,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
             {!isVideo && !isVaultItem && !isPreviewLoaded && !previewHasError && (
               <img
                 src={thumbnailUrl}
-                alt={currentPhoto.filename}
+                alt={title}
                 style={{
                   maxWidth: "92%",
                   maxHeight: "88%",
@@ -1030,11 +1103,32 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   alignItems: "center",
                   justifyContent: "center",
                   overflow: "hidden",
+                  position: "relative",
                 }}
               >
+                {!isPreviewLoaded && (
+                  // The grid's thumbnail (already cached) shows at once while the photo loads.
+                  <img
+                    src={thumbnailUrl}
+                    alt=""
+                    aria-hidden="true"
+                    data-testid="viewer-placeholder"
+                    draggable={false}
+                    style={{
+                      maxWidth: "100%",
+                      maxHeight: "calc(100vh - 168px)",
+                      width: currentPhoto.width && currentPhoto.height ? `min(100%, calc((100vh - 168px) * ${currentPhoto.width / currentPhoto.height}))` : undefined,
+                      aspectRatio: currentPhoto.width && currentPhoto.height ? `${currentPhoto.width} / ${currentPhoto.height}` : undefined,
+                      objectFit: "contain",
+                      borderRadius: "10px",
+                      userSelect: "none",
+                    }}
+                  />
+                )}
                 <img
                   src={previewHasError ? thumbnailUrl : primaryImageUrl}
-                  alt={currentPhoto.filename}
+                  alt={title}
+                  decoding="async"
                   onLoad={() => setIsPreviewLoaded(true)}
                   onError={() => {
                     setPreviewHasError(true);
@@ -1049,7 +1143,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
                     objectFit: "contain",
                     transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
                     transition: isDragging ? "none" : zoom === 1 ? "transform 0.15s ease, opacity 0.25s ease" : "transform 0.08s ease-out",
-                    opacity: isPreviewLoaded ? 1 : 0.4,
+                    // Until it has loaded it sits invisibly over the thumbnail, then fades in.
+                    opacity: isPreviewLoaded ? 1 : 0,
+                    ...(isPreviewLoaded ? {} : { position: "absolute" as const, inset: 0, margin: "auto" }),
                     borderRadius: "10px",
                     cursor: zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default",
                     userSelect: "none",
@@ -1058,8 +1154,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
               </div>
             )}
 
-            {/* Loading Spinner */}
-            {!isPreviewLoaded && (
+            {/* Loading Spinner (videos; a photo shows its thumbnail at once instead) */}
+            {!isPreviewLoaded && isVideo && (
               <div 
                 style={{
                   position: "absolute",
@@ -1139,6 +1235,17 @@ export const Lightbox: React.FC<LightboxProps> = ({
               </div>
             )}
           </div>
+          {old.reviewUrl && (
+            <BeforeAfter
+              before={primaryImageUrl}
+              after={old.reviewUrl}
+              intensity={old.intensity}
+              faces={old.job?.faces}
+              facesOff={old.facesOff}
+              onToggleFace={old.toggleFace}
+              marks={old.showMarks ? marks : null}
+            />
+          )}
         </div>
 
         {filmIndexes.length > 0 && (
@@ -1151,7 +1258,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   key={item.id}
                   type="button"
                   className={`viewer-film-item${isCurrent ? " is-current" : ""}`}
-                  aria-label={`Open ${viewerTitle(item)}`}
+                  aria-label={`Open ${viewerTitle(item)}, ${i + 1} of ${photos.length}`}
                   aria-current={isCurrent ? "true" : undefined}
                   onClick={() => !isCurrent && onNavigate(i)}
                 >
@@ -1168,7 +1275,44 @@ export const Lightbox: React.FC<LightboxProps> = ({
         )}
       </div>
 
-      {showInfo && (
+      {old.panelOpen && (
+        <OldPhotoPanel
+          old={old}
+          onError={(message) => showToast(message, "warning")}
+          onKept={(choice) => {
+            if (choice === "discard") return;
+            onLibraryChanged?.();
+            if (choice === "replace") {
+              showToast("Replaced. The original is in Trash for 30 days.", "success");
+              onClose();
+            } else {
+              showToast("Kept. The improved photo is next to the original.", "success");
+            }
+          }}
+        />
+      )}
+
+      {old.touchUpOpen && old.reviewUrl && (
+        <TouchUpEditor
+          resultUrl={old.reviewUrl}
+          marks={marks}
+          busy={old.busy}
+          onApply={(png) => void old.touchUp(png).catch(() => showToast("Couldn't touch up. Please try again.", "warning"))}
+          onCancel={() => old.setTouchUpOpen(false)}
+        />
+      )}
+
+      {old.modelPrompt && (
+        <ModelDialog
+          prompt={old.modelPrompt}
+          progress={old.download}
+          onDownload={() => void old.downloadModels()}
+          onCancelDownload={() => void old.cancelDownload()}
+          onClose={old.closeModelPrompt}
+        />
+      )}
+
+      {showInfo && !old.panelOpen && (
         <ViewerDetails
           photo={currentPhoto}
           context={context}

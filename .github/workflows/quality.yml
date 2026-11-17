@@ -75,7 +75,9 @@ jobs:
         run: npm ci
 
       - name: Audit npm dependencies (fail on high severity)
-        run: npm audit --audit-level=high
+        # Same as `npm audit --audit-level=high`, plus a short, dated list of allowed advisories
+        # (each with its reason and end date) in scripts/ci/npm-audit-check.mjs.
+        run: node scripts/ci/npm-audit-check.mjs
 
       - name: Frontend unit tests (Vitest)
         run: npm test

@@ -96,7 +96,7 @@ Status: `todo` · `needs-decision` · `in-progress` · `review` · `done` · `dr
 
 ## High
 
-### H10 · Blurry-face restoration: choose a permissive model or drop the idea — `needs-decision` (from H9; owner 2026-11-15: decide later)
+### H10 · Blurry-face restoration: choose a permissive model or drop the idea — `in-progress` (owner 2026-11-15: research done, plan in `.agents/plans/ai-restore-plan.md` on branch `feature/ai-restore`: restore faces (GFPGAN), repair scratches, colorize B&W (DDColor), auto rules and an Activity screen; CPU only)
 - CodeFormer (non-commercial) was removed in H9, together with C1's switched-off blurry-face step. Candidate: GFPGAN v1.4 (weights Apache-2.0, but trained on FFHQ, which is CC-BY-NC-SA; the same "permissive weights, research dataset" grey area as SFace). Needs an owner decision, then calibration of the blur threshold on real photos.
 
 ### H11 · Rare false face detections — `done` (closed 2026-11-15 without a code change, history §143; owner approved a read-only analysis of the real library)

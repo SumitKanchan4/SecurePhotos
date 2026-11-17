@@ -1,10 +1,10 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../store/useAppStore";
 import { DEFAULT_SETTINGS } from "../../hooks/useAppSettings";
 import { SETTINGS_SECTIONS, SettingsView } from "../SettingsView";
 import { VaultSettings } from "./VaultSettings";
-import { PhotosAISettings, qualityTier } from "./PhotosAISettings";
+import { PhotosAISettings, batteryChoice, qualityTier } from "./PhotosAISettings";
 import { StorageSettings } from "./StorageSettings";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -61,7 +61,7 @@ describe("Settings layout", () => {
     expect(screen.getByRole("button", { name: "Private Vault" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("Lock automatically after")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Photos & AI" }));
-    expect(screen.getByRole("switch", { name: "Thermal and battery guard" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Pause background work on battery" })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Ambient story soundtracks" })).toBeInTheDocument();
   });
 });
@@ -152,6 +152,39 @@ describe("Photos & AI and Storage", () => {
     expect(screen.getByText("Balanced (Recommended)")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Photo quality"), { target: { value: "25" } });
     expect(updateSetting).toHaveBeenCalledWith("quality_crf", 25);
+  });
+
+  it("pauses background work only below the chosen battery level", () => {
+    const updateSetting = vi.fn();
+    render(<PhotosAISettings settings={DEFAULT_SETTINGS} updateSetting={updateSetting} />);
+    const group = screen.getByRole("radiogroup", { name: "Pause background work on battery" });
+    expect(within(group).getByRole("radio", { name: "Below 20%" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(within(group).getByRole("radio", { name: "Never" }));
+    expect(updateSetting).toHaveBeenCalledWith("pause_on_battery", false);
+    expect(updateSetting).not.toHaveBeenCalledWith("battery_pause_below", 0);
+    updateSetting.mockClear();
+    fireEvent.click(within(group).getByRole("radio", { name: "Always" }));
+    expect(updateSetting).toHaveBeenCalledWith("pause_on_battery", true);
+    expect(updateSetting).toHaveBeenCalledWith("battery_pause_below", 100);
+    expect(batteryChoice({ pause_on_battery: false, battery_pause_below: 50 })).toBe(0);
+    expect(batteryChoice({ pause_on_battery: true, battery_pause_below: 45 })).toBe(50);
+    expect(batteryChoice({ pause_on_battery: true, battery_pause_below: 10 })).toBe(20);
+  });
+
+  it("has the Old photos rows in plain words, each When I ask or Automatically, and Keep original", () => {
+    const updateSetting = vi.fn();
+    render(<PhotosAISettings settings={DEFAULT_SETTINGS} updateSetting={updateSetting} />);
+    for (const title of ["Add colour to old grey photos", "Fix faded or yellowed colours", "Sharpen blurry faces", "Remove scratches and spots"]) {
+      const group = screen.getByRole("radiogroup", { name: title });
+      expect(within(group).getByRole("radio", { name: "When I ask" })).toHaveAttribute("aria-checked", "true");
+    }
+    expect(screen.getByText(/not on photos taken with a phone or camera/)).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("radiogroup", { name: "Sharpen blurry faces" })).getByRole("radio", { name: "Automatically" }));
+    expect(updateSetting).toHaveBeenCalledWith("old_photos_faces", "auto");
+    const keep = screen.getByRole("switch", { name: "Keep original" });
+    expect(keep).toBeChecked();
+    fireEvent.click(keep);
+    expect(updateSetting).toHaveBeenCalledWith("old_photos_keep_original", false);
   });
 
   it("shows the folder the engine really uses and what the space is used for", async () => {

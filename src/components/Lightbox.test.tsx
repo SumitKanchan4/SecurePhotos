@@ -57,6 +57,27 @@ beforeEach(() => {
   useAppStore.setState({ apiBaseUrl: "http://127.0.0.1:50123", apiToken: "t", selectedPhotoIds: new Set<number>(), searchQuery: "", pendingOpen: null });
 });
 
+describe("Lightbox loading (A8: smooth)", () => {
+  it("shows the thumbnail at once, then the screen-sized preview; the full photo only when zoomed in", () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })));
+    render(<Lightbox photos={[photo(1), photo(2)]} currentIndex={0} isOpen onClose={vi.fn()} onNavigate={vi.fn()} />);
+    const placeholder = screen.getByTestId("viewer-placeholder");
+    expect(placeholder.getAttribute("src")).toContain("/api/photos/1/thumbnail");
+    const shown = () => screen.getAllByRole("img", { name: "Photo" }).find((i) => i.getAttribute("decoding") === "async")!;
+    const main = shown();
+    expect(main.getAttribute("src")).toContain("/api/photos/1/preview");
+    expect(main).toHaveStyle({ opacity: "0" });
+    expect(screen.queryByText(/Loading Enhanced Photo/)).not.toBeInTheDocument();
+    fireEvent.load(main);
+    expect(screen.queryByTestId("viewer-placeholder")).not.toBeInTheDocument();
+    expect(main).toHaveStyle({ opacity: "1" });
+    fireEvent.keyDown(window, { key: "+" });
+    fireEvent.keyDown(window, { key: "+" });
+    expect(shown().getAttribute("src")).toContain("/api/photos/1/original");
+    vi.unstubAllGlobals();
+  });
+});
+
 describe("Lightbox keyboard", () => {
   it("closes on Escape even when Escape also clears a selection", () => {
     useAppStore.setState({ selectedPhotoIds: new Set([5, 6]) });
@@ -155,8 +176,9 @@ describe("Lightbox layout (redesign R3)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Previous photo" }));
     expect(onNavigate).toHaveBeenLastCalledWith(0);
     const strip = screen.getByRole("navigation", { name: "Nearby photos" });
-    expect(strip.querySelector("[aria-current=true]")).toHaveAttribute("aria-label", "Open Baga beach, sunset");
-    fireEvent.click(screen.getByRole("button", { name: "Open photo_8" }));
+    expect(strip.querySelector("[aria-current=true]")?.getAttribute("aria-label")).toMatch(/^Open Baga beach, sunset, 2 of \d+$/);
+    // Device-made names ("photo_8.jpg") are never shown: the button says what it is and where.
+    fireEvent.click(screen.getByRole("button", { name: /^Open Photo, 3 of \d+$/ }));
     expect(onNavigate).toHaveBeenLastCalledWith(2);
   });
 
@@ -175,7 +197,7 @@ describe("Lightbox layout (redesign R3)", () => {
     const { onClose } = renderViewer();
     fireEvent.keyDown(window, { key: "i" });
     expect(await screen.findByRole("button", { name: /Rohan/ })).toBeInTheDocument();
-    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe("http://127.0.0.1:50123/api/photos/7/context");
+    expect((fetchMock.mock.calls as unknown as [string][]).map((c) => c[0])).toContain("http://127.0.0.1:50123/api/photos/7/context");
     expect(screen.getByText("Google Pixel 9 Pro")).toBeInTheDocument();
     expect(screen.getByText("f/1.7 · ISO 50")).toBeInTheDocument();
     expect(screen.getByText("Copied into your library")).toBeInTheDocument();

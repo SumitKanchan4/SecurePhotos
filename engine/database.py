@@ -75,7 +75,13 @@ CREATE TABLE IF NOT EXISTS photos (
     original_file_hash TEXT,        -- Immutable baseline SHA-256 checksum for deduplication
     folder_name TEXT,
     trashed_at DATETIME,
-    trash_expires_at DATETIME
+    trash_expires_at DATETIME,
+    derived_from_id INTEGER REFERENCES photos(id) ON DELETE SET NULL, -- H10: improved copy of this photo
+    ai_kind TEXT,                   -- H10: 'colour', 'fade', 'faces', 'scratches' (comma-joined when combined)
+    ai_params TEXT,                 -- H10: JSON settings used, e.g. {"style": "natural"}
+    edited_at DATETIME,             -- H10: when the improved copy was made
+    choice_pending INTEGER NOT NULL DEFAULT 0, -- A8: kept automatically; the user hasn't chosen improved / original / both
+    document_source TEXT            -- A8: 'scan' when "Find in photos" marked it a document (re-checked); NULL = the user
 );
 
 -- ── 2. Albums Table ──────────────────────────────────────────────────────────
@@ -388,6 +394,31 @@ CREATE TABLE IF NOT EXISTS video_processing_queue (
 
 CREATE INDEX IF NOT EXISTS idx_video_queue_status
 ON video_processing_queue (status, created_at);
+
+-- ── 20a. Old-photo improvements queue (H10 / A2a) ──────────────────────────
+-- One row per "improve this photo" request: add colour, fix faded colours, sharpen
+-- faces, remove scratches. status: queued -> working -> review (manual: waits for
+-- keep both / replace / discard) or done; failed / cancelled. A crash turns working
+-- back into queued. result_path is the staged result (encrypted for vault photos).
+CREATE TABLE IF NOT EXISTS restore_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    photo_id INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,             -- 'colour' | 'fade' | 'faces' | 'scratches'
+    params TEXT,                    -- JSON, e.g. {"style": "natural"}
+    origin TEXT NOT NULL DEFAULT 'manual',  -- 'manual' | 'auto'
+    status TEXT NOT NULL DEFAULT 'queued',
+    progress INTEGER NOT NULL DEFAULT 0,    -- 0-100
+    result_path TEXT,
+    result_info TEXT,               -- JSON for the viewer, e.g. the faces sharpened (A5); NULL for vault photos
+    result_photo_id INTEGER,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    finished_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_restore_jobs_status ON restore_jobs (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_restore_jobs_photo ON restore_jobs (photo_id);
 
 -- ── 20b. Vault Operation Journal (crash recovery) ──────────────────────────
 -- One row per photo while it is being moved into or out of the vault.
@@ -748,6 +779,56 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
             logger.info("Migrated photos schema: added is_pinned column.")
 
         await conn.execute("CREATE INDEX IF NOT EXISTS ix_photos_pinned_doc ON photos (is_pinned DESC, is_document, trashed_at);")
+
+        # H10 / A2b: an improved photo (colour, faded colours, faces, scratches) is its own
+        # photo linked to the original it came from. Deleting the original for good unlinks it.
+        if "derived_from_id" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN derived_from_id INTEGER REFERENCES photos(id) ON DELETE SET NULL;")
+        if "ai_kind" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN ai_kind TEXT;")
+        if "ai_params" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN ai_params TEXT;")
+        if "edited_at" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN edited_at DATETIME;")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_photos_derived_from ON photos (derived_from_id);")
+        # A8: who marked a photo as a document. 'scan' = "Find in photos" (re-checked when the
+        # rules change); NULL = the user, or added as a document. Earlier marks that look
+        # scan-made (an image, not pinned, no title, in no document folder) are re-checked once:
+        # the old rule matched "1040" inside phone timestamps and flagged ordinary photos.
+        if "document_source" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN document_source TEXT;")
+            async with conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'photo_document_folder';") as cursor:
+                has_folders = await cursor.fetchone() is not None
+            folder_clause = "AND id NOT IN (SELECT photo_id FROM photo_document_folder)" if has_folders else ""
+            await conn.execute(
+                f"""UPDATE photos SET document_source = 'scan'
+                    WHERE is_document = 1 AND COALESCE(mime_type, '') LIKE 'image/%'
+                      AND COALESCE(is_pinned, 0) = 0 AND caption IS NULL AND COALESCE(is_encrypted, 0) = 0
+                      {folder_clause};"""
+            )
+            from engine.services.document_service import recheck_scanned_documents
+
+            back = await recheck_scanned_documents(conn)
+            if back:
+                logger.info("Moved %d photos wrongly marked as documents back to Photos.", back)
+
+        # A8: improved copies kept by an automatic rule wait for the user's choice. Copies made
+        # before this column existed by automatic jobs are marked once, when it is added.
+        if "choice_pending" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN choice_pending INTEGER NOT NULL DEFAULT 0;")
+            async with conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'restore_jobs';") as cursor:
+                if await cursor.fetchone():
+                    await conn.execute(
+                        """UPDATE photos SET choice_pending = 1
+                           WHERE id IN (SELECT result_photo_id FROM restore_jobs
+                                        WHERE origin = 'auto' AND status = 'done' AND result_photo_id IS NOT NULL);"""
+                    )
+
+        # H10 / A5: details of a result waiting for a decision (faces sharpened, for per-face on/off).
+        async with conn.execute("PRAGMA table_info(restore_jobs);") as cursor:
+            existing_job_cols = {row["name"] for row in await cursor.fetchall()}
+        if existing_job_cols and "result_info" not in existing_job_cols:
+            await conn.execute("ALTER TABLE restore_jobs ADD COLUMN result_info TEXT;")
 
         # Stories lifecycle migration: dynamically add is_saved and covering indexes
         async with conn.execute("PRAGMA table_info(stories);") as cursor:

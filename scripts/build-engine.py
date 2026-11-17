@@ -122,6 +122,7 @@ def build_engine():
         "--hidden-import=engine.services.video_queue_service",
         "--hidden-import=engine.services.video_runtime",
         "--hidden-import=engine.services.video_service",
+        "--hidden-import=engine.services.model_installer",
         "--hidden-import=aiosqlite",
         "--hidden-import=cryptography",
         "--hidden-import=argon2",

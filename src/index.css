@@ -414,6 +414,19 @@ html, body, #root {
 }
 .timeline-tile:hover .timeline-tile-media::after { opacity: 1; }
 
+.timeline-ai {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
 .timeline-chip {
   position: absolute;
   left: 8px;
@@ -643,6 +656,9 @@ html, body, #root {
 .viewer-menu button svg { margin-top: 2px; flex-shrink: 0; }
 .viewer-menu strong { display: block; font-size: 13px; font-weight: 600; }
 .viewer-menu small { display: block; font-size: 11px; color: #a3a3a3; margin-top: 2px; }
+.viewer-menu button.is-locked strong { color: #d4d4d4; }
+.viewer-menu button.is-locked small { white-space: nowrap; }
+.viewer-menu .viewer-menu-lock { margin-left: auto; align-self: center; color: #a3a3a3; }
 
 .viewer-stage {
   position: relative;
@@ -683,6 +699,147 @@ html, body, #root {
 .viewer-nav:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
 .viewer-nav-prev { left: 14px; }
 .viewer-nav-next { right: 14px; }
+
+/* ── Activity (H10 / A4) ─────────────────────────────────────────── */
+.rail-ring {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+.rail-ring::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 3px solid var(--glass-border);
+  border-top-color: var(--accent-fill);
+  border-right-color: var(--accent-fill);
+  animation: rail-ring-turn 1.4s linear infinite;
+}
+.rail-activity.is-paused .rail-ring::before { border: 2px dashed var(--text-muted); animation: none; }
+/* On the active (filled) rail button the ring and count follow the button's own text colour. */
+.rail-btn-active .rail-ring { color: inherit; }
+.rail-btn-active .rail-ring::before { border-color: color-mix(in srgb, currentColor 30%, transparent); border-top-color: currentColor; border-right-color: currentColor; }
+.rail-btn-active.is-paused .rail-ring::before { border: 2px dashed currentColor; }
+@keyframes rail-ring-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .rail-ring::before { animation: none; } }
+
+.act-section { display: flex; flex-direction: column; gap: 10px; }
+.act-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.act-row { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border-radius: 14px; background: var(--bg-surface); border: 1px solid var(--glass-border); }
+.act-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.act-row-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.act-row-line strong { font-size: 14px; font-weight: 800; color: var(--text-primary); white-space: nowrap; }
+.act-row-detail { flex: 1; min-width: 0; font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-row-pct { font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.act-bar { height: 6px; border-radius: var(--radius-full); background: var(--glass-pill-bg); overflow: hidden; }
+.act-bar > div { height: 100%; border-radius: var(--radius-full); background: var(--accent-fill); transition: width 0.4s ease; }
+.act-bar > div.is-indeterminate { width: 30% !important; animation: act-slide 1.2s ease-in-out infinite; }
+@keyframes act-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@media (prefers-reduced-motion: reduce) { .act-bar > div.is-indeterminate { animation: none; } }
+.act-thumb { flex-shrink: 0; object-fit: cover; background: var(--bg-surface-elevated); display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
+.act-thumb-row { width: 72px; height: 54px; border-radius: 9px; }
+.act-thumb-tile { width: 100%; aspect-ratio: 4 / 3; border-radius: 10px; }
+.act-thumb.is-private { background: repeating-linear-gradient(135deg, var(--bg-surface-elevated) 0 8px, var(--glass-pill-bg) 8px 16px); color: var(--text-primary); }
+.act-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; }
+.act-tile { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.act-tile.is-waiting .act-thumb { opacity: 0.8; }
+.act-tile-label { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A8: "12 photos to enhance" stands for a group; the icon sits over a stacked-cards look. */
+.act-thumb.is-group { flex-direction: column; gap: 4px; color: var(--accent-fill); box-shadow: 6px -6px 0 -1px var(--glass-pill-bg), 12px -12px 0 -2px var(--bg-surface); margin: 12px 12px 0 0; width: calc(100% - 12px); }
+.act-thumb.is-group strong { font-family: var(--font-display, inherit); font-size: 22px; font-weight: 900; color: var(--text-primary); line-height: 1; }
+/* A8: What to keep (Dashboard page): original | improved side by side, three plain choices. */
+.keep-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+.keep-card { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+.keep-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.keep-side { position: relative; padding: 0; border: 1px solid var(--glass-border); border-radius: 12px; overflow: hidden; background: var(--bg-surface-elevated); cursor: zoom-in; aspect-ratio: 4 / 3; }
+.keep-side img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.keep-side.is-improved { border-color: var(--accent-fill); }
+.keep-side:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.keep-tag { position: absolute; left: 8px; bottom: 8px; padding: 3px 8px; border-radius: var(--radius-full); background: rgba(0, 0, 0, 0.65); color: #fff; font-size: 11px; font-weight: 800; }
+.keep-side.is-improved .keep-tag { background: var(--accent-fill); color: var(--on-accent); }
+.keep-what { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.keep-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+/* A8: Photos header pills ("12 improved", "3 duplicates"). */
+.photos-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radius-full); font-size: 11px; font-weight: 700; white-space: nowrap; cursor: pointer; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--glass-border); }
+.photos-pill:hover { border-color: var(--accent-ink); }
+.photos-pill:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.photos-pill svg { color: var(--accent-ink); flex-shrink: 0; }
+.act-tile-sub { font-size: 11px; color: var(--text-tertiary, var(--text-secondary)); margin-top: -4px; }
+.act-tile-link { align-self: flex-start; padding: 0; border: none; background: none; font-size: 12px; font-weight: 700; color: var(--text-primary); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.act-tile-link.is-strong { font-weight: 800; }
+.act-tile-link:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.act-cancel { flex-shrink: 0; }
+
+/* ── Old photos in the viewer (H10 / A3): before/after, side panel, keep dialog ── */
+.viewer-segment { display: inline-flex; padding: 3px; border-radius: var(--radius-full); background: #171717; border: 1px solid rgba(255, 255, 255, 0.12); }
+.viewer-segment button { height: 30px; padding: 0 12px; border: none; border-radius: var(--radius-full); background: transparent; color: #a3a3a3; font-size: 12px; font-weight: 700; cursor: pointer; }
+.viewer-segment button.is-on { background: var(--accent-fill); color: var(--on-accent); font-weight: 800; }
+.viewer-segment button:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.viewer-segment button:disabled { cursor: default; }
+/* A8: "Improved automatically. Which do you want to keep?" under the viewer's top bar (always dark). */
+.viewer-choice { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; margin: 0 16px 8px; padding: 10px 12px 10px 16px; border-radius: 14px; background: #171717; border: 1px solid rgba(213, 255, 0, 0.35); color: #e5e5e5; font-size: 13px; }
+.viewer-choice-text { flex: 1; min-width: 200px; }
+.viewer-choice-text strong { color: #fff; font-weight: 800; }
+.viewer-choice-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.viewer-choice-btn { height: 32px; padding: 0 14px; border-radius: var(--radius-full); border: 1px solid rgba(255, 255, 255, 0.18); background: transparent; color: #f5f5f5; font-size: 12px; font-weight: 700; cursor: pointer; }
+.viewer-choice-btn.is-primary { background: var(--accent-fill); border-color: transparent; color: var(--on-accent); font-weight: 800; }
+.viewer-choice-btn:hover:not(:disabled) { border-color: rgba(255, 255, 255, 0.4); }
+.viewer-choice-btn:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.viewer-choice-btn:disabled { opacity: 0.55; cursor: default; }
+
+.ba-stage { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: #050505; touch-action: none; cursor: ew-resize; }
+.ba-frame { position: relative; max-width: 94%; max-height: 100%; display: flex; }
+.ba-img { display: block; max-width: 100%; max-height: calc(100vh - 220px); object-fit: contain; user-select: none; }
+.ba-after { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ba-tag { position: absolute; top: 10px; height: 22px; padding: 0 8px; border-radius: var(--radius-full); font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; pointer-events: none; }
+.ba-tag-before { left: 10px; background: rgba(10, 10, 10, 0.72); color: #f5f5f5; }
+.ba-tag-after { right: 10px; background: var(--accent-fill); color: var(--on-accent); }
+.ba-divider { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #f5f5f5; }
+.ba-handle { position: absolute; top: 50%; left: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: var(--radius-full); background: #f5f5f5; color: #0a0a0a; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; pointer-events: none; }
+.ba-range { position: absolute; top: 50%; left: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; opacity: 0; cursor: ew-resize; }
+.ba-range:focus-visible + .ba-handle { outline: 2px solid var(--accent-fill); outline-offset: 3px; }
+/* A5: one outline per face; lime while sharpened, white dashed when switched off, grey dotted when the identity check left it. */
+.ba-face { position: absolute; z-index: 2; padding: 0; border-radius: 30%; background: transparent; border: 2px dashed rgba(245, 245, 245, 0.85); cursor: pointer; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45); }
+.ba-face.is-on { border: 2px solid var(--accent-fill); }
+.ba-face:focus-visible { outline: 2px solid #f5f5f5; outline-offset: 2px; }
+.ba-face.is-kept { border: 2px dotted rgba(163, 163, 163, 0.8); cursor: help; }
+
+.op-panel { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border-left: 1px solid rgba(255, 255, 255, 0.08); background: #0a0a0a; color: #f5f5f5; overflow-y: auto; }
+.op-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.op-head strong { font-family: var(--font-display); font-size: 18px; font-weight: 900; letter-spacing: -0.02em; }
+.op-close { width: 32px; height: 32px; border-radius: var(--radius-full); border: 1px solid rgba(255, 255, 255, 0.12); background: #171717; color: #f5f5f5; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.op-section { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.op-label { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #a3a3a3; }
+.op-text { margin: 0; font-size: 13px; color: #e5e5e5; line-height: 1.5; }
+.op-hint { margin: 0; font-size: 11px; color: #a3a3a3; line-height: 1.5; }
+.op-segment { width: 100%; }
+.op-segment button { flex: 1; }
+.op-bar { height: 6px; border-radius: var(--radius-full); background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.op-bar > div { height: 100%; border-radius: var(--radius-full); background: var(--accent-fill); transition: width 0.4s ease; }
+.op-range { width: 100%; accent-color: var(--accent-fill); }
+.op-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 14px; }
+.op-btn { height: 38px; padding: 0 16px; border-radius: var(--radius-full); border: 1px solid rgba(255, 255, 255, 0.14); background: #171717; color: #f5f5f5; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+.op-btn:focus-visible, .op-close:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.op-btn-primary { border: none; background: var(--accent-fill); color: var(--on-accent); font-weight: 800; }
+.op-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* Two classes: the general .alb-dialog width (920px) comes later in this file. */
+.alb-dialog.op-dialog { width: min(460px, 100%); }
+.op-dialog-body { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; }
+.op-choice { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: 14px; border: 1px solid var(--glass-border); cursor: pointer; }
+.op-choice.is-on { border: 2px solid var(--text-primary); padding: 11px; }
+.op-choice input { margin-top: 3px; accent-color: var(--text-primary); }
+.op-choice strong { display: block; font-size: 14px; font-weight: 800; }
+.op-choice small { display: block; font-size: 12px; color: var(--text-secondary); margin-top: 2px; line-height: 1.4; }
+.op-remember { display: flex; align-items: center; gap: 10px; padding-top: 4px; font-size: 13px; color: var(--text-secondary); }
 
 .viewer-film {
   height: 76px;
@@ -1453,6 +1610,38 @@ html, body, #root {
 }
 .settings-pill.is-on { background: var(--accent-fill); color: var(--on-accent); font-weight: 800; }
 .settings-pill:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+/* Settings → Old photos (H10 / A6): a tiny CSS before → after picture per row. */
+.oldset-intro { padding: 12px 16px 0; margin: 0; }
+.oldset-title { display: inline-flex; align-items: center; gap: 10px; }
+.oldset-chip { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.oldset-before, .oldset-after { width: 26px; height: 20px; border-radius: 5px; border: 1px solid var(--glass-border); }
+.oldset-arrow { font-size: 11px; color: var(--text-secondary); }
+.oldset-chip.is-colour .oldset-before { background: linear-gradient(180deg, #b5b5b5 0 40%, #7a7a7a 40% 70%, #555 70%); }
+.oldset-chip.is-colour .oldset-after { background: linear-gradient(180deg, #8fb8de 0 40%, #7fa36a 40% 70%, #a8574a 70%); }
+.oldset-chip.is-fade .oldset-before { background: linear-gradient(180deg, #d9c99a 0 40%, #b5a070 40% 70%, #9c7e55 70%); }
+.oldset-chip.is-fade .oldset-after { background: linear-gradient(180deg, #9ec3e6 0 40%, #7fa36a 40% 70%, #3e5c8a 70%); }
+.oldset-chip.is-faces .oldset-before, .oldset-chip.is-faces .oldset-after { background: radial-gradient(circle at 50% 42%, #d9a98a 0 30%, #8c7a65 31% 100%); }
+.oldset-chip.is-faces .oldset-before { filter: blur(1.5px); }
+.oldset-chip.is-scratches .oldset-before, .oldset-chip.is-scratches .oldset-after { background: linear-gradient(180deg, #b9b1a3 0 40%, #8e8677 40% 70%, #5a544b 70%); }
+.oldset-chip.is-scratches .oldset-before { background-image: linear-gradient(115deg, transparent 45%, #f5f2ea 46% 52%, transparent 53%), linear-gradient(180deg, #b9b1a3 0 40%, #8e8677 40% 70%, #5a544b 70%); }
+/* A7: what was repaired, in lime, over the before/after view; and the Touch up editor (always dark). */
+.ba-marks { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+.op-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #e5e5e5; }
+.op-check input { accent-color: var(--accent-fill); }
+.op-touchup { position: fixed; inset: 0; z-index: 60; background: #050505; color: #f5f5f5; display: flex; flex-direction: column; }
+.op-touchup-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #262626; }
+.op-touchup-title { display: flex; flex-direction: column; gap: 2px; }
+.op-touchup-title strong { font-size: 15px; font-weight: 800; }
+.op-touchup-title small { font-size: 12px; color: #a3a3a3; }
+.op-touchup-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.op-touchup-frame { position: relative; display: flex; max-width: 100%; max-height: 100%; }
+.op-touchup-img { display: block; max-width: 100%; max-height: calc(100vh - 170px); object-fit: contain; user-select: none; }
+.op-touchup-canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+.op-touchup-canvas.is-hidden { opacity: 0; }
+.op-touchup-tools { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid #262626; }
+.op-touchup-size { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.op-touchup-size input { accent-color: var(--accent-fill); }
+.op-touchup-note { font-size: 12px; color: #a3a3a3; margin-left: auto; }
 .settings-btn {
   display: inline-flex;
   align-items: center;
