@@ -15,8 +15,8 @@ New feedback is added here the same day. Status: **Done** (needs owner re-check)
 | # | Feedback | Status | Notes / where |
 |---|----------|--------|---------------|
 | 1 | No "Connect existing library": photos always live in the app's folder; two apps on one database breaks the design | Next phase | Recommendation: keep it, renamed "Move to a new computer / restore a backup" (the library is locked against two apps). Owner to confirm. |
-| 2 | Choosing files/folders again replaced the earlier selection; allow adding more (large imports?) | Next phase | "Add more" adds to the list; total photos and size shown before Import. |
-| 3 | After import, no signal that new photos are still being prepared | Next phase | Part of the ordered after-import process (per-photo "preparing" mark, summary). |
+| 2 | Choosing files/folders again replaced the earlier selection; allow adding more (large imports?) | Done (P4) | "Add files" / "Add a folder" add to the selection (several places in one import, a file picked twice counted once); running totals and size; a note says big imports are fine. |
+| 3 | After import, no signal that new photos are still being prepared | Done (P4) | Quiet dot on photos still being prepared; one Activity card "Getting N photos ready" with its step; summary when the import is ready. |
 | 4 | Activity count showed 2 while photo and video ran, then only the photo count | Done (A8) | Header now counts what the ring counts; videos and photos waiting shown as group tiles. |
 | 5 | Blank Stories screen looks weird | Next phase | Proper empty state / stories made after import. Round 2 screenshot now shows Collage ideas. |
 | 6 | Activity ring showed only photo count, not videos | Done (A8) | Same as 4. |
@@ -39,7 +39,7 @@ New feedback is added here the same day. Status: **Done** (needs owner re-check)
 | 23 | Naming a person: no way to pick the relationship | Next phase | |
 | 24 | "Same person?" isn't clear; faces too small to compare | Next phase | Bigger faces, 3-4 examples per side. |
 | 25 | Documents were imported but none recognised; Documents tab empty | Done (P1) | Text is read on import and documents are found (receipt test: 0.17 s). |
-| 26 | Plan all the after-import processes so no photo misses one | Next phase | Ordered steps per photo with a record of what's done; one Activity card. |
+| 26 | Plan all the after-import processes so no photo misses one | Done (P1-P4) | `.agents/plans/after-import-plan.md`; joint test (P5) pending. |
 
 ## Round 2: after A8 fixes (2026-11-17)
 

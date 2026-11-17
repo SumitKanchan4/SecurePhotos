@@ -18,6 +18,7 @@ import {
   importButtonLabel,
   ImportPreview,
   ImportResult,
+  largeImportNote,
   resultMessage,
   timeLeft,
 } from "./import/importFormat";
@@ -40,6 +41,26 @@ interface Progress {
 export function selectionFromPaths(paths: string[]): { folder: string | null; files: string[] } {
   if (paths.length === 1 && !/\.[a-zA-Z0-9]+$/.test(paths[0])) return { folder: paths[0], files: [] };
   return { folder: null, files: paths };
+}
+
+/**
+ * After-import P4 ("Add more", owner feedback): a new choice adds to what is already chosen
+ * instead of replacing it. One folder alone stays a folder; anything more is sent as one list
+ * (the engine walks the folders in it and counts a file picked twice once).
+ */
+export function addToSelection(
+  current: { folder: string | null; files: string[] },
+  paths: string[],
+): { folder: string | null; files: string[] } {
+  const all = [...(current.folder ? [current.folder] : []), ...current.files, ...paths];
+  const seen = new Set<string>();
+  const unique = all.filter((p) => {
+    const key = p.replace(/[\\/]+$/, "").toLowerCase(); // Windows paths: case and a trailing slash don't matter.
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return unique.length === 1 ? selectionFromPaths(unique) : { folder: null, files: unique };
 }
 
 export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImportComplete }) => {
@@ -157,7 +178,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
   if (!isOpen) return null;
 
   function applyPaths(paths: string[]) {
-    const next = selectionFromPaths(paths);
+    const next = addToSelection({ folder: selectedFolder, files: selectedFiles }, paths);
     setSelectedFolder(next.folder);
     setSelectedFiles(next.files);
   }
@@ -180,10 +201,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
     setIsBrowsing(true);
     try {
       const folder = await invoke<string | null>("select_import_folder");
-      if (folder) {
-        setSelectedFolder(folder);
-        setSelectedFiles([]);
-      }
+      if (folder) applyPaths([folder]);
     } catch {
       showToast("The folder picker isn't available here.", "warning");
     } finally {
@@ -316,10 +334,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
               <p>Drop photos, videos or folders here</p>
               <div className="import-drop-buttons">
                 <button type="button" className="import-secondary" onClick={chooseFiles} disabled={isBrowsing}>
-                  <Images size={15} /> Choose files
+                  <Images size={15} /> {hasSelection ? "Add files" : "Choose files"}
                 </button>
                 <button type="button" className="import-secondary" onClick={chooseFolder} disabled={isBrowsing}>
-                  <FolderOpen size={15} /> Choose a folder
+                  <FolderOpen size={15} /> {hasSelection ? "Add a folder" : "Choose a folder"}
                 </button>
               </div>
             </div>
@@ -327,7 +345,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
             {hasSelection && (
               <div className="import-selection">
                 <div className="import-selection-text">
-                  <span className="import-label">{selectedFolder ? "Selected folder" : "Selected files"}</span>
+                  <span className="import-label">
+                    {selectedFolder ? "Selected folder" : preview?.is_folder ? "Selected places" : "Selected files"}
+                  </span>
                   {previewState === "loading" ? (
                     <strong className="import-counting">
                       <Loader2 size={14} className="spin" /> Counting…
@@ -340,6 +360,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                         {preview.name} · {contentsLine(preview)}
                       </strong>
                       {duplicatesLine(preview) && <span className="import-muted">{duplicatesLine(preview)}</span>}
+                      {largeImportNote(preview) && <span className="import-muted">{largeImportNote(preview)}</span>}
                     </>
                   )}
                 </div>
@@ -353,7 +374,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                     setPreviewState("idle");
                   }}
                 >
-                  Change
+                  Clear
                 </button>
               </div>
             )}
