@@ -50,6 +50,28 @@ def test_real_document_text_counts():
     assert docs.keyword_hits("totally portable table") == 0     # …not letters inside words.
 
 
+async def test_onnxruntime_is_loaded_before_windows_ocr(tmp_path, monkeypatch):
+    """Once Windows OCR has run, onnxruntime can't load in that process (measured): every AI
+    feature would stop. The text reader always loads it first."""
+    import sys
+    import types
+
+    from PIL import Image
+
+    calls = []
+    monkeypatch.setattr(docs, "load_onnxruntime_first", lambda: calls.append("onnxruntime"))
+
+    async def recognize_pil(img, lang):
+        calls.append("ocr")
+        return types.SimpleNamespace(text="hello")
+
+    monkeypatch.setitem(sys.modules, "winocr", types.SimpleNamespace(recognize_pil=recognize_pil))
+    photo = tmp_path / "a.jpg"
+    Image.new("RGB", (64, 48), "white").save(photo)
+    assert await docs.extract_ocr_text_on_device(photo) == "hello"
+    assert calls == ["onnxruntime", "ocr"]
+
+
 async def test_wrong_scan_marks_go_back_to_photos_and_user_marks_stay():
     await run_migrations()
     tag = secrets.token_hex(3)

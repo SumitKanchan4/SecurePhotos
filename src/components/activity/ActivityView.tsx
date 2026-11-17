@@ -6,7 +6,7 @@
  * header pill. Every card shows what is being worked on; the header counts what the ring counts.
  */
 import React from "react";
-import { CloudDownload, Film, FolderInput, Lock, Pause, Play, Sparkles } from "lucide-react";
+import { CloudDownload, Film, FolderInput, Lock, Pause, Play, ScanSearch, Sparkles } from "lucide-react";
 import { getThumbnailUrl } from "../../services/api";
 import type { ActivityItem, ActivityModel } from "./activityFormat";
 
@@ -22,6 +22,7 @@ interface ActivityViewProps {
 const KIND_ICONS: Record<string, React.ReactNode> = {
   import: <FolderInput size={20} />,
   enhance: <Sparkles size={20} />,
+  prepare: <ScanSearch size={20} />,
   video: <Film size={20} />,
   models: <CloudDownload size={20} />,
 };

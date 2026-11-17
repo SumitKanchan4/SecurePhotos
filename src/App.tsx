@@ -130,7 +130,7 @@ export const App: React.FC = () => {
   const displayedPhotos = photos;
 
   // Background work for the Photos header (enhancing, preparing videos, importing).
-  const { optimizationProgress, videoProgress, importProgress, restoreJobs } = useBackgroundProgress({
+  const { optimizationProgress, videoProgress, importProgress, restoreJobs, preparing } = useBackgroundProgress({
     onPhotoEnhanced: (id) => setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, is_optimized: true, is_enhanced: true } : p))),
     onBatchFinished: () => loadPhotos(),
   });
@@ -458,8 +458,8 @@ export const App: React.FC = () => {
   // H10 / A4: everything working in the background, for the Activity page, the header pill
   // and the rail's status ring.
   const activity = useMemo(
-    () => buildActivity({ restore: restoreJobs, enhance: optimizationProgress, video: videoProgress, importing: importProgress }),
-    [restoreJobs, optimizationProgress, videoProgress, importProgress],
+    () => buildActivity({ restore: restoreJobs, enhance: optimizationProgress, video: videoProgress, importing: importProgress, preparing }),
+    [restoreJobs, optimizationProgress, videoProgress, importProgress, preparing],
   );
   const setActivitySummary = useAppStore((s) => s.setActivitySummary);
   useEffect(() => {

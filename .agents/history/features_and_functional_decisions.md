@@ -6285,3 +6285,24 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 
 ### State & Lifecycle Impact
 - New columns `photos.choice_pending` (migration marks copies made earlier by automatic jobs) and `photos.document_source`. New setting `battery_pause_below` (20). Preview files in `previews/display/`.
+
+## 158. After-Import Process, Step P1: Text and Faces for Every Photo
+
+### Functionality Overview
+- New photos get their **text read** (documents found) and their **faces found** straight after import, newest first, without restarting the app. Older libraries catch up the same way (text was never read before).
+- Activity shows "Getting photos ready · Reading text / Finding faces · N photos left"; People shows its progress while faces are found.
+- Documents never get faces (owner D1); a document the owner turns back into a photo gets its faces then, and is never marked a document again by a scan.
+- Pause all and the battery setting hold it (D5); vault and Trash are never touched.
+
+### Functional Decision Points & Rationale
+- Each step is recorded on the photo itself (`ocr_text` NULL = not read, '' = read, no text; `faces_scanned`), not in a separate table: one record per fact, nothing to drift; a restart resumes.
+- Faces wait until the text is read, so documents are known first.
+- Found while testing with the real models: once Windows OCR has run in a process, ONNX Runtime can no longer load there (faces, 8K and old-photo work would all stop). The engine loads ONNX Runtime first; the text reader does too.
+
+### Technical Touchpoints
+- New: `engine/services/after_import.py`, `engine/tests/test_after_import.py`.
+- Changed: `face_scan_worker.py` (`scan_photo_faces` per photo), `document_service.py` (OCR order, `document_source='user'`, no re-reading), `main.py` (start), `api/photos.py` (`GET /api/photos/preparing`, wake on import), `api/people.py` (scan button wakes it; force re-scan unchanged), `activityFormat.ts`, `ActivityView.tsx`, `useBackgroundProgress.ts`, `App.tsx`.
+- Checks: engine 426, frontend 193; end to end in a throwaway library with the real models: 5 photos in 2.7 s, faces in 3, receipt marked a document without faces.
+
+### State & Lifecycle Impact
+- No schema change. Existing libraries: every photo's text is read once in the background (about 0.2-0.3 s per photo).
