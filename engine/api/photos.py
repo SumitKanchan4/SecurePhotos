@@ -215,6 +215,38 @@ def _running_on_battery() -> bool:
     return bool(battery) and not battery.power_plugged
 
 
+def _battery_percent() -> Optional[float]:
+    """The battery charge in percent, or None if the PC doesn't report one."""
+    try:
+        import psutil
+
+        battery = psutil.sensors_battery()
+    except Exception:
+        return None
+    return float(battery.percent) if battery and battery.percent is not None else None
+
+
+# Settings → "Pause background work on battery": waits only below this charge (100 = always on battery).
+DEFAULT_BATTERY_PAUSE_BELOW = 20
+
+
+def battery_guard_applies(app_settings: Dict[str, Any]) -> bool:
+    """True while background work must wait: unplugged, guard on, and the charge below the chosen level.
+
+    A battery that doesn't report its charge is treated as low (safe side).
+    """
+    if not app_settings.get("pause_on_battery", True) or not _running_on_battery():
+        return False
+    try:
+        below = int(app_settings.get("battery_pause_below", DEFAULT_BATTERY_PAUSE_BELOW))
+    except (TypeError, ValueError):
+        below = DEFAULT_BATTERY_PAUSE_BELOW
+    if below >= 100:
+        return True
+    percent = _battery_percent()
+    return percent is None or percent < below
+
+
 async def _load_enhancement_settings() -> Dict[str, Any]:
     """Reads the enhancement-related user settings (quality slider, battery guard)."""
     from engine.api.system import get_app_settings
@@ -245,10 +277,10 @@ async def _wait_while_on_battery() -> None:
     """
     while True:
         app_settings = await _load_enhancement_settings()
-        if not (app_settings.get("pause_on_battery", True) and _running_on_battery()):
+        if not battery_guard_applies(app_settings):
             break
         if optimization_state["paused_reason"] != "on_battery":
-            logger.info("Photo enhancement paused: running on battery.")
+            logger.info("Photo enhancement paused: running on low battery.")
         optimization_state["paused_reason"] = "on_battery"
         await asyncio.sleep(BATTERY_RECHECK_SECONDS)
     if optimization_state["paused_reason"]:
