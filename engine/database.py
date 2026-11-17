@@ -162,6 +162,12 @@ CREATE TABLE IF NOT EXISTS story_items (
     focal_y REAL DEFAULT 0.5
 );
 
+-- After-import P3: stories the owner deleted are never suggested again (by their key).
+CREATE TABLE IF NOT EXISTS story_dismissals (
+    story_key TEXT PRIMARY KEY,
+    dismissed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ── 8. Creative Assets Table (Collages & Wallpapers) ─────────────────────────
 CREATE TABLE IF NOT EXISTS creative_assets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

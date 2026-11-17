@@ -387,17 +387,30 @@ async def test_api_keep_versions_and_restore(lib):
         assert (await client.get("/api/restore/photos/999999/versions")).status_code == 404
 
 
-async def test_stories_use_the_copy_not_both(lib):
-    from engine.services.stories_service import delete_story, generate_year_in_review_story
+async def test_a_restored_old_print_shows_in_old_photos_not_in_dated_stories(lib):
+    """P3 (owner-approved rules): a scan carries the scan date, so a print the app restored
+    stays out of dated stories and shows (as the improved copy) in "Old photos, brought back"."""
+    from engine.services.stories_service import delete_story, generate_old_photos_story, generate_year_in_review_story
 
-    original_id, other_id = lib["ids"]
+    conn, (original_id, other_id) = lib["conn"], lib["ids"]
     new_id = (await restore_queue.keep_result(await _finish(original_id), "keep_both"))["photo_id"]
-    story = await generate_year_in_review_story("1974")
+    await conn.execute("UPDATE photos SET edited_at = CURRENT_TIMESTAMP WHERE id = ?;", (new_id,))
+    # A second restored print (whose original was later deleted): the story needs two.
+    await conn.execute("UPDATE photos SET ai_kind = 'fade', edited_at = CURRENT_TIMESTAMP WHERE id = ?;", (other_id,))
+    await conn.commit()
+    year_story = await generate_year_in_review_story("1974")
+    old_story = await generate_old_photos_story()
     try:
-        shown = {s.photo_id for s in story.slides}
-        assert new_id in shown and other_id in shown and original_id not in shown
+        if year_story is not None:
+            shown = {s.photo_id for s in year_story.slides}
+            assert not shown & {original_id, new_id, other_id}
+        assert old_story is not None and old_story.title == "Old photos, brought back"
+        shown = [s.photo_id for s in old_story.slides]
+        assert new_id in shown and original_id not in shown  # The improved one, never both.
     finally:
-        await delete_story(story.id)
+        for story in (year_story, old_story):
+            if story is not None:
+                await delete_story(story.id)
 
 
 # ── A3 endpoints: the waiting result, which actions fit, the strength slider ──
