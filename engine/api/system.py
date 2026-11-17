@@ -562,6 +562,7 @@ DEFAULT_APP_SETTINGS: Dict[str, Any] = {
     "auto_lock_duration": 300,
     "quality_crf": 18,
     "pause_on_battery": True,
+    "battery_pause_below": 20,       # Pause only below this charge; 100 = whenever on battery.
     "face_clustering": True,
     "ambient_music": True,
     "ken_burns_motion": True,

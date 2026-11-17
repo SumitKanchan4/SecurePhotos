@@ -4,7 +4,7 @@ import { useAppStore } from "../../store/useAppStore";
 import { DEFAULT_SETTINGS } from "../../hooks/useAppSettings";
 import { SETTINGS_SECTIONS, SettingsView } from "../SettingsView";
 import { VaultSettings } from "./VaultSettings";
-import { PhotosAISettings, qualityTier } from "./PhotosAISettings";
+import { PhotosAISettings, batteryChoice, qualityTier } from "./PhotosAISettings";
 import { StorageSettings } from "./StorageSettings";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -61,7 +61,7 @@ describe("Settings layout", () => {
     expect(screen.getByRole("button", { name: "Private Vault" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("Lock automatically after")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Photos & AI" }));
-    expect(screen.getByRole("switch", { name: "Thermal and battery guard" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Pause background work on battery" })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Ambient story soundtracks" })).toBeInTheDocument();
   });
 });
@@ -152,6 +152,23 @@ describe("Photos & AI and Storage", () => {
     expect(screen.getByText("Balanced (Recommended)")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Photo quality"), { target: { value: "25" } });
     expect(updateSetting).toHaveBeenCalledWith("quality_crf", 25);
+  });
+
+  it("pauses background work only below the chosen battery level", () => {
+    const updateSetting = vi.fn();
+    render(<PhotosAISettings settings={DEFAULT_SETTINGS} updateSetting={updateSetting} />);
+    const group = screen.getByRole("radiogroup", { name: "Pause background work on battery" });
+    expect(within(group).getByRole("radio", { name: "Below 20%" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(within(group).getByRole("radio", { name: "Never" }));
+    expect(updateSetting).toHaveBeenCalledWith("pause_on_battery", false);
+    expect(updateSetting).not.toHaveBeenCalledWith("battery_pause_below", 0);
+    updateSetting.mockClear();
+    fireEvent.click(within(group).getByRole("radio", { name: "Always" }));
+    expect(updateSetting).toHaveBeenCalledWith("pause_on_battery", true);
+    expect(updateSetting).toHaveBeenCalledWith("battery_pause_below", 100);
+    expect(batteryChoice({ pause_on_battery: false, battery_pause_below: 50 })).toBe(0);
+    expect(batteryChoice({ pause_on_battery: true, battery_pause_below: 45 })).toBe(50);
+    expect(batteryChoice({ pause_on_battery: true, battery_pause_below: 10 })).toBe(20);
   });
 
   it("has the Old photos rows in plain words, each When I ask or Automatically, and Keep original", () => {

@@ -390,7 +390,7 @@ async def _holding_auto_jobs() -> bool:
     from engine.api import photos as photos_api
 
     app_settings = await photos_api._load_enhancement_settings()
-    return bool(app_settings.get("pause_on_battery", True)) and photos_api._running_on_battery()
+    return photos_api.battery_guard_applies(app_settings)
 
 
 async def _next_job(conn: aiosqlite.Connection, vault_open: bool, auto_allowed: bool = True) -> Optional[aiosqlite.Row]:
