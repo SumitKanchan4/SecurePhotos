@@ -79,7 +79,8 @@ CREATE TABLE IF NOT EXISTS photos (
     derived_from_id INTEGER REFERENCES photos(id) ON DELETE SET NULL, -- H10: improved copy of this photo
     ai_kind TEXT,                   -- H10: 'colour', 'fade', 'faces', 'scratches' (comma-joined when combined)
     ai_params TEXT,                 -- H10: JSON settings used, e.g. {"style": "natural"}
-    edited_at DATETIME              -- H10: when the improved copy was made
+    edited_at DATETIME,             -- H10: when the improved copy was made
+    choice_pending INTEGER NOT NULL DEFAULT 0 -- A8: kept automatically; the user hasn't chosen improved / original / both
 );
 
 -- ── 2. Albums Table ──────────────────────────────────────────────────────────
@@ -789,6 +790,17 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
         if "edited_at" not in existing_photo_cols:
             await conn.execute("ALTER TABLE photos ADD COLUMN edited_at DATETIME;")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_photos_derived_from ON photos (derived_from_id);")
+        # A8: improved copies kept by an automatic rule wait for the user's choice. Copies made
+        # before this column existed by automatic jobs are marked once, when it is added.
+        if "choice_pending" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN choice_pending INTEGER NOT NULL DEFAULT 0;")
+            async with conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'restore_jobs';") as cursor:
+                if await cursor.fetchone():
+                    await conn.execute(
+                        """UPDATE photos SET choice_pending = 1
+                           WHERE id IN (SELECT result_photo_id FROM restore_jobs
+                                        WHERE origin = 'auto' AND status = 'done' AND result_photo_id IS NOT NULL);"""
+                    )
 
         # H10 / A5: details of a result waiting for a decision (faces sharpened, for per-face on/off).
         async with conn.execute("PRAGMA table_info(restore_jobs);") as cursor:
