@@ -89,7 +89,7 @@ Sizes: S ≈ half a day of my work, M ≈ 1 day, L ≈ 2 days (each including te
 | A5 ✅ | **Restore faces** on demand (built 2026-11-17, branch `feature/a5-faces`; see "A5 notes") (GFPGAN, align with YuNet landmarks, feathered paste-back, strength + per-face toggles, SFace identity check). | L | |
 | A6 ✅ | **Auto rules** (built 2026-11-17, branch `feature/a6-auto-rules`; see "A6 notes"): B&W and blur detection on import, Settings "Old photos" (manual / automatic, keep original), the "replace or keep a copy" prompt with remember-my-choice, hidden original + "Restore original". | M | |
 | A7 ✅ | **Remove scratches and spots** (built 2026-11-17, branch `feature/a7-scratches`; see "A7 notes") (detector → LaMa on damaged crops; result first; optional Touch up with brush/eraser; strict threshold for Automatic). | L | Most UI work (Touch up editor). Could move after the first merge if the rest is ready. Needs a few scratched test photos from the owner. |
-| A8 | **Full test round with the owner** on real photos; fixes; docs (design system, history, THIRD_PARTY_NOTICES, licences); then PR `feature/ai-restore` → `master` with owner approval. | M | |
+| A8 | **Full test round with the owner** (checklist: `.agents/plans/a8-joint-test.md`; test library `C:\Sumit\Code\SecurePhotos-JointTest`) on real photos; fixes; docs (design system, history, THIRD_PARTY_NOTICES, licences); then PR `feature/ai-restore` → `master` with owner approval. | M | |
 
 Total ≈ 10–12 days of work across 9 steps; first usable piece (colorize + Activity) after A0–A4.
 
