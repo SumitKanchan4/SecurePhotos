@@ -183,8 +183,9 @@ def is_candidate_document(
     return False
 
 
+# Not "scan": people name scans of old photos "scan_001" too (found in the P2 end-to-end run).
 FILENAME_WORDS = {
-    "doc", "document", "scan", "scanned", "receipt", "invoice", "bill", "passport", "license", "licence",
+    "doc", "document", "receipt", "invoice", "bill", "passport", "license", "licence",
     "tax", "1040", "w2", "medical", "rx", "contract", "statement", "form", "ticket", "paper", "memo",
     "letter", "schedule", "prescription", "aadhaar", "pan", "certificate",
 }

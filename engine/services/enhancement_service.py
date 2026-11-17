@@ -99,6 +99,8 @@ def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int) -> Tuple
     with opened as im:
         exif = im.getexif()
         icc_profile = im.info.get("icc_profile")
+        # An improved copy's AI label (IPTC digital source type, H10) must survive 8K (P2).
+        xmp = im.info.get("xmp")
         upright = ImageOps.exif_transpose(im)
         alpha = _has_alpha(upright)
         upright = upright.convert("RGBA" if alpha else "RGB")
@@ -113,6 +115,8 @@ def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int) -> Tuple
         save_kwargs["exif"] = exif.tobytes()
     if icc_profile:
         save_kwargs["icc_profile"] = icc_profile
+    if xmp:
+        save_kwargs["xmp"] = xmp if isinstance(xmp, (bytes, bytearray)) else str(xmp).encode("utf-8")
     buffer = io.BytesIO()
     enhanced.save(buffer, "AVIF", **save_kwargs)
     data = buffer.getvalue()

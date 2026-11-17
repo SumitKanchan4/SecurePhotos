@@ -81,7 +81,8 @@ CREATE TABLE IF NOT EXISTS photos (
     ai_params TEXT,                 -- H10: JSON settings used, e.g. {"style": "natural"}
     edited_at DATETIME,             -- H10: when the improved copy was made
     choice_pending INTEGER NOT NULL DEFAULT 0, -- A8: kept automatically; the user hasn't chosen improved / original / both
-    document_source TEXT            -- A8: 'scan' when "Find in photos" marked it a document (re-checked); NULL = the user
+    document_source TEXT,           -- A8: 'scan' when "Find in photos" marked it a document (re-checked); NULL = the user
+    restore_checked INTEGER NOT NULL DEFAULT 0 -- After-import P2: the old-photo rules have looked at it (8K waits for this)
 );
 
 -- ── 2. Albums Table ──────────────────────────────────────────────────────────
@@ -811,6 +812,12 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
             back = await recheck_scanned_documents(conn)
             if back:
                 logger.info("Moved %d photos wrongly marked as documents back to Photos.", back)
+
+        # After-import P2: the old-photo rules look at each new photo before 8K enhancement (the
+        # fix works on the scan's own size). Photos already in the library count as looked at.
+        if "restore_checked" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN restore_checked INTEGER NOT NULL DEFAULT 0;")
+            await conn.execute("UPDATE photos SET restore_checked = 1;")
 
         # A8: improved copies kept by an automatic rule wait for the user's choice. Copies made
         # before this column existed by automatic jobs are marked once, when it is added.
