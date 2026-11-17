@@ -40,6 +40,7 @@ import { ViewerDetails } from "./viewer/ViewerDetails";
 import { useVolumeBooster } from "./viewer/useVolumeBooster";
 import { useOldPhoto } from "./viewer/useOldPhoto";
 import { BeforeAfter, ImproveMenu, ModelDialog, OldPhotoPanel, VersionSwitch } from "./viewer/OldPhotoPanel";
+import { TouchUpEditor, useMarks } from "./viewer/TouchUp";
 
 interface LightboxProps {
   photos: PhotoItem[];
@@ -182,7 +183,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
   keyHandlerRef.current = (e: KeyboardEvent) => {
     // A dialog on top of the viewer (e.g. "Keep the improved photo?") handles its own keys:
     // Escape closes only the dialog, and arrows never switch photos behind it.
-    if (document.querySelector(".alb-dialog-backdrop, .danger-dialog-backdrop")) return;
+    if (document.querySelector(".alb-dialog-backdrop, .danger-dialog-backdrop, .op-touchup")) return;
     // Sliders, checkboxes and text fields keep their own keys (arrows move the strength slider).
     const target = e.target as HTMLElement | null;
     if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) && e.key !== "Escape") return;
@@ -265,6 +266,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
   // H10: old-photo improvements for the open photo (nothing shows until the user asks).
   const old = useOldPhoto(currentPhoto, isOpen);
+  const marks = useMarks(old.maskUrl);
 
   if (!isOpen || !currentPhoto) return null;
 
@@ -1175,6 +1177,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
               faces={old.job?.faces}
               facesOff={old.facesOff}
               onToggleFace={old.toggleFace}
+              marks={old.showMarks ? marks : null}
             />
           )}
         </div>
@@ -1220,6 +1223,16 @@ export const Lightbox: React.FC<LightboxProps> = ({
               showToast("Kept. The improved photo is next to the original.", "success");
             }
           }}
+        />
+      )}
+
+      {old.touchUpOpen && old.reviewUrl && (
+        <TouchUpEditor
+          resultUrl={old.reviewUrl}
+          marks={marks}
+          busy={old.busy}
+          onApply={(png) => void old.touchUp(png).catch(() => showToast("Couldn't touch up. Please try again.", "warning"))}
+          onCancel={() => old.setTouchUpOpen(false)}
         />
       )}
 

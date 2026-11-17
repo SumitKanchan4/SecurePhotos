@@ -16,6 +16,7 @@ export interface AppSettings {
   old_photos_colour: OldPhotoRule;
   old_photos_fade: OldPhotoRule;
   old_photos_faces: OldPhotoRule;
+  old_photos_scratches: OldPhotoRule;
   /** Off: once the improved photo is made, the original goes to Trash for 30 days. */
   old_photos_keep_original: boolean;
 }
@@ -35,6 +36,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   old_photos_colour: "ask",
   old_photos_fade: "ask",
   old_photos_faces: "ask",
+  old_photos_scratches: "ask",
   old_photos_keep_original: true,
 };
 

@@ -214,7 +214,7 @@ async def test_vault_photo_faces_are_never_written_in_plain_form(face_lib, monke
         row = await _job_row(conn, job_id)
         assert row["result_info"] is None and restore_queue._private_info[job_id]["faces"]
         extra = restore_queue._extra_path(resolve_stored_path(row["result_path"]))
-        assert extra.name.endswith(".faces.enc") and not extra.read_bytes().startswith(b"PK")  # Not a plain npz.
+        assert extra.name.endswith(".extra.enc") and not extra.read_bytes().startswith(b"PK")  # Not a plain npz.
         job = (await restore_queue.list_jobs())["review"][0]
         assert len(job["faces"]) == 3 and job["private"] and job["filename"] is None
         await restore_queue.keep_result(job_id, "keep_both", faces_off=[1])
@@ -228,7 +228,7 @@ async def test_cancel_and_restart_handle_the_faces_file(face_lib):
     conn, original_id = face_lib["conn"], face_lib["ids"][0]
     kept_job = await _finish(original_id, kind="faces")
     kept_extra = restore_queue._extra_path(resolve_stored_path((await _job_row(conn, kept_job))["result_path"]))
-    stray = restore_queue.staging_dir() / "job_999999.faces"
+    stray = restore_queue.staging_dir() / "job_999999.extra"
     stray.write_bytes(b"left over")
     await restore_queue.recover_on_start()
     assert kept_extra.exists() and not stray.exists()  # A result still waiting keeps its faces.

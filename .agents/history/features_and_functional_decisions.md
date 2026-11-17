@@ -6233,3 +6233,25 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 
 ### State & Lifecycle Impact
 - No schema change. Uses the existing settings keys (`old_photos_colour`, `old_photos_fade`, `old_photos_faces`, `old_photos_keep_original`). Turning a row to Automatically affects only photos imported afterwards.
+
+## 156. Old Photos, Step A7: Remove Scratches and Spots, with Touch Up (H10)
+
+### Functionality Overview
+- **Remove scratches and spots** in the viewer's "…" menu for scans of prints and black-and-white photos ("Creases, scratches and dust on old prints"). The app finds the damage and fills it in; only the marked pixels change, the rest keeps full detail.
+- The result shows what was repaired **in lime** ("Show marks"). **Touch up** opens a dark editor on the result: Brush paints a missed scratch, Eraser brings a detail back, Size, Hide marks, Undo; Apply repairs again (from the original) with exactly those marks. Faces are never marked by the app; they are repaired only if painted.
+- Settings → Old photos gains its fourth row, **Remove scratches and spots** (When I ask / Automatically). Automatically repairs only clear scratches (strict detector, at least 0.4% of the scan) and keeps nothing when there's nothing to fix (Activity: "Nothing to fix"); with other rows Automatic too, scratches are repaired first in the same job.
+- The two models (~360 MB) download with the others at install (total ~2.7 GB); if missing, the usual popup offers them and only this feature is locked.
+
+### Functional Decision Points & Rationale
+- The owner has no scratched photos (phone scanning cleans them), so damage was drawn onto copies of the owner's scans with an exact damage map: the detector finds light scratches well but only about half of all damage by area (dark lines, dust, torn corners poorly), while the fill-in is near perfect with correct marks.
+- Owner (2026-11-17): **careful marks + Touch up** — detector plus a dust finder, faces protected; anything missed is painted in Touch up. Marking more (coarse pass) would find 73% but a third of the marks would be wrong and more real detail would be smoothed away.
+- Fill-in at 1024 px: half the time of 1536 px with the same look (only marked pixels are replaced).
+- Models rebuilt from the official weights (owner approved running the upstream model code for the conversion); the LaMa checkpoint is read without running anything from it.
+
+### Technical Touchpoints
+- New: `engine/services/scratch_repair.py`, `engine/tests/test_scratch_repair.py`, `scripts/model_export/export_scratch_models.py`, `src/components/viewer/TouchUp.tsx`.
+- Changed: `engine/services/ai_models.py` (`scratch_detector`, `lama`), `engine/services/model_installer.py`, `src-tauri/nsis-hooks.nsh` (2.7 GB), `engine/services/old_photo_processors.py` (`remove_scratches`, scratches first in automatic jobs, labels), `engine/services/restore_queue.py` (generic `.extra` file, Touch-up masks, nothing to fix, `marked`), `engine/api/restore.py` (option, `/jobs/{id}/mask`, `/jobs/{id}/touch-up`), `engine/services/old_photo_rules.py`, `src/components/viewer/useOldPhoto.ts`, `OldPhotoPanel.tsx`, `src/components/Lightbox.tsx`, `src/components/activity/activityFormat.ts`, `src/components/settings/PhotosAISettings.tsx`, `src/hooks/useAppSettings.ts`, `src/index.css`, THIRD_PARTY_NOTICES.md (MIT text for BOPBTL, LaMa), `scripts/model_export/README.md`, docs.
+- Tests: engine 386 (+18), frontend 177 (+2). Mutation checks: 11 deliberate breaks each caught (one exposed a missing test for full detail outside the marks on large photos; added). Browser check with the real models on a throwaway library (a public-domain picture with drawn damage): menu, result in 42 s, lime marks, Touch up painting a missed dark line, new result in 23 s, kept copy labelled `scratches`; Settings row in both themes; no console errors.
+
+### State & Lifecycle Impact
+- No schema change. Staging files: `job_N.extra(.enc)` (was `.faces`) and `mask_<token>.png(.enc)` for a Touch-up job, removed when the job ends, kept for waiting jobs across a restart.

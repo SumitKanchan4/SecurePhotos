@@ -15,7 +15,7 @@ Lookup order:
 A file that fails its checksum is never loaded.
 
 Old-photo models (H10, ``ON_DEMAND_MODELS``) are too big to ship inside the installer
-(~2.3 GB). The installer downloads them into ``<app>/data/models`` after it copies the app
+(~2.7 GB). The installer downloads them into ``<app>/data/models`` after it copies the app
 (``engine/services/model_installer.py``, run as ``securephotos-engine --fetch-models``); if
 that fails the app asks before the first feature that needs one. They live on this repo's
 GitHub Release ``models-v1`` and are pinned by URL + SHA-256 in the same way.
@@ -82,6 +82,20 @@ ON_DEMAND_MODELS: Dict[str, Dict[str, str]] = {
         "url": MODELS_RELEASE_URL + "gfpgan_v1.4_512.onnx",
         "sha256": "82493c5f1dcd8e666a7b651ac08eb2fd5a20fdbee2bb9b6d9c7863f04fff3df4",
         "size": "340357338",
+        "license": "Apache-2.0",
+    },
+    "scratch_detector": {  # Finds scratches (Microsoft "Bringing Old Photos Back to Life" detector).
+        "file": "scratch_detector.onnx",
+        "url": MODELS_RELEASE_URL + "scratch_detector.onnx",
+        "sha256": "2461c38a92afcda9a6c9b20e0ccd7d470104a2bfc9c6f7470ece05e67d419795",
+        "size": "150613765",
+        "license": "MIT",
+    },
+    "lama": {  # Fills in scratches and spots (Big-LaMa, 512 px areas).
+        "file": "lama_512.onnx",
+        "url": MODELS_RELEASE_URL + "lama_512.onnx",
+        "sha256": "46216567a38eab9a95977f80ccfe0b35906143183608b210487d14e0687e021e",
+        "size": "209265850",
         "license": "Apache-2.0",
     },
 }
