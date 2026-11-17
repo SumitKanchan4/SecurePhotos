@@ -275,6 +275,58 @@ describe("Old photos in the viewer", () => {
     expect(calls.find((c) => c.url === "/api/restore/jobs/5/keep")?.body).toEqual({ choice: "discard" });
   });
 
+  it("offers Remove scratches and spots, shows the marks and opens Touch up; Apply repairs again with the painted marks", async () => {
+    const ctx = {
+      drawImage: vi.fn(), clearRect: vi.fn(), fillRect: vi.fn(), beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(),
+      getImageData: vi.fn(() => ({ data: new Uint8ClampedArray(4) })), putImageData: vi.fn(),
+      globalCompositeOperation: "", fillStyle: "", strokeStyle: "", lineCap: "", lineJoin: "", lineWidth: 1,
+    };
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => ctx as never);
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(function (cb: BlobCallback) {
+      cb(new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" }));
+    });
+    const scratchJob = { ...reviewJob, kind: "scratches", marked: 0.012, faces: [], faces_waiting: 0 };
+    const calls = mockEngine({
+      "/api/restore/photos/1/state": () => ({ options: { colour: false, fade: true, faces: false, scratches: true }, members: [], job: scratchJob }),
+      "/api/system/settings": () => ({ settings: { old_photos_keep_choice: "ask" } }),
+      "/api/restore/jobs/5/touch-up": () => ({ job_id: 6 }),
+      "/api/restore/jobs/5/mask": () => ({}),
+      "/api/restore/jobs": () => ({ working: [], waiting: [], review: [], finished_today: [], download: null }),
+    });
+    const handlers = renderViewer();
+    const panel = await screen.findByRole("complementary", { name: "Remove scratches and spots" });
+    expect(panel).toHaveTextContent("What was repaired is shown in lime.");
+    expect(screen.getByRole("checkbox", { name: "Show marks" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: /Touch up/ }));
+    const editor = await screen.findByRole("dialog", { name: "Touch up" });
+    expect(within(editor).getByRole("button", { name: /Brush/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(editor).getByRole("button", { name: /Eraser/ }));
+    expect(within(editor).getByRole("button", { name: /Eraser/ })).toHaveAttribute("aria-pressed", "true");
+    expect(editor).toHaveTextContent("Faces under a mark are left alone unless you paint them.");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Touch up" })).not.toBeInTheDocument();
+    expect(handlers.onClose).not.toHaveBeenCalled(); // Escape closed Touch up only, not the viewer.
+    fireEvent.click(screen.getByRole("button", { name: /Touch up/ }));
+    const again = await screen.findByRole("dialog", { name: "Touch up" });
+    fireEvent.load(within(again).getByRole("img", { name: "The repaired photo" }));
+    await act(async () => fireEvent.click(within(again).getByRole("button", { name: "Apply" })));
+    await waitFor(() => expect(calls.find((c) => c.url === "/api/restore/jobs/5/touch-up")?.body).toEqual({ mask_png: "iVBORw==" }));
+    expect(screen.queryByRole("dialog", { name: "Touch up" })).not.toBeInTheDocument();
+    vi.restoreAllMocks();
+  });
+
+  it("says when nothing was found and still offers Touch up", async () => {
+    mockEngine({
+      "/api/restore/photos/1/state": () => ({ options: { colour: false, fade: false, faces: false, scratches: true }, members: [], job: { ...reviewJob, kind: "scratches", marked: 0 } }),
+      "/api/system/settings": () => ({ settings: { old_photos_keep_choice: "ask" } }),
+    });
+    renderViewer();
+    const panel = await screen.findByRole("complementary", { name: "Remove scratches and spots" });
+    expect(panel).toHaveTextContent("No scratches or spots were found.");
+    expect(screen.queryByRole("checkbox", { name: "Show marks" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Touch up/ })).toBeInTheDocument();
+  });
+
   it("switches between the original and the improved photo", async () => {
     mockEngine({
       "/api/restore/photos/1/state": () => ({

@@ -17,6 +17,9 @@ Recipes chosen by the owner on their own photos in the A0 test (2026-11-16):
   face model is on this computer, faces are sharpened at 80% (owner, A5: the colour fix never
   waits for a download; without the model the viewer offers "Also sharpen faces").
 - **Sharpen faces (A5):** GFPGAN on each face, see ``face_sharpen``.
+- **Remove scratches and spots (A7):** find the damage, fill it in; see ``scratch_repair``.
+  When "Remove scratches and spots" is Automatic too, the automatic colour / faded-colour /
+  face jobs repair scratches first, in the same job (one copy).
 
 Each processor takes the photo's file bytes and returns a high-quality JPEG of the result;
 ``photo_versions`` turns it into the labelled AVIF copy. The original is never touched.
@@ -30,7 +33,7 @@ from typing import Any, Callable, Dict, List
 import numpy as np
 from PIL import Image, ImageOps
 
-from engine.services import ai_models, face_sharpen, onnx_sessions
+from engine.services import ai_models, face_sharpen, onnx_sessions, scratch_repair
 from engine.services.restore_queue import Outcome, Processor, register_processor
 
 COLOUR_MODELS = ("ddcolor_large", "ddcolor_artistic")
@@ -134,7 +137,7 @@ def add_colour(data: bytes, params: Dict[str, Any], progress: Callable[[int], No
     """Recipe F (Natural) or the 768 px variant (Vivid), with the sepia fallback. With
     ``faces`` (automatic rules, A6, when "Sharpen blurry faces" is Automatic too) the faces of
     the coloured photo are sharpened in the same job, if the face model is here."""
-    rgb = decode_rgb(data)
+    rgb, repaired = _scratches_first(decode_rgb(data), params)
     Ls = stretch_brightness(_lab_l(rgb))
     vivid = params.get("style") == "vivid"
     predictions: Dict[str, np.ndarray] = {}
@@ -154,9 +157,9 @@ def add_colour(data: bytes, params: Dict[str, Any], progress: Callable[[int], No
             ab = vivid_ab
     coloured = lab_to_rgb(Ls, ab)
     if params.get("faces") and not cancelled() and ai_models.is_model_ready(face_sharpen.FACE_MODEL):
-        return _faces_outcome(coloured, progress, cancelled, (85, 98))
+        return _noting(_faces_outcome(coloured, progress, cancelled, (85, 98)), repaired)
     progress(95)
-    return encode_jpeg(coloured)
+    return _noting(encode_jpeg(coloured), repaired)
 
 
 # ── Fix faded colours ───────────────────────────────────────────────────────
@@ -179,6 +182,24 @@ def fix_faded_colours(rgb: np.ndarray) -> np.ndarray:
     return (np.clip(cv2.cvtColor(lab, cv2.COLOR_Lab2RGB), 0, 1) * 255).round().astype(np.uint8)
 
 
+def _scratches_first(rgb: np.ndarray, params: Dict[str, Any]):
+    """Automatic rules (A7): with ``scratches``, repair clear scratches before anything else.
+    Returns (photo, whether anything was repaired)."""
+    if not params.get("scratches") or ai_models.missing_models(scratch_repair.MODELS):
+        return rgb, False
+    fixed = scratch_repair.auto_repair(rgb)
+    return (rgb, False) if fixed is None else (fixed, True)
+
+
+def _noting(result: Any, repaired: bool) -> Any:
+    """Adds "scratches were repaired too" to a result (for the copy's label)."""
+    if not repaired:
+        return result
+    outcome = result if isinstance(result, Outcome) else Outcome(image=result)
+    outcome.info = {**outcome.info, "scratches_repaired": True}
+    return outcome
+
+
 def _faces_outcome(base: np.ndarray, progress: Callable[[int], None], cancelled: Callable[[], bool], span=(5, 95)) -> Outcome:
     out, records, crops = face_sharpen.sharpen_faces(base, progress, cancelled, span)
     info = {"faces": records, "width": int(base.shape[1]), "height": int(base.shape[0])}
@@ -188,21 +209,41 @@ def _faces_outcome(base: np.ndarray, progress: Callable[[int], None], cancelled:
 def fade(data: bytes, params: Dict[str, Any], progress: Callable[[int], None], cancelled: Callable[[], bool]) -> Outcome:
     """Recipe R: the colour fix, then faces when the face model is here (unless ``faces`` is False)."""
     progress(10)
-    fixed = fix_faded_colours(decode_rgb(data))
+    rgb, repaired = _scratches_first(decode_rgb(data), params)
+    fixed = fix_faded_colours(rgb)
     if params.get("faces", True) and not cancelled():
         if ai_models.is_model_ready(face_sharpen.FACE_MODEL):
-            return _faces_outcome(fixed, progress, cancelled, (20, 95))
+            return _noting(_faces_outcome(fixed, progress, cancelled, (20, 95)), repaired)
         waiting = face_sharpen.count_faces(fixed)
         if waiting:  # The viewer offers "Also sharpen faces" (download first).
-            return Outcome(image=encode_jpeg(fixed), info={"faces_waiting": waiting})
+            return _noting(Outcome(image=encode_jpeg(fixed), info={"faces_waiting": waiting}), repaired)
     progress(95)
-    return Outcome(image=encode_jpeg(fixed))
+    return _noting(Outcome(image=encode_jpeg(fixed)), repaired)
 
 
 def sharpen(data: bytes, params: Dict[str, Any], progress: Callable[[int], None], cancelled: Callable[[], bool]) -> Outcome:
     """Sharpen faces on the photo as it is."""
     progress(3)
-    return _faces_outcome(decode_rgb(data), progress, cancelled)
+    rgb, repaired = _scratches_first(decode_rgb(data), params)
+    return _noting(_faces_outcome(rgb, progress, cancelled), repaired)
+
+
+def remove_scratches(data: bytes, params: Dict[str, Any], progress: Callable[[int], None], cancelled: Callable[[], bool]) -> Outcome:
+    """Remove scratches and spots: the app's marks (``strict`` for automatic rules) or, after
+    Touch up, the user's painted marks (``_mask``). The marks are kept with the result so the
+    viewer can show them and Touch up can start from them."""
+    rgb = decode_rgb(data)
+    progress(5)
+    if params.get("_mask"):
+        mask = scratch_repair.decode_mask(params["_mask"], rgb.shape)
+    else:
+        mask = scratch_repair.find_damage(rgb, strict=bool(params.get("strict")))
+    progress(35)
+    if params.get("strict") and mask.mean() < scratch_repair.AUTO_MIN_MARKED:
+        return Outcome(image=b"", info={"unchanged": True})  # Automatic: nothing clearly scratched.
+    out = scratch_repair.repair(rgb, mask, progress, cancelled)
+    info = {"width": int(rgb.shape[1]), "height": int(rgb.shape[0]), "marked": round(float(mask.mean()), 5)}
+    return Outcome(image=encode_jpeg(out), info=info, extra=scratch_repair.encode_mask(mask))
 
 
 def without_faces(kind: str, source: bytes, info: Dict[str, Any], extra: bytes, off: List[int]) -> bytes:
@@ -215,10 +256,15 @@ def without_faces(kind: str, source: bytes, info: Dict[str, Any], extra: bytes, 
 
 
 def kinds_kept(kind: str, info: Dict[str, Any], off: List[int]) -> str:
-    """The label of the kept copy: a colour fix whose faces were sharpened says so too
-    (and a faded-colour fix with sharpened faces is AI-made)."""
+    """The label of the kept copy: everything that was actually done (a colour fix whose faces
+    were sharpened or whose scratches were repaired is AI-made)."""
     sharpened = [i for i, f in enumerate(info.get("faces", [])) if f["strength"] > 0 and i not in set(off)]
-    return f"{kind},faces" if kind in ("fade", "colour") and sharpened else kind
+    kinds = [kind]
+    if info.get("scratches_repaired"):
+        kinds.append("scratches")
+    if kind in ("fade", "colour") and sharpened:
+        kinds.append("faces")
+    return ",".join(kinds)
 
 
 def apply_intensity(result: bytes, source: bytes, intensity: float) -> bytes:
@@ -237,3 +283,4 @@ def register() -> None:
     register_processor("colour", Processor(models=COLOUR_MODELS, run=add_colour))
     register_processor("fade", Processor(models=(), run=fade))  # Faces only if the model is here.
     register_processor("faces", Processor(models=(face_sharpen.FACE_MODEL,), run=sharpen))
+    register_processor("scratches", Processor(models=scratch_repair.MODELS, run=remove_scratches))

@@ -499,7 +499,8 @@ CREATE TABLE IF NOT EXISTS duplicate_groups (
 -- scratches. queued -> working -> review (manual: waits for keep both / replace /
 -- discard) or done; failed / cancelled. A crash turns working back into queued.
 -- result_path is the staged result in data/restore_staging (encrypted .enc for vault photos); a face
--- result also stages the sharpened faces next to it (job_N.faces / job_N.faces.enc, A5).
+-- result also stages an extra file next to it (job_N.extra / job_N.extra.enc): the sharpened faces (A5)
+-- or the scratch marks (A7). A Touch-up mask waits as mask_<token>.png(.enc), named in the job's params.
 -- result_info (A5): JSON for the viewer while a result waits (faces: landmarks, box, strength, likeness;
 -- faces_waiting). Always NULL for vault photos: theirs is kept in memory only.
 CREATE TABLE IF NOT EXISTS restore_jobs (

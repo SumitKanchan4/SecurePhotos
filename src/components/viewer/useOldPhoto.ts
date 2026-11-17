@@ -14,7 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, getApiUrl } from "../../services/api";
 import type { PhotoItem } from "../../types";
 
-export type ImproveKind = "colour" | "fade" | "faces";
+export type ImproveKind = "colour" | "fade" | "faces" | "scratches";
 
 /** A face in a result waiting for a decision: its box in 0-1 of the picture (x, y, w, h). */
 export interface ResultFace {
@@ -27,7 +27,7 @@ export type KeepChoice = "keep_both" | "replace" | "discard";
 export interface RestoreJob {
   id: number;
   photo_id: number;
-  kind: ImproveKind | "scratches";
+  kind: ImproveKind;
   status: "queued" | "working" | "review" | "done" | "discarded" | "failed" | "cancelled";
   progress: number;
   error: string | null;
@@ -35,6 +35,8 @@ export interface RestoreJob {
   faces?: ResultFace[];
   /** Faces that could be sharpened too once the face model is downloaded (Fix faded colours). */
   faces_waiting?: number;
+  /** Remove scratches and spots: share of the photo that was marked and repaired (0-1). */
+  marked?: number;
 }
 
 export interface VersionMember {
@@ -73,7 +75,9 @@ const POLL_MS = 1000;
 
 export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
   const photoId = photo?.id;
-  const [options, setOptions] = useState<{ colour: boolean; fade: boolean; faces?: boolean } | null>(null);
+  const [options, setOptions] = useState<{ colour: boolean; fade: boolean; faces?: boolean; scratches?: boolean } | null>(null);
+  const [showMarks, setShowMarks] = useState(true);
+  const [touchUpOpen, setTouchUpOpen] = useState(false);
   const [facesOff, setFacesOff] = useState<number[]>([]);
   const [job, setJob] = useState<RestoreJob | null>(null);
   const [versions, setVersions] = useState<VersionMember[]>([]);
@@ -259,6 +263,25 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
    *  goes on in Activity, and only the actions that need it stay locked. */
   const closeModelPrompt = useCallback(() => setModelPrompt(null), []);
 
+  /** Touch up (A7): repair again with the marks the user painted (a PNG, white = repair). */
+  const touchUp = useCallback(
+    async (maskPng: Blob) => {
+      if (!job || !photoId) return;
+      setBusy(true);
+      try {
+        const res = await apiFetch(`/api/restore/jobs/${job.id}/touch-up`, jsonPost({ mask_png: await blobToBase64(maskPng) }));
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail ?? "Could not touch up.");
+        const { job_id } = await res.json();
+        setTouchUpOpen(false);
+        setIntensity(1);
+        setJob({ id: job_id, photo_id: photoId, kind: "scratches", status: "queued", progress: 0, error: null, result_photo_id: null });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [job, photoId],
+  );
+
   const restoreOriginal = useCallback(async () => {
     if (!photoId) return null;
     const res = await apiFetch(`/api/restore/photos/${photoId}/restore-original`, { method: "POST" });
@@ -270,6 +293,8 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
   const toggleFace = useCallback((index: number) => {
     setFacesOff((off) => (off.includes(index) ? off.filter((i) => i !== index) : [...off, index].sort((a, b) => a - b)));
   }, []);
+
+  const maskUrl = job?.status === "review" && job.kind === "scratches" ? `/api/restore/jobs/${job.id}/mask?v=${resultVersion}` : null;
 
   const reviewUrl =
     job?.status === "review"
@@ -297,6 +322,12 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
     locked,
     facesOff,
     toggleFace,
+    maskUrl,
+    showMarks,
+    setShowMarks,
+    touchUpOpen,
+    setTouchUpOpen,
+    touchUp,
     modelPrompt,
     busy,
     reviewUrl,
@@ -316,6 +347,16 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
 }
 
 export type OldPhotoState = ReturnType<typeof useOldPhoto>;
+
+/** A blob's bytes as plain base64 (no "data:" prefix). */
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",", 2)[1] ?? "");
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
 
 function jsonPost(body: unknown): RequestInit {
   return { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };

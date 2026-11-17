@@ -182,10 +182,52 @@ async def enqueue(photo_ids: Iterable[int], kind: str, params: Optional[Dict[str
 
 
 def _extra_path(result: Path) -> Path:
-    """``job_7.img`` -> ``job_7.faces``; ``job_7.enc`` -> ``job_7.faces.enc``."""
+    """The file staged next to a result (Outcome.extra: sharpened faces, or the damage marks):
+    ``job_7.img`` -> ``job_7.extra``; ``job_7.enc`` -> ``job_7.extra.enc``."""
     if result.name.endswith(ENC_SUFFIX):
-        return result.with_name(result.name[: -len(ENC_SUFFIX)] + ".faces" + ENC_SUFFIX)
-    return result.with_name(result.stem + ".faces")
+        return result.with_name(result.name[: -len(ENC_SUFFIX)] + ".extra" + ENC_SUFFIX)
+    return result.with_name(result.stem + ".extra")
+
+
+MASK_TOKEN_CHARS = set("0123456789abcdef")
+
+
+def mask_in_path(token: str, private: bool) -> Path:
+    """Where a Touch-up mask waits for its job (encrypted for vault photos)."""
+    if len(token) != 32 or not set(token) <= MASK_TOKEN_CHARS:
+        raise ValueError("Bad mask reference.")
+    return staging_dir() / (f"mask_{token}.png" + (ENC_SUFFIX if private else ""))
+
+
+def stage_mask(data: bytes, key: Optional[bytes]) -> str:
+    """Stores a painted mask for a new job; returns the token to put in the job's params."""
+    import secrets
+
+    token = secrets.token_hex(16)
+    _write_staged(0, data, key, mask_in_path(token, key is not None))
+    return token
+
+
+def _read_mask(token: str, key: Optional[bytes]) -> bytes:
+    path = mask_in_path(token, key is not None)
+    if key is not None:
+        from engine.services.crypto_vault import decrypt_file_to_bytes
+
+        return decrypt_file_to_bytes(path, key)
+    return path.read_bytes()
+
+
+def _drop_mask(params_json: Optional[str]) -> None:
+    try:
+        token = json.loads(params_json or "{}").get("mask_in")
+    except ValueError:
+        return
+    if token:
+        for private in (False, True):
+            try:
+                mask_in_path(token, private).unlink(missing_ok=True)
+            except ValueError:
+                return
 
 
 def _remove_staged(stored: Optional[str]) -> None:
@@ -204,7 +246,7 @@ async def cancel(job_id: int) -> bool:
     """
     async with db_connection() as conn:
         conn.row_factory = aiosqlite.Row
-        async with conn.execute("SELECT status, result_path FROM restore_jobs WHERE id = ?;", (job_id,)) as cur:
+        async with conn.execute("SELECT status, result_path, params FROM restore_jobs WHERE id = ?;", (job_id,)) as cur:
             row = await cur.fetchone()
         if row is None or row["status"] not in ("queued", "working", "review"):
             return False
@@ -212,6 +254,7 @@ async def cancel(job_id: int) -> bool:
             _cancel_requested.add(job_id)
             return True
         _remove_staged(row["result_path"])
+        _drop_mask(row["params"])
         _private_info.pop(job_id, None)
         await conn.execute(
             "UPDATE restore_jobs SET status = 'cancelled', result_path = NULL, result_info = NULL, updated_at = CURRENT_TIMESTAMP, "
@@ -274,7 +317,7 @@ def _faces_view(job_id: int, status: str, stored: Optional[str], private: bool) 
     """For the viewer: each face as a box in 0-1 of the image and whether it was sharpened;
     ``faces_waiting``: faces that could be sharpened once the face model is downloaded."""
     if status != "review":
-        return {"faces": [], "faces_waiting": 0}
+        return {"faces": [], "faces_waiting": 0, "marked": None}
     info = result_info(job_id, stored, private)
     w, h = float(info.get("width") or 1), float(info.get("height") or 1)
     faces = [
@@ -282,7 +325,7 @@ def _faces_view(job_id: int, status: str, stored: Optional[str], private: bool) 
         for f in info.get("faces", [])
         for b in [f["box"]]
     ]
-    return {"faces": faces, "faces_waiting": int(info.get("faces_waiting", 0))}
+    return {"faces": faces, "faces_waiting": int(info.get("faces_waiting", 0)), "marked": info.get("marked")}
 
 
 async def list_jobs() -> Dict[str, Any]:
@@ -324,6 +367,14 @@ async def recover_on_start() -> None:
                 resolved = resolve_stored_path(stored)
                 if resolved is not None:
                     keep.add(to_db_path(_extra_path(resolved)))
+        async with conn.execute("SELECT params FROM restore_jobs WHERE status = 'queued' AND params LIKE '%mask_in%';") as cur:
+            for (params,) in await cur.fetchall():
+                token = json.loads(params or "{}").get("mask_in", "")
+                for private in (False, True):
+                    try:
+                        keep.add(to_db_path(mask_in_path(token, private)))
+                    except ValueError:
+                        pass
     folder = staging_dir()
     if folder.is_dir():
         for path in folder.iterdir():
@@ -489,12 +540,18 @@ async def process_next_job() -> bool:
         try:
             image = await asyncio.to_thread(_read_photo, job, key)
             params = json.loads(job["params"] or "{}")
+            if params.get("mask_in"):  # Touch up: the user's painted marks.
+                params["_mask"] = await asyncio.to_thread(_read_mask, params["mask_in"], key)
             result = await asyncio.to_thread(processor.run, image, params, progress, cancelled)
             del image
             if cancelled():
                 raise JobCancelled()
             outcome = result if isinstance(result, Outcome) else Outcome(image=result)
             del result
+            if outcome.info.get("unchanged") and job["origin"] == "auto":
+                # An automatic rule found nothing to fix: no copy, no question.
+                await _set(conn, job_id, status="discarded", progress=100, error_message="nothing_to_fix")
+                return True
             staged = await asyncio.to_thread(_write_staged, job_id, outcome.image, key)
             if outcome.extra is not None:
                 await asyncio.to_thread(_write_staged, job_id, outcome.extra, key, _extra_path(staged))
@@ -522,6 +579,10 @@ async def process_next_job() -> bool:
             logger.warning("Improving photo %s (%s) failed: %s", job["photo_id"], job["kind"], err)
             await _set(conn, job_id, status="failed", progress=0, error_message=str(err)[:300])
         finally:
+            async with conn.execute("SELECT status FROM restore_jobs WHERE id = ?;", (job_id,)) as cur:
+                now = await cur.fetchone()
+            if now is None or now[0] != "queued":  # Kept for a retry after the vault opens again.
+                _drop_mask(job["params"])
             _cancel_requested.discard(job_id)
             _progress.pop(job_id, None)
             state["active_job_id"] = None
@@ -545,7 +606,8 @@ async def result_image(conn: aiosqlite.Connection, job: aiosqlite.Row, key: Opti
     staged = await asyncio.to_thread(photo_versions.read_photo_bytes, job["result_path"], bool(job["is_encrypted"]), key)
     info = result_info(job["id"], job["result_info"], bool(job["is_encrypted"]))
     off = sorted({int(i) for i in faces_off if 0 <= int(i) < len(info.get("faces", []))})
-    if not off or job["kind"] not in ("faces", "fade"):  # Only these can rebuild the image before sharpening.
+    if not off or job["kind"] not in ("faces", "fade") or info.get("scratches_repaired"):
+        # Only these can rebuild the image before sharpening (from the original, recomputed).
         return staged
     from engine.services.old_photo_processors import without_faces
 

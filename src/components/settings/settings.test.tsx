@@ -157,11 +157,10 @@ describe("Photos & AI and Storage", () => {
   it("has the Old photos rows in plain words, each When I ask or Automatically, and Keep original", () => {
     const updateSetting = vi.fn();
     render(<PhotosAISettings settings={DEFAULT_SETTINGS} updateSetting={updateSetting} />);
-    for (const title of ["Add colour to old grey photos", "Fix faded or yellowed colours", "Sharpen blurry faces"]) {
+    for (const title of ["Add colour to old grey photos", "Fix faded or yellowed colours", "Sharpen blurry faces", "Remove scratches and spots"]) {
       const group = screen.getByRole("radiogroup", { name: title });
       expect(within(group).getByRole("radio", { name: "When I ask" })).toHaveAttribute("aria-checked", "true");
     }
-    expect(screen.queryByText(/Remove scratches/)).not.toBeInTheDocument(); // Comes with that feature (A7).
     expect(screen.getByText(/not on photos taken with a phone or camera/)).toBeInTheDocument();
     fireEvent.click(within(screen.getByRole("radiogroup", { name: "Sharpen blurry faces" })).getByRole("radio", { name: "Automatically" }));
     expect(updateSetting).toHaveBeenCalledWith("old_photos_faces", "auto");

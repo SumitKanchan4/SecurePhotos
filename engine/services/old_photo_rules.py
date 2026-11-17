@@ -11,6 +11,10 @@ or "Automatically". After an import, every new photo is looked at once, in the b
 - Faces: if "Sharpen blurry faces" is Automatic they are sharpened too, in the same job (one
   improved copy, not a chain of copies); if only that row is Automatic, a "Sharpen faces" job.
   With faces on "When I ask", an automatic colour fix leaves faces alone.
+- Scratches (A7): if "Remove scratches and spots" is Automatic, they are repaired first in the
+  same job, only where the strict detector is sure and only on clearly scratched scans; if it
+  is the only Automatic row, a "Remove scratches and spots" job (which keeps nothing when
+  there is nothing to fix).
 
 Jobs are queued as ``origin="auto"``: they run after anything the user asked for, wait while
 the laptop is on battery, and keep their result by the "Keep original" switch (see
@@ -28,7 +32,7 @@ from engine.services import restore_queue
 
 logger = logging.getLogger("securephotos.old_photo_rules")
 
-ROWS = ("colour", "fade", "faces")
+ROWS = ("colour", "fade", "faces", "scratches")
 
 
 def looks_like_a_scan(iso: Any, aperture: Any, shutter_speed: Any) -> bool:
@@ -39,12 +43,15 @@ def looks_like_a_scan(iso: Any, aperture: Any, shutter_speed: Any) -> bool:
 def plan(grey: bool, has_faces: bool, auto: Dict[str, bool]) -> Optional[Tuple[str, Dict[str, Any]]]:
     """The one job to queue for a scanned photo, or None. ``auto`` = which rows are Automatic."""
     faces = bool(auto.get("faces"))
+    extra = {"scratches": True} if auto.get("scratches") else {}
     if grey and auto.get("colour"):
-        return "colour", {"style": "natural", "faces": faces}
+        return "colour", {"style": "natural", "faces": faces, **extra}
     if not grey and auto.get("fade"):
-        return "fade", {"faces": faces}
+        return "fade", {"faces": faces, **extra}
     if faces and has_faces:
-        return "faces", {}
+        return "faces", extra
+    if extra:
+        return "scratches", {"strict": True}
     return None
 
 
