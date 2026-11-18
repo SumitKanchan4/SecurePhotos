@@ -406,6 +406,7 @@ async def enhance_vault_photo(
     mvk: bytes,
     avif_quality: int,
     still_unlocked: Callable[[], bool],
+    target_long_edge: Optional[int] = None,
 ) -> bool:
     """Enhances one vault photo without ever writing unencrypted data to disk (C7).
 
@@ -431,7 +432,7 @@ async def enhance_vault_photo(
     """
     import hashlib as _hashlib
 
-    from engine.services.enhancement_service import render_enhanced_avif
+    from engine.services.enhancement_service import TARGET_LONG_EDGE, render_enhanced_avif
 
     photo_id = row["id"]
     old_enc = resolve_stored_path(row["filepath"])
@@ -445,7 +446,7 @@ async def enhance_vault_photo(
 
     try:
         data = await asyncio.to_thread(decrypt_file_to_bytes, old_enc, mvk)
-        avif, width, height = await asyncio.to_thread(render_enhanced_avif, data, avif_quality)
+        avif, width, height = await asyncio.to_thread(render_enhanced_avif, data, avif_quality, target_long_edge or TARGET_LONG_EDGE)
         del data
     except Exception as err:
         raise VaultAssetError(f"Could not enhance vault photo {photo_id}: {err}") from err

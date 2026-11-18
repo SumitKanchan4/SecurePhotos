@@ -561,6 +561,8 @@ DEFAULT_APP_SETTINGS: Dict[str, Any] = {
     "reduce_motion": False,
     "auto_lock_duration": 300,
     "quality_crf": 18,
+    "photo_resolution": "8k",        # Settings → Photo size: "2k" | "4k" | "8k" (owner, 2026-11-19).
+    "video_resolution": "hd",        # Settings → Video size: "original" | "hd" | "4k" (never above 4K).
     "pause_on_battery": True,
     "battery_pause_below": 20,       # Pause only below this charge; 100 = whenever on battery.
     "face_clustering": True,

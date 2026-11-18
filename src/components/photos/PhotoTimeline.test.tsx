@@ -61,9 +61,9 @@ describe("PhotoTimeline", () => {
     expect(dots.map((d) => d.closest("[data-photo-id]")?.getAttribute("data-photo-id")).sort()).toEqual(["1", "2"]);
   });
 
-  it("tags tiles bottom-left: one icon per fix, 8K, and a video's quality and length (owner feedback 2026-11-18)", () => {
+  it("tags tiles: fix icons and real size bottom-left; a video's play button in the middle and length bottom-right (2026-11-18/19)", () => {
     const photos = makeLibrary(3);
-    photos[0] = { ...photos[0], is_ai: true, ai_kinds: ["colour", "scratches"] };
+    photos[0] = { ...photos[0], width: 7680, height: 5760, is_ai: true, ai_kinds: ["colour", "scratches"] };
     photos[1] = { ...photos[1], is_optimized: false };
     photos[2] = { ...photos[2], is_video: true, width: 3840, height: 2160, duration: 94 };
     render(<PhotoTimeline photos={photos} onOpen={vi.fn()} />);
@@ -73,7 +73,8 @@ describe("PhotoTimeline", () => {
     expect(tile(1).queryByText("Improved")).not.toBeInTheDocument();
     expect(tile(2).queryByText("8K")).not.toBeInTheDocument(); // Not enhanced yet.
     expect(tile(3).getByText("4K")).toBeInTheDocument();
-    expect(tile(3).getByText("Video")).toBeInTheDocument();
+    expect(tile(3).getByRole("img", { name: "Video" })).toHaveClass("timeline-play");
+    expect(tile(3).queryByText("Video")).not.toBeInTheDocument(); // The corner is free for the tags.
     expect(tile(3).getByLabelText("Length 1:34")).toBeInTheDocument();
   });
 
@@ -117,7 +118,7 @@ describe("PhotoTimeline", () => {
     fireEvent.click(document.querySelector('[data-photo-id="2"]')!);
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining("still being prepared"), "info");
     expect(onOpen).not.toHaveBeenCalled();
-    expect(screen.getByText("Preparing")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Video, being prepared" })).toBeInTheDocument();
   });
 
   it("jumps by month or year from the scrubber and marks where you are", async () => {

@@ -306,11 +306,16 @@ export function allSelected(ids: number[], selected: Set<number>): boolean {
 }
 
 /**
- * The grid's quality tag (owner feedback 2026-11-18): "8K" for a photo that has been enhanced;
- * "4K" or "HD" for a video by its size. Null when there is nothing to say.
+ * The grid's quality tag (owner feedback 2026-11-18/19): for an enhanced photo, the size it really
+ * has ("8K", "4K" or "2K", by its long side: Settings → Photo size); "4K" or "HD" for a video by
+ * its size. Null when there is nothing to say.
  */
 export function qualityTag(photo: Pick<TimelinePhoto, "is_video" | "is_optimized" | "is_enhanced" | "width" | "height">): string | null {
-  if (!photo.is_video) return photo.is_optimized && photo.is_enhanced ? "8K" : null;
+  if (!photo.is_video) {
+    if (!(photo.is_optimized && photo.is_enhanced)) return null;
+    const long = Math.max(photo.width || 0, photo.height || 0);
+    return long >= 7680 ? "8K" : long >= 3840 ? "4K" : long >= 2560 ? "2K" : null;
+  }
   const short = Math.min(photo.width || 0, photo.height || 0);
   if (short >= 2160) return "4K";
   if (short >= 1080) return "HD";

@@ -2,7 +2,7 @@
 
 This module delivers:
 1. High-resolution upscale reconstruction to 8K ULTRA (7680x4320).
-2. Orientation-aware proportional scaling with strict Never-Downscale guarantee.
+2. Orientation-aware proportional scaling to the chosen photo size (enhance_pixels).
 3. Visually lossless AVIF/WebP compression (CRF 18-20, quality 85) with full EXIF preservation.
 4. Non-destructive display proxy generation leaving originals bit-for-bit pristine.
 """
@@ -18,47 +18,30 @@ logger = logging.getLogger("securephotos.super_resolution")
 
 
 def enhance_pixels(img: Image.Image, target_long_edge: int = 7680) -> Image.Image:
-    """Applies the 8K ULTRA sharpen/upscale step to an already-upright image in memory.
+    """Brings an already-upright image to the chosen size and sharpens it, in memory.
 
-    - Long edge >= 3840px: keeps native resolution and applies fine-edge acutance.
-    - Long edge < target_long_edge: Lanczos upscale to target_long_edge, then acutance.
-    - Otherwise: returned unchanged.
+    Owner decision 2026-11-19 (Settings → Photo size: 2K, 4K or 8K): the chosen size is the size
+    the photo gets. A smaller photo is enlarged to it (Lanczos, then a fine-edge sharpen); a larger
+    one is reduced to it (Lanczos, a lighter sharpen); one already that size is only sharpened.
+    (Before, photos of 3840 px or more were never enlarged, so most phone photos were not 8K.)
 
     Args:
         img: Upright (EXIF-transposed) PIL image.
-        target_long_edge: Long-edge size to upscale smaller images to (7680 = 8K).
+        target_long_edge: The long edge to bring the photo to (2560, 3840 or 7680).
 
     Returns:
-        The enhanced image (a new object unless unchanged).
+        The enhanced image (always a new object).
     """
     orig_w, orig_h = img.size
     long_edge = max(orig_w, orig_h)
-    short_edge = min(orig_w, orig_h)
-    aspect = long_edge / short_edge if short_edge > 0 else 1.0
-
-    # Smart 1:1 Acutance Preservation vs Upscaling:
-    # If the image is already high resolution (>= 3840px on long edge, e.g. 12MP/16MP camera shots),
-    # DO NOT artificially stretch to 8K, which creates 20 million empty interpolated pixels and causes softness.
-    # Preserve pristine 1:1 sensor acuity and apply fine-edge acutance kernel (hair, eyes, fabric).
-    if long_edge >= 3840:
-        new_w, new_h = orig_w, orig_h
-        # Fine-edge micro-contrast acutance (radius 0.8, 160% strength, threshold 1)
-        enhanced = img.filter(ImageFilter.UnsharpMask(radius=0.8, percent=160, threshold=1))
-    elif long_edge < target_long_edge:
-        # For lower resolution images, upscale to target_long_edge with Lanczos + acutance
-        new_long = target_long_edge
-        new_short = int(target_long_edge / aspect)
-        if orig_w >= orig_h:
-            new_w, new_h = new_long, new_short
-        else:
-            new_w, new_h = new_short, new_long
-
-        upscaled = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-        enhanced = upscaled.filter(ImageFilter.UnsharpMask(radius=0.9, percent=150, threshold=1))
-    else:
-        enhanced = img
-        new_w, new_h = orig_w, orig_h
-    return enhanced
+    if long_edge <= 0 or long_edge == target_long_edge:
+        return img.filter(ImageFilter.UnsharpMask(radius=0.8, percent=160, threshold=1))
+    scale = target_long_edge / long_edge
+    new_w, new_h = max(1, round(orig_w * scale)), max(1, round(orig_h * scale))
+    resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    if scale > 1:
+        return resized.filter(ImageFilter.UnsharpMask(radius=0.9, percent=150, threshold=1))
+    return resized.filter(ImageFilter.UnsharpMask(radius=0.6, percent=80, threshold=2))
 
 
 def upscale_and_optimize_to_8k(

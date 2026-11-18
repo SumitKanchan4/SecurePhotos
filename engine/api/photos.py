@@ -453,6 +453,7 @@ async def _enhance_one(row, source, cpu_budget, enhancement_service, calculate_f
                 enhancement_service.enhance_to_avif,
                 source,
                 quality,
+                enhancement_service.photo_size_to_long_edge(app_settings.get("photo_resolution")),
             )
             optimization_state["item_progress"] = 80
             new_hash = await asyncio.to_thread(calculate_file_hash, result.path)

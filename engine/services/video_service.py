@@ -357,11 +357,16 @@ def analyze_video_candidate(photo_record: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def classify_video_for_ingestion(meta: Dict[str, Any]) -> Dict[str, Any]:
+VIDEO_SIZES = ("original", "hd", "4k")  # Settings → Video size (owner, 2026-11-19); never above 4K.
+
+
+def classify_video_for_ingestion(meta: Dict[str, Any], video_size: str = "hd") -> Dict[str, Any]:
     """Classifies an ingested video to decide whether it needs enhancement, compression, or is already optimized.
 
     Args:
         meta: Extracted video metadata (width, height, file_size, codec, bitrate, duration).
+        video_size: Settings → Video size: "original" (never enlarged), "hd" (old low-quality
+            clips enlarged to 1080p; the default) or "4k" (every video below 4K enlarged to 4K).
 
     Returns:
         Dict with keys:
@@ -386,6 +391,15 @@ def classify_video_for_ingestion(meta: Dict[str, Any]) -> Dict[str, Any]:
             "reason": "Already pristine 4K UHD. Preserving original camera master.",
         }
 
+    # Video size 4K: every video below 4K is enlarged to 4K (slow on a CPU; the user chose it).
+    if video_size == "4k":
+        return {
+            "action": "enhance",
+            "is_already_optimized": False,
+            "target_height": 2160,
+            "reason": f"{min_dim}p video. Scheduled for upscaling to 4K (Settings → Video size).",
+        }
+
     # 2. Modern 1080p in efficient codec (H.265 / HEVC / AV1 / VP9)
     if min_dim >= 1080 and codec in ("hevc", "h265", "av1", "vp9"):
         return {
@@ -395,8 +409,9 @@ def classify_video_for_ingestion(meta: Dict[str, Any]) -> Dict[str, Any]:
             "reason": "Already modern high-definition H.265/AV1. No re-encode required.",
         }
 
-    # 3. Vintage / Low-Res clip (under 720p vertical or under 1280 horizontal)
-    if min_dim < 720 and max_dim < 1280:
+    # 3. Vintage / Low-Res clip (under 720p vertical or under 1280 horizontal); not when the
+    #    user keeps videos as they are.
+    if min_dim < 720 and max_dim < 1280 and video_size != "original":
         return {
             "action": "enhance",
             "is_already_optimized": False,

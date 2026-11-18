@@ -2,12 +2,19 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { apiFetch } from "../services/api";
 import { useAppStore } from "../store/useAppStore";
 
+export type PhotoSize = "2k" | "4k" | "8k";
+export type VideoSize = "original" | "hd" | "4k";
+
 export interface AppSettings {
   theme: "dark" | "light";
   grid_density: "compact" | "comfortable" | "spacious";
   reduce_motion: boolean;
   auto_lock_duration: number;
   quality_crf: number;
+  /** Settings → Photo size (owner, 2026-11-19): the size photos are enhanced to. */
+  photo_resolution: PhotoSize;
+  /** Settings → Video size: never above 4K (owner, 2026-11-19). */
+  video_resolution: VideoSize;
   pause_on_battery: boolean;
   /** Background work waits on battery only below this charge (%); 100 = whenever on battery. */
   battery_pause_below: number;
@@ -31,6 +38,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   reduce_motion: false,
   auto_lock_duration: 300,
   quality_crf: 18,
+  photo_resolution: "8k",
+  video_resolution: "hd",
   pause_on_battery: true,
   battery_pause_below: 20,
   face_clustering: true,
