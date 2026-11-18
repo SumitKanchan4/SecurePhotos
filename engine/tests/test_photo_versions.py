@@ -516,3 +516,52 @@ async def test_viewer_state_in_one_request(lib, monkeypatch):
         # Already coloured: no colour fix again; a scan can still have scratches.
         assert state["options"] == {"colour": False, "fade": False, "faces": False, "scratches": True}
         assert (await client.get("/api/restore/photos/999999/state")).status_code == 404
+
+
+async def test_quick_wins_plain_photos_get_8k_first_and_automatic_fixes_wait(lib, monkeypatch):
+    """Owner, 2026-11-18: do the photos needing least work first. A plain photo needs only 8K;
+    an old print needs its fix and then 8K for the copy and the original."""
+    from engine.api import photos as photos_api
+
+    conn, (original_id, plain_id) = lib["conn"], lib["ids"]
+    copy_id = (await restore_queue.keep_result(await _finish(original_id), "keep_both"))["photo_id"]
+    ours = (original_id, copy_id, plain_id)
+    await conn.execute(
+        "UPDATE photos SET is_optimized = 0, ocr_text = '', faces_scanned = 1, restore_checked = 1, mime_type = 'image/jpeg' WHERE id IN (?, ?, ?);",
+        ours,
+    )
+    await conn.commit()
+    async with conn.execute(f"SELECT id FROM photos WHERE {photos_api.ENHANCE_READY};") as cur:
+        others = {r[0] for r in await cur.fetchall()} - set(ours)
+
+    order = []
+    for _ in ours:
+        row = await photos_api._next_to_enhance(others | set(order))
+        order.append(row["id"])
+    assert order == [plain_id, copy_id, original_id]
+
+    # Automatic old-print fixes wait only while the 8K pass is really running and not paused.
+    monkeypatch.setitem(photos_api.optimization_state, "is_active", True)
+    assert await photos_api.plain_photos_first()
+    monkeypatch.setattr(photos_api, "enhancement_paused_by_user", True)
+    assert not await photos_api.plain_photos_first()
+    monkeypatch.setattr(photos_api, "enhancement_paused_by_user", False)
+    monkeypatch.setitem(photos_api.optimization_state, "is_active", False)
+    assert not await photos_api.plain_photos_first()
+
+
+async def test_automatic_fixes_wait_for_quick_wins_but_the_users_own_run(lib, monkeypatch):
+    from engine.api import photos as photos_api
+
+    async def quick_wins_waiting():
+        return True
+
+    monkeypatch.setattr(photos_api, "plain_photos_first", quick_wins_waiting)
+    original_id, other_id = lib["ids"]
+    (auto_job,) = await restore_queue.enqueue([original_id], "colour", {"style": "natural"}, origin="auto")
+    assert not await restore_queue.process_next_job()  # Waits: plain photos are getting 8K.
+    (manual_job,) = await restore_queue.enqueue([other_id], "colour", {"style": "natural"}, origin="manual")
+    assert await restore_queue.process_next_job()
+    async with lib["conn"].execute("SELECT id, status FROM restore_jobs WHERE id IN (?, ?);", (auto_job, manual_job)) as cur:
+        status = {r[0]: r[1] for r in await cur.fetchall()}
+    assert status[auto_job] == "queued" and status[manual_job] != "queued"

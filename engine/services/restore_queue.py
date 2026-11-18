@@ -405,6 +405,13 @@ async def _holding_auto_jobs() -> bool:
     return photos_api.battery_guard_applies(app_settings)
 
 
+async def _plain_photos_first() -> bool:
+    """True while plain photos are getting 8K (they need far less work than an old print)."""
+    from engine.api import photos as photos_api
+
+    return await photos_api.plain_photos_first()
+
+
 async def _next_job(conn: aiosqlite.Connection, vault_open: bool, auto_allowed: bool = True) -> Optional[aiosqlite.Row]:
     """Oldest queued job, preferring one that uses the model already in memory.
 
@@ -522,7 +529,9 @@ async def process_next_job() -> bool:
     async with db_connection() as conn:
         key = _vault_key()
         hold_auto = await _holding_auto_jobs()
-        job = await _next_job(conn, key is not None, auto_allowed=not hold_auto)
+        # Quick wins first (owner, 2026-11-18): automatic fixes wait while plain photos get 8K.
+        quick_first = not hold_auto and await _plain_photos_first()
+        job = await _next_job(conn, key is not None, auto_allowed=not hold_auto and not quick_first)
         if hold_auto:
             async with conn.execute("SELECT 1 FROM restore_jobs WHERE status = 'queued' AND origin = 'auto' LIMIT 1;") as cur:
                 state["paused_reason"] = "on_battery" if await cur.fetchone() else None
