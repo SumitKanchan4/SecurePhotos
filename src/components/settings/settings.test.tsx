@@ -227,9 +227,9 @@ describe("Photos & AI and Storage", () => {
     expect(screen.getByText("Connected")).toBeInTheDocument();
     expect(screen.queryByText("No library found here")).not.toBeInTheDocument();
     const usage = await screen.findByRole("list", { name: "What SecurePhotos uses" });
-    expect(usage.textContent).toContain("Photos3.0 GB");
-    expect(usage.textContent).toContain("Videos1.5 GB");
-    expect(usage.textContent).toContain("App data · database and AI models512 MB");
+    expect(usage.textContent).toContain("Photos60%3.0 GB");
+    expect(usage.textContent).toContain("Videos30%1.5 GB");
+    expect(usage.textContent).toContain("App data · database and AI models10%512 MB");
     expect(screen.getByText("Free on Photos")).toBeInTheDocument();
     expect(screen.getByText("600.0 GB")).toBeInTheDocument();
   });

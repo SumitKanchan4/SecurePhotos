@@ -28,6 +28,21 @@ via `data_location.txt`). Import with **Copy**, never Move. Tick each box; note 
 - [ ] Deleting a suggestion: it never comes back after "Make new stories".
 - [ ] No documents, screenshots or restored scans in dated stories.
 
+## 4 · Feedback fixed on this branch (rounds 1-3, 2026-11-18)
+- [ ] Delete an improved photo (or select all and delete): the original goes too; Trash → Restore brings both back.
+- [ ] People → a wrong face: "See this face in its photo" → **Not a face**; it doesn't come back after a rescan. The box label says "This face".
+- [ ] Improved photos have a bottom-left "✦ Improved" tag; the select circle top-left is free.
+- [ ] Viewer: Zoom out / Fit / Zoom in buttons; zooming in keeps the photo on screen while the full photo loads.
+- [ ] Settings → Photos & AI: photo quality is Best / Balanced / Smaller.
+- [ ] Headers stay at the top while scrolling (Activity, Albums, an album, Stories, People, Documents, Trash, Dashboard).
+- [ ] Photos year bar: years, with the months of the year you're in under it.
+- [ ] Albums: Favourites, Saved stories and Collages have fixed covers.
+- [ ] People: "Same person?" shows big faces side by side; naming a new person offers a Relationship.
+- [ ] Settings → Storage: "Moved to a new computer, or restoring a backup?" (don't press it on the test library).
+- [ ] Settings → Music: switch, add/play/mood/remove songs; the Stories music button opens it.
+- [ ] Stories: the stage at the top, tagged cards, Saved row, collage mosaic; Hide and Save work from the stage.
+- [ ] Dashboard: the library sentence (each number opens its screen), the storage map (point at rows / bar; rows open their place), Worth doing.
+
 ## After the test
 - [ ] Fixes on this branch; PR `feature/after-import` → `master`; CI green; owner approves.
 
