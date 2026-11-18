@@ -89,6 +89,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from engine.services.video_service import fill_video_durations
 
         asyncio.create_task(fill_video_durations())
+        # One-off (2026-11-19): faces found on sideways-stored phone photos are turned upright.
+        from engine.services.face_scan_worker import repair_sideways_faces
+
+        asyncio.create_task(repair_sideways_faces())
 
     # H10: plug in "Add colour" and "Fix faded colours" (the worker runs them; tests use fakes).
     from engine.services import old_photo_processors

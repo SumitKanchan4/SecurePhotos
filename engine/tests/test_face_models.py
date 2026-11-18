@@ -161,6 +161,7 @@ async def _faces(conn, photo_id):
 async def test_rescan_carries_names_over_and_never_mixes_models(photo_with_legacy_faces):
     env = photo_with_legacy_faces
     conn, ids = env["conn"], env["ids"]
+    await conn.execute("UPDATE persons SET cover_face_id = ? WHERE id = ?;", (ids["A"], env["asha"]))
     # New model finds A (slightly shifted) and a new face; it misses C and B.
     new = [_new_face(0.11, 0.21), _new_face(0.40, 0.60)]
     inserted, deleted = await worker.save_scanned_faces(conn, env["photo_id"], new, env["folder"])
@@ -171,6 +172,10 @@ async def test_rescan_carries_names_over_and_never_mixes_models(photo_with_legac
     rows = {r["id"]: r for r in await _faces(conn, env["photo_id"])}
     new_rows = [r for r in rows.values() if r["embedding_model"] == frs.EMBEDDING_MODEL]
     assert sorted(r["person_id"] for r in new_rows if r["person_id"]) == [env["asha"]]  # Asha's name carried over.
+    # Asha's chosen profile face follows it to the replacement (2026-11-19).
+    asha_face = next(r["id"] for r in new_rows if r["person_id"] == env["asha"])
+    async with conn.execute("SELECT cover_face_id FROM persons WHERE id = ?;", (env["asha"],)) as cur:
+        assert (await cur.fetchone())[0] == asha_face
     assert all(r["t"] == "real" for r in new_rows)  # Boxes stored as numbers, not blobs.
 
     kept = rows[ids["C"]]  # Chirag's face wasn't re-found: kept, but no legacy fingerprint.
@@ -272,3 +277,40 @@ async def test_not_a_face_is_removed_and_never_added_again(photo_with_legacy_fac
     assert inserted == 1
     async with conn.execute("SELECT box_y FROM faces WHERE photo_id = ? AND person_id IS NULL;", (env["photo_id"],)) as cur:
         assert [round(r[0], 2) for r in await cur.fetchall()] == [0.6]
+
+
+def test_sideways_faces_are_recognised_by_the_turn_that_lines_them_up():
+    """Owner feedback 2026-11-19: faces found on a phone photo stored sideways (EXIF orientation 6)
+    must be turned back; boxes that already line up are left alone."""
+    upright_face = (0.30, 0.10, 0.60, 0.40)
+    # The same face as found on the raw, sideways pixels (turning them clockwise gives upright).
+    raw = (0.10, 0.40, 0.40, 0.70)
+    assert worker.turn_box(raw, "cw") == pytest.approx(upright_face)
+    assert worker.best_turn([raw], [upright_face]) == "cw"
+    assert worker.best_turn([upright_face], [upright_face]) == "none"
+    assert worker.best_turn([raw], []) == "none"  # Nothing found upright: leave it.
+    assert worker.turn_box(worker.turn_box(raw, "cw"), "ccw") == pytest.approx(raw)
+
+
+async def test_faces_are_found_on_the_upright_picture(monkeypatch, tmp_path):
+    """The detector gets the photo turned upright by its EXIF orientation."""
+    seen = []
+    monkeypatch.setattr(worker, "detect_and_embed_faces", lambda img: seen.append(img.size) or [])
+    path = tmp_path / "sideways.jpg"
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    Image.new("RGB", (400, 300)).save(path, exif=exif)  # Stored 400x300, shown 300x400.
+    await run_migrations()
+    conn = await get_db_connection()
+    try:
+        cur = await conn.execute(
+            "INSERT INTO photos (filename, filepath, file_size, mime_type) VALUES ('sideways.jpg', ?, 1, 'image/jpeg');", (str(path),)
+        )
+        row = {"id": cur.lastrowid, "filename": "sideways.jpg", "filepath": str(path), "mime_type": "image/jpeg",
+               "thumbnail_path": None, "preview_path": None, "is_encrypted": 0}
+        await worker.scan_photo_faces(conn, row, tmp_path)
+        assert seen == [(300, 400)]
+        await conn.execute("DELETE FROM photos WHERE id = ?;", (row["id"],))
+        await conn.commit()
+    finally:
+        await conn.close()
