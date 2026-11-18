@@ -1,7 +1,7 @@
 /**
  * Stories (redesign R7e, approved board). Stories look like stories: tall cards with the title on
  * the photo. New ones appear under For you; ones you keep move to Saved. Collage ideas sit below
- * with a single Save. Music for stories is one icon away.
+ * with a single Save. Music for stories lives in Settings → Music (one icon away).
  */
 import React, { useCallback, useEffect, useState } from "react";
 import { Bookmark, BookmarkCheck, Loader2, Music, X } from "lucide-react";
@@ -9,7 +9,6 @@ import type { PhotoItem, StoryModel, SuggestedCollage } from "../types";
 import type { NavTab } from "../store/useAppStore";
 import { useAppStore } from "../store/useAppStore";
 import { apiFetch, getThumbnailUrl } from "../services/api";
-import { StoryMusicDialog } from "./stories/StoryMusicDialog";
 import { plural, storyMeta } from "./stories/storiesFormat";
 
 /** Collage ideas shown at first; a big library can have over a hundred. */
@@ -53,7 +52,6 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
   const [saved, setSaved] = useState<StoryModel[]>([]);
   const [collages, setCollages] = useState<SuggestedCollage[] | null>(null);
   const [making, setMaking] = useState(false);
-  const [musicOpen, setMusicOpen] = useState(false);
   const [savingCollage, setSavingCollage] = useState<string | null>(null);
   const [collagesShown, setCollagesShown] = useState(COLLAGES_FIRST);
 
@@ -204,7 +202,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
         <h1 className="dash-title">Stories</h1>
         <span className="dash-subtitle">{forYou ? plural(total, "story", "stories") : ""}</span>
         <div style={{ flex: 1 }} />
-        <button type="button" className="dash-icon-btn" aria-label="Story music" title="Story music" onClick={() => setMusicOpen(true)}>
+        <button type="button" className="dash-icon-btn" aria-label="Story music" title="Story music (in Settings)" onClick={() => useAppStore.getState().openSettings("music")}>
           <Music size={16} />
         </button>
         <button type="button" className="dash-btn" onClick={makeStories} disabled={making}>
@@ -333,7 +331,6 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
         </section>
       )}
 
-      {musicOpen && <StoryMusicDialog onClose={() => setMusicOpen(false)} />}
     </div>
   );
 };
