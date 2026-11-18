@@ -53,3 +53,13 @@ New feedback is added here the same day. Status: **Done** (needs owner re-check)
 | 6 | Background music belongs in Settings, with a page to import, manage and play | Next phase | |
 | 7 | Photo quality slider doesn't show what's set or which is Balanced; restrict it | Next phase | Recommendation: three choices (Best, Balanced, Smaller) instead of a slider. |
 | 8 | Stories screen UI is very raw, not engaging or beautiful (screenshot: plain text rows for For you / Saved, Collage ideas below) | Next phase (design) | Redesign with a concept board first, together with the round 1 empty-Stories item (#5). Ideas: a big "For you" hero story with motion, Saved as cover cards, collages as a mosaic, a warm empty state that makes the first stories. |
+
+## Round 3: after-import branch, before the joint test (2026-11-18)
+
+| # | Feedback | Status | Notes / where |
+|---|----------|--------|---------------|
+| 1 | Deleting everything removed the improved (coloured) copies, but the originals came back in the app | Done (after-import) | A tile stands for its group: deleting it (grid, selection or viewer) trashes the original and every improved copy. Restoring from Trash brings back the members deleted together. "What to keep" is the way to drop only one version. |
+| 2 | Identifying the person goes wrong: the box marks a sofa cushion / a shirt, not a face | Done, part | The boxes were placed right; the detector itself found a cushion, feet, an ear and blurs as faces. A stricter automatic filter was measured on the test library and would also drop real faces (children looking down, side views), so it wasn't added. Now: "Not a face" in the "see this face in its photo" window; it and the ✕ in "Who is this?" are remembered, so a rescan never adds that place again. "Target Person" → "This face". |
+| 3 | Do a quick scan and do the photos needing least work first (quick wins) | Open, question to owner | |
+| 4 | Top-left "AI" pill clashes with the select circle, and "AI" says nothing | Done (after-import) | Bottom-left "✦ Improved" tag, like Video; tooltip says what was done and that the original is kept. The still-being-prepared dot moved to the bottom-right. |
+| 5 | Zoom was removed from the viewer | Done (after-import) | Zoom out / Fit / Zoom in buttons in the viewer bar (wheel, double-click and +/- still work). The preview now stays on screen until the full 8K photo has loaded, so zooming never blanks the photo. |

@@ -8,7 +8,7 @@
  * instead of opening it.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Heart, Loader2, Play } from "lucide-react";
+import { Check, Heart, Loader2, Play, Sparkles } from "lucide-react";
 import { useAppStore } from "../../store/useAppStore";
 import type { TimelinePhoto } from "../../types";
 import { getThumbnailUrl } from "../../services/api";
@@ -91,9 +91,12 @@ const Tile: React.FC<TileProps> = React.memo(
               {processing ? "Preparing" : "Video"}
             </span>
           )}
-          {photo.is_ai && (
-            <span className="timeline-ai" title="Improved with AI (colour, faces or scratches)">
-              AI
+          {photo.is_ai && !photo.is_video && (
+            // Owner feedback 2026-11-18: bottom-left, like the other tags (top-left is for selecting),
+            // and a word that says what happened instead of "AI".
+            <span className="timeline-chip timeline-improved" title="Improved copy: colour, scratches or faces fixed on this computer. The original is kept; open the photo to compare.">
+              <Sparkles size={10} />
+              Improved
             </span>
           )}
           {photo.is_preparing && !photo.is_video && (

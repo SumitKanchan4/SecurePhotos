@@ -168,6 +168,16 @@ CREATE TABLE IF NOT EXISTS story_dismissals (
     dismissed_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Owner feedback 2026-11-18: places the owner said are not a face (a cushion, feet);
+-- a later scan of the photo never adds them again.
+CREATE TABLE IF NOT EXISTS face_dismissals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    photo_id INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+    box_x REAL NOT NULL, box_y REAL NOT NULL, box_w REAL NOT NULL, box_h REAL NOT NULL,
+    dismissed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_face_dismissals_photo ON face_dismissals (photo_id);
+
 -- ── 8. Creative Assets Table (Collages & Wallpapers) ─────────────────────────
 CREATE TABLE IF NOT EXISTS creative_assets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

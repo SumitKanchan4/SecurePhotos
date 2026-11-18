@@ -15,6 +15,7 @@ from engine.config import resolve_media_path
 from engine.services.face_recognition_service import get_face_thumbnails_dir
 from engine.services.people_merge_service import load_merge_inputs, rank_merge_suggestions
 from engine.services.face_scan_worker import (
+    dismiss_faces,
     get_scan_status,
     reset_scan_state,
     start_background_scan,
@@ -563,20 +564,31 @@ async def dismiss_unlabeled_cluster(cluster_id: str) -> dict:
         ) as cur:
             rows = await cur.fetchall()
 
-        deleted_count = 0
-        for r in rows:
-            face_id = r["id"]
-            thumb_file = thumbnails_dir / f"{face_id}.webp"
-            if thumb_file.exists():
-                try:
-                    thumb_file.unlink()
-                except OSError:
-                    pass
-            deleted_count += 1
-
-        await conn.execute("DELETE FROM faces WHERE cluster_id = ? AND person_id IS NULL;", (cluster_id,))
+        # Remembered (owner feedback 2026-11-18): a rescan never adds these places again.
+        deleted_count = await dismiss_faces(conn, [r["id"] for r in rows])
         await conn.commit()
+        for r in rows:
+            (thumbnails_dir / f"{r['id']}.webp").unlink(missing_ok=True)
         return {"status": "dismissed", "cluster_id": cluster_id, "faces_removed": deleted_count}
+    finally:
+        await conn.close()
+
+
+@router.post("/faces/{face_id}/dismiss", status_code=status.HTTP_200_OK)
+async def dismiss_face(face_id: int) -> dict:
+    """'Not a face' for one unnamed face (a cushion, feet): removed and remembered."""
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT person_id FROM faces WHERE id = ?;", (face_id,)) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Face record not found")
+        if row["person_id"] is not None:
+            raise HTTPException(status_code=409, detail="This face has a name. Remove it from the person first.")
+        removed = await dismiss_faces(conn, [face_id])
+        await conn.commit()
+        (get_face_thumbnails_dir() / f"{face_id}.webp").unlink(missing_ok=True)
+        return {"status": "dismissed", "face_id": face_id, "faces_removed": removed}
     finally:
         await conn.close()
 

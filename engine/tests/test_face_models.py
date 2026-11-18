@@ -7,9 +7,11 @@ import shutil
 import numpy as np
 import pytest
 from PIL import Image
+from httpx import ASGITransport, AsyncClient
 
 from engine.config import settings
 from engine.database import get_db_connection, run_migrations
+from engine.main import app
 from engine.services import face_recognition_service as frs
 from engine.services import face_scan_worker as worker
 from engine.services.face_clustering_service import recluster_all_faces
@@ -250,3 +252,23 @@ def test_retire_old_models_deletes_only_retired_files(monkeypatch, tmp_path):
         (tmp_path / name).write_bytes(b"x")
     worker.retire_old_face_models()
     assert sorted(p.name for p in tmp_path.iterdir()) == sorted([frs.FACE_MODELS["sface"]["file"], "realesr_general_x4v3.onnx"])
+
+
+async def test_not_a_face_is_removed_and_never_added_again(photo_with_legacy_faces):
+    """Owner feedback 2026-11-18: a cushion was found as a face. 'Not a face' removes it and a
+    rescan of the photo never brings it back; named faces can't be dismissed this way."""
+    env = photo_with_legacy_faces
+    conn, ids = env["conn"], env["ids"]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        assert (await client.post(f"/api/people/faces/{ids['A']}/dismiss")).status_code == 409  # Asha's face.
+        res = await client.post(f"/api/people/faces/{ids['B']}/dismiss")
+        assert res.json()["faces_removed"] == 1
+        assert (await client.post(f"/api/people/faces/{ids['B']}/dismiss")).status_code == 404
+    assert not (env["folder"] / f"{ids['B']}.webp").exists()
+
+    # A rescan finds the same place (slightly shifted) and a real new face: only the new one is added.
+    inserted, _ = await worker.save_scanned_faces(conn, env["photo_id"], [_new_face(0.41, 0.21), _new_face(0.40, 0.60)], env["folder"])
+    await conn.commit()
+    assert inserted == 1
+    async with conn.execute("SELECT box_y FROM faces WHERE photo_id = ? AND person_id IS NULL;", (env["photo_id"],)) as cur:
+        assert [round(r[0], 2) for r in await cur.fetchall()] == [0.6]

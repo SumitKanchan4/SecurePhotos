@@ -44,6 +44,25 @@ _scan_lock = asyncio.Lock()
 
 # A new face inherits the name of an existing face it overlaps at least this much.
 NAME_CARRY_OVER_IOU = 0.4
+# A new face this close to a place the owner marked "Not a face" is left out.
+DISMISSED_IOU = 0.4
+
+
+async def dismiss_faces(conn, face_ids) -> int:
+    """'Not a face': removes unnamed faces and remembers where they were, so a rescan of the
+    photo never adds them again. Named faces are left alone. The caller commits and removes
+    the crop images. Returns how many were removed."""
+    ids = [int(i) for i in face_ids]
+    if not ids:
+        return 0
+    marks = ",".join("?" * len(ids))
+    await conn.execute(
+        f"""INSERT INTO face_dismissals (photo_id, box_x, box_y, box_w, box_h)
+            SELECT photo_id, box_x, box_y, box_w, box_h FROM faces WHERE id IN ({marks}) AND person_id IS NULL;""",
+        ids,
+    )
+    cur = await conn.execute(f"DELETE FROM faces WHERE id IN ({marks}) AND person_id IS NULL;", ids)
+    return cur.rowcount
 # Named face that a newer model couldn't find again: keeps its person link, has no
 # usable embedding and is left out of grouping.
 UNMATCHED_LEGACY_MODEL = "unmatched-legacy"
@@ -90,6 +109,10 @@ async def save_scanned_faces(conn, photo_id: int, faces: list, thumbnails_dir: P
         "SELECT id, person_id, box_x, box_y, box_w, box_h, embedding_model FROM faces WHERE photo_id = ?;", (photo_id,)
     ) as cur:
         existing = await cur.fetchall()
+    async with conn.execute(
+        "SELECT box_x, box_y, box_w, box_h FROM face_dismissals WHERE photo_id = ?;", (photo_id,)
+    ) as cur:
+        dismissed = [_stored_box(r) for r in await cur.fetchall()]
     named = [r for r in existing if r["person_id"] is not None]
     claimed: set = set()
     to_delete = [r["id"] for r in existing if r["person_id"] is None]
@@ -97,6 +120,9 @@ async def save_scanned_faces(conn, photo_id: int, faces: list, thumbnails_dir: P
 
     for face in faces:
         new_box = (face["box_x"], face["box_y"], face["box_x"] + face["box_w"], face["box_y"] + face["box_h"])
+        # The owner said this place is not a face: never add it again.
+        if any(_iou(new_box, box) >= DISMISSED_IOU for box in dismissed):
+            continue
         best, best_iou = None, 0.0
         for r in named:
             if r["id"] in claimed:
