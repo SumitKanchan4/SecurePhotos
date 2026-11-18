@@ -198,20 +198,22 @@ export function sectionAt(sections: MonthSection[], sectionTops: Map<string, num
 export interface ScrubberEntry {
   /** Section to jump to (the entry's first month). */
   key: string;
-  /** "Nov" for a month of the newest year, "2025" for an older year, "No date". */
+  /** "2025" for a year, "Nov" for a month under its year, "No date". */
   label: string;
   /** Spoken / hover name: "November 2026", "2025", "No date". */
   name: string;
   /** Every section the entry stands for (to mark it current). */
   keys: string[];
+  /** A year, or a month listed under its year. */
+  kind?: "year" | "month";
 }
 
 /**
- * The month/year scrubber as on the approved Photos board (R9d): the newest year's months
- * one by one, then one entry per older year, then "No date", stacked evenly from the top.
- * When there are more entries than fit (`maxEntries`), the newest year collapses to one entry.
+ * The year bar (owner feedback, round 1 #13): every year, with the months of one year listed
+ * under it (the year you are looking at; the newest year at first), then "No date".
+ * When there are more entries than fit (`maxEntries`), only the years are listed.
  */
-export function scrubberEntries(sections: MonthSection[], maxEntries = Infinity): ScrubberEntry[] {
+export function scrubberEntries(sections: MonthSection[], maxEntries = Infinity, openYear?: string | null): ScrubberEntry[] {
   const years: { year: string; sections: MonthSection[] }[] = [];
   let undated: MonthSection | null = null;
   for (const section of sections) {
@@ -224,22 +226,27 @@ export function scrubberEntries(sections: MonthSection[], maxEntries = Infinity)
     if (last && last.year === year) last.sections.push(section);
     else years.push({ year, sections: [section] });
   }
+  const tail: ScrubberEntry[] = undated ? [{ key: UNDATED_KEY, label: "No date", name: "No date", keys: [UNDATED_KEY] }] : [];
+  if (!years.length) return tail;
+  const open = years.find((y) => y.year === openYear) ?? years[0];
   const yearEntry = (y: { year: string; sections: MonthSection[] }): ScrubberEntry => ({
     key: y.sections[0].key,
     label: y.year,
     name: y.year,
     keys: y.sections.map((x) => x.key),
+    kind: "year",
   });
-  const tail = years.slice(1).map(yearEntry);
-  if (undated) tail.push({ key: UNDATED_KEY, label: "No date", name: "No date", keys: [UNDATED_KEY] });
-  if (!years.length) return tail;
-  const months = years[0].sections.map((x) => ({
+  const yearsOnly = [...years.map(yearEntry), ...tail];
+  const months = open.sections.map((x): ScrubberEntry => ({
     key: x.key,
     label: shortMonthLabel(x.key).slice(0, 3),
     name: monthLabel(x.key),
     keys: [x.key],
+    kind: "month",
   }));
-  return months.length + tail.length <= maxEntries ? [...months, ...tail] : [yearEntry(years[0]), ...tail];
+  if (yearsOnly.length + months.length > maxEntries) return yearsOnly;
+  const at = years.indexOf(open) + 1;
+  return [...yearsOnly.slice(0, at), ...months, ...yearsOnly.slice(at)];
 }
 
 /**

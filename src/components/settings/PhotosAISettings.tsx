@@ -13,12 +13,19 @@ interface PhotosAISettingsProps {
   updateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
 }
 
-/** Slider 12 (best) .. 28 (smallest); the engine maps it to photo quality (12 -> 92, 18 -> 80, 28 -> 60). */
-export function qualityTier(level: number): { label: string; description: string } {
-  if (level <= 15) return { label: "Best quality", description: "Keeps the most fine detail. Uses the most space." };
-  if (level <= 20) return { label: "Balanced (Recommended)", description: "Looks the same as the original in normal viewing." };
-  if (level <= 24) return { label: "Smaller files", description: "Saves more space. Very fine detail may soften when zoomed in." };
-  return { label: "Smallest files", description: "Saves the most space. Fine detail softens noticeably when zoomed in." };
+/** Owner feedback (round 2, #7): three plain choices instead of a slider. Stored as the engine's
+ *  level (12 best .. 28 smallest; 14 -> quality 88, 18 -> 80, 24 -> 68). */
+export const QUALITY_OPTIONS: { value: number; label: string; description: string }[] = [
+  { value: 14, label: "Best", description: "Keeps the most fine detail. Uses the most space." },
+  { value: 18, label: "Balanced", description: "Looks the same as the original in normal viewing. Recommended." },
+  { value: 24, label: "Smaller", description: "Saves space. Very fine detail may soften when zoomed in." },
+];
+
+/** The choice that matches a stored level (older levels from the slider show as the nearest). */
+export function qualityChoice(level: number): number {
+  if (level <= 15) return 14;
+  if (level <= 20) return 18;
+  return 24;
 }
 
 /** 0 = never pause; otherwise pause on battery below this charge (100 = whenever on battery). */
@@ -62,32 +69,17 @@ const BeforeAfterChip: React.FC<{ look: string }> = ({ look }) => (
 );
 
 export const PhotosAISettings: React.FC<PhotosAISettingsProps> = ({ settings, updateSetting }) => {
-  const tier = qualityTier(settings.quality_crf);
+  const quality = QUALITY_OPTIONS.find((o) => o.value === qualityChoice(settings.quality_crf))!;
   return (
     <>
       <SettingsGroup title="Photos">
-        <SettingRow
-          title={
-            <>
-              Photo quality <span className="settings-badge">{tier.label}</span>
-            </>
-          }
-          description={`${tier.description} Applies to photos you import from now on.`}
-          stacked
-        >
-          <input
-            type="range"
-            min={12}
-            max={28}
-            value={settings.quality_crf}
-            aria-label="Photo quality"
-            className="settings-range"
-            onChange={(e) => updateSetting("quality_crf", Number(e.target.value))}
+        <SettingRow title="Photo quality" description={`${quality.description} Applies to photos you import from now on.`} stacked>
+          <ChoicePills
+            label="Photo quality"
+            value={qualityChoice(settings.quality_crf)}
+            onChange={(value) => updateSetting("quality_crf", value)}
+            options={QUALITY_OPTIONS}
           />
-          <div className="settings-range-ends" aria-hidden="true">
-            <span>Best quality</span>
-            <span>Smallest files</span>
-          </div>
         </SettingRow>
         <SettingRow
           title="Pause background work on battery"

@@ -262,20 +262,22 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({
   );
 
   // ── Scrubber (approved Photos board, R9d) ───────────────────────────────
-  // The newest year's months, then one entry per older year, stacked from the top; the one
-  // you are looking at is the lime pill. Click to jump, or press and drag along the list.
+  // Every year, the months of the year you are looking at under it; where you are is the lime
+  // pill (and its year is marked too). Click to jump, or press and drag along the list.
   const trackRef = useRef<HTMLElement>(null);
   const [trackHeight, setTrackHeight] = useState(0);
   const dragging = useRef(false);
   useEffect(() => {
     setTrackHeight(trackRef.current?.clientHeight ?? 0);
   }, [size.height]);
+  const current = sectionAt(sections, layout.sectionTops, contentTop);
+  // The year you are looking at shows its months under it (round 1, #13).
+  const openYear = current && current.key !== UNDATED_KEY ? current.key.slice(0, 4) : null;
   const entries = useMemo(
-    () => scrubberEntries(sections, trackHeight > 0 ? Math.max(1, Math.floor(trackHeight / SCRUB_ENTRY_HEIGHT)) : Infinity),
-    [sections, trackHeight],
+    () => scrubberEntries(sections, trackHeight > 0 ? Math.max(1, Math.floor(trackHeight / SCRUB_ENTRY_HEIGHT)) : Infinity, openYear),
+    [sections, trackHeight, openYear],
   );
   const showScrubber = sections.length >= Math.max(2, minScrubberSections) && layout.totalHeight > size.height;
-  const current = sectionAt(sections, layout.sectionTops, contentTop);
 
   const jumpTo = (key: string) => {
     const el = scrollRef.current;
@@ -340,7 +342,7 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({
               <button
                 key={entry.key}
                 type="button"
-                className={`timeline-scrub-entry${isCurrent ? " is-current" : ""}`}
+                className={`timeline-scrub-entry${entry.kind === "month" ? " is-month" : ""}${isCurrent ? " is-current" : ""}`}
                 aria-label={entry.name}
                 aria-current={isCurrent ? "true" : undefined}
                 title={entry.name}

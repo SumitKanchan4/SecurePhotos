@@ -107,7 +107,7 @@ describe("PhotoTimeline", () => {
   it("jumps by month or year from the scrubber and marks where you are", async () => {
     render(<PhotoTimeline photos={makeLibrary(3000)} onOpen={vi.fn()} />);
     const scrubber = screen.getByRole("navigation", { name: "Jump to date" });
-    // The newest year by month, older years once each (as on the approved board).
+    // Every year; the newest year's months under it.
     expect(within(scrubber).getByRole("button", { name: "December 2026" })).toHaveTextContent("Dec");
     expect(within(scrubber).getByRole("button", { name: "December 2026" })).toHaveAttribute("aria-current", "true");
     const scroller = screen.getByTestId("photo-timeline");
@@ -121,7 +121,9 @@ describe("PhotoTimeline", () => {
       await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
     });
     expect(within(scrubber).getByRole("button", { name: "2024" })).toHaveAttribute("aria-current", "true");
-    expect(within(scrubber).getByRole("button", { name: "December 2026" })).not.toHaveAttribute("aria-current");
+    // 2024's months now open under it; 2026's fold away (round 1, #13).
+    expect(within(scrubber).getByRole("button", { name: "December 2024" })).toHaveAttribute("aria-current", "true");
+    expect(within(scrubber).queryByRole("button", { name: "December 2026" })).not.toBeInTheDocument();
 
     // Further into 2024 (between its start and 2023's), the year entry stays current.
     const top2024 = scroller.scrollTop;
