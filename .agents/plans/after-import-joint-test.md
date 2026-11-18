@@ -19,6 +19,7 @@ via `data_location.txt`). Import with **Copy**, never Move. Tick each box; note 
 ## 2 · Order and speed (P2)
 - [ ] With "Add colour" on Automatically: a grey scan is coloured first, then the improved copy and the original both get 8K (copy first). Original/Improved compare like for like.
 - [ ] Only one heavy job at a time: the app stays smooth while work runs; something you ask for in the viewer starts next.
+- [ ] Quick wins: in a mixed import, the plain photos are all done (8K) before the old prints are coloured.
 - [ ] Below the battery level: everything waits; plugged in, it carries on.
 
 ## 3 · Duplicates and stories (P3)

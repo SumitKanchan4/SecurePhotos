@@ -332,8 +332,8 @@ async def run_background_optimization():
 
             # After-import order: a photo is enhanced once its earlier steps are done (text,
             # faces, the old-photo rules and any open old-photo job), so an old print is fixed at
-            # its own size first and 8K runs once. Picked one at a time (newly ready photos join),
-            # improved copies first (they are in front), newest first.
+            # its own size first and 8K runs once. Picked one at a time (newly ready photos join):
+            # plain photos first (quick wins), then improved copies, then originals; newest first.
             while True:
                 await _wait_while_paused_by_user()
                 await _wait_while_on_battery()
@@ -382,6 +382,32 @@ ENHANCE_READY = """
 """
 
 
+# Quick wins first (owner, 2026-11-18): a plain photo needs only 8K (~12 s); an old print needs its
+# fix and then 8K for the copy and the original (~40 s). Plain photos are enhanced first, then
+# improved copies, then their originals; newest first within each.
+PAIR_MEMBER = "(derived_from_id IS NOT NULL OR EXISTS (SELECT 1 FROM photos c WHERE c.derived_from_id = photos.id))"
+
+
+async def plain_photos_first() -> bool:
+    """True while automatic old-print fixes should wait: plain photos are ready for 8K and the
+    8K pass is running (not paused by the user). Starts the pass if it isn't running yet."""
+    if enhancement_paused_by_user:
+        return False
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(f"SELECT 1 FROM photos WHERE {ENHANCE_READY} AND NOT {PAIR_MEMBER} LIMIT 1;") as cur:
+            waiting = await cur.fetchone() is not None
+    finally:
+        await conn.close()
+    if not waiting:
+        return False
+    if optimization_state["is_active"]:
+        return True
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        asyncio.get_running_loop().create_task(run_background_optimization())
+    return False  # Not running yet: never hold the old prints on a pass that may not start.
+
+
 async def _next_to_enhance(skipped: set):
     conn = await get_db_connection()
     try:
@@ -389,7 +415,7 @@ async def _next_to_enhance(skipped: set):
         async with conn.execute(
             f"""SELECT id, filename, filepath, preview_path FROM photos
                 WHERE {ENHANCE_READY} AND id NOT IN ({marks})
-                ORDER BY (derived_from_id IS NULL), id DESC LIMIT 1;"""
+                ORDER BY {PAIR_MEMBER}, (derived_from_id IS NULL), id DESC LIMIT 1;"""
         ) as cursor:
             return await cursor.fetchone()
     finally:

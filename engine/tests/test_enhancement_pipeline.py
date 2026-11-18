@@ -118,7 +118,7 @@ async def test_8k_waits_for_the_earlier_after_import_steps(work_dir, monkeypatch
         while (row := await photos._next_to_enhance(skipped)) is not None:
             picked.append(row["filename"])
             skipped.add(row["id"])
-        assert picked == ["copy.jpg", "document.jpg", "ready.jpg"]  # The copy (in front) first.
+        assert picked == ["document.jpg", "copy.jpg", "ready.jpg"]  # Quick wins first: plain photo, then copy, then original.
     finally:
         await conn.execute(f"DELETE FROM restore_jobs WHERE photo_id IN ({','.join('?' * len(ids))});", list(ids.values()))
         await conn.execute(f"DELETE FROM photos WHERE id IN ({','.join('?' * len(ids))});", list(ids.values()))

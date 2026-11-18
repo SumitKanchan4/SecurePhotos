@@ -57,7 +57,7 @@ Videos: basics → preparation (existing queue) → duplicates. Vault items: nev
 - **One scheduler** (replaces the separate triggers; the existing workers become its steps):
   - Quick steps (read text, faces: well under a second per photo) go first for the whole batch,
     so People, Documents and search are complete soon after an import.
-  - Heavy steps (old-photo fix, 8K, video) run **one at a time**, newest import first;
+  - Heavy steps (old-photo fix, 8K, video) run **one at a time**, least work first (plain photos before old prints, D6), newest first within that;
     anything the user asked for (viewer improvements, an opened video) jumps the queue.
   - Pause all, the battery level (Settings) and the vault lock apply to all of it.
 - **Seen by the user:** Activity shows one card per batch ("Getting 124 new photos ready")
@@ -85,6 +85,7 @@ Videos: basics → preparation (existing queue) → duplicates. Vault items: nev
 
 - D1: Faces on documents (an ID card has a face): **skip** (owner, 2026-11-17). A photo found to be a document gets `faces` = skipped; if it is later un-marked as a document, its faces step runs then.
 - D2: Heavy work **one at a time** (owner, 2026-11-17): smoothest; quick steps still finish early, user requests go first.
+- D6: **Least work first** (owner, 2026-11-18): after the quick steps, plain photos get 8K before automatic old-print fixes; 8K order plain photos, improved copies, originals; newest first within each.
 - D3: 8K for an original stacked behind an improved copy: **always** (owner, 2026-11-17): Original vs Improved is then like for like in the viewer, and nothing is left to do if the original is restored later. Order per photo stays: old-photo fix on the scan's own size → 8K for both (copy first, it is in front).
 - D4: Stories: **suggested automatically** (owner, 2026-11-17), and *wisely*: stories are about the whole library and old memories, not only the latest import. Proposed rules (P3, shown to the owner before building):
   - **Every day** (first open of the day): "On this day" from any year, and a "years ago" memory, so For you changes daily even with no import.

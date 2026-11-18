@@ -10,6 +10,10 @@ first come, first served), so what the user asked for runs next:
 - ``ENHANCE`` (2): 8K enhancement of library photos.
 - ``BACKGROUND`` (3): automatic video preparation and the vault enhancer.
 
+Quick wins first (owner, 2026-11-18): while plain photos are getting 8K, automatic old-print
+fixes don't ask for the slot at all (``photos.plain_photos_first``), so the photos needing least
+work are done first.
+
 A job is never interrupted: the slot is handed on when it finishes. Quick steps (reading text,
 finding faces) don't take the slot.
 """
