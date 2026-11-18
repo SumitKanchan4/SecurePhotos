@@ -78,7 +78,15 @@ export const StorageSettings: React.FC = () => {
       </SettingRow>
       {app && (
         <div className="settings-usage">
-          <StorageBreakdown stats={app} />
+          <StorageBreakdown
+            stats={app}
+            openable={["photos", "videos", "documents", "vault", "trash", "music"]}
+            onOpen={(key) => {
+              const store = useAppStore.getState();
+              if (key === "music") store.openSettings("music");
+              else store.setActiveTab(key === "videos" ? "photos" : key === "documents" ? "documents" : key === "vault" ? "vault" : key === "trash" ? "trash" : "photos");
+            }}
+          />
         </div>
       )}
       {drive && drive.total_bytes > 0 && (
