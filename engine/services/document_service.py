@@ -91,11 +91,13 @@ async def extract_ocr_text_on_device(filepath: Path | str) -> str:
 
     load_onnxruntime_first()
     try:
-        from PIL import Image
+        from PIL import Image, ImageOps
         import winocr
 
         def _load_scaled() -> "Image.Image":  # H7: decode + resize off the event loop.
-            with Image.open(path) as img:
+            with Image.open(path) as raw:
+                # Upright first: text on a phone photo stored sideways can't be read (2026-11-19).
+                img = ImageOps.exif_transpose(raw)
                 img.load()
                 max_side = 1600
                 if max(img.width, img.height) > max_side:

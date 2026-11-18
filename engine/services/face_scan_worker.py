@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 from engine.config import settings, resolve_media_path
 from engine.database import get_db_connection
@@ -149,6 +149,9 @@ async def save_scanned_faces(conn, photo_id: int, faces: list, thumbnails_dir: P
             ),
         )
         face["crop_thumbnail"].save(thumbnails_dir / f"{cursor.lastrowid}.webp", format="WEBP", quality=90)
+        if person_id is not None and best is not None:
+            # The person's chosen profile face follows it to its replacement (2026-11-19).
+            await conn.execute("UPDATE persons SET cover_face_id = ? WHERE cover_face_id = ?;", (cursor.lastrowid, best["id"]))
         inserted += 1
 
     for r in named:
@@ -212,7 +215,10 @@ async def scan_photo_faces(conn, row, thumbnails_dir: Path) -> int:
             # Run CPU/DirectML heavy detection in thread pool to keep asyncio loop responsive
             def _process(p_path: Path):
                 with Image.open(p_path) as raw_img:
-                    rgb_img = raw_img.convert("RGB")
+                    # Upright first (owner feedback 2026-11-19): a phone photo stored sideways
+                    # gave sideways faces and boxes in the wrong place, since faces are now found
+                    # on the imported file, before 8K writes it upright.
+                    rgb_img = ImageOps.exif_transpose(raw_img).convert("RGB")
                     return detect_and_embed_faces(rgb_img)
 
             faces = await asyncio.to_thread(_process, scan_path)
@@ -352,3 +358,106 @@ def reset_scan_state() -> None:
     face_scan_state["faces_found"] = 0
     face_scan_state["current_photo"] = None
     face_scan_state["error"] = None
+
+
+# ── One-time repair: faces found on a sideways-stored photo (owner feedback 2026-11-19) ──────
+# Before the fix above, faces were found on the imported file without turning it upright, so a
+# phone photo stored sideways got a box in the wrong place and a sideways face picture. The 8K
+# step has since rewritten most of those files upright, so the stored boxes are compared with
+# faces found on the upright thumbnail; if they only match after a quarter or half turn, they are
+# turned back (keeping names) and the photo's faces are found again.
+
+SIDEWAYS_REPAIR_KEY = "repair_sideways_faces_done"
+# Turns that map a box found on the raw (sideways) pixels to the upright picture.
+TURNS = {
+    "cw": lambda x, y: (1.0 - y, x),     # stored with EXIF orientation 6
+    "ccw": lambda x, y: (y, 1.0 - x),    # orientation 8
+    "half": lambda x, y: (1.0 - x, 1.0 - y),  # orientation 3
+}
+
+
+def turn_box(box: tuple, turn: str) -> tuple:
+    """A relative (x1, y1, x2, y2) box turned with :data:`TURNS`."""
+    if turn == "none":
+        return box
+    fn = TURNS[turn]
+    xs, ys = zip(*(fn(x, y) for x, y in ((box[0], box[1]), (box[2], box[3]))))
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def best_turn(stored: List[tuple], found: List[tuple], min_match: float = 0.3, margin: float = 0.15) -> str:
+    """Which turn makes the stored boxes line up with the faces found upright ("none" if no turn
+    is clearly better). Each stored box scores its best overlap with a found face."""
+    if not stored or not found:
+        return "none"
+
+    def score(turn: str) -> float:
+        return sum(max(_iou(turn_box(b, turn), f) for f in found) for b in stored) / len(stored)
+
+    plain = score("none")
+    turn, best = max(((t, score(t)) for t in TURNS), key=lambda item: item[1])
+    return turn if best >= min_match and best > plain + margin else "none"
+
+
+async def repair_sideways_faces() -> int:
+    """Runs the repair once per library; returns how many photos were fixed."""
+    from engine.database import get_db_connection
+    from engine.services.face_recognition_service import detect_faces, ensure_face_models
+    from engine.services.media_paths import resolve_stored_path
+
+    try:
+        await asyncio.to_thread(ensure_face_models)
+    except Exception as err:  # noqa: BLE001 - no face models yet: try again on the next start
+        logger.info("Sideways-face check waits for the face models: %s", err)
+        return 0
+    conn = await get_db_connection()
+    fixed = 0
+    try:
+        async with conn.execute("SELECT 1 FROM app_settings WHERE key = ?;", (SIDEWAYS_REPAIR_KEY,)) as cur:
+            if await cur.fetchone():
+                return 0
+        async with conn.execute(
+            """SELECT DISTINCT p.id, p.filename, p.filepath, p.mime_type, p.thumbnail_path, p.preview_path, p.is_encrypted
+               FROM photos p JOIN faces f ON f.photo_id = p.id
+               WHERE COALESCE(p.is_encrypted, 0) = 0 AND (p.mime_type IS NULL OR p.mime_type NOT LIKE 'video/%');"""
+        ) as cur:
+            photos = await cur.fetchall()
+        thumbnails_dir = get_face_thumbnails_dir()
+        for row in photos:
+            thumb = resolve_stored_path(row["thumbnail_path"]) if row["thumbnail_path"] else None
+            if thumb is None or not thumb.exists():
+                continue
+
+            def _found(path: Path) -> List[tuple]:
+                with Image.open(path) as raw:
+                    img = ImageOps.exif_transpose(raw).convert("RGB")
+                w, h = img.size
+                return [(x1 / w, y1 / h, x2 / w, y2 / h) for (x1, y1, x2, y2), _s, _l in detect_faces(img)]
+
+            try:
+                found = await asyncio.to_thread(_found, thumb)
+            except Exception as err:  # noqa: BLE001 - one unreadable photo must not stop the rest
+                logger.warning("Sideways-face check skipped photo %s: %s", row["id"], err)
+                continue
+            async with conn.execute("SELECT id, box_x, box_y, box_w, box_h FROM faces WHERE photo_id = ?;", (row["id"],)) as cur:
+                faces = await cur.fetchall()
+            turn = best_turn([_stored_box(f) for f in faces], found)
+            if turn == "none":
+                continue
+            for f in faces:
+                x1, y1, x2, y2 = turn_box(_stored_box(f), turn)
+                await conn.execute(
+                    "UPDATE faces SET box_x = ?, box_y = ?, box_w = ?, box_h = ? WHERE id = ?;",
+                    (x1, y1, x2 - x1, y2 - y1, f["id"]),
+                )
+            await conn.commit()
+            # Found again upright: names carry over to the matching (now turned) boxes.
+            await scan_photo_faces(conn, row, thumbnails_dir)
+            fixed += 1
+        await conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, '1');", (SIDEWAYS_REPAIR_KEY,))
+        await conn.commit()
+        if fixed:
+            logger.info("Turned the faces of %d sideways-stored photos upright.", fixed)
+        return fixed
+    finally:
+        await conn.close()

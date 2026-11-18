@@ -12,7 +12,7 @@ import logging
 import struct
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
-from PIL import Image
+from PIL import Image, ImageOps
 import aiosqlite
 
 from engine.config import resolve_media_path
@@ -52,7 +52,9 @@ def compute_image_dhash(image_path: str | Path, hash_size: int = 8) -> Optional[
         return None
 
     try:
-        with Image.open(path) as img:
+        with Image.open(path) as raw:
+            # Upright first, so a sideways-stored original matches its upright copy (2026-11-19).
+            img = ImageOps.exif_transpose(raw)
             # Convert to grayscale 8-bit
             gray = img.convert("L")
             # Resize to 9x8 for an 8x8 comparison grid
