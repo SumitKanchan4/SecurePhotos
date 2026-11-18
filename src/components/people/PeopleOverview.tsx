@@ -393,35 +393,39 @@ export const PeopleOverview: React.FC<PeopleOverviewProps> = ({
                       >
                         <Face faceId={cluster.medoid_face_id} size={48} />
                       </button>
-                      <label className="people-unnamed-label">
-                        <span>
-                          {photoCountLabel(cluster.photo_count)}
-                          {existing ? ` · adds to ${existing.name}` : ""}
-                        </span>
-                        <input
-                          list="people-names"
-                          placeholder="Add a name"
-                          aria-label={`Name for this face (${photoCountLabel(cluster.photo_count)})`}
-                          value={draft}
-                          disabled={busy}
-                          onChange={(e) => setDrafts((prev) => ({ ...prev, [cluster.cluster_id]: e.target.value }))}
-                        />
-                      </label>
-                      {draft.trim() && !existing && !busy && (
-                        <select
-                          className="people-relation-select"
-                          aria-label={`Relationship to ${draft.trim()}`}
-                          value={relations[cluster.cluster_id] ?? ""}
-                          onChange={(e) => setRelations((prev) => ({ ...prev, [cluster.cluster_id]: e.target.value }))}
-                        >
-                          <option value="">Relationship</option>
-                          {RELATIONSHIPS.map((r) => (
-                            <option key={r} value={r}>
-                              {r}
-                            </option>
-                          ))}
-                        </select>
-                      )}
+                      <div className="people-unnamed-fields">
+                        <label className="people-unnamed-label">
+                          <span>
+                            {photoCountLabel(cluster.photo_count)}
+                            {existing ? ` · adds to ${existing.name}` : ""}
+                          </span>
+                          <input
+                            list="people-names"
+                            placeholder="Add a name"
+                            aria-label={`Name for this face (${photoCountLabel(cluster.photo_count)})`}
+                            value={draft}
+                            disabled={busy}
+                            onChange={(e) => setDrafts((prev) => ({ ...prev, [cluster.cluster_id]: e.target.value }))}
+                          />
+                        </label>
+                        {/* Under the name, the same width and look as the name box (owner feedback
+                            2026-11-18: side by side squeezed the name and didn't line up). */}
+                        {draft.trim() && !existing && !busy && (
+                          <select
+                            className={`people-relation-select${relations[cluster.cluster_id] ? "" : " is-empty"}`}
+                            aria-label={`Relationship to ${draft.trim()}`}
+                            value={relations[cluster.cluster_id] ?? ""}
+                            onChange={(e) => setRelations((prev) => ({ ...prev, [cluster.cluster_id]: e.target.value }))}
+                          >
+                            <option value="">Relationship (optional)</option>
+                            {RELATIONSHIPS.map((r) => (
+                              <option key={r} value={r}>
+                                {r}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
                       {busy ? (
                         <Loader2 size={16} className="spin" />
                       ) : draft.trim() ? (
