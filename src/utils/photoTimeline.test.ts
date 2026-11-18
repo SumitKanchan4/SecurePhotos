@@ -43,8 +43,12 @@ describe("parseTimeline", () => {
   });
 
   it("names the tile's quality tag and a video's length", () => {
-    const base = { is_video: false, is_optimized: true, is_enhanced: true, width: 4000, height: 3000 };
+    // The size the enhanced photo really has (Settings → Photo size, 2026-11-19).
+    const base = { is_video: false, is_optimized: true, is_enhanced: true, width: 7680, height: 5760 };
     expect(qualityTag(base)).toBe("8K");
+    expect(qualityTag({ ...base, width: 3840, height: 2880 })).toBe("4K");
+    expect(qualityTag({ ...base, width: 1920, height: 2560 })).toBe("2K");
+    expect(qualityTag({ ...base, width: 1600, height: 1200 })).toBeNull();
     expect(qualityTag({ ...base, is_optimized: false })).toBeNull(); // Not enhanced yet.
     expect(qualityTag({ ...base, is_video: true, width: 3840, height: 2160 })).toBe("4K");
     expect(qualityTag({ ...base, is_video: true, width: 1080, height: 1920 })).toBe("HD");

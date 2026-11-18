@@ -4,7 +4,7 @@
  * Every imported photo is always enhanced (owner decision, C1), so there is no on/off switch.
  */
 import React from "react";
-import { AppSettings, OldPhotoRule } from "../../hooks/useAppSettings";
+import { AppSettings, OldPhotoRule, PhotoSize, VideoSize } from "../../hooks/useAppSettings";
 import { ToggleSwitch } from "../ui/ToggleSwitch";
 import { ChoicePills, SettingRow, SettingsGroup } from "./SettingsKit";
 
@@ -19,6 +19,20 @@ export const QUALITY_OPTIONS: { value: number; label: string; description: strin
   { value: 14, label: "Best", description: "Keeps the most fine detail. Uses the most space." },
   { value: 18, label: "Balanced", description: "Looks the same as the original in normal viewing. Recommended." },
   { value: 24, label: "Smaller", description: "Saves space. Very fine detail may soften when zoomed in." },
+];
+
+/** Owner, 2026-11-19: the size photos are enhanced to, next to Photo quality. Videos have their
+ *  own size (never above 4K; owner decision the same day). */
+export const SIZE_OPTIONS: { value: PhotoSize; label: string; description: string }[] = [
+  { value: "2k", label: "2K", description: "2560 px on the long side. Smallest files; fine for screens and sharing." },
+  { value: "4k", label: "4K", description: "3840 px on the long side. Sharp on big screens, about a third of the space of 8K." },
+  { value: "8k", label: "8K", description: "7680 px on the long side. The most room to zoom and print; the biggest files and the slowest to prepare." },
+];
+
+export const VIDEO_SIZE_OPTIONS: { value: VideoSize; label: string; description: string }[] = [
+  { value: "original", label: "As recorded", description: "Videos keep the size they were recorded at." },
+  { value: "hd", label: "HD", description: "Old, low-quality clips are enlarged to HD (1080p); the rest keep their size." },
+  { value: "4k", label: "4K", description: "Every video below 4K is enlarged to 4K. Without a graphics card this is slow (a few minutes for each minute of video) and files get bigger." },
 ];
 
 /** The choice that matches a stored level (older levels from the slider show as the nearest). */
@@ -79,6 +93,30 @@ export const PhotosAISettings: React.FC<PhotosAISettingsProps> = ({ settings, up
             value={qualityChoice(settings.quality_crf)}
             onChange={(value) => updateSetting("quality_crf", value)}
             options={QUALITY_OPTIONS}
+          />
+        </SettingRow>
+        <SettingRow
+          title="Photo size"
+          description={`${(SIZE_OPTIONS.find((o) => o.value === settings.photo_resolution) ?? SIZE_OPTIONS[2]).description} Photos are enlarged or reduced to this size; for photos you import from now on, a larger version isn't kept.`}
+          stacked
+        >
+          <ChoicePills
+            label="Photo size"
+            value={settings.photo_resolution ?? "8k"}
+            onChange={(value) => updateSetting("photo_resolution", value)}
+            options={SIZE_OPTIONS}
+          />
+        </SettingRow>
+        <SettingRow
+          title="Video size"
+          description={`${(VIDEO_SIZE_OPTIONS.find((o) => o.value === settings.video_resolution) ?? VIDEO_SIZE_OPTIONS[1]).description} Applies to videos you import from now on; never above 4K.`}
+          stacked
+        >
+          <ChoicePills
+            label="Video size"
+            value={settings.video_resolution ?? "hd"}
+            onChange={(value) => updateSetting("video_resolution", value)}
+            options={VIDEO_SIZE_OPTIONS}
           />
         </SettingRow>
         <SettingRow

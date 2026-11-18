@@ -42,6 +42,9 @@ via `data_location.txt`). Import with **Copy**, never Move. Tick each box; note 
 - [ ] Settings → Music: switch, add/play/mood/remove songs; the Stories music button opens it.
 - [ ] Stories: the stage at the top, tagged cards, Saved row, collage mosaic; Hide and Save work from the stage.
 - [ ] The app's name "SecurePhotos" shows at the top left; the window still drags from there.
+- [ ] People: Kiaan's (and Inaaksh's) face pictures are upright; boxes in "see this face in its photo" sit on the face.
+- [ ] Video tiles: play button in the middle, size tag bottom-left, length bottom-right.
+- [ ] Settings → Photos & AI: Photo size (2K / 4K / 8K) and Video size (As recorded / HD / 4K); a new import comes out at the chosen size and its grid tag says so.
 - [ ] Dashboard: the library sentence (each number opens its screen), the storage map (point at rows / bar; rows open their place), Worth doing.
 
 ## After the test

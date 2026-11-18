@@ -52,7 +52,7 @@ def test_avif_keeps_camera_details_and_is_upright(work_dir):
     assert src.read_bytes() == src_bytes  # Source untouched; the caller deletes it later.
     with Image.open(result.path) as out:
         assert out.format == "AVIF"
-        assert out.size == (3000, 4000)  # Upright: portrait.
+        assert out.size == (5760, 7680)  # Upright: portrait, at the default 8K size.
         exif = out.getexif()
         assert exif.get(0x010F) == "TestCam"  # Make
         # Orientation is "normal" (Pillow's AVIF writer drops a normal tag), so viewers don't rotate again.
@@ -69,6 +69,18 @@ def test_small_photo_is_enlarged_to_8k(work_dir):
     _jpeg_with_exif(src, (1600, 1200))
     result = enhance_to_avif(src, 80)
     assert (result.width, result.height) == (7680, 5760)
+
+
+@pytest.mark.parametrize("size,expected", [("2k", (2560, 1920)), ("4k", (3840, 2880)), ("8k", (7680, 5760)), ("nonsense", (7680, 5760))])
+def test_photo_size_setting_is_the_size_photos_get(work_dir, size, expected):
+    """Owner, 2026-11-19: Settings → Photo size (2K, 4K, 8K). A phone-sized photo (4000 px) is
+    enlarged to 8K (before, 3840 px and up were only sharpened) or reduced to 2K / 4K."""
+    from engine.services.enhancement_service import photo_size_to_long_edge
+
+    src = work_dir / f"phone_{size}.jpg"
+    _jpeg_with_exif(src, (4000, 3000))
+    result = enhance_to_avif(src, 80, photo_size_to_long_edge(size))
+    assert (result.width, result.height) == expected
 
 
 def test_never_overwrites_an_existing_avif(work_dir):

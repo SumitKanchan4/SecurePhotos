@@ -97,8 +97,9 @@ const Tile: React.FC<TileProps> = React.memo(
           />
           {/* Owner feedback 2026-11-18: tags at the bottom left, translucent black with neon text.
               Photos: one icon per fix on an improved copy, and "8K" once enhanced (both when both).
-              Videos: "4K"/"HD" just above the Video tag, the length to its right. */}
-          {(improvedKinds.length > 0 || quality || photo.is_video) && (
+              Videos: a play button in the middle (round 2026-11-19), so the corner is free for
+              "4K"/"HD"; the length at the bottom right. */}
+          {(improvedKinds.length > 0 || quality) && (
             <span className="timeline-tags">
               {(improvedKinds.length > 0 || quality) && (
                 <span className="timeline-tag-row">
@@ -111,25 +112,27 @@ const Tile: React.FC<TileProps> = React.memo(
                     </span>
                   )}
                   {quality && (
-                    <span className="timeline-tag" title={quality === "8K" ? "Enhanced to 8K" : `${quality} video`}>
+                    <span className="timeline-tag" title={photo.is_video ? `${quality} video` : `Enhanced, ${quality}`}>
                       {quality}
                     </span>
                   )}
                 </span>
               )}
-              {photo.is_video && (
-                <span className="timeline-tag-row">
-                  <span className="timeline-chip" title={processing ? "This video is being prepared. It can be played soon." : "Video"}>
-                    {processing ? <Loader2 size={11} className="spin" /> : <Play size={10} fill="currentColor" />}
-                    {processing ? "Preparing" : "Video"}
-                  </span>
-                  {length && (
-                    <span className="timeline-chip timeline-length" aria-label={`Length ${length}`}>
-                      {length}
-                    </span>
-                  )}
-                </span>
-              )}
+            </span>
+          )}
+          {photo.is_video && (
+            <span
+              className={`timeline-play${processing ? " is-preparing" : ""}`}
+              role="img"
+              aria-label={processing ? "Video, being prepared" : "Video"}
+              title={processing ? "This video is being prepared. It can be played soon." : "Video"}
+            >
+              {processing ? <Loader2 size={18} className="spin" /> : <Play size={18} fill="currentColor" />}
+            </span>
+          )}
+          {photo.is_video && length && (
+            <span className="timeline-chip timeline-length" aria-label={`Length ${length}`}>
+              {length}
             </span>
           )}
           {photo.is_preparing && !photo.is_video && (

@@ -91,6 +91,9 @@ async def run_vault_enhancement() -> Dict[str, Any]:
                 break
             settings = await photos_api._load_enhancement_settings()
             quality = slider_to_avif_quality(settings.get("quality_crf", DEFAULT_QUALITY_SLIDER))
+            from engine.services.enhancement_service import photo_size_to_long_edge
+
+            long_edge = photo_size_to_long_edge(settings.get("photo_resolution"))
             key = None
             try:
                 # One heavy job at a time (after-import plan, D2). The key is taken only once the
@@ -100,7 +103,7 @@ async def run_vault_enhancement() -> Dict[str, Any]:
                     if key is None:
                         logger.info("Vault locked; vault photo enhancement stops until the next unlock.")
                         break
-                    was_enhanced = await vault_storage.enhance_vault_photo(conn, row, key, quality, lambda: _key() is not None)
+                    was_enhanced = await vault_storage.enhance_vault_photo(conn, row, key, quality, lambda: _key() is not None, long_edge)
                 if was_enhanced:
                     enhanced += 1
                 elif _key() is None:

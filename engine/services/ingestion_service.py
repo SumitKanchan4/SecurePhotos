@@ -667,7 +667,10 @@ async def ingest_single_photo(
     # Intelligent Auto-Video Classification and Resilient Queue Enrollment
     if is_video and photo_id:
         try:
-            classification = classify_video_for_ingestion(metadata)
+            from engine.api import photos as photos_api
+
+            video_size = (await photos_api._load_enhancement_settings()).get("video_resolution", "hd")
+            classification = classify_video_for_ingestion(metadata, video_size)
             if classification.get("is_already_optimized"):
                 await conn.execute("UPDATE photos SET is_optimized = 1 WHERE id = ?", (photo_id,))
                 await conn.commit()

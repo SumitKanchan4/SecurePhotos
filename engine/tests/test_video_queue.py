@@ -61,6 +61,22 @@ async def test_classify_video_for_ingestion_heavy():
     assert result["action"] == "compress"
 
 
+def test_video_size_setting_decides_how_far_videos_are_enlarged():
+    """Owner, 2026-11-19: Settings → Video size, separate from Photo size, never above 4K."""
+    vintage = {"width": 640, "height": 480, "codec": "h264", "file_size": 15_000_000}
+    phone = {"width": 1920, "height": 1080, "codec": "hevc", "file_size": 20_000_000}
+    uhd = {"width": 3840, "height": 2160, "codec": "hevc", "file_size": 250_000_000}
+    # As recorded: the old clip isn't enlarged.
+    assert classify_video_for_ingestion(vintage, "original")["action"] == "none"
+    # HD (default): only the old clip is enlarged, to 1080p.
+    assert classify_video_for_ingestion(vintage, "hd")["target_height"] == 1080
+    assert classify_video_for_ingestion(phone, "hd")["action"] == "none"
+    # 4K: everything below 4K is enlarged to 4K; 4K stays as it is (nothing goes above 4K).
+    assert classify_video_for_ingestion(vintage, "4k")["target_height"] == 2160
+    assert classify_video_for_ingestion(phone, "4k")["target_height"] == 2160
+    assert classify_video_for_ingestion(uhd, "4k")["action"] == "none"
+
+
 @pytest.mark.asyncio
 async def test_video_queue_lifecycle():
     """Verify queue database initialization, enqueueing, and state reporting."""
