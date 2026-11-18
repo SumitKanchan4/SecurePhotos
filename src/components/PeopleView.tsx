@@ -48,6 +48,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  const showToast = useAppStore((st) => st.showToast);
   const [isResetting, setIsResetting] = useState<boolean>(false);
   // Selected person detail view (viewing photos of a person)
   const [selectedPerson, setSelectedPerson] = useState<PersonItem | null>(null);
@@ -175,6 +176,23 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
       console.error("Failed to load face details:", err);
     } finally {
       setLoadingInspectFace(false);
+    }
+  };
+
+  // Owner feedback 2026-11-18: something found as a face that isn't one (a cushion, feet).
+  const handleNotAFace = async (faceId: number) => {
+    try {
+      const res = await apiFetch(`/api/people/faces/${faceId}/dismiss`, { method: "POST" });
+      if (!res.ok) {
+        showToast(res.status === 409 ? "This face has a name. Remove it from the person first." : "Couldn't remove it. Try again.", "warning");
+        return;
+      }
+      setInspectingFaceId(null);
+      setInspectingFaceData(null);
+      showToast("Removed. It won't be found as a face again.", "success");
+      await Promise.all([fetchPeople(), fetchClusters()]);
+    } catch {
+      showToast("Couldn't remove it. Try again.", "warning");
     }
   };
 
@@ -422,7 +440,7 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                         boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
                       }}
                     >
-                      Target Person
+                      This face
                     </div>
                   </div>
                 </div>
@@ -445,6 +463,17 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
               <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
                 {humanName(inspectingFaceData?.filename) ?? ""}
               </span>
+              <span style={{ display: "flex", gap: "8px" }}>
+              {inspectingFaceData && (
+                <button
+                  type="button"
+                  className="people-secondary-btn"
+                  title="Not a face: remove it, and never find it here again"
+                  onClick={() => handleNotAFace(inspectingFaceData.id)}
+                >
+                  Not a face
+                </button>
+              )}
               <button
                 onClick={() => {
                   setInspectingFaceId(null);
@@ -462,8 +491,9 @@ export const PeopleView: React.FC<PeopleViewProps> = ({
                   cursor: "pointer",
                 }}
               >
-                Close Preview
+                Close
               </button>
+              </span>
             </div>
           </div>
         </div>

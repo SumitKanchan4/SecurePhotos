@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from engine.database import get_db_connection
 from engine.config import settings, resolve_media_path
 from engine.services.after_import import PREPARING
-from engine.services.photo_versions import pair_order, stack_top
+from engine.services.photo_versions import pair_order, stack_top, with_versions
 from engine.services.ingestion_service import ingest_single_photo
 
 logger = logging.getLogger("securephotos.api.photos")
@@ -1167,8 +1167,13 @@ async def delete_photo(photo_id: int) -> dict:
         if row["trashed_at"] is not None:
             return {"status": "ok", "photo_id": photo_id, "already_trashed": True}
 
-        await conn.execute("UPDATE photos SET trashed_at = CURRENT_TIMESTAMP WHERE id = ?;", (photo_id,))
-        await conn.execute("DELETE FROM video_processing_queue WHERE photo_id = ?;", (photo_id,))
+        # The tile stands for the whole group: its original and improved copies go too.
+        group = await with_versions(conn, [photo_id])
+        marks = ",".join("?" * len(group))
+        await conn.execute(
+            f"UPDATE photos SET trashed_at = CURRENT_TIMESTAMP WHERE id IN ({marks}) AND trashed_at IS NULL;", group
+        )
+        await conn.execute(f"DELETE FROM video_processing_queue WHERE photo_id IN ({marks});", group)
         await conn.commit()
     finally:
         await conn.close()
@@ -1184,13 +1189,15 @@ async def batch_trash_photos(payload: BatchTrashRequest) -> BatchTrashResponse:
 
     conn = await get_db_connection()
     try:
-        placeholders = ",".join("?" for _ in payload.photo_ids)
+        # Each tile stands for its whole group: originals and improved copies go together.
+        ids = await with_versions(conn, payload.photo_ids)
+        placeholders = ",".join("?" for _ in ids)
         cursor = await conn.execute(
             f"UPDATE photos SET trashed_at = CURRENT_TIMESTAMP WHERE id IN ({placeholders}) AND trashed_at IS NULL;",
-            payload.photo_ids,
+            ids,
         )
         trashed_count = cursor.rowcount
-        await conn.execute(f"DELETE FROM video_processing_queue WHERE photo_id IN ({placeholders});", payload.photo_ids)
+        await conn.execute(f"DELETE FROM video_processing_queue WHERE photo_id IN ({placeholders});", ids)
         await conn.commit()
     finally:
         await conn.close()

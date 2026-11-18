@@ -240,6 +240,44 @@ async def test_photos_shows_one_tile_per_pair_the_improved_one(lib):
     assert [i[0] for i in items if i[0] in (original_id, new_id, newer)] == [original_id]
 
 
+async def _trashed(conn, *ids):
+    marks = ",".join("?" * len(ids))
+    async with conn.execute(f"SELECT id FROM photos WHERE id IN ({marks}) AND trashed_at IS NOT NULL;", ids) as cur:
+        return {r[0] for r in await cur.fetchall()}
+
+
+@pytest.mark.parametrize("how", ["one", "batch"])
+async def test_deleting_a_tile_deletes_the_original_and_copies_and_restore_brings_all_back(lib, how):
+    """Owner feedback 2026-11-18: deleting the improved tile left the original behind in the library."""
+    conn, (original_id, other_id) = lib["conn"], lib["ids"]
+    copy_id = (await restore_queue.keep_result(await _finish(original_id), "keep_both"))["photo_id"]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        if how == "one":
+            assert (await client.delete(f"/api/photos/{copy_id}")).status_code == 200
+        else:
+            res = await client.post("/api/photos/batch-trash", json={"photo_ids": [copy_id]})
+            assert res.json()["trashed_count"] == 2
+        assert await _trashed(conn, original_id, copy_id, other_id) == {original_id, copy_id}
+        items = (await client.get("/api/photos/timeline")).json()["items"]
+        assert not {original_id, copy_id} & {i[0] for i in items}
+
+        # Restoring either one brings back the group deleted with it.
+        assert (await client.post("/api/trash/restore", json={"photo_ids": [copy_id]})).json()["restored_count"] == 2
+    assert await _trashed(conn, original_id, copy_id) == set()
+
+
+async def test_restore_leaves_a_version_trashed_at_another_time(lib):
+    """'Replace' put the original in Trash earlier; restoring a later-deleted copy doesn't bring it back."""
+    conn, (original_id, _) = lib["conn"], lib["ids"]
+    copy_id = (await restore_queue.keep_result(await _finish(original_id), "keep_both"))["photo_id"]
+    await conn.execute("UPDATE photos SET trashed_at = '2026-01-01 00:00:00' WHERE id = ?;", (original_id,))
+    await conn.execute("UPDATE photos SET trashed_at = '2026-02-01 00:00:00' WHERE id = ?;", (copy_id,))
+    await conn.commit()
+    assert await photo_versions.restore_with_versions(conn, [copy_id]) == 1
+    await conn.commit()
+    assert await _trashed(conn, original_id, copy_id) == {original_id}
+
+
 async def test_an_improved_original_offers_no_second_copy(lib, monkeypatch):
     original_id = lib["ids"][0]
     await restore_queue.keep_result(await _finish(original_id), "keep_both")

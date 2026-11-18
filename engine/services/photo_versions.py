@@ -394,6 +394,53 @@ async def _copy_faces(conn: aiosqlite.Connection, source_id: int, new_id: int) -
     return crops
 
 
+async def with_versions(conn: aiosqlite.Connection, photo_ids: Sequence[int]) -> List[int]:
+    """``photo_ids`` plus every other member of their groups (the original and its copies).
+
+    Owner feedback 2026-11-18: one tile stands for the whole group, so deleting it deletes the
+    group; otherwise the original behind an improved copy would come back on its own.
+    ("What to keep" is how to drop just one version.)
+    """
+    ids = [int(i) for i in photo_ids]
+    if not ids:
+        return []
+    marks = ",".join("?" * len(ids))
+    async with conn.execute(
+        f"""
+        SELECT m.id FROM photos m
+        WHERE m.id IN ({marks})
+           OR COALESCE(m.derived_from_id, m.id) IN (
+                SELECT COALESCE(p.derived_from_id, p.id) FROM photos p WHERE p.id IN ({marks}));
+        """,
+        (*ids, *ids),
+    ) as cur:
+        found = [r[0] for r in await cur.fetchall()]
+    return sorted(set(found) | set(ids))
+
+
+async def restore_with_versions(conn: aiosqlite.Connection, photo_ids: Sequence[int]) -> int:
+    """Restores ``photo_ids`` from Trash with the group members deleted together with them.
+
+    Members trashed at another time (e.g. an original replaced by its improved copy) stay in
+    Trash. Returns how many photos came back.
+    """
+    ids = [int(i) for i in photo_ids]
+    if not ids:
+        return 0
+    marks = ",".join("?" * len(ids))
+    cur = await conn.execute(
+        f"""
+        UPDATE photos SET trashed_at = NULL, trash_expires_at = NULL
+        WHERE trashed_at IS NOT NULL AND (
+            id IN ({marks}) OR EXISTS (
+                SELECT 1 FROM photos p WHERE p.id IN ({marks}) AND p.trashed_at = photos.trashed_at
+                  AND COALESCE(p.derived_from_id, p.id) = COALESCE(photos.derived_from_id, photos.id)));
+        """,
+        (*ids, *ids),
+    )
+    return cur.rowcount
+
+
 async def trash_photo(conn: aiosqlite.Connection, photo_id: int) -> None:
     """Moves a photo to Trash (restorable for 30 days), as the Trash button does."""
     await conn.execute("UPDATE photos SET trashed_at = CURRENT_TIMESTAMP WHERE id = ? AND trashed_at IS NULL;", (photo_id,))

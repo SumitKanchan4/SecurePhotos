@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import React, { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -60,6 +60,13 @@ beforeEach(() => {
 describe("Lightbox loading (A8: smooth)", () => {
   it("shows the thumbnail at once, then the screen-sized preview; the full photo only when zoomed in", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })));
+    const loading: HTMLImageElement[] = [];
+    const RealImage = window.Image;
+    vi.stubGlobal("Image", function FakeImage() {
+      const img = new RealImage();
+      loading.push(img);
+      return img;
+    });
     render(<Lightbox photos={[photo(1), photo(2)]} currentIndex={0} isOpen onClose={vi.fn()} onNavigate={vi.fn()} />);
     const placeholder = screen.getByTestId("viewer-placeholder");
     expect(placeholder.getAttribute("src")).toContain("/api/photos/1/thumbnail");
@@ -73,7 +80,26 @@ describe("Lightbox loading (A8: smooth)", () => {
     expect(main).toHaveStyle({ opacity: "1" });
     fireEvent.keyDown(window, { key: "+" });
     fireEvent.keyDown(window, { key: "+" });
+    // The preview stays on screen until the full photo has loaded (never a blank viewer).
+    expect(shown().getAttribute("src")).toContain("/api/photos/1/preview");
+    const full = loading.find((img) => img.src.includes("/api/photos/1/original"))!;
+    act(() => full.onload?.(new Event("load")));
     expect(shown().getAttribute("src")).toContain("/api/photos/1/original");
+    vi.unstubAllGlobals();
+  });
+
+  it("has visible zoom buttons (owner feedback 2026-11-18)", () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })));
+    render(<Lightbox photos={[photo(1), photo(2)]} currentIndex={0} isOpen onClose={vi.fn()} onNavigate={vi.fn()} />);
+    const zoom = screen.getByRole("group", { name: "Zoom" });
+    expect(within(zoom).getByRole("button", { name: "Zoom out" })).toBeDisabled();
+    fireEvent.click(within(zoom).getByRole("button", { name: "Zoom in" }));
+    expect(within(zoom).getByText("150%")).toBeInTheDocument();
+    fireEvent.click(within(zoom).getByRole("button", { name: "Zoom in" }));
+    fireEvent.click(within(zoom).getByRole("button", { name: "Zoom out" }));
+    expect(within(zoom).getByText("150%")).toBeInTheDocument();
+    fireEvent.click(within(zoom).getByRole("button", { name: "Fit to screen" }));
+    expect(within(zoom).getByText("Fit")).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
 });
@@ -151,7 +177,7 @@ describe("Lightbox layout (redesign R3)", () => {
     const { onToggleFavorite } = renderViewer();
     const bar = screen.getByRole("banner");
     const order = Array.from(bar.querySelectorAll("button")).map((b) => b.getAttribute("aria-label"));
-    expect(order).toEqual(["Back", "Add to favourites", "Download", "Show details", "Move to Trash", "Move to Vault"]);
+    expect(order).toEqual(["Back", "Zoom out", "Zoom to 200%", "Zoom in", "Add to favourites", "Download", "Show details", "Move to Trash", "Move to Vault"]);
     fireEvent.click(screen.getByRole("button", { name: "Add to favourites" }));
     expect(onToggleFavorite).toHaveBeenCalledWith(7);
     expect(screen.getByRole("button", { name: "Remove from favourites" })).toHaveAttribute("aria-pressed", "true");

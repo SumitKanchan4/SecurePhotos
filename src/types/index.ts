@@ -72,7 +72,7 @@ export interface TimelinePhoto {
   is_favorite: boolean;
   is_optimized: boolean;
   is_enhanced: boolean;
-  /** H10: an improved copy made with AI (grid shows the "AI" badge). */
+  /** H10: an improved copy made with AI (the grid tags it "Improved"). */
   is_ai?: boolean;
   /** After-import P4: text, faces, old-photo check, duplicates or 8K still to do (quiet dot). */
   is_preparing?: boolean;
