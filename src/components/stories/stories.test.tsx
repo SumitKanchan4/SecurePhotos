@@ -103,15 +103,18 @@ describe("StoriesView", () => {
     "POST /api/creatives/suggestions/save": { photo_id: 99 },
   };
 
-  it("shows tall story cards under For you and Saved, and collage ideas below", async () => {
+  it("plays the newest story on a stage, more as tagged cards, Saved below, collage ideas last (round 2, #8)", async () => {
     mockEngine(routes);
     const onPlay = vi.fn();
     render(<StoriesView onPlayStory={onPlay} onNavigate={vi.fn()} />);
     expect(await screen.findByText("3 stories")).toBeInTheDocument();
-    const forYou = screen.getByRole("region", { name: "For you" });
-    fireEvent.click(within(forYou).getByRole("button", { name: "Play Goa, Nov 2026, Nov 2026 · 86 photos" }));
+    const stage = screen.getByRole("region", { name: "Newest story: Goa, Nov 2026" });
+    expect(within(stage).getByRole("heading", { name: "Goa, Nov 2026" })).toBeInTheDocument();
+    expect(within(stage).getByText("Trip")).toBeInTheDocument();
+    fireEvent.click(within(stage).getByRole("button", { name: "Play story" }));
     expect(onPlay).toHaveBeenCalledWith(1);
-    expect(within(forYou).getByRole("button", { name: "Play Through the years: Asha, 2019 – 2026 · 40 photos" })).toBeInTheDocument();
+    const more = screen.getByRole("region", { name: "More for you" });
+    expect(within(more).getByRole("button", { name: "Play Through the years: Asha, 2019 – 2026 · 40 photos" })).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Saved" })).getByText("Kerala road trip")).toBeInTheDocument();
     expect(await screen.findByText("Goa sunsets")).toBeInTheDocument();
   });
@@ -127,13 +130,14 @@ describe("StoriesView", () => {
     });
     expect(JSON.parse(String(sent("/api/stories/1/save", "PATCH")[0].init?.body))).toEqual({ is_saved: true });
     expect(within(screen.getByRole("region", { name: "Saved" })).getByText("Goa, Nov 2026")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "For you" })).queryByText("Goa, Nov 2026")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Newest story: Goa, Nov 2026" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Newest story: Through the years: Asha" })).toBeInTheDocument();
     expect(changed).toHaveBeenCalled();
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Unsave Kerala road trip" }));
     });
-    expect(within(screen.getByRole("region", { name: "For you" })).getByText("Kerala road trip")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Newest story: Kerala road trip" })).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Hide Through the years: Asha" }));
@@ -158,10 +162,29 @@ describe("StoriesView", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Make new stories" }));
     });
-    const forYou = screen.getByRole("region", { name: "For you" });
-    expect(within(forYou).getByText("One year ago")).toBeInTheDocument();
-    expect(within(forYou).queryByText("Kerala road trip")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Newest story: One year ago" })).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "More for you" })).queryByText("Kerala road trip")).not.toBeInTheDocument();
     expect(useAppStore.getState().showToast).toHaveBeenCalledWith("Made 1 new story.", "success");
+  });
+
+  it("welcomes a library with no stories yet and makes the first ones", async () => {
+    let fresh: StoryModel[] = [];
+    mockEngine({
+      ...routes,
+      "GET /api/stories?ephemeral_only=true": () => fresh,
+      "GET /api/stories?saved_only=true": [],
+      "POST /api/stories/generate": () => {
+        fresh = [GOA];
+        return fresh;
+      },
+    });
+    render(<StoriesView onPlayStory={vi.fn()} onNavigate={vi.fn()} />);
+    const welcome = await screen.findByRole("region", { name: "Your photos, told as stories" });
+    expect(screen.queryByRole("region", { name: "Saved" })).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(welcome).getByRole("button", { name: "Make my first stories" }));
+    });
+    expect(screen.getByRole("region", { name: "Newest story: Goa, Nov 2026" })).toBeInTheDocument();
   });
 
   it("saves a collage idea with one click", async () => {

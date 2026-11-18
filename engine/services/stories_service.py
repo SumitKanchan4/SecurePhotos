@@ -175,6 +175,8 @@ class StoryModel(BaseModel):
     slides_count: int = 0
     first_taken_at: Optional[str] = None  # R7e: story cards say when ("Nov 2026", "2019 – 2026")
     last_taken_at: Optional[str] = None
+    # Stories page (owner feedback, round 2 #8): a few of the story's photos for its card.
+    preview_photo_ids: List[int] = []
     slides: List[StorySlide] = []
 
     @model_validator(mode="after")

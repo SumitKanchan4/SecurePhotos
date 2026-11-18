@@ -293,6 +293,8 @@ export interface StoryModel {
   /** Oldest and newest photo dates in the story (story list only). */
   first_taken_at?: string | null;
   last_taken_at?: string | null;
+  /** A few of the story's photos, in story order (story list only; round 2, #8). */
+  preview_photo_ids?: number[];
   slides: StorySlide[];
 }
 

@@ -371,6 +371,8 @@ async def test_story_list_gives_the_date_span_of_its_photos():
         assert listed["slides_count"] == 2
         assert listed["first_taken_at"].startswith("2019-03-02")
         assert listed["last_taken_at"].startswith("2026-11-12")
+        # Round 2, #8: a few photos for the card's moving cover, in story order.
+        assert listed["preview_photo_ids"] == ids
     finally:
         conn = await get_db_connection()
         await conn.execute("DELETE FROM stories WHERE id = ?;", (story_id,))
