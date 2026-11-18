@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../store/useAppStore";
 import type { MusicTrackItem, StoryModel, SuggestedCollage } from "../../types";
 import { StoriesView } from "../StoriesView";
-import { StoryMusicDialog } from "./StoryMusicDialog";
+import { MusicLibrary } from "../settings/MusicSettings";
 import { filterTracks, moodLabel, storyMeta, storySpan } from "./storiesFormat";
 
 const story = (id: number, title: string, extra: Partial<StoryModel> = {}): StoryModel => ({
@@ -216,14 +216,14 @@ describe("StoriesView collage ideas", () => {
   });
 });
 
-describe("StoryMusicDialog", () => {
+describe("Settings → Music (round 2, #6)", () => {
   it("lists songs, changes a mood and asks before removing one", async () => {
     mockEngine({
       "GET /api/stories/music": [TRACK],
       "PATCH /api/stories/music/t1": { ...TRACK, mood: "nostalgic" },
       "DELETE /api/stories/music/t1": { status: "deleted" },
     });
-    render(<StoryMusicDialog onClose={vi.fn()} />);
+    render(<MusicLibrary />);
     expect(await screen.findByText("Band · 2:00 · Picked for me: Upbeat")).toBeInTheDocument();
     await act(async () => {
       fireEvent.change(screen.getByRole("combobox", { name: "Mood for Sunny Days" }), { target: { value: "nostalgic" } });

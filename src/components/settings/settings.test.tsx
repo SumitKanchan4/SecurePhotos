@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 describe("Settings layout", () => {
-  it("lists the five sections on the left and opens one at a time", () => {
+  it("lists the sections on the left and opens one at a time", () => {
     mockEngine({ "GET /api/system/settings": { body: { settings: DEFAULT_SETTINGS } } });
     invokeMock.mockResolvedValue({ path: "D:/Library", is_custom: true, has_database: true });
     render(<SettingsView />);
@@ -62,7 +62,19 @@ describe("Settings layout", () => {
     expect(screen.getByText("Lock automatically after")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Photos & AI" }));
     expect(screen.getByRole("radiogroup", { name: "Pause background work on battery" })).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "Ambient story soundtracks" })).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: /music/i })).not.toBeInTheDocument();
+    // Music has its own section (round 2, #6).
+    fireEvent.click(screen.getByRole("button", { name: "Music" }));
+    expect(screen.getByRole("switch", { name: "Play music in stories" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Songs" })).toBeInTheDocument();
+  });
+
+  it("opens the section another screen asks for (Stories' music button)", () => {
+    mockEngine({ "GET /api/system/settings": { body: { settings: DEFAULT_SETTINGS } } });
+    useAppStore.getState().openSettings("music");
+    render(<SettingsView />);
+    expect(screen.getByRole("heading", { level: 2, name: "Music" })).toBeInTheDocument();
+    expect(useAppStore.getState().settingsSection).toBeNull();
   });
 });
 

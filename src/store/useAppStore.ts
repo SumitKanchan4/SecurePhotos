@@ -27,6 +27,8 @@ interface AppState {
   /** Bumped by openSearch so the Search page focuses its field again. */
   searchFocusKey: number;
   pendingOpen: PendingOpen;
+  /** A Settings section another screen asked to open (e.g. "music"). */
+  settingsSection: string | null;
   selectedPhotoIds: Set<number>;
   activeVolume: VolumeInfo | null;
   isDriveConnected: boolean;
@@ -57,6 +59,8 @@ interface AppState {
   openPerson: (id: number) => void;
   openAlbum: (id: number) => void;
   clearPendingOpen: () => void;
+  openSettings: (section: string) => void;
+  clearSettingsSection: () => void;
   togglePhotoSelection: (id: number) => void;
   clearSelection: () => void;
   setActiveVolume: (vol: VolumeInfo | null) => void;
@@ -121,6 +125,7 @@ export const useAppStore = create<AppState>((set) => ({
   searchQuery: "",
   searchFocusKey: 0,
   pendingOpen: null,
+  settingsSection: null,
   selectedPhotoIds: new Set<number>(),
   activeVolume: null,
   isDriveConnected: true,
@@ -169,6 +174,8 @@ export const useAppStore = create<AppState>((set) => ({
   openPerson: (id) => set({ activeTab: "people", pendingOpen: { kind: "person", id } }),
   openAlbum: (id) => set({ activeTab: "albums", pendingOpen: { kind: "album", id } }),
   clearPendingOpen: () => set({ pendingOpen: null }),
+  openSettings: (section) => set({ activeTab: "settings", settingsSection: section }),
+  clearSettingsSection: () => set({ settingsSection: null }),
 
   togglePhotoSelection: (id) =>
     set((state) => {

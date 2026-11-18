@@ -1,21 +1,24 @@
 /**
- * Settings (redesign R6): sections on the left (Appearance, Photos & AI, Private Vault,
+ * Settings (redesign R6): sections on the left (Appearance, Photos & AI, Music, Private Vault,
  * Storage, About), plain rows on the right. Settings are stored in the library's database,
  * so they travel with the drive.
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useAppStore } from "../store/useAppStore";
 import { useAppSettings } from "../hooks/useAppSettings";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
 import { PhotosAISettings } from "./settings/PhotosAISettings";
 import { VaultSettings } from "./settings/VaultSettings";
 import { StorageSettings } from "./settings/StorageSettings";
 import { AboutSettings } from "./settings/AboutSettings";
+import { MusicSettings } from "./settings/MusicSettings";
 
-export type SettingsSection = "appearance" | "photos" | "vault" | "storage" | "about";
+export type SettingsSection = "appearance" | "photos" | "music" | "vault" | "storage" | "about";
 
 export const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: "appearance", label: "Appearance" },
   { id: "photos", label: "Photos & AI" },
+  { id: "music", label: "Music" },
   { id: "vault", label: "Private Vault" },
   { id: "storage", label: "Storage" },
   { id: "about", label: "About" },
@@ -23,7 +26,14 @@ export const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
 
 export const SettingsView: React.FC<{ initialSection?: SettingsSection }> = ({ initialSection = "appearance" }) => {
   const { settings, updateSetting } = useAppSettings();
-  const [section, setSection] = useState<SettingsSection>(initialSection);
+  // Another screen can open a section directly (Stories' music button opens Music).
+  const requested = useAppStore((s) => s.settingsSection) as SettingsSection | null;
+  const [section, setSection] = useState<SettingsSection>(requested ?? initialSection);
+  useEffect(() => {
+    if (!requested) return;
+    setSection(requested);
+    useAppStore.getState().clearSettingsSection();
+  }, [requested]);
   const current = SETTINGS_SECTIONS.find((s) => s.id === section) ?? SETTINGS_SECTIONS[0];
 
   return (
@@ -47,6 +57,7 @@ export const SettingsView: React.FC<{ initialSection?: SettingsSection }> = ({ i
           <h2 className="settings-section-title">{current.label}</h2>
           {section === "appearance" && <AppearanceSettings settings={settings} updateSetting={updateSetting} />}
           {section === "photos" && <PhotosAISettings settings={settings} updateSetting={updateSetting} />}
+          {section === "music" && <MusicSettings settings={settings} updateSetting={updateSetting} />}
           {section === "vault" && <VaultSettings settings={settings} updateSetting={updateSetting} />}
           {section === "storage" && <StorageSettings />}
           {section === "about" && <AboutSettings />}

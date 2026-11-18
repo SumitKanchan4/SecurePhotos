@@ -136,13 +136,6 @@ export const PhotosAISettings: React.FC<PhotosAISettingsProps> = ({ settings, up
       </SettingsGroup>
 
       <SettingsGroup title="Stories">
-        <SettingRow title="Background music" description="Plays music during story slideshows.">
-          <ToggleSwitch
-            checked={settings.ambient_music}
-            onChange={(checked) => updateSetting("ambient_music", checked)}
-            ariaLabel="Ambient story soundtracks"
-          />
-        </SettingRow>
         <SettingRow title="Slow pan and zoom" description="Gently moves still photos during stories.">
           <ToggleSwitch
             checked={settings.ken_burns_motion}
