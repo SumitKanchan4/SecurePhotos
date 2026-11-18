@@ -1,15 +1,17 @@
 /**
- * Stories (redesign R7e, approved board). Stories look like stories: tall cards with the title on
- * the photo. New ones appear under For you; ones you keep move to Saved. Collage ideas sit below
- * with a single Save. Music for stories lives in Settings → Music (one icon away).
+ * Stories (redesign R7e; owner feedback round 2 #8: "very raw, not engaging"). The newest story
+ * for you plays quietly as a wide stage at the top (its photos cross-fade with a slow pan; still
+ * when motion is reduced). The other suggestions are tall cards tagged with their kind; saved ones
+ * sit on a quieter row; collage ideas form a mosaic. With no stories yet, one panel makes the
+ * first ones. Music for stories lives in Settings → Music (one icon away).
  */
 import React, { useCallback, useEffect, useState } from "react";
-import { Bookmark, BookmarkCheck, Loader2, Music, X } from "lucide-react";
+import { Bookmark, BookmarkCheck, Loader2, Music, Play, Sparkles, X } from "lucide-react";
 import type { PhotoItem, StoryModel, SuggestedCollage } from "../types";
 import type { NavTab } from "../store/useAppStore";
 import { useAppStore } from "../store/useAppStore";
 import { apiFetch, getThumbnailUrl } from "../services/api";
-import { plural, storyMeta } from "./stories/storiesFormat";
+import { plural, storyKind, storyMeta } from "./stories/storiesFormat";
 
 /** Collage ideas shown at first; a big library can have over a hundred. */
 const COLLAGES_FIRST = 6;
@@ -36,6 +38,9 @@ const StoryCard: React.FC<{
         ) : (
           <span className="sto-card-blank" aria-hidden="true" />
         )}
+        <span className="sto-card-kind" aria-hidden="true">
+          {storyKind(story.story_type)}
+        </span>
         <span className="sto-card-caption" aria-hidden="true">
           <span className="sto-card-title">{story.title}</span>
           {meta && <span className="sto-card-meta">{meta}</span>}
@@ -43,6 +48,67 @@ const StoryCard: React.FC<{
       </button>
       <span className="sto-card-actions">{actions}</span>
     </div>
+  );
+};
+
+/** Seconds each photo shows on the stage. */
+const STAGE_SECONDS = 5;
+
+function prefersStill(): boolean {
+  if (document.documentElement.dataset.reduceMotion === "true") return true;
+  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/**
+ * The newest story for you, playing quietly as a wide stage: its photos cross-fade with a slow
+ * pan (one still photo when motion is reduced). Play opens the story.
+ */
+const StoryStage: React.FC<{ story: StoryModel; onPlay: () => void; onSave: () => void; onHide: () => void }> = ({ story, onPlay, onSave, onHide }) => {
+  const photos = (story.preview_photo_ids?.length ? story.preview_photo_ids : story.cover_photo_id ? [story.cover_photo_id] : []).slice(0, 4);
+  const [shown, setShown] = useState(0);
+  const still = prefersStill();
+  useEffect(() => {
+    setShown(0);
+    if (still || photos.length < 2) return;
+    const timer = window.setInterval(() => setShown((i) => (i + 1) % photos.length), STAGE_SECONDS * 1000);
+    return () => window.clearInterval(timer);
+  }, [story.id, photos.length, still]);
+  const meta = storyMeta(story);
+  return (
+    <section className={`sto-stage${still ? " is-still" : ""}`} aria-label={`Newest story: ${story.title}`}>
+      <div className="sto-stage-photos" aria-hidden="true">
+        {photos.length ? (
+          photos.map((id, i) => (
+            <img key={id} src={getThumbnailUrl(id)} alt="" draggable={false} className={i === shown ? "is-on" : undefined} style={{ animationDuration: `${STAGE_SECONDS + 1.5}s` }} />
+          ))
+        ) : (
+          <span className="sto-card-blank" />
+        )}
+      </div>
+      <div className="sto-stage-text">
+        <span className="sto-stage-kind">{storyKind(story.story_type)}</span>
+        <h2 className="sto-stage-title">{story.title}</h2>
+        {meta && <p className="sto-stage-meta">{meta}</p>}
+        <div className="sto-stage-actions">
+          <button type="button" className="sto-stage-play" onClick={onPlay}>
+            <Play size={16} fill="currentColor" /> Play story
+          </button>
+          <button type="button" className="sto-stage-btn" aria-label={`Save ${story.title}`} onClick={onSave}>
+            <Bookmark size={15} /> Save
+          </button>
+          <button type="button" className="sto-stage-btn is-quiet" aria-label={`Hide ${story.title}`} title="Hide" onClick={onHide}>
+            <X size={15} />
+          </button>
+        </div>
+      </div>
+      {photos.length > 1 && !still && (
+        <div className="sto-stage-dots" aria-hidden="true">
+          {photos.map((id, i) => (
+            <span key={id} className={i === shown ? "is-on" : undefined} />
+          ))}
+        </div>
+      )}
+    </section>
   );
 };
 
@@ -211,44 +277,62 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
         </button>
       </div>
 
-      <section className="alb-section" aria-labelledby="sto-for-you">
-        <h2 id="sto-for-you" className="dash-section-title">
-          For you
-        </h2>
-        {forYou === null ? (
-          <div className="sto-row">
-            {[0, 1, 2, 3].map((k) => (
-              <span key={k} className="sto-card sto-card-loading" aria-hidden="true" />
-            ))}
-          </div>
-        ) : forYou.length === 0 ? (
-          <div className="dash-note">
-            No new stories right now. <strong>Make new stories</strong> looks through your photos for trips, birthdays and years gone by.
-          </div>
-        ) : (
-          <div className="sto-row">
-            {forYou.map((story) => (
-              <StoryCard
-                key={story.id}
-                story={story}
-                onPlay={() => onPlayStory(story.id)}
-                actions={
-                  <>
-                    <button type="button" className="sto-action" aria-label={`Save ${story.title}`} title="Save" onClick={() => setSavedState(story, true)}>
-                      <Bookmark size={14} />
-                    </button>
-                    <button type="button" className="sto-action" aria-label={`Hide ${story.title}`} title="Hide" onClick={() => hideStory(story)}>
-                      <X size={14} />
-                    </button>
-                  </>
-                }
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      {forYou === null ? (
+        <div className="sto-stage is-loading" aria-hidden="true" />
+      ) : forYou.length === 0 && saved.length === 0 ? (
+        // No stories yet: one inviting panel that makes the first ones.
+        <section className="sto-welcome" aria-labelledby="sto-welcome-title">
+          <Sparkles size={26} aria-hidden="true" />
+          <h2 id="sto-welcome-title">Your photos, told as stories</h2>
+          <p>Trips, birthdays, this week years ago, and old prints brought back. Stories are made on this computer from your own photos.</p>
+          <button type="button" className="sto-stage-play" onClick={makeStories} disabled={making}>
+            {making ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />}
+            {making ? "Making stories…" : "Make my first stories"}
+          </button>
+        </section>
+      ) : forYou.length === 0 ? (
+        <div className="dash-note">
+          No new stories right now. <strong>Make new stories</strong> looks through your photos for trips, birthdays and years gone by.
+        </div>
+      ) : (
+        <>
+          <StoryStage
+            story={forYou[0]}
+            onPlay={() => onPlayStory(forYou[0].id)}
+            onSave={() => setSavedState(forYou[0], true)}
+            onHide={() => hideStory(forYou[0])}
+          />
+          {forYou.length > 1 && (
+            <section className="alb-section" aria-labelledby="sto-for-you">
+              <h2 id="sto-for-you" className="dash-section-title">
+                More for you
+              </h2>
+              <div className="sto-row">
+                {forYou.slice(1).map((story) => (
+                  <StoryCard
+                    key={story.id}
+                    story={story}
+                    onPlay={() => onPlayStory(story.id)}
+                    actions={
+                      <>
+                        <button type="button" className="sto-action" aria-label={`Save ${story.title}`} title="Save" onClick={() => setSavedState(story, true)}>
+                          <Bookmark size={14} />
+                        </button>
+                        <button type="button" className="sto-action" aria-label={`Hide ${story.title}`} title="Hide" onClick={() => hideStory(story)}>
+                          <X size={14} />
+                        </button>
+                      </>
+                    }
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+        </>
+      )}
 
-      <section className="alb-section" aria-labelledby="sto-saved">
+      {(forYou === null || forYou.length > 0 || saved.length > 0) && (
+      <section className="alb-section sto-saved" aria-labelledby="sto-saved">
         <h2 id="sto-saved" className="dash-section-title">
           Saved
         </h2>
@@ -277,6 +361,7 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
           </div>
         )}
       </section>
+      )}
 
       {(collages === null || collages.length > 0) && (
         <section className="alb-section" aria-labelledby="sto-collages">

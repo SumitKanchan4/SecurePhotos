@@ -40,6 +40,9 @@ from engine.services.stories_service import (
 
 logger = logging.getLogger("securephotos.api.stories")
 
+# Photos per story sent with the list, for the Stories page's moving cover.
+STORY_PREVIEW_PHOTOS = 4
+
 router = APIRouter(prefix="/api/stories", tags=["Stories"])
 
 
@@ -112,6 +115,23 @@ async def list_stories(
         async with conn.execute(query, (limit, offset)) as cursor:
             rows = await cursor.fetchall()
 
+        # A few photos per story, in story order, for the page's moving cover (round 2, #8).
+        previews: dict = {}
+        ids = [r["id"] for r in rows]
+        if ids:
+            marks = ",".join("?" * len(ids))
+            async with conn.execute(
+                f"""SELECT si.story_id, si.photo_id FROM story_items si JOIN photos p ON p.id = si.photo_id
+                    WHERE si.story_id IN ({marks}) AND p.trashed_at IS NULL AND COALESCE(p.is_encrypted, 0) = 0
+                      AND (p.mime_type IS NULL OR p.mime_type NOT LIKE 'video/%')
+                    ORDER BY si.story_id, si.sort_order;""",
+                ids,
+            ) as cursor:
+                for item in await cursor.fetchall():
+                    shown = previews.setdefault(item["story_id"], [])
+                    if len(shown) < STORY_PREVIEW_PHOTOS:
+                        shown.append(item["photo_id"])
+
         stories = []
         for r in rows:
             mood = r["vibe_mood"] or "acoustic"
@@ -128,6 +148,7 @@ async def list_stories(
                     slides_count=r["slides_count"],
                     first_taken_at=str(r["first_taken_at"]) if r["first_taken_at"] else None,
                     last_taken_at=str(r["last_taken_at"]) if r["last_taken_at"] else None,
+                    preview_photo_ids=previews.get(r["id"], []),
                     slides=[],  # Lightweight summary: slides fetched on-demand via GET /api/stories/{id}
                 )
             )

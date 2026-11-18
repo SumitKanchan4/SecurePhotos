@@ -2596,8 +2596,11 @@ html, body, #root {
 .alb-pick-video { position: absolute; right: 6px; bottom: 6px; padding: 3px 5px; border-radius: var(--radius-full); background: rgba(10, 10, 10, 0.72); color: #ffffff; display: flex; }
 
 /* ── Stories (redesign R7e) ────────────────────────────────────────── */
-.sto-row { display: flex; gap: 12px; overflow-x: auto; padding: 2px 2px 8px; scrollbar-width: thin; }
-.sto-card { position: relative; flex: none; width: 150px; height: 250px; border-radius: 18px; overflow: hidden; background: var(--bg-surface-elevated); }
+.sto-row { display: flex; gap: 14px; overflow-x: auto; padding: 2px 2px 8px; scrollbar-width: thin; }
+.sto-card { position: relative; flex: none; width: 176px; height: 292px; border-radius: 20px; overflow: hidden; background: var(--bg-surface-elevated); }
+.sto-saved .sto-card { width: 132px; height: 212px; border-radius: 16px; }
+.sto-saved .sto-card-title { font-size: 13px; }
+.sto-card-kind { position: absolute; top: 10px; left: 10px; padding: 3px 8px; border-radius: var(--radius-full); background: rgba(10, 10, 10, 0.6); color: #ffffff; font-size: 10px; font-weight: 700; backdrop-filter: blur(6px); pointer-events: none; }
 .sto-card-loading { opacity: 0.6; }
 .sto-card-play { display: block; width: 100%; height: 100%; padding: 0; border: none; background: transparent; cursor: pointer; text-align: left; }
 .sto-card-play img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.25s ease; }
@@ -2849,3 +2852,77 @@ html, body, #root {
   padding-bottom: 10px;
   background: var(--bg-app);
 }
+
+
+/* ── Stories stage, welcome and collage mosaic (owner feedback, round 2 #8) ──────────────── */
+.sto-stage {
+  position: relative;
+  flex: none;
+  height: clamp(280px, 42vh, 420px);
+  border-radius: 28px;
+  overflow: hidden;
+  background: #0d0d0d;
+  color: #ffffff;
+  isolation: isolate;
+}
+.sto-stage.is-loading { background: var(--bg-surface-elevated); }
+.sto-stage-photos { position: absolute; inset: 0; z-index: -1; }
+.sto-stage-photos img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  opacity: 0; transform: scale(1.04); transition: opacity 1.4s ease;
+}
+.sto-stage-photos img.is-on { opacity: 1; animation: sto-stage-pan linear forwards; }
+.sto-stage.is-still .sto-stage-photos img.is-on { animation: none; transform: none; }
+@keyframes sto-stage-pan { from { transform: scale(1.04) translate3d(0, 0, 0); } to { transform: scale(1.14) translate3d(-2%, -1.5%, 0); } }
+.sto-stage::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.78) 0%, rgba(0, 0, 0, 0.35) 45%, rgba(0, 0, 0, 0) 70%),
+              linear-gradient(to right, rgba(0, 0, 0, 0.45), transparent 60%);
+}
+.sto-stage-text { position: absolute; left: clamp(20px, 4vw, 44px); right: 24px; bottom: clamp(20px, 4vh, 36px); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-width: 640px; }
+.sto-stage-kind { padding: 4px 10px; border-radius: var(--radius-full); background: var(--accent-fill); color: var(--on-accent); font-size: 11px; font-weight: 800; }
+.sto-stage-title {
+  margin: 4px 0 0; font-family: var(--font-display); font-weight: 900;
+  font-size: clamp(30px, 4.6vw, 58px); line-height: 0.98; letter-spacing: -0.035em;
+  text-wrap: balance; text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
+}
+.sto-stage-meta { margin: 0; font-size: 14px; color: rgba(255, 255, 255, 0.82); }
+.sto-stage-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.sto-stage-play {
+  display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 20px; border: none;
+  border-radius: var(--radius-full); background: var(--accent-fill); color: var(--on-accent);
+  font-size: 14px; font-weight: 800; cursor: pointer; transition: transform 0.15s ease;
+}
+.sto-stage-play:hover:not(:disabled) { transform: translateY(-1px); }
+.sto-stage-play:disabled { opacity: 0.7; cursor: default; }
+.sto-stage-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 42px; padding: 0 16px;
+  border-radius: var(--radius-full); border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.12); color: #ffffff; font-size: 13px; font-weight: 700;
+  backdrop-filter: blur(8px); cursor: pointer;
+}
+.sto-stage-btn.is-quiet { width: 42px; padding: 0; justify-content: center; }
+.sto-stage-btn:hover { background: rgba(255, 255, 255, 0.22); }
+.sto-stage-play:focus-visible, .sto-stage-btn:focus-visible { outline: 3px solid #ffffff; outline-offset: 2px; }
+.sto-stage-dots { position: absolute; right: 22px; bottom: 22px; display: flex; gap: 5px; }
+.sto-stage-dots span { width: 18px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.35); transition: background 0.4s ease, width 0.4s ease; }
+.sto-stage-dots span.is-on { width: 30px; background: #ffffff; }
+
+.sto-welcome {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+  padding: clamp(28px, 5vw, 56px); border-radius: 28px;
+  background: radial-gradient(120% 120% at 100% 0%, var(--accent-soft, rgba(190, 242, 100, 0.18)), transparent 55%), var(--bg-surface);
+  border: 1px solid var(--glass-border); color: var(--text-primary);
+}
+.sto-welcome > svg { color: var(--accent-ink, var(--text-primary)); }
+.sto-welcome h2 { margin: 0; font-family: var(--font-display); font-weight: 900; font-size: clamp(28px, 4vw, 44px); line-height: 1; letter-spacing: -0.03em; max-width: 14ch; }
+.sto-welcome p { margin: 0 0 6px; max-width: 52ch; font-size: 14px; line-height: 1.55; color: var(--text-secondary); }
+.sto-welcome .sto-stage-play:focus-visible { outline-color: var(--accent-fill); }
+
+/* Collage ideas as a mosaic: the first idea is the big one. */
+.sto-collages { grid-auto-flow: dense; }
+.sto-collage:first-child { grid-column: span 2; grid-row: span 2; }
+.sto-collage:first-child .sto-collage-grid { flex: 1; }
+.sto-collage:first-child .sto-collage-grid > * { aspect-ratio: auto; height: 100%; min-height: 120px; }
+@media (max-width: 720px) { .sto-collage:first-child { grid-column: auto; grid-row: auto; } }
+@media (prefers-reduced-motion: reduce) { .sto-stage-photos img.is-on { animation: none; transform: none; } .sto-stage-photos img { transition: none; } }
