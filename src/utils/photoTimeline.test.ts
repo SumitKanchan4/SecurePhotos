@@ -9,6 +9,8 @@ import {
   monthKey,
   monthLabel,
   parseTimeline,
+  qualityTag,
+  videoLength,
   scrubberEntries,
   sectionAt,
   viewerWindow,
@@ -23,17 +25,31 @@ describe("parseTimeline", () => {
       total: 3,
       items: [
         [7, "2026-05-14 10:00:00", 4000, 3000, "p", 1 | 4],
-        [8, null, 0, 0, "v", 2],
-        [9, "2026-05-14 10:00:00", 4000, 3000, "p", 8 | 16],
+        [8, null, 0, 0, "v", 2, 95],
+        [9, "2026-05-14 10:00:00", 4000, 3000, "p", 8 | 16 | 32 | 256],
       ],
     });
     expect(parsed[0]).toEqual({
       id: 7, taken_at: "2026-05-14 10:00:00", width: 4000, height: 3000,
       is_video: false, is_favorite: true, is_optimized: false, is_enhanced: true, is_ai: false, is_preparing: false,
+      ai_kinds: [], duration: 0,
     });
     expect(parsed[2].is_preparing).toBe(true); // P4: still being prepared (quiet dot).
     expect(parsed[1]).toMatchObject({ id: 8, is_video: true, is_favorite: false, is_optimized: true, is_enhanced: false });
     expect(parsed[2]).toMatchObject({ id: 9, is_ai: true, is_favorite: false });  // H10: improved copy.
+    // Owner feedback 2026-11-18: what the copy had done, and a video's length.
+    expect(parsed[2].ai_kinds).toEqual(["colour", "scratches"]);
+    expect(parsed[1].duration).toBe(95);
+  });
+
+  it("names the tile's quality tag and a video's length", () => {
+    const base = { is_video: false, is_optimized: true, is_enhanced: true, width: 4000, height: 3000 };
+    expect(qualityTag(base)).toBe("8K");
+    expect(qualityTag({ ...base, is_optimized: false })).toBeNull(); // Not enhanced yet.
+    expect(qualityTag({ ...base, is_video: true, width: 3840, height: 2160 })).toBe("4K");
+    expect(qualityTag({ ...base, is_video: true, width: 1080, height: 1920 })).toBe("HD");
+    expect(qualityTag({ ...base, is_video: true, width: 640, height: 480 })).toBeNull();
+    expect([videoLength(42), videoLength(725), videoLength(3725), videoLength(0)]).toEqual(["0:42", "12:05", "1:02:05", null]);
   });
 });
 

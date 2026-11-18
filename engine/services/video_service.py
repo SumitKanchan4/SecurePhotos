@@ -932,3 +932,35 @@ async def enhance_old_video(
         if temp_path.exists():
             temp_path.unlink()
         return {"success": False, "error": str(e)}
+
+
+async def fill_video_durations() -> int:
+    """Measures, once, the length of videos imported before lengths were saved (owner feedback
+    2026-11-18: the grid shows each video's length). Vault videos are never read. Returns how
+    many were measured; an unreadable video is stored as 0 so it isn't tried again."""
+    from engine.config import resolve_media_path
+    from engine.database import get_db_connection
+
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(
+            """SELECT id, filepath FROM photos
+               WHERE mime_type LIKE 'video/%' AND duration_seconds IS NULL AND COALESCE(is_encrypted, 0) = 0;"""
+        ) as cursor:
+            rows = await cursor.fetchall()
+        done = 0
+        for row in rows:
+            path = resolve_media_path(row["filepath"])
+            seconds = 0.0
+            if path.exists():
+                try:
+                    meta = await asyncio.to_thread(extract_video_metadata, str(path))
+                    seconds = float(meta.get("duration") or 0)
+                except Exception as err:  # noqa: BLE001 - a broken file must not stop the rest
+                    logger.warning("Couldn't measure video %s: %s", row["id"], err)
+            await conn.execute("UPDATE photos SET duration_seconds = ? WHERE id = ?;", (seconds, row["id"]))
+            await conn.commit()
+            done += 1
+        return done
+    finally:
+        await conn.close()

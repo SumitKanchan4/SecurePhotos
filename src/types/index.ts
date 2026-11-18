@@ -72,16 +72,20 @@ export interface TimelinePhoto {
   is_favorite: boolean;
   is_optimized: boolean;
   is_enhanced: boolean;
-  /** H10: an improved copy made with AI (the grid tags it "Improved"). */
+  /** H10: an improved copy made with AI (the grid shows one icon per fix). */
   is_ai?: boolean;
+  /** What the improved copy had done: "colour", "fade", "faces", "scratches". */
+  ai_kinds?: string[];
   /** After-import P4: text, faces, old-photo check, duplicates or 8K still to do (quiet dot). */
   is_preparing?: boolean;
+  /** A video's length in seconds (0 or missing: unknown). */
+  duration?: number;
 }
 
-/** /api/photos/timeline: rows are [id, taken_at, width, height, "p" | "v", flags]. */
+/** /api/photos/timeline: rows are [id, taken_at, width, height, "p" | "v", flags, seconds]. */
 export interface TimelineResponse {
   total: number;
-  items: [number, string | null, number, number, string, number][];
+  items: ([number, string | null, number, number, string, number] | [number, string | null, number, number, string, number, number])[];
 }
 
 /** /api/photos/{id}/context: what the viewer's details panel shows besides EXIF (redesign R3). */

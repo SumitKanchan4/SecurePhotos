@@ -220,6 +220,7 @@ def extract_exif_metadata(filepath: Path) -> Dict[str, any]:
         v_meta = extract_video_metadata(str(filepath))
         metadata["width"] = v_meta.get("width")
         metadata["height"] = v_meta.get("height")
+        metadata["duration"] = float(v_meta.get("duration") or 0)
         if v_meta.get("taken_at"):
             metadata["taken_at"] = v_meta.get("taken_at")
     else:
@@ -657,8 +658,11 @@ async def ingest_single_photo(
             str(source_path.resolve()),
         ),
     )
-    await conn.commit()
     photo_id = cursor.lastrowid
+    if is_video and photo_id:
+        # The grid shows each video's length (owner feedback 2026-11-18).
+        await conn.execute("UPDATE photos SET duration_seconds = ? WHERE id = ?;", (metadata.get("duration") or 0.0, photo_id))
+    await conn.commit()
 
     # Intelligent Auto-Video Classification and Resilient Queue Enrollment
     if is_video and photo_id:
