@@ -15,6 +15,8 @@ from engine.api.photos import (
     TIMELINE_ENHANCED,
     TIMELINE_FAVORITE,
     TIMELINE_OPTIMIZED,
+    TIMELINE_AI,
+    TIMELINE_KIND_BITS,
     TIMELINE_PREPARING,
 )
 from engine.database import get_db_connection, run_migrations
@@ -32,6 +34,8 @@ async def _insert(
     enhanced=0,
     encrypted=0,
     trashed=False,
+    ai_kind=None,
+    seconds=None,
 ) -> int:
     conn = await get_db_connection()
     try:
@@ -40,12 +44,12 @@ async def _insert(
             """
             INSERT INTO photos (
                 filename, filepath, file_hash, file_size, mime_type, width, height, taken_at,
-                is_favorite, is_optimized, is_enhanced, is_encrypted, trashed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id;
+                is_favorite, is_optimized, is_enhanced, is_encrypted, trashed_at, ai_kind, duration_seconds
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id;
             """,
             (
                 name, f"photos/{name}", uuid.uuid4().hex, 1234, mime, width, height, taken_at,
-                favorite, optimized, enhanced, encrypted, "2026-01-01 00:00:00" if trashed else None,
+                favorite, optimized, enhanced, encrypted, "2026-01-01 00:00:00" if trashed else None, ai_kind, seconds,
             ),
         )
         photo_id = (await cursor.fetchone())[0]
@@ -80,7 +84,7 @@ async def test_timeline_returns_compact_rows_in_display_order():
 
     # After-import P4: these test rows haven't been through the after-import steps, so they are
     # still "preparing" (16): text, faces and the old-photo check not done.
-    assert rows[newer] == [newer, "2026-05-14 10:00:00", 4000, 3000, "p", TIMELINE_FAVORITE | TIMELINE_ENHANCED | TIMELINE_PREPARING]
+    assert rows[newer] == [newer, "2026-05-14 10:00:00", 4000, 3000, "p", TIMELINE_FAVORITE | TIMELINE_ENHANCED | TIMELINE_PREPARING, 0]
     assert rows[video][4] == "v" and rows[video][5] == TIMELINE_OPTIMIZED | TIMELINE_PREPARING
     assert rows[older][2:4] == [3000, 4000]
     # Missing dimensions come back as 0 so the grid can fall back to a square tile.
@@ -139,3 +143,36 @@ async def test_details_reject_bad_or_oversized_requests():
     assert bad.status_code == 400
     assert too_many.status_code == 400
     assert empty.status_code == 200 and empty.json() == []
+
+
+@pytest.mark.asyncio
+async def test_timeline_tells_the_grid_what_an_improved_copy_had_done_and_how_long_videos_are():
+    """Owner feedback 2026-11-18: the improved tag shows one icon per fix; videos show their length."""
+    await run_migrations()
+    copy = await _insert("2026-05-15 10:00:00", ai_kind="colour,scratches")
+    video = await _insert("2025-07-02 09:00:00", mime="video/mp4", seconds=94.6)
+    unmeasured = await _insert("2025-07-03 09:00:00", mime="video/mp4")
+    async with _client() as client:
+        rows = {row[0]: row for row in (await client.get("/api/photos/timeline")).json()["items"]}
+    flags = rows[copy][5]
+    assert flags & TIMELINE_AI
+    assert flags & TIMELINE_KIND_BITS["colour"] and flags & TIMELINE_KIND_BITS["scratches"]
+    assert not flags & TIMELINE_KIND_BITS["faces"] and not flags & TIMELINE_KIND_BITS["fade"]
+    assert rows[video][6] == 95 and rows[unmeasured][6] == 0 and rows[copy][6] == 0
+
+
+@pytest.mark.asyncio
+async def test_videos_from_before_lengths_were_saved_are_measured_once():
+    """A video with no length is measured in the background; one that can't be read gets 0 and isn't retried."""
+    from engine.services.video_service import fill_video_durations
+
+    await run_migrations()
+    missing = await _insert("2025-07-04 09:00:00", mime="video/mp4")
+    assert await fill_video_durations() >= 1
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT duration_seconds FROM photos WHERE id = ?;", (missing,)) as cur:
+            assert (await cur.fetchone())[0] == 0
+    finally:
+        await conn.close()
+    assert await fill_video_durations() == 0

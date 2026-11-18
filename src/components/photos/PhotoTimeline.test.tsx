@@ -61,6 +61,22 @@ describe("PhotoTimeline", () => {
     expect(dots.map((d) => d.closest("[data-photo-id]")?.getAttribute("data-photo-id")).sort()).toEqual(["1", "2"]);
   });
 
+  it("tags tiles bottom-left: one icon per fix, 8K, and a video's quality and length (owner feedback 2026-11-18)", () => {
+    const photos = makeLibrary(3);
+    photos[0] = { ...photos[0], is_ai: true, ai_kinds: ["colour", "scratches"] };
+    photos[1] = { ...photos[1], is_optimized: false };
+    photos[2] = { ...photos[2], is_video: true, width: 3840, height: 2160, duration: 94 };
+    render(<PhotoTimeline photos={photos} onOpen={vi.fn()} />);
+    const tile = (id: number) => within(document.querySelector(`[data-photo-id="${id}"]`) as HTMLElement);
+    expect(tile(1).getByRole("img", { name: /Colour added · scratches removed/ })).toBeInTheDocument();
+    expect(tile(1).getByText("8K")).toBeInTheDocument();
+    expect(tile(1).queryByText("Improved")).not.toBeInTheDocument();
+    expect(tile(2).queryByText("8K")).not.toBeInTheDocument(); // Not enhanced yet.
+    expect(tile(3).getByText("4K")).toBeInTheDocument();
+    expect(tile(3).getByText("Video")).toBeInTheDocument();
+    expect(tile(3).getByLabelText("Length 1:34")).toBeInTheDocument();
+  });
+
   it("opens a photo, but selects instead while a selection is active", () => {
     const onOpen = vi.fn();
     render(<PhotoTimeline photos={makeLibrary(20)} onOpen={onOpen} />);

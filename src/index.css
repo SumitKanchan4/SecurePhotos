@@ -423,7 +423,8 @@ html, body, #root {
   gap: 4px;
   padding: 2px 7px;
   border-radius: var(--radius-full);
-  background: rgba(10, 10, 10, 0.72);
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
   color: #ffffff;
   font-size: 10px;
   font-weight: 700;
@@ -431,8 +432,6 @@ html, body, #root {
   pointer-events: none;
 }
 
-/* The improved copy's tag (bottom-left, with the other tags; owner feedback 2026-11-18). */
-.timeline-improved { background: var(--accent-fill); color: var(--on-accent); }
 
 .timeline-select {
   position: absolute;
@@ -2992,3 +2991,17 @@ button.dash-usage-open { cursor: pointer; }
   padding-left: 16px; font-family: var(--font-display); font-size: 12px; font-weight: 800;
   letter-spacing: -0.01em; color: var(--text-secondary); pointer-events: none; white-space: nowrap;
 }
+
+/* Tile tags (owner feedback 2026-11-18): bottom left, translucent black with neon text. Improved
+   fixes and 8K share the top row; a video's Video tag and length sit under its quality. */
+.timeline-tags { position: absolute; left: 8px; bottom: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; pointer-events: none; }
+.timeline-tag-row { display: flex; align-items: center; gap: 4px; }
+.timeline-tags .timeline-chip { position: static; }
+.timeline-tag {
+  display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 6px;
+  border-radius: var(--radius-full); background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(6px);
+  color: #c6ff00; font-size: 10px; font-weight: 800; letter-spacing: 0.03em;
+  text-shadow: 0 0 8px rgba(198, 255, 0, 0.45); pointer-events: auto;
+}
+.timeline-tag svg { filter: drop-shadow(0 0 4px rgba(198, 255, 0, 0.5)); }
+.timeline-length { font-variant-numeric: tabular-nums; }

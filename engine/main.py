@@ -85,6 +85,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # One-off: handle video originals left in hidden .trash folders by older versions (R7c2).
         from engine.services.video_leftovers import run_once as clean_up_old_video_originals
         asyncio.create_task(clean_up_old_video_originals())
+        # The grid shows video lengths; videos from before lengths were saved are measured once.
+        from engine.services.video_service import fill_video_durations
+
+        asyncio.create_task(fill_video_durations())
 
     # H10: plug in "Add colour" and "Fix faded colours" (the worker runs them; tests use fakes).
     from engine.services import old_photo_processors

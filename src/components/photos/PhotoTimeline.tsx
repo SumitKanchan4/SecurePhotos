@@ -8,7 +8,8 @@
  * instead of opening it.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Heart, Loader2, Play, Sparkles } from "lucide-react";
+import { Check, Eraser, Heart, Loader2, Palette, Play, ScanFace, Sparkles, SunMedium, type LucideIcon } from "lucide-react";
+import { improvedLabel } from "../activity/activityFormat";
 import { useAppStore } from "../../store/useAppStore";
 import type { TimelinePhoto } from "../../types";
 import { getThumbnailUrl } from "../../services/api";
@@ -22,9 +23,14 @@ import {
   scrubberEntries,
   sectionAt,
   shortMonthLabel,
+  qualityTag,
   UNDATED_KEY,
+  videoLength,
   visibleRange,
 } from "../../utils/photoTimeline";
+
+/** One icon per fix on an improved copy's tag (owner feedback 2026-11-18). */
+const KIND_ICONS: Record<string, LucideIcon> = { colour: Palette, fade: SunMedium, faces: ScanFace, scratches: Eraser };
 
 const ROW_HEIGHT = { compact: 150, comfortable: 210, spacious: 300 } as const;
 const GAP = 4;
@@ -58,6 +64,10 @@ interface TileProps {
 const Tile: React.FC<TileProps> = React.memo(
   ({ photo, index, left, width, height, isSelected, selectionMode, selectable, isVault, processing, onActivate, onToggleSelect, onToggleFavorite }) => {
     const [loaded, setLoaded] = useState(false);
+    const improvedKinds = photo.is_ai && !photo.is_video ? (photo.ai_kinds?.length ? photo.ai_kinds : ["improved"]) : [];
+    const improvedTitle = `${improvedLabel(photo.ai_kinds?.join(","))}. The original is kept: open the photo to compare.`;
+    const quality = qualityTag(photo);
+    const length = photo.is_video ? videoLength(photo.duration) : null;
     return (
       <div
         role="button"
@@ -85,18 +95,41 @@ const Tile: React.FC<TileProps> = React.memo(
             onLoad={() => setLoaded(true)}
             style={{ opacity: loaded ? 1 : 0 }}
           />
-          {photo.is_video && (
-            <span className="timeline-chip" title={processing ? "This video is being prepared. It can be played soon." : "Video"}>
-              {processing ? <Loader2 size={11} className="spin" /> : <Play size={10} fill="currentColor" />}
-              {processing ? "Preparing" : "Video"}
-            </span>
-          )}
-          {photo.is_ai && !photo.is_video && (
-            // Owner feedback 2026-11-18: bottom-left, like the other tags (top-left is for selecting),
-            // and a word that says what happened instead of "AI".
-            <span className="timeline-chip timeline-improved" title="Improved copy: colour, scratches or faces fixed on this computer. The original is kept; open the photo to compare.">
-              <Sparkles size={10} />
-              Improved
+          {/* Owner feedback 2026-11-18: tags at the bottom left, translucent black with neon text.
+              Photos: one icon per fix on an improved copy, and "8K" once enhanced (both when both).
+              Videos: "4K"/"HD" just above the Video tag, the length to its right. */}
+          {(improvedKinds.length > 0 || quality || photo.is_video) && (
+            <span className="timeline-tags">
+              {(improvedKinds.length > 0 || quality) && (
+                <span className="timeline-tag-row">
+                  {improvedKinds.length > 0 && (
+                    <span className="timeline-tag" role="img" aria-label={improvedTitle} title={improvedTitle}>
+                      {improvedKinds.map((k) => {
+                        const Icon = KIND_ICONS[k] ?? Sparkles;
+                        return <Icon key={k} size={12} strokeWidth={2.4} aria-hidden="true" />;
+                      })}
+                    </span>
+                  )}
+                  {quality && (
+                    <span className="timeline-tag" title={quality === "8K" ? "Enhanced to 8K" : `${quality} video`}>
+                      {quality}
+                    </span>
+                  )}
+                </span>
+              )}
+              {photo.is_video && (
+                <span className="timeline-tag-row">
+                  <span className="timeline-chip" title={processing ? "This video is being prepared. It can be played soon." : "Video"}>
+                    {processing ? <Loader2 size={11} className="spin" /> : <Play size={10} fill="currentColor" />}
+                    {processing ? "Preparing" : "Video"}
+                  </span>
+                  {length && (
+                    <span className="timeline-chip timeline-length" aria-label={`Length ${length}`}>
+                      {length}
+                    </span>
+                  )}
+                </span>
+              )}
             </span>
           )}
           {photo.is_preparing && !photo.is_video && (

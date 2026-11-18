@@ -835,6 +835,11 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
             await conn.execute("ALTER TABLE photos ADD COLUMN restore_checked INTEGER NOT NULL DEFAULT 0;")
             await conn.execute("UPDATE photos SET restore_checked = 1;")
 
+        # Owner feedback 2026-11-18: the grid shows each video's length. NULL = not measured yet
+        # (filled once in the background); 0 = unknown.
+        if "duration_seconds" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN duration_seconds REAL;")
+
         # A8: improved copies kept by an automatic rule wait for the user's choice. Copies made
         # before this column existed by automatic jobs are marked once, when it is added.
         if "choice_pending" not in existing_photo_cols:

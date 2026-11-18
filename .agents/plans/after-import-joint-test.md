@@ -31,7 +31,7 @@ via `data_location.txt`). Import with **Copy**, never Move. Tick each box; note 
 ## 4 · Feedback fixed on this branch (rounds 1-3, 2026-11-18)
 - [ ] Delete an improved photo (or select all and delete): the original goes too; Trash → Restore brings both back.
 - [ ] People → a wrong face: "See this face in its photo" → **Not a face**; it doesn't come back after a rescan. The box label says "This face".
-- [ ] Improved photos have a bottom-left "✦ Improved" tag; the select circle top-left is free.
+- [ ] Tile tags, bottom left (translucent black, neon): fix icons on improved photos, "8K" on enhanced ones (both when both); videos show "4K"/"HD" above "▶ Video" and their length to the right. The select circle top-left is free.
 - [ ] Viewer: Zoom out / Fit / Zoom in buttons; zooming in keeps the photo on screen while the full photo loads.
 - [ ] Settings → Photos & AI: photo quality is Best / Balanced / Smaller.
 - [ ] Headers stay at the top while scrolling (Activity, Albums, an album, Stories, People, Documents, Trash, Dashboard).

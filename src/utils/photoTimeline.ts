@@ -12,9 +12,16 @@ export const FLAG_OPTIMIZED = 2;
 export const FLAG_ENHANCED = 4;
 export const FLAG_AI = 8; // H10: an improved copy (colour, faces...).
 export const FLAG_PREPARING = 16; // After-import P4: still being prepared (quiet dot in the grid).
+/** What an improved copy had done (owner feedback 2026-11-18: one icon each on its grid tag). */
+export const KIND_FLAGS: [string, number][] = [
+  ["colour", 32],
+  ["fade", 64],
+  ["faces", 128],
+  ["scratches", 256],
+];
 
 export function parseTimeline(data: TimelineResponse): TimelinePhoto[] {
-  return data.items.map(([id, takenAt, width, height, kind, flags]) => ({
+  return data.items.map(([id, takenAt, width, height, kind, flags, seconds]) => ({
     id,
     taken_at: takenAt,
     width,
@@ -25,6 +32,8 @@ export function parseTimeline(data: TimelineResponse): TimelinePhoto[] {
     is_enhanced: (flags & FLAG_ENHANCED) !== 0,
     is_ai: (flags & FLAG_AI) !== 0,
     is_preparing: (flags & FLAG_PREPARING) !== 0,
+    ai_kinds: KIND_FLAGS.filter(([, bit]) => (flags & bit) !== 0).map(([k]) => k),
+    duration: seconds ?? 0,
   }));
 }
 
@@ -294,4 +303,26 @@ export function sortNewestFirst<T extends { id: number; taken_at?: string | null
 /** Whether every id in the list is selected (false for an empty list). */
 export function allSelected(ids: number[], selected: Set<number>): boolean {
   return ids.length > 0 && ids.every((id) => selected.has(id));
+}
+
+/**
+ * The grid's quality tag (owner feedback 2026-11-18): "8K" for a photo that has been enhanced;
+ * "4K" or "HD" for a video by its size. Null when there is nothing to say.
+ */
+export function qualityTag(photo: Pick<TimelinePhoto, "is_video" | "is_optimized" | "is_enhanced" | "width" | "height">): string | null {
+  if (!photo.is_video) return photo.is_optimized && photo.is_enhanced ? "8K" : null;
+  const short = Math.min(photo.width || 0, photo.height || 0);
+  if (short >= 2160) return "4K";
+  if (short >= 1080) return "HD";
+  return null;
+}
+
+/** "0:42", "12:05", "1:02:05" from seconds; null when unknown. */
+export function videoLength(seconds?: number | null): string | null {
+  if (!seconds || seconds <= 0) return null;
+  const s = Math.round(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const rest = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${rest}` : `${m}:${rest}`;
 }

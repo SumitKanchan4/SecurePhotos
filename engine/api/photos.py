@@ -97,14 +97,21 @@ TIMELINE_OPTIMIZED = 2
 TIMELINE_ENHANCED = 4
 TIMELINE_AI = 8  # H10: an improved copy (the grid shows the AI badge).
 TIMELINE_PREPARING = 16  # After-import P4: still being prepared (the grid's quiet dot).
+# Owner feedback 2026-11-18: what an improved copy had done, one icon each on its grid tag.
+TIMELINE_KIND_BITS = {"colour": 32, "fade": 64, "faces": 128, "scratches": 256}
+
+
+def _kind_bits(ai_kind: Optional[str]) -> int:
+    return sum(TIMELINE_KIND_BITS.get(k.strip(), 0) for k in set((ai_kind or "").split(",")))
 DETAILS_MAX_IDS = 500
 
 
 class TimelineResponse(BaseModel):
     """Every library photo in display order, as compact rows.
 
-    Each item is ``[id, taken_at or null, width, height, kind, flags]``: kind is
-    "v" for videos and "p" otherwise; flags combine TIMELINE_* bits.
+    Each item is ``[id, taken_at or null, width, height, kind, flags, seconds]``: kind is
+    "v" for videos and "p" otherwise; flags combine TIMELINE_* bits (and the improved copy's
+    kinds, TIMELINE_KIND_BITS); seconds is a video's length (0 for photos or when unknown).
     """
     total: int
     items: List[List[Any]]
@@ -682,7 +689,7 @@ async def get_photo_timeline() -> TimelineResponse:
         async with conn.execute(
             f"""
             SELECT id, taken_at, width, height, mime_type, is_favorite, is_optimized, is_enhanced, ai_kind,
-                   CASE WHEN {PREPARING} THEN 1 ELSE 0 END AS preparing
+                   duration_seconds, CASE WHEN {PREPARING} THEN 1 ELSE 0 END AS preparing
             FROM photos
             WHERE is_encrypted = 0 AND trashed_at IS NULL AND {stack_top()}
             ORDER BY taken_at DESC, {pair_order()};
@@ -702,7 +709,10 @@ async def get_photo_timeline() -> TimelineResponse:
             | (TIMELINE_OPTIMIZED if r["is_optimized"] else 0)
             | (TIMELINE_ENHANCED if r["is_enhanced"] else 0)
             | (TIMELINE_AI if r["ai_kind"] else 0)
-            | (TIMELINE_PREPARING if r["preparing"] else 0),
+            | (TIMELINE_PREPARING if r["preparing"] else 0)
+            | _kind_bits(r["ai_kind"]),
+            # A video's length in whole seconds (0: unknown or a photo).
+            int(round(r["duration_seconds"] or 0)) if (r["mime_type"] or "").startswith("video/") else 0,
         ]
         for r in rows
     ]
