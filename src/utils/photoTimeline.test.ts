@@ -124,14 +124,16 @@ describe("windowing and scrubber", () => {
     expect(sectionAt(sections, layout.sectionTops, 0)?.key).toBe("2026-12");
   });
 
-  it("lists the newest year's months, then each older year once, then No date", () => {
+  it("lists every year with the open year's months under it, then No date (round 1, #13)", () => {
     const mixed = [photo("2026-11-01"), photo("2026-10-01"), photo("2026-08-01"), photo("2025-12-01"), photo("2025-03-01"), photo("2023-01-01"), photo(null)];
     const sections = groupByMonth(mixed);
     const entries = scrubberEntries(sections);
-    expect(entries.map((e) => e.label)).toEqual(["Nov", "Oct", "Aug", "2025", "2023", "No date"]);
-    expect(entries[0].name).toBe("November 2026");
-    expect(entries[3]).toMatchObject({ key: "2025-12", keys: ["2025-12", "2025-03"] });
-    // Not enough room: the newest year collapses to one entry.
+    expect(entries.map((e) => e.label)).toEqual(["2026", "Nov", "Oct", "Aug", "2025", "2023", "No date"]);
+    expect(entries[1]).toMatchObject({ name: "November 2026", kind: "month" });
+    expect(entries[4]).toMatchObject({ key: "2025-12", keys: ["2025-12", "2025-03"], kind: "year" });
+    // Looking at 2025: its months open under it instead.
+    expect(scrubberEntries(sections, Infinity, "2025").map((e) => e.label)).toEqual(["2026", "2025", "Dec", "Mar", "2023", "No date"]);
+    // Not enough room: years only.
     expect(scrubberEntries(sections, 5).map((e) => e.label)).toEqual(["2026", "2025", "2023", "No date"]);
     expect(scrubberEntries([])).toEqual([]);
   });

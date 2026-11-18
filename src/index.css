@@ -528,6 +528,10 @@ html, body, #root {
 }
 .timeline-scrub-entry:hover { color: var(--text-primary); background: var(--glass-pill-hover); }
 .timeline-scrub-entry.is-current { background: var(--accent-fill); color: var(--on-accent); font-weight: 800; }
+/* Months under their year (round 1, #13): smaller and a little indented; the year above stays bold. */
+.timeline-scrub-entry.is-month { height: 20px; font-size: 10px; font-weight: 600; opacity: 0.85; }
+.timeline-scrub-entry:not(.is-month) { font-weight: 800; }
+.timeline-scrub-entry:not(.is-month).is-current:has(~ .timeline-scrub-entry.is-month.is-current) { background: transparent; color: var(--accent-text, var(--text-primary)); }
 .timeline-scrub-entry:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
 
 /* ── Photo viewer (redesign R3) ─────────────────────────────────────────
@@ -2776,3 +2780,20 @@ html, body, #root {
 @keyframes timeline-preparing { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.95; } }
 @media (prefers-reduced-motion: reduce) { .timeline-preparing { animation: none; } }
 :root[data-reduce-motion="true"] .timeline-preparing { animation: none; }
+
+/* Owner feedback (round 1, #16/#18): page headers stay at the top while the page scrolls, on
+   every screen. The pages scroll themselves with 14px top padding; the header covers it. */
+.dash-page > .dash-header,
+.alb-page > .dash-header,
+.alb-page > div:first-child,
+.people-page > .people-header,
+.trash-page > .trash-header,
+.docs-page > .docs-header {
+  position: sticky;
+  top: -14px;
+  z-index: 6;
+  margin-top: -14px;
+  padding-top: 14px;
+  padding-bottom: 10px;
+  background: var(--bg-app);
+}
