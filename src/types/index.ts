@@ -147,6 +147,9 @@ export interface MergeSuggestion {
   cluster_photo_count: number;
   cluster_face_id: number | null;
   similarity: number;
+  /** Up to four clear faces per side, best first (round 1, #24). */
+  person_face_ids?: number[];
+  cluster_face_ids?: number[];
 }
 
 export interface FaceScanStatus {

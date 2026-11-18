@@ -13,8 +13,32 @@ import type { FaceScanStatus, MergeSuggestion, PersonItem, UnlabeledClusterItem 
 import { useAppStore } from "../../store/useAppStore";
 import { InlineSearch } from "../ui/InlineSearch";
 import { apiFetch, getApiUrl } from "../../services/api";
+import { RELATIONSHIPS } from "./PersonPage";
 
 const WHO_IS_THIS_PREVIEW = 6;
+
+/** One side of "Same person?": a big face and up to three more from other photos. */
+const SuggestionSide: React.FC<{ title: string; count: number; faces: (number | null)[]; name?: string }> = ({ title, count, faces, name }) => {
+  const [first, ...rest] = faces;
+  return (
+    <figure className="people-compare-side">
+      <div className="people-compare-faces">
+        <Face faceId={first ?? null} name={name} size={104} />
+        {rest.length > 0 && (
+          <div className="people-compare-more">
+            {rest.slice(0, 3).map((id, i) => (
+              <Face key={id ?? `none-${i}`} faceId={id ?? null} name={name} size={50} />
+            ))}
+          </div>
+        )}
+      </div>
+      <figcaption>
+        <strong>{title}</strong>
+        <span>{photoCountLabel(count)}</span>
+      </figcaption>
+    </figure>
+  );
+};
 
 export function photoCountLabel(count: number): string {
   return `${count.toLocaleString()} ${count === 1 ? "photo" : "photos"}`;
@@ -82,6 +106,8 @@ export const PeopleOverview: React.FC<PeopleOverviewProps> = ({
   const [suggestions, setSuggestions] = useState<MergeSuggestion[]>([]);
   const [answering, setAnswering] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // Owner feedback (round 1, #23): a new person gets a relationship while being named.
+  const [relations, setRelations] = useState<Record<string, string>>({});
   const [busyCluster, setBusyCluster] = useState<string | null>(null);
   const [showAllUnnamed, setShowAllUnnamed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -144,8 +170,13 @@ export const PeopleOverview: React.FC<PeopleOverviewProps> = ({
       const res = await apiFetch("/api/people/tag-cluster", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // relationship_type null: naming never changes an existing person's relationship.
-        body: JSON.stringify({ cluster_id: cluster.cluster_id, name, relationship_type: null }),
+        // A new person gets the relationship picked here; naming never changes an existing
+        // person's relationship (null).
+        body: JSON.stringify({
+          cluster_id: cluster.cluster_id,
+          name,
+          relationship_type: people.some((p) => p.name.toLowerCase() === name.toLowerCase()) ? null : relations[cluster.cluster_id] || null,
+        }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json().catch(() => ({}));
@@ -275,23 +306,34 @@ export const PeopleOverview: React.FC<PeopleOverviewProps> = ({
           )}
 
           {suggestion && !searching && (
+            // Owner feedback (round 1, #24): big faces, several per side, so they can be compared.
             <section className="people-suggestion" aria-label="Same person?">
-              <div className="people-suggestion-faces">
-                <Face faceId={suggestion.person_face_id} name={suggestion.person_name} size={44} />
-                <Face faceId={suggestion.cluster_face_id} size={44} />
-              </div>
-              <div className="people-suggestion-text">
+              <div className="people-suggestion-head">
                 <strong>Same person?</strong>
-                <span>
-                  {suggestion.person_name} ({photoCountLabel(suggestion.person_photo_count)}) and an unnamed group ({photoCountLabel(suggestion.cluster_photo_count)}) look alike.
-                </span>
+                <span>Do these faces belong to {suggestion.person_name}?</span>
               </div>
-              <button type="button" className="people-primary-btn" disabled={answering} onClick={() => answerSuggestion(true)}>
-                Yes, merge
-              </button>
-              <button type="button" className="people-secondary-btn" disabled={answering} onClick={() => answerSuggestion(false)}>
-                Not the same
-              </button>
+              <div className="people-compare">
+                <SuggestionSide
+                  title={suggestion.person_name}
+                  count={suggestion.person_photo_count}
+                  faces={suggestion.person_face_ids?.length ? suggestion.person_face_ids : [suggestion.person_face_id]}
+                  name={suggestion.person_name}
+                />
+                <span className="people-compare-vs" aria-hidden="true">?</span>
+                <SuggestionSide
+                  title="Not named yet"
+                  count={suggestion.cluster_photo_count}
+                  faces={suggestion.cluster_face_ids?.length ? suggestion.cluster_face_ids : [suggestion.cluster_face_id]}
+                />
+              </div>
+              <div className="people-suggestion-actions">
+                <button type="button" className="people-primary-btn" disabled={answering} onClick={() => answerSuggestion(true)}>
+                  Yes, same person
+                </button>
+                <button type="button" className="people-secondary-btn" disabled={answering} onClick={() => answerSuggestion(false)}>
+                  Not the same
+                </button>
+              </div>
             </section>
           )}
 
@@ -365,6 +407,21 @@ export const PeopleOverview: React.FC<PeopleOverviewProps> = ({
                           onChange={(e) => setDrafts((prev) => ({ ...prev, [cluster.cluster_id]: e.target.value }))}
                         />
                       </label>
+                      {draft.trim() && !existing && !busy && (
+                        <select
+                          className="people-relation-select"
+                          aria-label={`Relationship to ${draft.trim()}`}
+                          value={relations[cluster.cluster_id] ?? ""}
+                          onChange={(e) => setRelations((prev) => ({ ...prev, [cluster.cluster_id]: e.target.value }))}
+                        >
+                          <option value="">Relationship</option>
+                          {RELATIONSHIPS.map((r) => (
+                            <option key={r} value={r}>
+                              {r}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                       {busy ? (
                         <Loader2 size={16} className="spin" />
                       ) : draft.trim() ? (

@@ -21,37 +21,44 @@ interface AlbumsViewProps {
 }
 
 /**
- * Big cover for an album made for you (R9b): a mosaic of up to three photos (one large, two
- * small), with a lime badge naming what it is. Without photos it shows the badge's icon large.
+ * Fixed, designed cover for an album made for you (owner feedback, round 1 #17): always the same
+ * picture, so Favourites, Saved stories and Collages are recognisable at a glance and never
+ * look empty or change with their contents. Pure CSS art; the lime badge names it.
  */
-const SystemCover: React.FC<{ photoIds: (number | null | undefined)[]; icon: React.ReactNode; badge: string }> = ({ photoIds, icon, badge }) => {
-  const [failed, setFailed] = useState<Set<number>>(new Set());
-  const ids = photoIds.filter((id): id is number => typeof id === "number" && !failed.has(id)).slice(0, 3);
-  return (
-    <span className={`alb-made-cover is-${Math.max(ids.length, 1)}`}>
-      {ids.length ? (
-        ids.map((id) => (
-          <img
-            key={id}
-            src={getThumbnailUrl(id)}
-            alt=""
-            loading="lazy"
-            draggable={false}
-            onError={() => setFailed((prev) => new Set(prev).add(id))}
-          />
-        ))
-      ) : (
-        <span className="alb-made-empty" aria-hidden="true">
-          {icon}
+type MadeKind = "favourites" | "stories" | "collages";
+const SystemCover: React.FC<{ kind: MadeKind; icon: React.ReactNode; badge: string }> = ({ kind, icon, badge }) => (
+  <span className={`alb-made-cover is-art is-${kind}`}>
+    <span className="alb-art" aria-hidden="true">
+      {kind === "favourites" && (
+        <>
+          <Heart className="alb-art-heart is-big" fill="currentColor" strokeWidth={0} />
+          <Heart className="alb-art-heart is-mid" fill="currentColor" strokeWidth={0} />
+          <Heart className="alb-art-heart is-small" fill="currentColor" strokeWidth={0} />
+        </>
+      )}
+      {kind === "stories" && (
+        <>
+          <span className="alb-art-frame is-back" />
+          <span className="alb-art-frame is-mid" />
+          <span className="alb-art-frame is-front">
+            <Play fill="currentColor" strokeWidth={0} />
+          </span>
+        </>
+      )}
+      {kind === "collages" && (
+        <span className="alb-art-mosaic">
+          {Array.from({ length: 6 }, (_, i) => (
+            <span key={i} />
+          ))}
         </span>
       )}
-      <span className="alb-made-badge" aria-hidden="true">
-        {icon}
-        {badge}
-      </span>
     </span>
-  );
-};
+    <span className="alb-made-badge" aria-hidden="true">
+      {icon}
+      {badge}
+    </span>
+  </span>
+);
 
 const Cover: React.FC<{ photoId?: number | null; className: string; icon?: React.ReactNode }> = ({ photoId, className, icon }) => {
   const [failed, setFailed] = useState(false);
@@ -71,7 +78,7 @@ const Cover: React.FC<{ photoId?: number | null; className: string; icon?: React
 export const AlbumsView: React.FC<AlbumsViewProps> = ({ onLockAlbumToVault, onPhotoClick, onToggleFavorite, onPlayStory, importProgress }) => {
   const showToast = useAppStore((s) => s.showToast);
   const [albums, setAlbums] = useState<AlbumItem[] | null>(null);
-  const [favourites, setFavourites] = useState<{ count: number; coverIds: number[] }>({ count: 0, coverIds: [] });
+  const [favourites, setFavourites] = useState<{ count: number }>({ count: 0 });
   const [stories, setStories] = useState<StoryModel[]>([]);
   const [page, setPage] = useState<AlbumPageTarget | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -94,7 +101,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({ onLockAlbumToVault, onPh
       json<StoryModel[]>("/api/stories?saved_only=true"),
     ]);
     setAlbums(Array.isArray(a) ? a : []);
-    if (Array.isArray(f)) setFavourites({ count: f.length, coverIds: f.slice(0, 3).map((p) => p.id) });
+    if (Array.isArray(f)) setFavourites({ count: f.length });
     if (Array.isArray(s)) setStories(s);
   }, []);
 
@@ -232,18 +239,18 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({ onLockAlbumToVault, onPh
         </h2>
         <div className="alb-made">
           <button type="button" className="alb-cover-card" onClick={() => setPage({ kind: "favourites" })}>
-            <SystemCover photoIds={favourites.coverIds} icon={<Heart size={13} />} badge="Favourites" />
+            <SystemCover kind="favourites" icon={<Heart size={13} />} badge="Favourites" />
             <span className="alb-cover-name">Favourites</span>
             <span className="dash-muted">{plural(favourites.count, "photo")}</span>
           </button>
           <button type="button" className="alb-cover-card" onClick={() => setPage({ kind: "stories" })}>
-            <SystemCover photoIds={stories.map((st) => st.cover_photo_id)} icon={<Play size={13} />} badge="Stories" />
+            <SystemCover kind="stories" icon={<Play size={13} />} badge="Stories" />
             <span className="alb-cover-name">Saved stories</span>
             <span className="dash-muted">{plural(stories.length, "story", "stories")}</span>
           </button>
           {collages && (
             <button type="button" className="alb-cover-card" onClick={() => setPage({ kind: "album", album: collages })}>
-              <SystemCover photoIds={[collages.cover_photo_id]} icon={<LayoutGrid size={13} />} badge="Collages" />
+              <SystemCover kind="collages" icon={<LayoutGrid size={13} />} badge="Collages" />
               <span className="alb-cover-name">Collages</span>
               <span className="dash-muted">{plural(collages.photo_count ?? 0, "collage")}</span>
             </button>

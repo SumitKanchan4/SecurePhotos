@@ -215,6 +215,9 @@ class MergeSuggestion(BaseModel):
     cluster_photo_count: int
     cluster_face_id: Optional[int] = None
     similarity: float
+    # Owner feedback (round 1, #24): several examples per side, so the two can be compared.
+    person_face_ids: List[int] = []
+    cluster_face_ids: List[int] = []
 
 
 class MergeAnswer(BaseModel):
@@ -241,19 +244,34 @@ async def _library_photo_count(conn, column: str, value) -> int:
 
 
 async def _best_face(conn, column: str, value) -> Optional[int]:
+    faces = await _best_faces(conn, column, value, 1)
+    return faces[0] if faces else None
+
+
+async def _best_faces(conn, column: str, value, count: int = 4) -> List[int]:
+    """The clearest faces of a person or unnamed group, one per photo (best first)."""
     async with conn.execute(
         f"""
-        SELECT f.id FROM faces f
+        SELECT f.id, f.photo_id FROM faces f
         JOIN photos p ON p.id = f.photo_id
         WHERE f.{column} = ? AND p.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = p.id AND v.trashed_at IS NULL) AND p.is_encrypted = 0
         {"AND f.person_id IS NULL" if column == "cluster_id" else ""}
         ORDER BY f.is_anchor_medoid DESC, f.quality_score DESC, f.id
-        LIMIT 1;
+        LIMIT ?;
         """,
-        (value,),
+        (value, count * 5),
     ) as cursor:
-        row = await cursor.fetchone()
-    return row["id"] if row else None
+        rows = await cursor.fetchall()
+    picked: List[int] = []
+    photos: set = set()
+    for row in rows:
+        if row["photo_id"] in photos:
+            continue
+        photos.add(row["photo_id"])
+        picked.append(row["id"])
+        if len(picked) == count:
+            break
+    return picked
 
 
 @router.get("/merge-suggestions", response_model=List[MergeSuggestion], status_code=status.HTTP_200_OK)
@@ -269,16 +287,23 @@ async def list_merge_suggestions() -> List[MergeSuggestion]:
                 person = await cursor.fetchone()
             if not person:
                 continue
+            person_faces = await _best_faces(conn, "person_id", person_id)
+            cover = person["cover_face_id"]
+            if cover:
+                person_faces = [cover] + [f for f in person_faces if f != cover][:3]
+            cluster_faces = await _best_faces(conn, "cluster_id", cluster_id)
             results.append(
                 MergeSuggestion(
                     person_id=person_id,
                     person_name=person["name"],
                     person_photo_count=await _library_photo_count(conn, "person_id", person_id),
-                    person_face_id=person["cover_face_id"] or await _best_face(conn, "person_id", person_id),
+                    person_face_id=person_faces[0] if person_faces else None,
                     cluster_id=cluster_id,
                     cluster_photo_count=await _library_photo_count(conn, "cluster_id", cluster_id),
-                    cluster_face_id=await _best_face(conn, "cluster_id", cluster_id),
+                    cluster_face_id=cluster_faces[0] if cluster_faces else None,
                     similarity=round(similarity, 3),
+                    person_face_ids=person_faces,
+                    cluster_face_ids=cluster_faces,
                 )
             )
         return results
