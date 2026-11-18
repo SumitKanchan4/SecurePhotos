@@ -41,6 +41,7 @@ via `data_location.txt`). Import with **Copy**, never Move. Tick each box; note 
 - [ ] Settings → Storage: "Moved to a new computer, or restoring a backup?" (don't press it on the test library).
 - [ ] Settings → Music: switch, add/play/mood/remove songs; the Stories music button opens it.
 - [ ] Stories: the stage at the top, tagged cards, Saved row, collage mosaic; Hide and Save work from the stage.
+- [ ] The app's name "SecurePhotos" shows at the top left; the window still drags from there.
 - [ ] Dashboard: the library sentence (each number opens its screen), the storage map (point at rows / bar; rows open their place), Worth doing.
 
 ## After the test

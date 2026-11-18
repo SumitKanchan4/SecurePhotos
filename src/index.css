@@ -2986,3 +2986,9 @@ button.dash-usage-open { cursor: pointer; }
 .dash-usage-go { color: var(--text-secondary); opacity: 0; transition: opacity 0.15s ease; }
 .dash-usage-row.is-active .dash-usage-go { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .dash-map-part, .dash-usage-go { transition: none; } }
+
+/* The app's name at the left of the window strip (owner feedback 2026-11-18). */
+.window-name {
+  padding-left: 16px; font-family: var(--font-display); font-size: 12px; font-weight: 800;
+  letter-spacing: -0.01em; color: var(--text-secondary); pointer-events: none; white-space: nowrap;
+}
