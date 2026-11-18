@@ -1401,12 +1401,20 @@ html, body, #root {
   background: var(--bg-surface);
   border: 1px solid var(--glass-border);
 }
-.people-suggestion-faces { display: flex; }
-.people-suggestion-faces > * { box-shadow: 0 0 0 2px var(--bg-surface); }
-.people-suggestion-faces > * + * { margin-left: -10px; }
-.people-suggestion-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.people-suggestion-text strong { font-size: 14px; font-weight: 800; color: var(--text-primary); }
-.people-suggestion-text span { font-size: 12px; color: var(--text-secondary); }
+/* "Same person?" side by side (round 1, #24). */
+.people-suggestion { flex-direction: column; align-items: stretch; }
+.people-suggestion-head { display: flex; flex-direction: column; gap: 2px; }
+.people-suggestion-head strong { font-family: var(--font-display); font-size: 18px; font-weight: 900; color: var(--text-primary); }
+.people-suggestion-head span { font-size: 13px; color: var(--text-secondary); }
+.people-compare { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.people-compare-side { margin: 0; flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 16px; background: var(--bg-surface-elevated); border: 1px solid var(--glass-border); }
+.people-compare-faces { display: flex; align-items: center; gap: 10px; }
+.people-compare-more { display: grid; grid-template-columns: repeat(3, 50px); gap: 6px; }
+.people-compare-side figcaption { display: flex; align-items: baseline; gap: 8px; }
+.people-compare-side figcaption strong { font-size: 14px; font-weight: 800; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.people-compare-side figcaption span { font-size: 12px; color: var(--text-secondary); }
+.people-compare-vs { flex: none; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--accent-fill); color: var(--on-accent); font-weight: 900; }
+.people-suggestion-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .people-primary-btn, .people-secondary-btn {
   height: 34px;
   padding: 0 14px;
@@ -1431,6 +1439,8 @@ html, body, #root {
   border: 1px dashed var(--glass-border-highlight);
   min-width: 0;
 }
+.people-relation-select { flex: none; max-width: 130px; height: 32px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--glass-border-highlight); background: var(--bg-surface); color: var(--text-primary); font-size: 12px; font-family: inherit; }
+.people-relation-select:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 1px; }
 .people-unnamed-face { padding: 0; border: none; background: transparent; border-radius: var(--radius-full); cursor: zoom-in; flex-shrink: 0; }
 .people-unnamed-face:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
 .people-unnamed-label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -2681,6 +2691,43 @@ html, body, #root {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 .alb-cover-card:hover .alb-made-cover { border-color: var(--glass-border-highlight); }
+
+/* Fixed covers for the albums made for you (round 1, #17). Same in both themes on purpose:
+   they are pictures, like a photo cover. */
+.alb-made-cover.is-art { display: block; border-color: transparent; }
+.alb-art { position: absolute; inset: 0; overflow: hidden; transition: transform 0.35s ease; }
+.alb-cover-card:hover .alb-art { transform: scale(1.03); }
+.alb-made-cover.is-favourites .alb-art {
+  background: radial-gradient(120% 90% at 18% 10%, #ffb199 0%, transparent 55%), linear-gradient(140deg, #ff6b88 0%, #d62f62 52%, #7a1238 100%);
+  color: #fff4f6;
+}
+.alb-art-heart { position: absolute; filter: drop-shadow(0 10px 24px rgba(90, 0, 30, 0.35)); }
+.alb-art-heart.is-big { width: 46%; height: auto; right: 9%; bottom: -6%; transform: rotate(-12deg); opacity: 0.95; }
+.alb-art-heart.is-mid { width: 17%; height: auto; right: 52%; bottom: 20%; transform: rotate(14deg); opacity: 0.55; }
+.alb-art-heart.is-small { width: 9%; height: auto; right: 44%; top: 20%; transform: rotate(-20deg); opacity: 0.4; }
+.alb-made-cover.is-stories .alb-art {
+  background: radial-gradient(90% 80% at 85% 0%, #7c6cff 0%, transparent 60%), linear-gradient(150deg, #2a1f8f 0%, #140f4a 60%, #090624 100%);
+}
+.alb-art-frame { position: absolute; top: 22%; width: 34%; aspect-ratio: 3 / 4; border-radius: 12px; }
+.alb-art-frame.is-back { right: 30%; transform: rotate(-10deg); background: linear-gradient(160deg, #f7b267, #f4845f); opacity: 0.75; }
+.alb-art-frame.is-mid { right: 20%; transform: rotate(-3deg); background: linear-gradient(160deg, #4cc9f0, #4361ee); opacity: 0.85; }
+.alb-art-frame.is-front {
+  right: 9%; transform: rotate(6deg); background: linear-gradient(160deg, #f8f9ff, #d9dcff);
+  display: flex; align-items: center; justify-content: center; color: #2a1f8f; box-shadow: 0 14px 30px rgba(0, 0, 0, 0.4);
+}
+.alb-art-frame.is-front svg { width: 34%; height: auto; }
+.alb-made-cover.is-collages .alb-art { background: linear-gradient(140deg, #1f2a1a, #0e140c); }
+.alb-art-mosaic {
+  position: absolute; inset: 16% 8% -8% 38%; display: grid; gap: 6px; transform: rotate(-8deg);
+  grid-template-columns: 1.4fr 1fr; grid-template-rows: repeat(3, 1fr);
+}
+.alb-art-mosaic span { border-radius: 8px; background: var(--accent-fill); opacity: 0.9; }
+.alb-art-mosaic span:nth-child(2) { opacity: 0.45; }
+.alb-art-mosaic span:nth-child(3) { opacity: 0.65; grid-row: span 2; }
+.alb-art-mosaic span:nth-child(4) { opacity: 0.3; }
+.alb-art-mosaic span:nth-child(5) { opacity: 0.55; }
+.alb-art-mosaic span:nth-child(6) { opacity: 0.2; }
+@media (prefers-reduced-motion: reduce) { .alb-cover-card:hover .alb-art { transform: none; } }
 
 
 /* Search page (R9c): its own section with a big field, starting points and results */

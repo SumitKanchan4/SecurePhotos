@@ -111,9 +111,14 @@ describe("PeopleOverview", () => {
     });
     const { onRefresh } = renderOverview();
     expect(await screen.findByText("Same person?")).toBeInTheDocument();
-    expect(screen.getByText("Rohan (412 photos) and an unnamed group (37 photos) look alike.")).toBeInTheDocument();
+    // Side by side, big faces, several per side (round 1, #24).
+    const card = screen.getByRole("region", { name: "Same person?" });
+    expect(within(card).getByText("Do these faces belong to Rohan?")).toBeInTheDocument();
+    expect(within(card).getByText("412 photos")).toBeInTheDocument();
+    expect(within(card).getByText("Not named yet")).toBeInTheDocument();
+    expect(within(card).getByText("37 photos")).toBeInTheDocument();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Yes, merge" }));
+      fireEvent.click(screen.getByRole("button", { name: "Yes, same person" }));
     });
     const post = calls.find((c) => c.url.endsWith("/api/people/2/merge-cluster"));
     expect(JSON.parse(String(post?.init?.body))).toEqual({ cluster_id: "cluster_4" });
@@ -156,6 +161,22 @@ describe("PeopleOverview", () => {
     expect(JSON.parse(String(post?.init?.body))).toEqual({ cluster_id: "cluster_4", name: "rohan", relationship_type: null });
     expect(onRefresh).toHaveBeenCalled();
     expect(useAppStore.getState().showToast).toHaveBeenCalledWith("Tagged rohan in 470 photos.", "success");
+  });
+
+  it("asks a new person's relationship while naming them (round 1, #23)", async () => {
+    const calls = mockEngine({ "GET /api/people/merge-suggestions": [], "POST /api/people/tag-cluster": { photos_tagged: 58 } });
+    renderOverview();
+    const input = screen.getByLabelText("Name for this face (58 photos)");
+    expect(screen.queryByLabelText(/Relationship to/)).not.toBeInTheDocument();
+    fireEvent.change(input, { target: { value: "rohan" } }); // An existing person: no question.
+    expect(screen.queryByLabelText(/Relationship to/)).not.toBeInTheDocument();
+    fireEvent.change(input, { target: { value: "Meera" } });
+    fireEvent.change(screen.getByLabelText("Relationship to Meera"), { target: { value: "Family" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    });
+    const post = calls.find((c) => c.url.endsWith("/api/people/tag-cluster"));
+    expect(JSON.parse(String(post?.init?.body))).toEqual({ cluster_id: "cluster_4", name: "Meera", relationship_type: "Family" });
   });
 
   it("hides a group that isn't a person, and opens a face in its photo", async () => {
