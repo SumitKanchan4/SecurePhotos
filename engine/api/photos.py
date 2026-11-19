@@ -450,6 +450,16 @@ async def _enhance_one(row, source, cpu_budget, enhancement_service, calculate_f
     """Enhances one photo to 8K (holding the heavy-work slot) and points its row at the AVIF."""
     photo_id, filename = row["id"], row["filename"]
     async with cpu_budget.heavy(cpu_budget.ENHANCE, f"enhance:{photo_id}"):
+        # The photo was picked before waiting for the slot: if it was enhanced, moved or deleted
+        # meanwhile, leave it (2026-11-19: a stale pick tried to read a file already replaced).
+        conn = await get_db_connection()
+        try:
+            async with conn.execute("SELECT filepath, is_optimized, trashed_at FROM photos WHERE id = ?;", (photo_id,)) as cur:
+                now = await cur.fetchone()
+        finally:
+            await conn.close()
+        if not now or now["is_optimized"] or now["trashed_at"] or now["filepath"] != row["filepath"]:
+            return
         try:
             app_settings = await _load_enhancement_settings()
             quality = enhancement_service.slider_to_avif_quality(

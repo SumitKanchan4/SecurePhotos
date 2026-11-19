@@ -3078,23 +3078,18 @@ button.dash-usage-open { cursor: pointer; }
 .welcome-points svg { color: var(--accent-ink); }
 @media (prefers-reduced-motion: reduce) { .welcome-primary, .welcome-secondary { transition: none; } }
 
-/* The photo being worked on right now (owner feedback 2026-11-19): a translucent veil, a slow
-   light sweep across it and the work's icon in a glowing badge. Icons, not words. */
-.timeline-work { position: absolute; inset: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.32); pointer-events: auto; }
-.timeline-work-sweep {
-  position: absolute; top: 0; bottom: 0; left: -60%; width: 60%;
-  background: linear-gradient(100deg, transparent 0%, rgba(198, 255, 0, 0.05) 30%, rgba(198, 255, 0, 0.28) 50%, rgba(198, 255, 0, 0.05) 70%, transparent 100%);
-  animation: timeline-work-sweep 2.6s ease-in-out infinite;
+/* Photos still being prepared (owner, 2026-11-19): the five steps' icons take turns, translucent,
+   in the middle of the photo. Each icon shows for 1.2 s of a 6 s loop. */
+.timeline-cycle { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
+.timeline-cycle-badge {
+  position: relative; width: 46px; height: 46px; border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px); box-shadow: 0 0 0 1px rgba(198, 255, 0, 0.35);
 }
-@keyframes timeline-work-sweep { to { left: 100%; } }
-.timeline-work-icon {
-  position: relative; width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(6px); color: #c6ff00;
-  box-shadow: 0 0 0 1.5px rgba(198, 255, 0, 0.55), 0 0 22px rgba(198, 255, 0, 0.35);
-  animation: timeline-work-pulse 2.6s ease-in-out infinite;
+.timeline-cycle-badge svg {
+  position: absolute; top: 12px; left: 12px; color: #c6ff00; opacity: 0;
+  filter: drop-shadow(0 0 4px rgba(198, 255, 0, 0.6)); animation: timeline-cycle 6s linear infinite;
 }
-.timeline-work-icon svg { filter: drop-shadow(0 0 4px rgba(198, 255, 0, 0.7)); }
-@keyframes timeline-work-pulse { 50% { box-shadow: 0 0 0 1.5px rgba(198, 255, 0, 0.8), 0 0 30px rgba(198, 255, 0, 0.5); } }
-@media (prefers-reduced-motion: reduce) { .timeline-work-sweep { display: none; } .timeline-work-icon { animation: none; } }
-:root[data-reduce-motion="true"] .timeline-work-sweep { display: none; }
-:root[data-reduce-motion="true"] .timeline-work-icon { animation: none; }
+@keyframes timeline-cycle { 0% { opacity: 0; } 4% { opacity: 0.85; } 16% { opacity: 0.85; } 20% { opacity: 0; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .timeline-cycle-badge svg { animation: none; } .timeline-cycle-badge svg:last-child { opacity: 0.85; } }
+:root[data-reduce-motion="true"] .timeline-cycle-badge svg { animation: none; }
+:root[data-reduce-motion="true"] .timeline-cycle-badge svg:last-child { opacity: 0.85; }

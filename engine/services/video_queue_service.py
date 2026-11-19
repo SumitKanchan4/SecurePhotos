@@ -200,6 +200,20 @@ async def cleanup_orphaned_video_temp_files() -> None:
             logger.warning("Could not remove a leftover video temp file next to %s: %s", p, e)
 
 
+async def _photos_waiting() -> bool:
+    """True while any library photo (not a video) still has an after-import step or 8K to do."""
+    from engine.services.after_import import PREPARING
+
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(
+            f"SELECT 1 FROM photos WHERE trashed_at IS NULL AND COALESCE(mime_type, '') NOT LIKE 'video/%' AND {PREPARING} LIMIT 1;"
+        ) as cur:
+            return await cur.fetchone() is not None
+    finally:
+        await conn.close()
+
+
 async def _process_next_video_job() -> bool:
     """Processes the next eligible queued video job with full disconnection and crash safety.
 
@@ -207,6 +221,10 @@ async def _process_next_video_job() -> bool:
         True if an item was processed, False if queue was empty or paused.
     """
     if _is_paused:
+        return False
+    # Owner, 2026-11-19: video work comes after the photos. Queue jobs are automatic (an import's
+    # Video size, "make videos smaller"), so they wait while any photo is still being prepared.
+    if await _photos_waiting():
         return False
 
     conn = await get_db_connection()
@@ -309,7 +327,9 @@ async def _process_next_video_job() -> bool:
     # marked "processing", so waiting for it never looks like a stalled job (3-minute watchdog).
     from engine.services import cpu_budget
 
-    priority = cpu_budget.USER if action == "enhance" else cpu_budget.BACKGROUND  # "Enhance" is asked for.
+    # Every queued job is automatic (enlarging from Settings → Video size included), so it never
+    # goes ahead of photos (2026-11-19: it used to count as asked-for and took the slot first).
+    priority = cpu_budget.BACKGROUND
     async with cpu_budget.heavy(priority, f"video:{photo_id}"):
         return await _run_video_job(queue_id, photo_id, action, target_height, retry_count)
 

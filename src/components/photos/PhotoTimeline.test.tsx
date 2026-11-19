@@ -78,20 +78,26 @@ describe("PhotoTimeline", () => {
     expect(tile(3).getByLabelText("Length 1:34")).toBeInTheDocument();
   });
 
-  it("while preparing: the ring instead of the tags, and an icon overlay on the photo being worked on (2026-11-19)", () => {
+  it("while preparing: the ring instead of the tags, and the steps' icons taking turns on every such photo (2026-11-19)", () => {
     const photos = makeLibrary(3);
     photos[0] = { ...photos[0], width: 7680, height: 5760, is_ai: true, ai_kinds: ["colour"], is_preparing: true, prepare_step: 2 };
     photos[1] = { ...photos[1], width: 7680, height: 5760, is_ai: true, ai_kinds: ["colour"] };
-    render(<PhotoTimeline photos={photos} onOpen={vi.fn()} work={{ 1: "faces" }} />);
+    photos[2] = { ...photos[2], is_video: true, is_optimized: false, is_enhanced: false, width: 720, height: 1280 };
+    render(<PhotoTimeline photos={photos} onOpen={vi.fn()} />);
     const tile = (id: number) => within(document.querySelector(`[data-photo-id="${id}"]`) as HTMLElement);
     // Being prepared: the ring only; its tags wait until it's done.
     expect(tile(1).getByRole("img", { name: /Getting this photo ready/ })).toBeInTheDocument();
     expect(tile(1).queryByText("8K")).not.toBeInTheDocument();
-    // Worked on right now: the veil with the work's icon (named on hover).
-    expect(tile(1).getByRole("img", { name: "Finding faces now. You can open it already." })).toHaveClass("timeline-work");
-    // Done: tags, no ring, no overlay.
+    // In progress: the five steps' icons take turns (whatever step it is on), named on hover.
+    const cycle = document.querySelector('[data-photo-id="1"] .timeline-cycle')!;
+    expect(cycle.querySelectorAll("svg")).toHaveLength(5);
+    expect(cycle).toHaveAttribute("title", "Getting this photo ready: finding faces (2 of 5). You can open it now.");
+    // A video still being made bigger shows no size yet (it said "HD" while becoming 2K).
+    expect(tile(3).queryByText("HD")).not.toBeInTheDocument();
+    // Done: tags, no ring, no icons.
     expect(tile(2).getByText("8K")).toBeInTheDocument();
-    expect(tile(2).queryByRole("img", { name: /Getting this photo ready|now\./ })).not.toBeInTheDocument();
+    expect(tile(2).queryByRole("img", { name: /Getting this photo ready/ })).not.toBeInTheDocument();
+    expect(document.querySelector('[data-photo-id="2"] .timeline-cycle')).toBeNull();
   });
 
   it("opens a photo, but selects instead while a selection is active", () => {

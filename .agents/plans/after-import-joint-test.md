@@ -11,7 +11,8 @@ via `data_location.txt`). Import with **Copy**, never Move. Tick each box; note 
 - [ ] Import a few scans and phone photos (and a receipt or ID photo if you have one).
 - [ ] The import panel: "Add files" / "Add a folder" add to the first choice; totals and size update; "Clear" starts again.
 - [ ] Activity shows one card "Getting N photos ready" with the step (Reading text → Finding faces → Checking old prints → Looking for duplicates → Enhancing to 8K) and the photo.
-- [ ] New photos show a small progress ring (bottom-left, tags hidden) that fills step by step; the photo being worked on right now has a veil with a light sweep and an icon for the work; when done, the ring goes and the tags show.
+- [ ] Photos in progress show the steps' icons taking turns in the middle and a ring bottom-left (tags hidden); when done, both go and the tags show. Videos are worked on after the photos; a video's size tag shows only once it's done.
+- [ ] The 'ready' message says enhancing continues (with how many left) when 8K isn't finished.
 - [ ] People fills in without pressing anything; "Looking for faces" shows progress.
 - [ ] Documents: a receipt/ID is found by itself; ordinary photos are not documents.
 - [ ] When the quick steps are done: "Your new photos are ready: … added · … people · … documents · … old photos improved".
