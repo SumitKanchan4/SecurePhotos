@@ -84,8 +84,9 @@ async def test_timeline_returns_compact_rows_in_display_order():
 
     # After-import P4: these test rows haven't been through the after-import steps, so they are
     # still "preparing" (16): text, faces and the old-photo check not done.
-    assert rows[newer] == [newer, "2026-05-14 10:00:00", 4000, 3000, "p", TIMELINE_FAVORITE | TIMELINE_ENHANCED | TIMELINE_PREPARING, 0]
-    assert rows[video][4] == "v" and rows[video][5] == TIMELINE_OPTIMIZED | TIMELINE_PREPARING
+    # The step it is on is packed in too (2026-11-19): 1 = reading text.
+    assert rows[newer] == [newer, "2026-05-14 10:00:00", 4000, 3000, "p", TIMELINE_FAVORITE | TIMELINE_ENHANCED | TIMELINE_PREPARING | (1 << 9), 0]
+    assert rows[video][4] == "v" and rows[video][5] == TIMELINE_OPTIMIZED | TIMELINE_PREPARING | (2 << 9)  # Finding faces.
     assert rows[older][2:4] == [3000, 4000]
     # Missing dimensions come back as 0 so the grid can fall back to a square tile.
     assert rows[undated][1] is None and rows[undated][2:4] == [0, 0]
@@ -176,3 +177,31 @@ async def test_videos_from_before_lengths_were_saved_are_measured_once():
     finally:
         await conn.close()
     assert await fill_video_durations() == 0
+
+
+@pytest.mark.asyncio
+async def test_timeline_says_which_step_a_photo_being_prepared_is_on():
+    """2026-11-19: the grid's ring names the step (1 text ... 5 enhancing; 0 once ready)."""
+    from engine.api.photos import TIMELINE_STEP_SHIFT
+
+    await run_migrations()
+    photo = await _insert("2026-05-16 10:00:00")
+    steps = [
+        ("ocr_text = NULL", 1),
+        ("ocr_text = ''", 2),
+        ("faces_scanned = 1", 3),
+        ("restore_checked = 1, thumbnail_path = 'thumbnails/x.webp'", 4),
+        ("phash = 'abc'", 5),
+        ("is_optimized = 1", 0),
+    ]
+    for change, expected in steps:
+        conn = await get_db_connection()
+        try:
+            await conn.execute(f"UPDATE photos SET {change} WHERE id = ?;", (photo,))
+            await conn.commit()
+        finally:
+            await conn.close()
+        async with _client() as client:
+            flags = {r[0]: r[5] for r in (await client.get("/api/photos/timeline")).json()["items"]}[photo]
+        assert (flags >> TIMELINE_STEP_SHIFT) & 7 == expected, change
+        assert bool(flags & TIMELINE_PREPARING) == (expected != 0)

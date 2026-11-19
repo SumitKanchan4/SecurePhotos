@@ -9,6 +9,7 @@ import {
   monthKey,
   monthLabel,
   parseTimeline,
+  preparingTitle,
   qualityTag,
   videoLength,
   scrubberEntries,
@@ -26,19 +27,22 @@ describe("parseTimeline", () => {
       items: [
         [7, "2026-05-14 10:00:00", 4000, 3000, "p", 1 | 4],
         [8, null, 0, 0, "v", 2, 95],
-        [9, "2026-05-14 10:00:00", 4000, 3000, "p", 8 | 16 | 32 | 256],
+        [9, "2026-05-14 10:00:00", 4000, 3000, "p", 8 | 16 | 32 | 256 | (3 << 9)],
       ],
     });
     expect(parsed[0]).toEqual({
       id: 7, taken_at: "2026-05-14 10:00:00", width: 4000, height: 3000,
       is_video: false, is_favorite: true, is_optimized: false, is_enhanced: true, is_ai: false, is_preparing: false,
-      ai_kinds: [], duration: 0,
+      ai_kinds: [], duration: 0, prepare_step: 0,
     });
     expect(parsed[2].is_preparing).toBe(true); // P4: still being prepared (quiet dot).
     expect(parsed[1]).toMatchObject({ id: 8, is_video: true, is_favorite: false, is_optimized: true, is_enhanced: false });
     expect(parsed[2]).toMatchObject({ id: 9, is_ai: true, is_favorite: false });  // H10: improved copy.
     // Owner feedback 2026-11-18: what the copy had done, and a video's length.
     expect(parsed[2].ai_kinds).toEqual(["colour", "scratches"]);
+    expect(parsed[2].prepare_step).toBe(3); // Checking old prints.
+    expect(preparingTitle(5)).toBe("Getting this photo ready: enhancing (5 of 5). You can open it now.");
+    expect(preparingTitle(0)).toBe("Getting this photo ready. You can open it now.");
     expect(parsed[1].duration).toBe(95);
   });
 

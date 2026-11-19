@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from engine.database import get_db_connection
 from engine.config import settings, resolve_media_path
-from engine.services.after_import import PREPARING
+from engine.services.after_import import PREPARING, PREPARING_STEP
 from engine.services.photo_versions import pair_order, stack_top, with_versions
 from engine.services.ingestion_service import ingest_single_photo
 
@@ -96,7 +96,9 @@ TIMELINE_FAVORITE = 1
 TIMELINE_OPTIMIZED = 2
 TIMELINE_ENHANCED = 4
 TIMELINE_AI = 8  # H10: an improved copy (the grid shows the AI badge).
-TIMELINE_PREPARING = 16  # After-import P4: still being prepared (the grid's quiet dot).
+TIMELINE_PREPARING = 16  # After-import P4: still being prepared (the grid's progress ring).
+# The step a photo being prepared is on (after_import.PREPARING_STEP, 1-5), in bits 9-11.
+TIMELINE_STEP_SHIFT = 9
 # Owner feedback 2026-11-18: what an improved copy had done, one icon each on its grid tag.
 TIMELINE_KIND_BITS = {"colour": 32, "fade": 64, "faces": 128, "scratches": 256}
 
@@ -695,7 +697,7 @@ async def get_photo_timeline() -> TimelineResponse:
         async with conn.execute(
             f"""
             SELECT id, taken_at, width, height, mime_type, is_favorite, is_optimized, is_enhanced, ai_kind,
-                   duration_seconds, CASE WHEN {PREPARING} THEN 1 ELSE 0 END AS preparing
+                   duration_seconds, CASE WHEN {PREPARING} THEN 1 ELSE 0 END AS preparing, {PREPARING_STEP} AS prep_step
             FROM photos
             WHERE is_encrypted = 0 AND trashed_at IS NULL AND {stack_top()}
             ORDER BY taken_at DESC, {pair_order()};
@@ -716,6 +718,7 @@ async def get_photo_timeline() -> TimelineResponse:
             | (TIMELINE_ENHANCED if r["is_enhanced"] else 0)
             | (TIMELINE_AI if r["ai_kind"] else 0)
             | (TIMELINE_PREPARING if r["preparing"] else 0)
+            | ((r["prep_step"] or 0) << TIMELINE_STEP_SHIFT)
             | _kind_bits(r["ai_kind"]),
             # A video's length in whole seconds (0: unknown or a photo).
             int(round(r["duration_seconds"] or 0)) if (r["mime_type"] or "").startswith("video/") else 0,

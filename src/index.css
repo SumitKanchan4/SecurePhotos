@@ -2849,10 +2849,18 @@ html, body, #root {
 .vault-doc-foot .alb-menu { right: 0; }
 
 /* After-import P4: a quiet dot on photos still being prepared (text, faces, old-photo check, 8K). */
-.timeline-preparing { position: absolute; right: 10px; bottom: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-fill); box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.45); opacity: 0.9; pointer-events: auto; animation: timeline-preparing 1.8s ease-in-out infinite; }
-@keyframes timeline-preparing { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.95; } }
-@media (prefers-reduced-motion: reduce) { .timeline-preparing { animation: none; } }
-:root[data-reduce-motion="true"] .timeline-preparing { animation: none; }
+/* Being prepared (owner feedback 2026-11-19): a small ring in the tags' translucent black that
+   fills as the five steps are done and turns slowly while work goes on. */
+.timeline-preparing {
+  position: absolute; right: 8px; bottom: 8px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(6px); pointer-events: auto;
+}
+.timeline-preparing svg { animation: timeline-preparing 2.4s linear infinite; }
+.timeline-preparing-track { fill: none; stroke: rgba(255, 255, 255, 0.28); stroke-width: 2.2; }
+.timeline-preparing-fill { fill: none; stroke: #c6ff00; stroke-width: 2.2; stroke-linecap: round; filter: drop-shadow(0 0 2px rgba(198, 255, 0, 0.6)); }
+@keyframes timeline-preparing { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .timeline-preparing svg { animation: none; } }
+:root[data-reduce-motion="true"] .timeline-preparing svg { animation: none; }
 
 /* Owner feedback (round 1, #16/#18): page headers stay at the top while the page scrolls, on
    every screen. The pages scroll themselves with 14px top padding; the header covers it. */

@@ -11,7 +11,17 @@ export const FLAG_FAVORITE = 1;
 export const FLAG_OPTIMIZED = 2;
 export const FLAG_ENHANCED = 4;
 export const FLAG_AI = 8; // H10: an improved copy (colour, faces...).
-export const FLAG_PREPARING = 16; // After-import P4: still being prepared (quiet dot in the grid).
+export const FLAG_PREPARING = 16; // After-import P4: still being prepared (progress ring in the grid).
+/** The step a photo being prepared is on (1-5), in bits 9-11 of the flags. */
+const STEP_SHIFT = 9;
+/** The after-import steps, in order (owner feedback 2026-11-19: the ring names the step). */
+export const PREPARE_STEPS = ["Reading text", "Finding faces", "Checking old prints", "Looking for duplicates", "Enhancing"];
+
+/** "Getting this photo ready: finding faces (2 of 5). You can open it now." */
+export function preparingTitle(step: number | undefined): string {
+  if (!step || step < 1 || step > PREPARE_STEPS.length) return "Getting this photo ready. You can open it now.";
+  return `Getting this photo ready: ${PREPARE_STEPS[step - 1].toLowerCase()} (${step} of ${PREPARE_STEPS.length}). You can open it now.`;
+}
 /** What an improved copy had done (owner feedback 2026-11-18: one icon each on its grid tag). */
 export const KIND_FLAGS: [string, number][] = [
   ["colour", 32],
@@ -32,6 +42,7 @@ export function parseTimeline(data: TimelineResponse): TimelinePhoto[] {
     is_enhanced: (flags & FLAG_ENHANCED) !== 0,
     is_ai: (flags & FLAG_AI) !== 0,
     is_preparing: (flags & FLAG_PREPARING) !== 0,
+    prepare_step: (flags >> STEP_SHIFT) & 7,
     ai_kinds: KIND_FLAGS.filter(([, bit]) => (flags & bit) !== 0).map(([k]) => k),
     duration: seconds ?? 0,
   }));

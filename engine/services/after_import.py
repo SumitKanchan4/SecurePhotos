@@ -46,6 +46,19 @@ RULES_WAITING = (
     "AND ocr_text IS NOT NULL AND (faces_scanned = 1 OR COALESCE(is_document, 0) = 1)"
 )
 
+# Which step a photo being prepared is on (owner feedback 2026-11-19: the grid shows a progress
+# ring and names the step): 1 reading text, 2 finding faces, 3 checking old prints, 4 looking for
+# duplicates, 5 enhancing; 0 when it's ready. The same tests as PREPARING, in order.
+PREPARING_STEP = (
+    "(CASE WHEN COALESCE(is_encrypted, 0) = 1 THEN 0 "
+    "WHEN ocr_text IS NULL AND COALESCE(mime_type, '') LIKE 'image/%' THEN 1 "
+    "WHEN faces_scanned = 0 AND COALESCE(is_document, 0) = 0 THEN 2 "
+    "WHEN restore_checked = 0 AND derived_from_id IS NULL AND COALESCE(mime_type, '') LIKE 'image/%' THEN 3 "
+    "WHEN phash IS NULL AND thumbnail_path IS NOT NULL THEN 4 "
+    "WHEN is_optimized = 0 AND COALESCE(mime_type, '') NOT LIKE 'video/%' THEN 5 "
+    "ELSE 0 END)"
+)
+
 # A photo still being prepared (P4: the grid's quiet "preparing" dot): any step not done yet,
 # 8K included. Plain columns of the photos table, for use in any library query.
 PREPARING = (
