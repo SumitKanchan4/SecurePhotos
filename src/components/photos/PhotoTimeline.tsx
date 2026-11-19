@@ -98,7 +98,7 @@ const Tile: React.FC<TileProps> = React.memo(
           {/* Owner feedback 2026-11-18: tags at the bottom left, translucent black with neon text.
               Photos: one icon per fix on an improved copy, and "8K" once enhanced (both when both).
               Videos: a play button in the middle (round 2026-11-19), so the corner is free for
-              "4K"/"HD"; the length at the bottom right. */}
+              its quality (4K, 2K, HD or SD); the length at the bottom right. */}
           {(improvedKinds.length > 0 || quality) && (
             <span className="timeline-tags">
               {(improvedKinds.length > 0 || quality) && (

@@ -51,8 +51,11 @@ describe("parseTimeline", () => {
     expect(qualityTag({ ...base, width: 1600, height: 1200 })).toBeNull();
     expect(qualityTag({ ...base, is_optimized: false })).toBeNull(); // Not enhanced yet.
     expect(qualityTag({ ...base, is_video: true, width: 3840, height: 2160 })).toBe("4K");
+    expect(qualityTag({ ...base, is_video: true, width: 1440, height: 2560 })).toBe("2K");
     expect(qualityTag({ ...base, is_video: true, width: 1080, height: 1920 })).toBe("HD");
-    expect(qualityTag({ ...base, is_video: true, width: 640, height: 480 })).toBeNull();
+    expect(qualityTag({ ...base, is_video: true, width: 720, height: 1280 })).toBe("HD"); // The test library's video.
+    expect(qualityTag({ ...base, is_video: true, width: 640, height: 480 })).toBe("SD");
+    expect(qualityTag({ ...base, is_video: true, width: 0, height: 0 })).toBeNull(); // Size unknown.
     expect([videoLength(42), videoLength(725), videoLength(3725), videoLength(0)]).toEqual(["0:42", "12:05", "1:02:05", null]);
   });
 });
