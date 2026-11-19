@@ -293,3 +293,35 @@ async def test_requeue_migration_runs_exactly_once(work_dir):
         assert (await _row(unreadable_later))["is_optimized"] == 1  # Not re-queued again.
     finally:
         await _delete([i for i in (first, unreadable_later) if i])
+
+
+async def test_8k_leaves_a_photo_that_changed_while_it_waited(work_dir, monkeypatch):
+    """2026-11-19: a photo picked before waiting for the heavy slot was already enhanced by then."""
+    from engine.services import cpu_budget, enhancement_service
+
+    await run_migrations()
+    src = work_dir / "done_meanwhile.jpg"
+    _jpeg_with_exif(src, (800, 600))
+    conn = await get_db_connection()
+    try:
+        cur = await conn.execute(
+            "INSERT INTO photos (filename, filepath, file_size, mime_type, is_optimized) VALUES ('done_meanwhile.jpg', ?, 1, 'image/jpeg', 1);",
+            (to_db_path(src),),
+        )
+        photo_id = cur.lastrowid
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    def must_not_run(*_args, **_kwargs):
+        raise AssertionError("an already-enhanced photo was enhanced again")
+
+    monkeypatch.setattr(enhancement_service, "enhance_to_avif", must_not_run)
+    row = {"id": photo_id, "filename": "done_meanwhile.jpg", "filepath": to_db_path(src)}
+    try:
+        await photos._enhance_one(row, src, cpu_budget, enhancement_service, None, to_db_path, None)
+    finally:
+        conn = await get_db_connection()
+        await conn.execute("DELETE FROM photos WHERE id = ?;", (photo_id,))
+        await conn.commit()
+        await conn.close()
