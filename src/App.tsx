@@ -1,4 +1,5 @@
 import { watchMediaSession } from "./services/mediaSession";
+import { workInProgress } from "./utils/photoTimeline";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { 
   Lock, 
@@ -135,6 +136,11 @@ export const App: React.FC = () => {
     onPhotoEnhanced: (id) => setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, is_optimized: true, is_enhanced: true } : p))),
     onBatchFinished: () => loadPhotos(),
   });
+  // The photos being worked on right now, shown on their tiles as an icon (2026-11-19).
+  const photoWork = useMemo(
+    () => workInProgress({ preparing, enhance: optimizationProgress, restoreWorking: restoreJobs?.working }),
+    [preparing, optimizationProgress, restoreJobs],
+  );
 
   // Updater and diagnostics state
   const [activeUpdate, setActiveUpdate] = useState<Update | null>(null);
@@ -830,6 +836,7 @@ export const App: React.FC = () => {
                   onOpen={(idx) => openPhotoViewer(displayedPhotos, idx)}
                   onToggleFavorite={handleToggleFavorite}
                   activeVideoId={videoProgress?.is_active ? videoProgress.active_video_id : null}
+                  work={photoWork}
                   empty={
                     <EmptyLibraryState
                       onSelectFolder={() => setIsImportModalOpen(true)}

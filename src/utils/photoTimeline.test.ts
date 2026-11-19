@@ -11,6 +11,7 @@ import {
   parseTimeline,
   preparingTitle,
   qualityTag,
+  workInProgress,
   videoLength,
   scrubberEntries,
   sectionAt,
@@ -44,6 +45,17 @@ describe("parseTimeline", () => {
     expect(preparingTitle(5)).toBe("Getting this photo ready: enhancing (5 of 5). You can open it now.");
     expect(preparingTitle(0)).toBe("Getting this photo ready. You can open it now.");
     expect(parsed[1].duration).toBe(95);
+  });
+
+  it("knows which photos are being worked on right now, and on what", () => {
+    expect(
+      workInProgress({
+        preparing: { step: "faces", photo_id: 4 },
+        enhance: { is_active: true, active_photo_id: 9 },
+        restoreWorking: [{ photo_id: 12 }],
+      }),
+    ).toEqual({ 4: "faces", 9: "enhance", 12: "restore" });
+    expect(workInProgress({ preparing: { step: null, photo_id: null }, enhance: { is_active: false, active_photo_id: 9 } })).toEqual({});
   });
 
   it("names the tile's quality tag and a video's length", () => {

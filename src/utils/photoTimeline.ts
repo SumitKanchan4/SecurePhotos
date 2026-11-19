@@ -345,3 +345,29 @@ export function videoLength(seconds?: number | null): string | null {
   const rest = String(s % 60).padStart(2, "0");
   return h ? `${h}:${String(m).padStart(2, "0")}:${rest}` : `${m}:${rest}`;
 }
+
+/** What is being done to a photo right now (owner feedback 2026-11-19: shown as an icon on it). */
+export type PhotoWork = "text" | "faces" | "rules" | "duplicates" | "enhance" | "restore";
+
+export const WORK_LABELS: Record<PhotoWork, string> = {
+  text: "Reading text",
+  faces: "Finding faces",
+  rules: "Checking old prints",
+  duplicates: "Looking for duplicates",
+  enhance: "Enhancing",
+  restore: "Improving this old photo",
+};
+
+/** The photos being worked on right now (one or two: heavy work runs one at a time). */
+export function workInProgress(input: {
+  preparing?: { step: string | null; photo_id: number | null } | null;
+  enhance?: { is_active: boolean; active_photo_id: number | null } | null;
+  restoreWorking?: { photo_id: number }[] | null;
+}): Record<number, PhotoWork> {
+  const work: Record<number, PhotoWork> = {};
+  const step = input.preparing?.step;
+  if (input.preparing?.photo_id && step && step in WORK_LABELS) work[input.preparing.photo_id] = step as PhotoWork;
+  if (input.enhance?.is_active && input.enhance.active_photo_id) work[input.enhance.active_photo_id] = "enhance";
+  for (const job of input.restoreWorking ?? []) work[job.photo_id] = "restore";
+  return work;
+}

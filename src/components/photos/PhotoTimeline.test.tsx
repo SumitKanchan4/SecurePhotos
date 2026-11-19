@@ -78,6 +78,22 @@ describe("PhotoTimeline", () => {
     expect(tile(3).getByLabelText("Length 1:34")).toBeInTheDocument();
   });
 
+  it("while preparing: the ring instead of the tags, and an icon overlay on the photo being worked on (2026-11-19)", () => {
+    const photos = makeLibrary(3);
+    photos[0] = { ...photos[0], width: 7680, height: 5760, is_ai: true, ai_kinds: ["colour"], is_preparing: true, prepare_step: 2 };
+    photos[1] = { ...photos[1], width: 7680, height: 5760, is_ai: true, ai_kinds: ["colour"] };
+    render(<PhotoTimeline photos={photos} onOpen={vi.fn()} work={{ 1: "faces" }} />);
+    const tile = (id: number) => within(document.querySelector(`[data-photo-id="${id}"]`) as HTMLElement);
+    // Being prepared: the ring only; its tags wait until it's done.
+    expect(tile(1).getByRole("img", { name: /Getting this photo ready/ })).toBeInTheDocument();
+    expect(tile(1).queryByText("8K")).not.toBeInTheDocument();
+    // Worked on right now: the veil with the work's icon (named on hover).
+    expect(tile(1).getByRole("img", { name: "Finding faces now. You can open it already." })).toHaveClass("timeline-work");
+    // Done: tags, no ring, no overlay.
+    expect(tile(2).getByText("8K")).toBeInTheDocument();
+    expect(tile(2).queryByRole("img", { name: /Getting this photo ready|now\./ })).not.toBeInTheDocument();
+  });
+
   it("opens a photo, but selects instead while a selection is active", () => {
     const onOpen = vi.fn();
     render(<PhotoTimeline photos={makeLibrary(20)} onOpen={onOpen} />);
