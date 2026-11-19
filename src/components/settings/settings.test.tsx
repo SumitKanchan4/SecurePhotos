@@ -175,6 +175,8 @@ describe("Photos & AI and Storage", () => {
     expect(within(video).getByRole("radio", { name: "HD" })).toHaveAttribute("aria-checked", "true");
     fireEvent.click(within(video).getByRole("radio", { name: "4K" }));
     expect(updateSetting).toHaveBeenCalledWith("video_resolution", "4k");
+    // Every row as in Appearance: text left, choices right (owner feedback 2026-11-19).
+    expect(document.querySelectorAll(".settings-row.is-stacked")).toHaveLength(0);
   });
 
   it("pauses background work only below the chosen battery level", () => {

@@ -24,15 +24,15 @@ export const QUALITY_OPTIONS: { value: number; label: string; description: strin
 /** Owner, 2026-11-19: the size photos are enhanced to, next to Photo quality. Videos have their
  *  own size (never above 4K; owner decision the same day). */
 export const SIZE_OPTIONS: { value: PhotoSize; label: string; description: string }[] = [
-  { value: "2k", label: "2K", description: "2560 px on the long side. Smallest files; fine for screens and sharing." },
-  { value: "4k", label: "4K", description: "3840 px on the long side. Sharp on big screens, about a third of the space of 8K." },
-  { value: "8k", label: "8K", description: "7680 px on the long side. The most room to zoom and print; the biggest files and the slowest to prepare." },
+  { value: "2k", label: "2K", description: "2560 px on the long side. The smallest files; fine for screens and sharing." },
+  { value: "4k", label: "4K", description: "3840 px on the long side. Sharp on big screens; about a third of the space of 8K." },
+  { value: "8k", label: "8K", description: "7680 px on the long side. The most room to zoom and print; the biggest files." },
 ];
 
 export const VIDEO_SIZE_OPTIONS: { value: VideoSize; label: string; description: string }[] = [
   { value: "original", label: "As recorded", description: "Videos keep the size they were recorded at." },
-  { value: "hd", label: "HD", description: "Old, low-quality clips are enlarged to HD (1080p); the rest keep their size." },
-  { value: "4k", label: "4K", description: "Every video below 4K is enlarged to 4K. Without a graphics card this is slow (a few minutes for each minute of video) and files get bigger." },
+  { value: "hd", label: "HD", description: "Old, low-quality clips are enlarged to HD (1080p)." },
+  { value: "4k", label: "4K", description: "Every video below 4K is enlarged to 4K: slow without a graphics card, and bigger files." },
 ];
 
 /** The choice that matches a stored level (older levels from the slider show as the nearest). */
@@ -87,7 +87,7 @@ export const PhotosAISettings: React.FC<PhotosAISettingsProps> = ({ settings, up
   return (
     <>
       <SettingsGroup title="Photos">
-        <SettingRow title="Photo quality" description={`${quality.description} Applies to photos you import from now on.`} stacked>
+        <SettingRow title="Photo quality" description={`${quality.description} Applies to photos you import from now on.`}>
           <ChoicePills
             label="Photo quality"
             value={qualityChoice(settings.quality_crf)}
@@ -97,8 +97,7 @@ export const PhotosAISettings: React.FC<PhotosAISettingsProps> = ({ settings, up
         </SettingRow>
         <SettingRow
           title="Photo size"
-          description={`${(SIZE_OPTIONS.find((o) => o.value === settings.photo_resolution) ?? SIZE_OPTIONS[2]).description} Photos are enlarged or reduced to this size; for photos you import from now on, a larger version isn't kept.`}
-          stacked
+          description={`${(SIZE_OPTIONS.find((o) => o.value === settings.photo_resolution) ?? SIZE_OPTIONS[2]).description} ${settings.photo_resolution === "8k" || !settings.photo_resolution ? "" : "Larger photos are reduced, and the larger version isn't kept. "}For new imports.`}
         >
           <ChoicePills
             label="Photo size"
@@ -109,8 +108,7 @@ export const PhotosAISettings: React.FC<PhotosAISettingsProps> = ({ settings, up
         </SettingRow>
         <SettingRow
           title="Video size"
-          description={`${(VIDEO_SIZE_OPTIONS.find((o) => o.value === settings.video_resolution) ?? VIDEO_SIZE_OPTIONS[1]).description} Applies to videos you import from now on; never above 4K.`}
-          stacked
+          description={`${(VIDEO_SIZE_OPTIONS.find((o) => o.value === settings.video_resolution) ?? VIDEO_SIZE_OPTIONS[1]).description} For new imports; never above 4K.`}
         >
           <ChoicePills
             label="Video size"
