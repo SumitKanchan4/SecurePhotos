@@ -3035,3 +3035,37 @@ button.dash-usage-open { cursor: pointer; }
 .timeline-play.is-preparing svg { margin-left: 0; }
 .timeline-tile:hover .timeline-play { transform: scale(1.08); background: rgba(0, 0, 0, 0.62); }
 @media (prefers-reduced-motion: reduce) { .timeline-play { transition: none; } }
+
+/* First run, empty library (owner feedback 2026-11-19): the app's icon, plain words, one accent. */
+.welcome {
+  flex: 1; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 32px 24px; text-align: center; user-select: none; transition: background-color 0.2s ease;
+}
+.welcome.is-dragging { background: color-mix(in srgb, var(--accent-fill) 7%, transparent); }
+.welcome-mark {
+  width: 104px; height: 104px; margin-bottom: 10px; border-radius: 30px; display: flex; align-items: center; justify-content: center;
+  color: var(--accent-ink); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35), 0 0 0 12px color-mix(in srgb, var(--accent-fill) 7%, transparent);
+}
+.welcome-mark img { width: 100%; height: 100%; border-radius: inherit; display: block; }
+.welcome.is-dragging .welcome-mark { border: 2px dashed var(--accent-fill); background: color-mix(in srgb, var(--accent-fill) 12%, transparent); }
+.welcome-title { margin: 0; font-family: var(--font-display); font-size: clamp(28px, 3.2vw, 40px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.05; color: var(--text-primary); }
+.welcome-text { margin: 0; max-width: 46ch; font-size: 15px; line-height: 1.6; color: var(--text-secondary); text-wrap: pretty; }
+.welcome-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 14px; }
+.welcome-primary, .welcome-secondary {
+  display: inline-flex; align-items: center; gap: 8px; height: 46px; padding: 0 22px; border-radius: var(--radius-full);
+  font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; transition: transform 0.15s ease, background 0.15s ease;
+}
+.welcome-primary { border: none; background: var(--accent-fill); color: var(--on-accent); box-shadow: 0 6px 22px color-mix(in srgb, var(--accent-fill) 35%, transparent); }
+.welcome-secondary { border: 1px solid var(--glass-border-highlight); background: var(--bg-surface); color: var(--text-primary); }
+.welcome-primary:hover, .welcome-secondary:hover:not(:disabled) { transform: translateY(-1px); }
+.welcome-secondary:disabled { opacity: 0.6; cursor: wait; }
+.welcome-primary:focus-visible, .welcome-secondary:focus-visible { outline: 3px solid var(--accent-fill); outline-offset: 3px; }
+.welcome-hint { margin: 2px 0 0; max-width: 70ch; font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); opacity: 0.85; }
+.welcome-error { margin: 0; max-width: 52ch; font-size: 12.5px; color: var(--accent-danger); }
+.welcome-points { list-style: none; margin: 26px 0 0; padding: 0; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.welcome-points li {
+  display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: var(--radius-full);
+  border: 1px solid var(--glass-border); background: var(--bg-surface); font-size: 12.5px; font-weight: 600; color: var(--text-secondary);
+}
+.welcome-points svg { color: var(--accent-ink); }
+@media (prefers-reduced-motion: reduce) { .welcome-primary, .welcome-secondary { transition: none; } }

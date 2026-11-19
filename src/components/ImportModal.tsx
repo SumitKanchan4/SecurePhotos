@@ -3,7 +3,7 @@
  *
  * Two states. Before: a drop area with Choose files / Choose a folder, then a card for the
  * selection ("Goa trip · 48 photos, 3 videos (2.1 GB) · 4 are already in your library") and a
- * "Move instead of copy" switch that is off by default. While importing: "Copying 29 of 47 ·
+ * "Remove the originals after importing" switch that is off by default. While importing: "Copying 29 of 47 ·
  * about 1 min left", Stop import and Hide. Hiding keeps the import going (the Photos header shows
  * its progress, the result still appears when it ends), and reopening the dialog reconnects to it.
  */
@@ -381,16 +381,19 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
 
             <label className="import-switch-row">
               <span className="import-switch-text">
-                <strong>Move instead of copy</strong>
+                {/* Owner feedback 2026-11-19: say what the switch does when it's on, in plain words. */}
+                <strong>Remove the originals after importing</strong>
                 <span className="import-muted">
-                  Off: your originals stay where they are. On: they are removed only after each copy is checked.
+                  {moveOriginals
+                    ? "Each photo is removed from where it was once its copy in your library has been checked. If a copy fails, the original is kept."
+                    : "Your photos stay where they are now; the library keeps its own copy."}
                 </span>
               </span>
               <button
                 type="button"
                 role="switch"
                 aria-checked={moveOriginals}
-                aria-label="Move instead of copy"
+                aria-label="Remove the originals after importing"
                 className={`import-switch${moveOriginals ? " is-on" : ""}`}
                 onClick={() => setMoveOriginals((v) => !v)}
               >

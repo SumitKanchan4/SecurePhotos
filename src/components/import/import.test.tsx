@@ -124,7 +124,8 @@ describe("ImportModal", () => {
     expect(screen.getByText("4 are already in your library and will be skipped")).toBeInTheDocument();
     const preview = calls.find((c) => c.url.endsWith("/import-preview"));
     expect(JSON.parse(String(preview?.init?.body))).toEqual({ source_directory: "D:/Pictures/Goa trip" });
-    expect(screen.getByRole("switch", { name: "Move instead of copy" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("switch", { name: "Remove the originals after importing" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText("Your photos stay where they are now; the library keeps its own copy.")).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Import 47 items" }));
@@ -139,7 +140,8 @@ describe("ImportModal", () => {
     render(<ImportModal isOpen onClose={onClose} onImportComplete={onImportComplete} />);
     dropFolder();
     await screen.findByText("Goa trip · 48 photos, 3 videos (2.1 GB)");
-    fireEvent.click(screen.getByRole("switch", { name: "Move instead of copy" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Remove the originals after importing" }));
+    expect(screen.getByText(/once its copy in your library has been checked/)).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Import 47 items" }));
     });
@@ -177,5 +179,19 @@ describe("ImportModal", () => {
     expect(await screen.findByText("Copying 12 of 47")).toBeInTheDocument();
     progress = { is_active: false, total_count: 47, completed_count: 47, started_at: null };
     await waitFor(() => expect(onClose).toHaveBeenCalled(), { timeout: 2000 });
+  });
+});
+
+describe("Welcome (empty library, owner feedback 2026-11-19)", () => {
+  it("shows the app's icon, plain words and the same library wording as Settings", async () => {
+    const { EmptyLibraryState } = await import("../EmptyLibraryState");
+    const onImport = vi.fn();
+    const { container } = render(<EmptyLibraryState onSelectFolder={vi.fn()} onImportMedia={onImport} />);
+    expect(container.querySelector(".welcome-mark img")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Welcome to SecurePhotos" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Import photos and videos" }));
+    expect(onImport).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Open a library folder" })).toBeInTheDocument();
+    expect(screen.queryByText(/Connect Existing Library/)).not.toBeInTheDocument();
   });
 });
