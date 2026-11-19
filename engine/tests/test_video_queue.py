@@ -71,6 +71,9 @@ def test_video_size_setting_decides_how_far_videos_are_enlarged():
     # HD (default): only the old clip is enlarged, to 1080p.
     assert classify_video_for_ingestion(vintage, "hd")["target_height"] == 1080
     assert classify_video_for_ingestion(phone, "hd")["action"] == "none"
+    # 2K: everything below 1440p is enlarged to 1440p; a 1440p+ video goes on to the usual checks.
+    assert classify_video_for_ingestion(phone, "2k")["target_height"] == 1440
+    assert classify_video_for_ingestion({**phone, "width": 2560, "height": 1440}, "2k")["action"] == "none"
     # 4K: everything below 4K is enlarged to 4K; 4K stays as it is (nothing goes above 4K).
     assert classify_video_for_ingestion(vintage, "4k")["target_height"] == 2160
     assert classify_video_for_ingestion(phone, "4k")["target_height"] == 2160
@@ -280,3 +283,12 @@ async def test_video_queue_self_healing_on_photo_deletion_and_trash():
         finally:
             await conn.close()
 
+
+
+def test_videos_are_enlarged_by_their_shorter_side():
+    """A portrait phone video made 4K is 2160 px wide (2026-11-19); landscape: 2160 px tall."""
+    from engine.services.video_service import video_scale_filter
+
+    assert video_scale_filter(720, 1280, 2160) == "scale=2160:-2:flags=lanczos"
+    assert video_scale_filter(1920, 1080, 2160) == "scale=-2:2160:flags=lanczos"
+    assert video_scale_filter(0, 0, 1440) == "scale=-2:1440:flags=lanczos"

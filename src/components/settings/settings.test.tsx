@@ -171,7 +171,7 @@ describe("Photos & AI and Storage", () => {
     fireEvent.click(within(size).getByRole("radio", { name: "4K" }));
     expect(updateSetting).toHaveBeenCalledWith("photo_resolution", "4k");
     const video = screen.getByRole("radiogroup", { name: "Video size" });
-    expect(within(video).getAllByRole("radio").map((r) => r.textContent)).toEqual(["As recorded", "HD", "4K"]);
+    expect(within(video).getAllByRole("radio").map((r) => r.textContent)).toEqual(["As recorded", "HD", "2K", "4K"]);
     expect(within(video).getByRole("radio", { name: "HD" })).toHaveAttribute("aria-checked", "true");
     fireEvent.click(within(video).getByRole("radio", { name: "4K" }));
     expect(updateSetting).toHaveBeenCalledWith("video_resolution", "4k");
