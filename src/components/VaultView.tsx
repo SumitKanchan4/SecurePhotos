@@ -262,6 +262,11 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   // Auto-lock countdown (configured timeout) and activity tracking
   useEffect(() => {
     if (!isVaultUnlocked) return;
+    // Unlocking is activity: the countdown starts now. It used to keep the last activity from
+    // before the vault last locked, so reopening with the PIN after an idle lock locked it again
+    // within a second (owner report 2026-11-19).
+    lastActivityRef.current = Date.now();
+    setSecondsRemaining(autoLockSeconds);
 
     // Activity on this screen is reported to the engine (at most every 15 s), and the countdown
     // restarts only when it is: both clocks then agree, so the engine never locks before the
