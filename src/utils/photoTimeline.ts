@@ -307,8 +307,8 @@ export function allSelected(ids: number[], selected: Set<number>): boolean {
 
 /**
  * The grid's quality tag (owner feedback 2026-11-18/19): for an enhanced photo, the size it really
- * has ("8K", "4K" or "2K", by its long side: Settings → Photo size); "4K" or "HD" for a video by
- * its size. Null when there is nothing to say.
+ * has ("8K", "4K" or "2K", by its long side: Settings → Photo size); "4K", "2K", "HD" or "SD" for a
+ * video by its size. Null when there is nothing to say.
  */
 export function qualityTag(photo: Pick<TimelinePhoto, "is_video" | "is_optimized" | "is_enhanced" | "width" | "height">): string | null {
   if (!photo.is_video) {
@@ -316,10 +316,13 @@ export function qualityTag(photo: Pick<TimelinePhoto, "is_video" | "is_optimized
     const long = Math.max(photo.width || 0, photo.height || 0);
     return long >= 7680 ? "8K" : long >= 3840 ? "4K" : long >= 2560 ? "2K" : null;
   }
+  // Every video shows its quality (owner feedback 2026-11-19: a 720p video had no tag).
   const short = Math.min(photo.width || 0, photo.height || 0);
+  if (short <= 0) return null;
   if (short >= 2160) return "4K";
-  if (short >= 1080) return "HD";
-  return null;
+  if (short >= 1440) return "2K";
+  if (short >= 720) return "HD";
+  return "SD";
 }
 
 /** "0:42", "12:05", "1:02:05" from seconds; null when unknown. */
