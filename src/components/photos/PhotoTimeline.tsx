@@ -8,7 +8,7 @@
  * instead of opening it.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Eraser, Heart, Loader2, Palette, Play, ScanFace, Sparkles, SunMedium, type LucideIcon } from "lucide-react";
+import { Check, Copy, Eraser, Heart, History, Loader2, Palette, Play, ScanFace, ScanText, Sparkles, SunMedium, type LucideIcon } from "lucide-react";
 import { improvedLabel } from "../activity/activityFormat";
 import { useAppStore } from "../../store/useAppStore";
 import type { TimelinePhoto } from "../../types";
@@ -25,11 +25,37 @@ import {
   shortMonthLabel,
   PREPARE_STEPS,
   preparingTitle,
+  type PhotoWork,
+  WORK_LABELS,
   qualityTag,
   UNDATED_KEY,
   videoLength,
   visibleRange,
 } from "../../utils/photoTimeline";
+
+/** One icon per kind of work, shown on the photo being worked on (owner: icons, not words). */
+const WORK_ICONS: Record<PhotoWork, LucideIcon> = {
+  text: ScanText,
+  faces: ScanFace,
+  rules: History,
+  duplicates: Copy,
+  enhance: Sparkles,
+  restore: Palette,
+};
+
+/** The photo being worked on right now: a translucent veil with a slow light sweep and the work's icon. */
+function WorkOverlay({ work }: { work: PhotoWork }) {
+  const Icon = WORK_ICONS[work];
+  const label = `${WORK_LABELS[work]} now. You can open it already.`;
+  return (
+    <span className="timeline-work" role="img" aria-label={label} title={label}>
+      <span className="timeline-work-sweep" aria-hidden="true" />
+      <span className="timeline-work-icon" aria-hidden="true">
+        <Icon size={22} strokeWidth={2.2} />
+      </span>
+    </span>
+  );
+}
 
 /** The after-import progress ring: the share of the five steps done, the step in words on hover. */
 function PreparingRing({ step }: { step: number }) {
@@ -82,17 +108,21 @@ interface TileProps {
   selectable: boolean;
   isVault: boolean;
   processing: boolean;
+  /** What is being done to this photo right now, if anything. */
+  work?: PhotoWork;
   onActivate: (index: number, photo: TimelinePhoto, event: React.MouseEvent | React.KeyboardEvent) => void;
   onToggleSelect: (id: number) => void;
   onToggleFavorite?: (id: number) => void;
 }
 
 const Tile: React.FC<TileProps> = React.memo(
-  ({ photo, index, left, width, height, isSelected, selectionMode, selectable, isVault, processing, onActivate, onToggleSelect, onToggleFavorite }) => {
+  ({ photo, index, left, width, height, isSelected, selectionMode, selectable, isVault, processing, work, onActivate, onToggleSelect, onToggleFavorite }) => {
     const [loaded, setLoaded] = useState(false);
     const improvedKinds = photo.is_ai && !photo.is_video ? (photo.ai_kinds?.length ? photo.ai_kinds : ["improved"]) : [];
     const improvedTitle = `${improvedLabel(photo.ai_kinds?.join(","))}. The original is kept: open the photo to compare.`;
     const quality = qualityTag(photo);
+    // While a photo is being prepared its ring takes the tags' corner; the tags come once it's done.
+    const preparing = Boolean(photo.is_preparing && !photo.is_video);
     const length = photo.is_video ? videoLength(photo.duration) : null;
     return (
       <div
@@ -125,7 +155,8 @@ const Tile: React.FC<TileProps> = React.memo(
               Photos: one icon per fix on an improved copy, and "8K" once enhanced (both when both).
               Videos: a play button in the middle (round 2026-11-19), so the corner is free for
               its quality (4K, 2K, HD or SD); the length at the bottom right. */}
-          {(improvedKinds.length > 0 || quality) && (
+          {work && !photo.is_video && <WorkOverlay work={work} />}
+          {!preparing && (improvedKinds.length > 0 || quality) && (
             <span className="timeline-tags">
               {(improvedKinds.length > 0 || quality) && (
                 <span className="timeline-tag-row">
@@ -161,7 +192,7 @@ const Tile: React.FC<TileProps> = React.memo(
               {length}
             </span>
           )}
-          {photo.is_preparing && !photo.is_video && (
+          {preparing && (
             // Owner feedback 2026-11-19: a ring that fills step by step, in the same tag style,
             // and plain words for the step it's on (was a lone dot).
             <PreparingRing step={photo.prepare_step ?? 0} />
@@ -236,6 +267,8 @@ interface PhotoTimelineProps {
   onOpen: (index: number) => void;
   onToggleFavorite?: (id: number) => void;
   activeVideoId?: number | null;
+  /** Photos being worked on right now (photo id → the work), shown as an icon on the tile. */
+  work?: Record<number, PhotoWork>;
   /** Shown instead of the grid when there are no photos. */
   empty?: React.ReactNode;
   /** Vault items (redesign R4): vault thumbnails, and no selection (the vault has no selection bar). */
@@ -251,6 +284,7 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({
   onOpen,
   onToggleFavorite,
   activeVideoId,
+  work,
   empty,
   vault = false,
   minScrubberSections = 2,
@@ -381,6 +415,7 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({
                       selectable={selectable}
                       isVault={vault}
                       processing={isVideoProcessing(p, activeVideoId)}
+                      work={work?.[p.id]}
                       onActivate={handleActivate}
                       onToggleSelect={togglePhotoSelection}
                       onToggleFavorite={onToggleFavorite}
