@@ -357,7 +357,17 @@ def analyze_video_candidate(photo_record: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-VIDEO_SIZES = ("original", "hd", "4k")  # Settings → Video size (owner, 2026-11-19); never above 4K.
+VIDEO_SIZES = ("original", "hd", "2k", "4k")  # Settings → Video size (owner, 2026-11-19); never above 4K.
+# The short side each enlarging choice brings a smaller video to.
+VIDEO_SIZE_TARGETS = {"2k": 1440, "4k": 2160}
+
+
+def video_scale_filter(width: int, height: int, target: int) -> str:
+    """ffmpeg scale filter that brings the video's shorter side to ``target`` (a portrait phone
+    video made "4K" is 2160 px wide, not 2160 px tall; 2026-11-19)."""
+    if width and height and height > width:
+        return f"scale={target}:-2:flags=lanczos"
+    return f"scale=-2:{target}:flags=lanczos"
 
 
 def classify_video_for_ingestion(meta: Dict[str, Any], video_size: str = "hd") -> Dict[str, Any]:
@@ -366,7 +376,8 @@ def classify_video_for_ingestion(meta: Dict[str, Any], video_size: str = "hd") -
     Args:
         meta: Extracted video metadata (width, height, file_size, codec, bitrate, duration).
         video_size: Settings → Video size: "original" (never enlarged), "hd" (old low-quality
-            clips enlarged to 1080p; the default) or "4k" (every video below 4K enlarged to 4K).
+            clips enlarged to 1080p; the default), "2k" or "4k" (every video whose shorter side is
+            below 1440 / 2160 px enlarged to it).
 
     Returns:
         Dict with keys:
@@ -391,13 +402,15 @@ def classify_video_for_ingestion(meta: Dict[str, Any], video_size: str = "hd") -
             "reason": "Already pristine 4K UHD. Preserving original camera master.",
         }
 
-    # Video size 4K: every video below 4K is enlarged to 4K (slow on a CPU; the user chose it).
-    if video_size == "4k":
+    # Video size 2K / 4K: every video below that size is enlarged to it (slow on a CPU; the user
+    # chose it). Videos already that size go on to the usual checks below.
+    target = VIDEO_SIZE_TARGETS.get(video_size)
+    if target and min_dim < target:
         return {
             "action": "enhance",
             "is_already_optimized": False,
-            "target_height": 2160,
-            "reason": f"{min_dim}p video. Scheduled for upscaling to 4K (Settings → Video size).",
+            "target_height": target,
+            "reason": f"{min_dim}p video. Scheduled for upscaling to {video_size.upper()} (Settings → Video size).",
         }
 
     # 2. Modern 1080p in efficient codec (H.265 / HEVC / AV1 / VP9)
@@ -766,8 +779,9 @@ async def enhance_old_video(
     current_height = photo["height"] or 0
     current_width = photo["width"] or 0
 
-    # Only skip if the video was already enhanced AND is already at or above target_height (or 4K width)
-    if photo["is_enhanced"] and (current_height >= target_height or current_width >= 3840):
+    # Only skip if the video was already enhanced AND its shorter side is already at the target.
+    current_short = min(current_width, current_height) if current_width and current_height else max(current_width, current_height)
+    if photo["is_enhanced"] and current_short >= target_height:
         return {
             "success": True,
             "already_enhanced": True,
@@ -785,11 +799,13 @@ async def enhance_old_video(
     orig_size = orig_p.stat().st_size
     orig_p = Path(orig_path)
     clean_stem = orig_p.stem
-    for sfx in ["_enhanced", "_4k", "_opt"]:
+    for sfx in ["_enhanced", "_4k", "_2k", "_opt"]:
         clean_stem = clean_stem.replace(sfx, "")
 
     if target_height >= 2160:
         target_name = f"{clean_stem}_4k.mp4"
+    elif target_height >= 1440:
+        target_name = f"{clean_stem}_2k.mp4"
     else:
         target_name = f"{clean_stem}_enhanced.mp4"
 
@@ -799,13 +815,13 @@ async def enhance_old_video(
     # Multi-stage restoration filter graph:
     # 1. yadif=1:-1:0 (deinterlacing)
     # 2. hqdn3d=4:3:6:4.5 (temporal 3D denoising)
-    # 3. scale: Lanczos upscaling to target_height preserving aspect ratio
+    # 3. scale: Lanczos upscaling of the shorter side to target_height, preserving aspect ratio
     # 4. unsharp: edge contrast enhancement
     # 5. eq: color and contrast revival
     filter_chain = (
         f"yadif=1:-1:0,"
         f"hqdn3d=4:3:6:4.5,"
-        f"scale=-2:{target_height}:flags=lanczos,"
+        f"{video_scale_filter(current_width, current_height, target_height)},"
         f"unsharp=5:5:0.8:3:3:0.4,"
         f"eq=contrast=1.05:brightness=0.01:saturation=1.12"
     )

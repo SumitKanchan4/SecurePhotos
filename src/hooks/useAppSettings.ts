@@ -3,7 +3,7 @@ import { apiFetch } from "../services/api";
 import { useAppStore } from "../store/useAppStore";
 
 export type PhotoSize = "2k" | "4k" | "8k";
-export type VideoSize = "original" | "hd" | "4k";
+export type VideoSize = "original" | "hd" | "2k" | "4k";
 
 export interface AppSettings {
   theme: "dark" | "light";

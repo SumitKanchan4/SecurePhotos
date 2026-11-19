@@ -32,6 +32,7 @@ export const SIZE_OPTIONS: { value: PhotoSize; label: string; description: strin
 export const VIDEO_SIZE_OPTIONS: { value: VideoSize; label: string; description: string }[] = [
   { value: "original", label: "As recorded", description: "Videos keep the size they were recorded at." },
   { value: "hd", label: "HD", description: "Old, low-quality clips are enlarged to HD (1080p)." },
+  { value: "2k", label: "2K", description: "Every video below 2K (1440p) is enlarged to 2K: slower without a graphics card, and bigger files." },
   { value: "4k", label: "4K", description: "Every video below 4K is enlarged to 4K: slow without a graphics card, and bigger files." },
 ];
 
