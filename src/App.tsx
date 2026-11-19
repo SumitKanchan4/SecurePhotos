@@ -1,3 +1,4 @@
+import { watchMediaSession } from "./services/mediaSession";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { 
   Lock, 
@@ -140,6 +141,9 @@ export const App: React.FC = () => {
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
 
   // Find, start and connect to the photo engine; reload what depends on it once reached.
+  // Photos keep showing if the engine restarts and forgets the image login (2026-11-19).
+  useEffect(() => watchMediaSession(), []);
+
   const { isRecheckingPrereqs, startEngine: handleStartEngine, recheckPrerequisites: handleRecheckPrerequisites } = useEngineConnection(() => {
     checkVaultStatus();
     loadPhotos();
