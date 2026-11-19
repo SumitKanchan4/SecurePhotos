@@ -23,11 +23,37 @@ import {
   scrubberEntries,
   sectionAt,
   shortMonthLabel,
+  PREPARE_STEPS,
+  preparingTitle,
   qualityTag,
   UNDATED_KEY,
   videoLength,
   visibleRange,
 } from "../../utils/photoTimeline";
+
+/** The after-import progress ring: the share of the five steps done, the step in words on hover. */
+function PreparingRing({ step }: { step: number }) {
+  const total = PREPARE_STEPS.length;
+  const done = step > 0 ? step - 1 : 0;
+  const r = 6;
+  const circumference = 2 * Math.PI * r;
+  const title = preparingTitle(step);
+  return (
+    <span className="timeline-preparing" role="img" aria-label={title} title={title}>
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+        <circle cx="8" cy="8" r={r} className="timeline-preparing-track" />
+        <circle
+          cx="8"
+          cy="8"
+          r={r}
+          className="timeline-preparing-fill"
+          strokeDasharray={`${Math.max(circumference * (done / total), 2.2)} ${circumference}`}
+          transform="rotate(-90 8 8)"
+        />
+      </svg>
+    </span>
+  );
+}
 
 /** One icon per fix on an improved copy's tag (owner feedback 2026-11-18). */
 const KIND_ICONS: Record<string, LucideIcon> = { colour: Palette, fade: SunMedium, faces: ScanFace, scratches: Eraser };
@@ -136,12 +162,9 @@ const Tile: React.FC<TileProps> = React.memo(
             </span>
           )}
           {photo.is_preparing && !photo.is_video && (
-            <span
-              className="timeline-preparing"
-              role="img"
-              aria-label="Still being prepared"
-              title="Still being prepared: reading text, finding faces, enhancing. You can use it already."
-            />
+            // Owner feedback 2026-11-19: a ring that fills step by step, in the same tag style,
+            // and plain words for the step it's on (was a lone dot).
+            <PreparingRing step={photo.prepare_step ?? 0} />
           )}
         </div>
 

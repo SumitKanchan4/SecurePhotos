@@ -11,7 +11,7 @@ via `data_location.txt`). Import with **Copy**, never Move. Tick each box; note 
 - [ ] Import a few scans and phone photos (and a receipt or ID photo if you have one).
 - [ ] The import panel: "Add files" / "Add a folder" add to the first choice; totals and size update; "Clear" starts again.
 - [ ] Activity shows one card "Getting N photos ready" with the step (Reading text → Finding faces → Checking old prints → Looking for duplicates → Enhancing to 8K) and the photo.
-- [ ] New photos show a quiet dot in the grid until they're done; the dot goes away by itself.
+- [ ] New photos show a small progress ring (bottom-right) that fills step by step; hover names the step; it goes away by itself.
 - [ ] People fills in without pressing anything; "Looking for faces" shows progress.
 - [ ] Documents: a receipt/ID is found by itself; ordinary photos are not documents.
 - [ ] When the quick steps are done: "Your new photos are ready: … added · … people · … documents · … old photos improved".

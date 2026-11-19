@@ -53,10 +53,10 @@ describe("PhotoTimeline", () => {
     expect(tiles.length).toBeLessThan(200);
   });
 
-  it("marks photos still being prepared with a quiet dot (P4), and only those", () => {
-    const photos = makeLibrary(6).map((p, i) => ({ ...p, is_preparing: i < 2 }));
+  it("marks photos still being prepared with a progress ring naming the step (2026-11-19), and only those", () => {
+    const photos = makeLibrary(6).map((p, i) => ({ ...p, is_preparing: i < 2, prepare_step: i < 2 ? 2 : 0 }));
     render(<PhotoTimeline photos={photos} onOpen={vi.fn()} />);
-    const dots = screen.getAllByRole("img", { name: "Still being prepared" });
+    const dots = screen.getAllByRole("img", { name: "Getting this photo ready: finding faces (2 of 5). You can open it now." });
     expect(dots).toHaveLength(2);
     expect(dots.map((d) => d.closest("[data-photo-id]")?.getAttribute("data-photo-id")).sort()).toEqual(["1", "2"]);
   });

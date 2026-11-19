@@ -76,8 +76,10 @@ export interface TimelinePhoto {
   is_ai?: boolean;
   /** What the improved copy had done: "colour", "fade", "faces", "scratches". */
   ai_kinds?: string[];
-  /** After-import P4: text, faces, old-photo check, duplicates or 8K still to do (quiet dot). */
+  /** After-import P4: text, faces, old-photo check, duplicates or 8K still to do (progress ring). */
   is_preparing?: boolean;
+  /** Which of the five steps it is on (1-5; 0 when ready). */
+  prepare_step?: number;
   /** A video's length in seconds (0 or missing: unknown). */
   duration?: number;
 }
