@@ -2311,9 +2311,21 @@ html, body, #root {
   text-transform: uppercase;
   color: var(--text-secondary);
 }
-.dash-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 60px 20px; text-align: center; color: var(--text-secondary); }
-.dash-empty h2 { margin: 0; font-family: var(--font-display); font-size: 22px; font-weight: 900; color: var(--text-primary); }
-.dash-empty p { margin: 0; font-size: 13px; max-width: 420px; }
+/* Empty and loading messages (owner feedback 2026-11-19: centred, not squeezed into a corner).
+   They fill whatever area they're in and sit in its middle; a leading icon gets a soft badge. */
+.dash-empty {
+  flex: 1 1 auto; align-self: stretch; box-sizing: border-box; width: 100%; min-height: 220px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  padding: 48px 24px; text-align: center; color: var(--text-secondary);
+}
+.dash-empty > svg:first-child:not(.spin) {
+  box-sizing: content-box; width: 30px; height: 30px; padding: 20px; margin-bottom: 6px; border-radius: 50%;
+  background: color-mix(in srgb, var(--accent-fill) 16%, transparent); color: var(--accent-ink);
+  box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent-fill) 6%, transparent);
+}
+.dash-empty h2 { margin: 0; font-family: var(--font-display); font-size: clamp(22px, 2.4vw, 30px); font-weight: 900; letter-spacing: -0.02em; line-height: 1.1; color: var(--text-primary); text-wrap: balance; }
+.dash-empty p { margin: 0; font-size: 14px; line-height: 1.55; max-width: 40ch; text-wrap: pretty; }
+.dash-empty .dash-btn { margin-top: 8px; }
 
 .dup-row { display: flex; gap: 14px; flex-wrap: wrap; }
 .dup-item { position: relative; width: 136px; display: flex; flex-direction: column; gap: 4px; }
