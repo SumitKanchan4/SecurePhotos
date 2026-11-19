@@ -123,6 +123,18 @@ async def restore_photos(payload: RestorePhotosRequest) -> dict:
         await conn.close()
 
 
+def _sweep_unused_files_soon() -> None:
+    """After deleting for good, also remove thumbnails/previews nothing uses (owner, 2026-11-19)."""
+    import asyncio
+    import os
+
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return  # Tests call the sweep themselves.
+    from engine.services.storage_cleanup import sweep_unused_files
+
+    asyncio.get_running_loop().create_task(sweep_unused_files())
+
+
 async def purge_photos(conn, photo_ids: List[int]) -> int:
     """Permanently deletes photos: database rows first, then their files.
 
@@ -225,6 +237,7 @@ async def permanently_delete_selected(payload: PermanentDeleteRequest) -> dict:
         deleted = await purge_photos(conn, ids)
     finally:
         await conn.close()
+    _sweep_unused_files_soon()
     return {"status": "ok", "deleted_count": deleted}
 
 
@@ -238,4 +251,5 @@ async def empty_trash_permanently() -> dict:
         deleted = await purge_photos(conn, ids)
     finally:
         await conn.close()
+    _sweep_unused_files_soon()
     return {"status": "ok", "deleted_count": deleted}

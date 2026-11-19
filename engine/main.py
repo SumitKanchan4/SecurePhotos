@@ -93,6 +93,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from engine.services.face_scan_worker import repair_sideways_faces
 
         asyncio.create_task(repair_sideways_faces())
+        # Thumbnails/previews nothing uses any more (left by rewritten photos; 2026-11-19).
+        from engine.services.storage_cleanup import sweep_unused_files
+
+        asyncio.create_task(sweep_unused_files())
 
     # H10: plug in "Add colour" and "Fix faded colours" (the worker runs them; tests use fakes).
     from engine.services import old_photo_processors

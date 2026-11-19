@@ -372,6 +372,11 @@ async def run_background_optimization():
         finally:
             optimization_state["is_active"] = False
             optimization_state["active_photo_id"] = None
+            # 8K gives photos new files: their old thumbnails/previews are now unused (2026-11-19).
+            if optimization_state.get("completed_count") and not os.environ.get("PYTEST_CURRENT_TEST"):
+                from engine.services.storage_cleanup import sweep_unused_files
+
+                asyncio.get_running_loop().create_task(sweep_unused_files())
             optimization_state["active_filename"] = None
             optimization_state["item_progress"] = 0
             optimization_state["last_completed_photo_id"] = None
