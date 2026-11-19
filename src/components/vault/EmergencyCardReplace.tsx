@@ -8,7 +8,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Download, FileText, Loader2 } from "lucide-react";
 import { useAppStore } from "../../store/useAppStore";
 import { apiFetch } from "../../services/api";
-import { downloadGridCardImage, downloadGridCardText, GridCardData, renderGridCardCanvas } from "../../utils/gridCardRenderer";
+import { downloadGridCardImage, downloadGridCardText, GridCardData, loadCardIcon, renderGridCardCanvas } from "../../utils/gridCardRenderer";
 
 export const EmergencyCardReplace: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const showToast = useAppStore((s) => s.showToast);
@@ -20,13 +20,21 @@ export const EmergencyCardReplace: React.FC<{ onClose: () => void }> = ({ onClos
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    if (card && canvasRef.current) {
+    if (!card || !canvasRef.current) return;
+    let alive = true;
+    const draw = (icon: HTMLImageElement | null) => {
+      if (!alive || !canvasRef.current) return;
       try {
-        renderGridCardCanvas(canvasRef.current, card);
+        renderGridCardCanvas(canvasRef.current, card, icon);
       } catch {
         /* the card can still be saved as text */
       }
-    }
+    };
+    draw(null);
+    void loadCardIcon().then(draw);
+    return () => {
+      alive = false;
+    };
   }, [card]);
 
   const replace = async (e: React.FormEvent) => {

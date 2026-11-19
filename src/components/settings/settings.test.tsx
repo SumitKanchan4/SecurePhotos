@@ -12,6 +12,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn(async () => null) }));
 vi.mock("../../utils/gridCardRenderer", () => ({
   renderGridCardCanvas: vi.fn(),
+  loadCardIcon: vi.fn(async () => null),
   downloadGridCardImage: vi.fn(async () => {}),
   downloadGridCardText: vi.fn(),
 }));
