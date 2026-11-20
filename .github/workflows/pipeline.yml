@@ -26,13 +26,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ─────────────────────────────────────────────────────────────
-  # JOB 1: Quality Gate (MANDATORY PREREQUISITE)
-  # Runs on manual invocation. If this fails, packaging and
-  # distribution are strictly prevented from executing.
-  # ─────────────────────────────────────────────────────────────
+  # Job 1: the same checks as quality.yml. If any fails, nothing is built or published.
   validate:
-    name: Quality Gate (Typecheck, Lint, Full Test Suite & Cargo Check)
+    name: Lint, typecheck, tests & Rust check
     runs-on: windows-latest
 
     steps:
@@ -41,13 +37,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate Default Branch for Public Release
+      - name: Public releases only from the default branch
         if: inputs.distribution_mode == 'public_release' && github.ref_name != github.event.repository.default_branch
         shell: bash
         run: |
-          echo "::error::[Security Guard] Public releases can ONLY be triggered from the default branch ('${{ github.event.repository.default_branch }}')."
-          echo "::error::Attempted trigger on branch: '${{ github.ref_name }}'."
-          echo "::notice::Tip: To test installer builds on a feature/topic branch, select distribution_mode: 'test_build'."
+          echo "::error::Public releases can only be made from '${{ github.event.repository.default_branch }}', not '${{ github.ref_name }}'."
+          echo "::notice::To try an installer from another branch, choose distribution_mode: test_build."
           exit 1
 
       - name: Setup Node.js
@@ -76,7 +71,8 @@ jobs:
       - name: Setup FFmpeg
         uses: FedericoCarboni/setup-ffmpeg@36c6454b5a2348e7794ba2d82a21506605921e3d # v3
         with:
-          ffmpeg-version: release
+          # Pinned like quality.yml: "release" can find only nightly builds and fail the run.
+          ffmpeg-version: 9.0.2
 
       - name: Stage FFmpeg Binaries & Resource Directories
         shell: bash
@@ -113,16 +109,16 @@ jobs:
         run: |
           python scripts/build-engine.py
 
-      - name: Rust Backend Type & Dependency Check
+      - name: Rust check
         run: cargo check --manifest-path src-tauri/Cargo.toml
 
-  # ─────────────────────────────────────────────────────────────
-  # JOB 2: Build Desktop Installers & Distribute
-  # ONLY executes if 'validate' passes 100%.
-  # Handles isolated test artifacts or public releases cleanly.
-  # ─────────────────────────────────────────────────────────────
+      - name: Rust tests (engine access token)
+        run: cargo test --manifest-path src-tauri/Cargo.toml --test token_rng
+
+  # Job 2: build the installer. A test build is attached to the run; a public release is also
+  # tagged and published, with notes taken from CHANGELOG.md.
   package_and_release:
-    name: Package Desktop Installer & Distribute
+    name: Build the installer and publish
     needs: [validate]
     runs-on: windows-latest
     permissions:
@@ -177,7 +173,8 @@ jobs:
       - name: Setup FFmpeg
         uses: FedericoCarboni/setup-ffmpeg@36c6454b5a2348e7794ba2d82a21506605921e3d # v3
         with:
-          ffmpeg-version: release
+          # Pinned like quality.yml: "release" can find only nightly builds and fail the run.
+          ffmpeg-version: 9.0.2
 
       - name: Stage FFmpeg Binaries & Resource Directories
         shell: bash
@@ -188,7 +185,7 @@ jobs:
           bin/ffmpeg.exe -version
           bin/ffprobe.exe -version
 
-      # H8: ship the AI models inside the installer so a fresh install works offline.
+      # The smaller AI models ship inside the installer, so a fresh install works offline.
       # Pinned commit + SHA-256 (engine/services/ai_models.py); a mismatch stops the build.
       - name: Bundle verified AI models
         shell: bash
@@ -200,7 +197,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      # ── Artifact Upload (Always available in Actions run summary) ──
+      # Always attach the installer to the run.
       - name: Upload Installer to Run Artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -213,8 +210,21 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      # ── Public GitHub Release (Only if distribution_mode == 'public_release' AND on default branch) ──
-      - name: Publish Official GitHub Release
+      # The installer downloads the old-photo models from the models-v1 release. If people can't
+      # download them (the repository is private, or a file is missing), don't publish.
+      - name: Check the old-photo models can be downloaded
+        if: inputs.distribution_mode == 'public_release'
+        shell: bash
+        run: |
+          python -c "import sys; sys.path.insert(0, 'scripts'); import create_release as r; f = r.check_on_demand_models_public(); [print('::error::Not downloadable without a login: ' + u) for u in f]; sys.exit(1 if f else 0)"
+
+      - name: Write the release notes from CHANGELOG.md
+        if: inputs.distribution_mode == 'public_release'
+        shell: bash
+        run: python scripts/ci/release_notes.py "${{ steps.version_meta.outputs.next_version }}" release_notes.md
+
+      # Only for a public release from the default branch.
+      - name: Publish the GitHub release
         if: inputs.distribution_mode == 'public_release' && github.ref_name == github.event.repository.default_branch
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
@@ -222,25 +232,7 @@ jobs:
           name: 'SecurePhotos ${{ steps.version_meta.outputs.tag_name }}'
           draft: false
           prerelease: false
-          body: |
-            ## 🔒 SecurePhotos ${{ steps.version_meta.outputs.tag_name }} — Desktop Release
-            
-            Download the installer for your Windows PC below:
-            - **`SecurePhotos_${{ steps.version_meta.outputs.next_version }}_x64-setup.exe`**: 1-Click Windows Setup Installer (Recommended, in-place upgrades)
-            
-            ### 🛡️ SmartScreen / First-Time Installation Notice
-            - If Windows Defender SmartScreen displays *"Windows protected your PC"*, click **"More info"** &rarr; **"Run anyway"**.
-            - This is standard for newly published releases before worldwide telemetry reputation is established.
-            
-            ### ✨ Features & Capabilities
-            - In-place seamless upgrades (replaces app without requiring uninstall)
-            - Clean single desktop icon idempotency (no duplicate shortcuts)
-            - Bundled Standalone Python Backend Engine Sidecar (`securephotos-engine.exe`)
-            - Instant zero-console launch (No console popups, 0ms startup delay)
-            - High-Speed Offline Media Ingestion with 2-level thumbnail sharding
-            - Zero-Trust AES-256-GCM Encrypted Vault & Multi-Slot Recovery
-            - On-Device 4K AI Super-Resolution with AVIF space-saving compression
-            - Representative Medoid Face Clustering & Social Affinity Close Ones
+          body_path: release_notes.md
           files: |
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/nsis/*.zip
@@ -250,25 +242,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── Workflow Execution Summary ──
-      - name: Generate Pipeline Run Summary
+      - name: Run summary
         if: always()
         shell: bash
         run: |
-          echo "## 🚀 SecurePhotos CI/CD Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## SecurePhotos ${{ steps.version_meta.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
           echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Target Version** | \`${{ steps.version_meta.outputs.tag_name }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Previous Version** | \`v${{ steps.version_meta.outputs.previous_version }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Bump Type** | \`${{ inputs.release_type }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Distribution Mode** | \`${{ inputs.distribution_mode }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | \`${{ steps.version_meta.outputs.tag_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Previous version** | \`v${{ steps.version_meta.outputs.previous_version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version bump** | \`${{ inputs.release_type }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Mode** | \`${{ inputs.distribution_mode }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ inputs.distribution_mode }}" = "test_build" ]; then
             echo "> [!NOTE]" >> $GITHUB_STEP_SUMMARY
-            echo "> **Test Build Complete**: The setup installer has been uploaded directly as a workflow run artifact and is **NOT** published to the public GitHub Releases page." >> $GITHUB_STEP_SUMMARY
-            echo "> You can download the zip from the **Artifacts** section at the top of this run to test the installer locally." >> $GITHUB_STEP_SUMMARY
+            echo "> **Test build:** the installer is attached to this run under **Artifacts**. Nothing was published." >> $GITHUB_STEP_SUMMARY
           else
-            echo "> [!SUCCESS]" >> $GITHUB_STEP_SUMMARY
-            echo "> **Official Release Published**: \`${{ steps.version_meta.outputs.tag_name }}\` is now live on GitHub Releases." >> $GITHUB_STEP_SUMMARY
+            echo "> [!TIP]" >> $GITHUB_STEP_SUMMARY
+            echo "> **Published:** \`${{ steps.version_meta.outputs.tag_name }}\` is on the GitHub releases page." >> $GITHUB_STEP_SUMMARY
           fi

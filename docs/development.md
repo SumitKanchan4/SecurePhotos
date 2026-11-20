@@ -112,7 +112,7 @@ The old-photo models are served from this repository's GitHub release `models-v1
 - **Quality Gate** (`.github/workflows/quality.yml`) runs on every pull request: ruff, the engine tests, an npm audit, the app tests, the production build and the Rust checks.
 - **SecurePhotos CI/CD Pipeline** (`.github/workflows/pipeline.yml`) only runs when started by hand from the **Actions** tab. Choose the branch, the version bump (`patch`, `minor` or `major`) and what to do with the result:
   - `test_build` (the default) builds the installer and attaches it to the run. Nothing is published.
-  - `public_release` builds the installer, tags the commit `v<version>` and publishes a GitHub release. It only runs from `master`.
+  - `public_release` builds the installer, tags the commit `v<version>` and publishes a GitHub release. It only runs from `master`. It first checks that the old-photo models can be downloaded without a login, and the release notes are taken from `CHANGELOG.md` (the version's own section, or Unreleased) by `scripts/ci/release_notes.py`, so update the changelog before releasing.
 
 To preview or apply a version number locally:
 
