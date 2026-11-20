@@ -123,6 +123,7 @@ async def test_keep_both_adds_a_linked_copy_with_the_same_details(lib):
     for col in ("taken_at", "latitude", "longitude", "camera_make", "is_favorite", "caption", "is_enhanced"):
         assert new[col] == orig[col], col
     assert new["filename"] == "grandparents_colour.avif" and new["mime_type"] == "image/avif"
+    assert new["is_optimized"] == 0  # After-import P2 / owner D3: the copy gets 8K too.
     assert orig["trashed_at"] is None and (lib["folder"] / "grandparents.jpg").read_bytes() == original_bytes
 
     path = resolve_stored_path(new["filepath"])
@@ -237,6 +238,44 @@ async def test_photos_shows_one_tile_per_pair_the_improved_one(lib):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         items = (await client.get("/api/photos/timeline")).json()["items"]
     assert [i[0] for i in items if i[0] in (original_id, new_id, newer)] == [original_id]
+
+
+async def _trashed(conn, *ids):
+    marks = ",".join("?" * len(ids))
+    async with conn.execute(f"SELECT id FROM photos WHERE id IN ({marks}) AND trashed_at IS NOT NULL;", ids) as cur:
+        return {r[0] for r in await cur.fetchall()}
+
+
+@pytest.mark.parametrize("how", ["one", "batch"])
+async def test_deleting_a_tile_deletes_the_original_and_copies_and_restore_brings_all_back(lib, how):
+    """Owner feedback 2026-11-18: deleting the improved tile left the original behind in the library."""
+    conn, (original_id, other_id) = lib["conn"], lib["ids"]
+    copy_id = (await restore_queue.keep_result(await _finish(original_id), "keep_both"))["photo_id"]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        if how == "one":
+            assert (await client.delete(f"/api/photos/{copy_id}")).status_code == 200
+        else:
+            res = await client.post("/api/photos/batch-trash", json={"photo_ids": [copy_id]})
+            assert res.json()["trashed_count"] == 2
+        assert await _trashed(conn, original_id, copy_id, other_id) == {original_id, copy_id}
+        items = (await client.get("/api/photos/timeline")).json()["items"]
+        assert not {original_id, copy_id} & {i[0] for i in items}
+
+        # Restoring either one brings back the group deleted with it.
+        assert (await client.post("/api/trash/restore", json={"photo_ids": [copy_id]})).json()["restored_count"] == 2
+    assert await _trashed(conn, original_id, copy_id) == set()
+
+
+async def test_restore_leaves_a_version_trashed_at_another_time(lib):
+    """'Replace' put the original in Trash earlier; restoring a later-deleted copy doesn't bring it back."""
+    conn, (original_id, _) = lib["conn"], lib["ids"]
+    copy_id = (await restore_queue.keep_result(await _finish(original_id), "keep_both"))["photo_id"]
+    await conn.execute("UPDATE photos SET trashed_at = '2026-01-01 00:00:00' WHERE id = ?;", (original_id,))
+    await conn.execute("UPDATE photos SET trashed_at = '2026-02-01 00:00:00' WHERE id = ?;", (copy_id,))
+    await conn.commit()
+    assert await photo_versions.restore_with_versions(conn, [copy_id]) == 1
+    await conn.commit()
+    assert await _trashed(conn, original_id, copy_id) == {original_id}
 
 
 async def test_an_improved_original_offers_no_second_copy(lib, monkeypatch):
@@ -386,17 +425,30 @@ async def test_api_keep_versions_and_restore(lib):
         assert (await client.get("/api/restore/photos/999999/versions")).status_code == 404
 
 
-async def test_stories_use_the_copy_not_both(lib):
-    from engine.services.stories_service import delete_story, generate_year_in_review_story
+async def test_a_restored_old_print_shows_in_old_photos_not_in_dated_stories(lib):
+    """P3 (owner-approved rules): a scan carries the scan date, so a print the app restored
+    stays out of dated stories and shows (as the improved copy) in "Old photos, brought back"."""
+    from engine.services.stories_service import delete_story, generate_old_photos_story, generate_year_in_review_story
 
-    original_id, other_id = lib["ids"]
+    conn, (original_id, other_id) = lib["conn"], lib["ids"]
     new_id = (await restore_queue.keep_result(await _finish(original_id), "keep_both"))["photo_id"]
-    story = await generate_year_in_review_story("1974")
+    await conn.execute("UPDATE photos SET edited_at = CURRENT_TIMESTAMP WHERE id = ?;", (new_id,))
+    # A second restored print (whose original was later deleted): the story needs two.
+    await conn.execute("UPDATE photos SET ai_kind = 'fade', edited_at = CURRENT_TIMESTAMP WHERE id = ?;", (other_id,))
+    await conn.commit()
+    year_story = await generate_year_in_review_story("1974")
+    old_story = await generate_old_photos_story()
     try:
-        shown = {s.photo_id for s in story.slides}
-        assert new_id in shown and other_id in shown and original_id not in shown
+        if year_story is not None:
+            shown = {s.photo_id for s in year_story.slides}
+            assert not shown & {original_id, new_id, other_id}
+        assert old_story is not None and old_story.title == "Old photos, brought back"
+        shown = [s.photo_id for s in old_story.slides]
+        assert new_id in shown and original_id not in shown  # The improved one, never both.
     finally:
-        await delete_story(story.id)
+        for story in (year_story, old_story):
+            if story is not None:
+                await delete_story(story.id)
 
 
 # ── A3 endpoints: the waiting result, which actions fit, the strength slider ──
@@ -464,3 +516,52 @@ async def test_viewer_state_in_one_request(lib, monkeypatch):
         # Already coloured: no colour fix again; a scan can still have scratches.
         assert state["options"] == {"colour": False, "fade": False, "faces": False, "scratches": True}
         assert (await client.get("/api/restore/photos/999999/state")).status_code == 404
+
+
+async def test_quick_wins_plain_photos_get_8k_first_and_automatic_fixes_wait(lib, monkeypatch):
+    """Owner, 2026-11-18: do the photos needing least work first. A plain photo needs only 8K;
+    an old print needs its fix and then 8K for the copy and the original."""
+    from engine.api import photos as photos_api
+
+    conn, (original_id, plain_id) = lib["conn"], lib["ids"]
+    copy_id = (await restore_queue.keep_result(await _finish(original_id), "keep_both"))["photo_id"]
+    ours = (original_id, copy_id, plain_id)
+    await conn.execute(
+        "UPDATE photos SET is_optimized = 0, ocr_text = '', faces_scanned = 1, restore_checked = 1, mime_type = 'image/jpeg' WHERE id IN (?, ?, ?);",
+        ours,
+    )
+    await conn.commit()
+    async with conn.execute(f"SELECT id FROM photos WHERE {photos_api.ENHANCE_READY};") as cur:
+        others = {r[0] for r in await cur.fetchall()} - set(ours)
+
+    order = []
+    for _ in ours:
+        row = await photos_api._next_to_enhance(others | set(order))
+        order.append(row["id"])
+    assert order == [plain_id, copy_id, original_id]
+
+    # Automatic old-print fixes wait only while the 8K pass is really running and not paused.
+    monkeypatch.setitem(photos_api.optimization_state, "is_active", True)
+    assert await photos_api.plain_photos_first()
+    monkeypatch.setattr(photos_api, "enhancement_paused_by_user", True)
+    assert not await photos_api.plain_photos_first()
+    monkeypatch.setattr(photos_api, "enhancement_paused_by_user", False)
+    monkeypatch.setitem(photos_api.optimization_state, "is_active", False)
+    assert not await photos_api.plain_photos_first()
+
+
+async def test_automatic_fixes_wait_for_quick_wins_but_the_users_own_run(lib, monkeypatch):
+    from engine.api import photos as photos_api
+
+    async def quick_wins_waiting():
+        return True
+
+    monkeypatch.setattr(photos_api, "plain_photos_first", quick_wins_waiting)
+    original_id, other_id = lib["ids"]
+    (auto_job,) = await restore_queue.enqueue([original_id], "colour", {"style": "natural"}, origin="auto")
+    assert not await restore_queue.process_next_job()  # Waits: plain photos are getting 8K.
+    (manual_job,) = await restore_queue.enqueue([other_id], "colour", {"style": "natural"}, origin="manual")
+    assert await restore_queue.process_next_job()
+    async with lib["conn"].execute("SELECT id, status FROM restore_jobs WHERE id IN (?, ?);", (auto_job, manual_job)) as cur:
+        status = {r[0]: r[1] for r in await cur.fetchall()}
+    assert status[auto_job] == "queued" and status[manual_job] != "queued"

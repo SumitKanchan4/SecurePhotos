@@ -22,13 +22,15 @@ from engine.services.document_service import is_candidate_document as is_doc
         "holiday_rx100.jpg",   # Camera model, not a prescription.
         "Taxi in Goa.jpg",     # "tax" inside "Taxi".
         "Billy's birthday.jpg",
+        "scan.webp",               # A scan of an old photo is still a photo.
+        "Grandpa scanned.jpg",
     ],
 )
 def test_ordinary_photo_names_are_not_documents(name):
     assert not is_doc(name, None, "image/jpeg")
 
 
-@pytest.mark.parametrize("name", ["receipt croma.jpg", "Passport scan.jpg", "electricity_bill_march.png", "boarding-pass-goa.jpg", "x.pdf"])
+@pytest.mark.parametrize("name", ["receipt croma.jpg", "Passport copy.jpg", "electricity_bill_march.png", "boarding-pass-goa.jpg", "x.pdf"])
 def test_names_a_person_wrote_still_count(name):
     assert is_doc(name, None, "application/pdf" if name.endswith(".pdf") else "image/jpeg")
 
@@ -48,6 +50,28 @@ def test_real_document_text_counts():
     assert is_doc("IMG_1235.jpg", page, "image/jpeg")
     assert docs.keyword_hits("subtotal: 10, total: 12") == 2  # Whole words only…
     assert docs.keyword_hits("totally portable table") == 0     # …not letters inside words.
+
+
+async def test_onnxruntime_is_loaded_before_windows_ocr(tmp_path, monkeypatch):
+    """Once Windows OCR has run, onnxruntime can't load in that process (measured): every AI
+    feature would stop. The text reader always loads it first."""
+    import sys
+    import types
+
+    from PIL import Image
+
+    calls = []
+    monkeypatch.setattr(docs, "load_onnxruntime_first", lambda: calls.append("onnxruntime"))
+
+    async def recognize_pil(img, lang):
+        calls.append("ocr")
+        return types.SimpleNamespace(text="hello")
+
+    monkeypatch.setitem(sys.modules, "winocr", types.SimpleNamespace(recognize_pil=recognize_pil))
+    photo = tmp_path / "a.jpg"
+    Image.new("RGB", (64, 48), "white").save(photo)
+    assert await docs.extract_ocr_text_on_device(photo) == "hello"
+    assert calls == ["onnxruntime", "ocr"]
 
 
 async def test_wrong_scan_marks_go_back_to_photos_and_user_marks_stay():

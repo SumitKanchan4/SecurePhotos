@@ -1,13 +1,13 @@
+/**
+ * First run: an empty library (owner feedback 2026-11-19). The app's own icon instead of an empty
+ * folder, plain words, one way in (Import) and one way back to a library you already have (the
+ * same wording as Settings → Storage), and what the app does for you, in the one accent colour.
+ * Photos, videos or folders can also be dropped anywhere on it.
+ */
 import React, { useState } from "react";
-import { 
-  FolderPlus, 
-  ShieldCheck, 
-  Sparkles, 
-  UploadCloud, 
-  Lock,
-  HardDrive
-} from "lucide-react";
+import { FolderOpen, Lock, Plus, ShieldCheck, Sparkles, UploadCloud } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import appIcon from "../assets/brand/app-icon.svg";
 
 interface EmptyLibraryStateProps {
   onSelectFolder: () => void;
@@ -15,279 +15,83 @@ interface EmptyLibraryStateProps {
   onDropFiles?: (files: FileList) => void;
 }
 
-/**
- * Modern Empty Library State & First-Run Welcome Component.
- * 
- * Provides an intuitive, clean onboarding dropzone with human-friendly copy
- * guiding users to import photos and videos with complete offline privacy.
- */
-export const EmptyLibraryState: React.FC<EmptyLibraryStateProps> = ({
-  onSelectFolder,
-  onImportMedia,
-  onDropFiles,
-}) => {
+export const EmptyLibraryState: React.FC<EmptyLibraryStateProps> = ({ onSelectFolder, onImportMedia, onDropFiles }) => {
   const [isDragOver, setIsDragOver] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [connectError, setConnectError] = useState<string | null>(null);
+  const [isOpening, setIsOpening] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
 
-  const handleAction = onImportMedia || onSelectFolder;
+  const startImport = onImportMedia || onSelectFolder;
 
-  const handleConnectExisting = async () => {
-    setConnectError(null);
-    setIsConnecting(true);
+  const openLibrary = async () => {
+    setOpenError(null);
+    setIsOpening(true);
     try {
       const selected = await invoke<string | null>("select_import_folder");
       if (!selected) {
-        setIsConnecting(false);
+        setIsOpening(false);
         return;
       }
       await invoke("reconnect_library", { newPath: selected });
       window.location.reload();
-    } catch (err: any) {
-      console.error("Connect library error:", err);
-      setConnectError(typeof err === "string" ? err : err?.message || "Failed to connect to the specified library.");
-      setIsConnecting(false);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      onDropFiles?.(e.dataTransfer.files);
+    } catch (err: unknown) {
+      const message = typeof err === "string" ? err : (err as Error)?.message;
+      setOpenError(message || "That folder couldn't be opened as a library.");
+      setIsOpening(false);
     }
   };
 
   return (
     <div
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-      style={{
-        flex: 1,
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "32px 20px",
-        textAlign: "center",
-        userSelect: "none",
-        backgroundColor: isDragOver ? "color-mix(in srgb, var(--accent-ink) 6%, transparent)" : "transparent",
-        transition: "background-color 0.2s ease",
+      className={`welcome${isDragOver ? " is-dragging" : ""}`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setIsDragOver(true);
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        setIsDragOver(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDragOver(false);
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) onDropFiles?.(e.dataTransfer.files);
       }}
     >
-      {/* Visual Welcome Illustration Container */}
-      <div
-        style={{
-          width: "88px",
-          height: "88px",
-          borderRadius: "26px",
-          background: isDragOver 
-            ? "linear-gradient(135deg, color-mix(in srgb, var(--accent-ink) 30%, transparent) 0%, color-mix(in srgb, var(--accent-ink) 30%, transparent) 100%)"
-            : "linear-gradient(135deg, color-mix(in srgb, var(--accent-ink) 15%, transparent) 0%, rgba(139, 92, 246, 0.15) 100%)",
-          border: isDragOver 
-            ? "2px dashed var(--accent-primary)" 
-            : "1px solid var(--glass-border, rgba(255, 255, 255, 0.1))",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          marginBottom: "24px",
-          boxShadow: "0 12px 32px rgba(0, 0, 0, 0.25)",
-          transition: "all 0.2s ease",
-        }}
-      >
-        {isDragOver ? (
-          <UploadCloud size={40} style={{ color: "var(--accent-primary, var(--accent-ink))" }} />
-        ) : (
-          <FolderPlus size={38} style={{ color: "var(--accent-primary, var(--accent-ink))" }} />
-        )}
+      <div className="welcome-mark" aria-hidden="true">
+        {isDragOver ? <UploadCloud size={44} /> : <img src={appIcon} alt="" draggable={false} />}
       </div>
 
-      {/* Main Title & Description */}
-      <h2 
-        style={{ 
-          fontSize: "24px", 
-          fontWeight: 800, 
-          letterSpacing: "-0.03em", 
-          marginBottom: "10px",
-          color: "var(--text-primary, #f8fafc)",
-          fontFamily: "var(--font-display)",
-        }}
-      >
-        Welcome to SecurePhotos
-      </h2>
-      <p 
-        style={{ 
-          fontSize: "14px", 
-          color: "var(--text-secondary, #94a3b8)", 
-          maxWidth: "480px", 
-          lineHeight: "1.6", 
-          marginBottom: "28px",
-        }}
-      >
-        Import your photos and videos to get started. Your media stays safely stored on your device—100% private, offline, and beautifully organized.
+      <h2 className="welcome-title">{isDragOver ? "Drop to import" : "Welcome to SecurePhotos"}</h2>
+      <p className="welcome-text">
+        Bring in your photos and videos to begin. They stay on this computer: nothing is uploaded, and the app works without the internet.
       </p>
 
-      {/* Action Buttons & Drag Hint */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: "36px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", justifyContent: "center" }}>
-          <button
-            onClick={handleAction}
-            className="clickable"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              padding: "11px 24px",
-              borderRadius: "var(--radius-full, 9999px)",
-              backgroundColor: "var(--accent-fill)",
-              color: "var(--on-accent)",
-              fontWeight: 600,
-              fontSize: "13px",
-              border: "none",
-              boxShadow: "0 4px 16px color-mix(in srgb, var(--accent-ink) 35%, transparent)",
-              cursor: "pointer",
-              transition: "transform 0.15s ease, box-shadow 0.15s ease",
-            }}
-          >
-            <FolderPlus size={16} />
-            <span>Import Photos &amp; Videos</span>
-          </button>
-
-          <button
-            onClick={handleConnectExisting}
-            disabled={isConnecting}
-            className="clickable"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              padding: "11px 22px",
-              borderRadius: "var(--radius-full, 9999px)",
-              backgroundColor: "var(--glass-surface, rgba(255, 255, 255, 0.05))",
-              backdropFilter: "blur(16px)",
-              WebkitBackdropFilter: "blur(16px)",
-              color: "var(--text-primary, #f8fafc)",
-              fontWeight: 600,
-              fontSize: "13px",
-              border: "1px solid var(--glass-border, rgba(255, 255, 255, 0.15))",
-              cursor: isConnecting ? "wait" : "pointer",
-              transition: "transform 0.15s ease, background-color 0.15s ease",
-            }}
-          >
-            <HardDrive size={16} style={{ color: "var(--accent-primary, var(--accent-ink))" }} />
-            <span>{isConnecting ? "Connecting..." : "Connect Existing Library"}</span>
-          </button>
-        </div>
-
-        {connectError && (
-          <p 
-            style={{ 
-              fontSize: "12px", 
-              color: "var(--color-danger, #ef4444)", 
-              margin: "10px 0 0 0",
-              maxWidth: "480px",
-              lineHeight: "1.4"
-            }}
-          >
-            {connectError}
-          </p>
-        )}
-
-        <p 
-          style={{ 
-            fontSize: "12px", 
-            color: "var(--text-muted, #64748b)", 
-            margin: "12px 0 0 0",
-            letterSpacing: "-0.01em",
-          }}
-        >
-          or drag and drop photos, videos, or folders anywhere here
+      <div className="welcome-actions">
+        <button type="button" className="welcome-primary" onClick={startImport}>
+          <Plus size={17} strokeWidth={2.6} /> Import photos and videos
+        </button>
+        <button type="button" className="welcome-secondary" onClick={openLibrary} disabled={isOpening}>
+          <FolderOpen size={16} /> {isOpening ? "Opening…" : "Open a library folder"}
+        </button>
+      </div>
+      <p className="welcome-hint">Moved to a new computer, or restoring a backup? Open the library folder you copied.<br />You can also drop photos and folders anywhere here.</p>
+      {openError && (
+        <p className="welcome-error" role="alert">
+          {openError}
         </p>
-      </div>
+      )}
 
-      {/* Reassuring Feature Capability Highlights */}
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          justifyContent: "center",
-          gap: "12px",
-          maxWidth: "640px",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "7px 16px",
-            borderRadius: "var(--radius-full, 9999px)",
-            backgroundColor: "var(--glass-surface, rgba(255, 255, 255, 0.04))",
-            backdropFilter: "blur(16px)",
-            WebkitBackdropFilter: "blur(16px)",
-            border: "1px solid var(--glass-border, rgba(255, 255, 255, 0.08))",
-            fontSize: "12px",
-            fontWeight: 500,
-            color: "var(--text-secondary, #cbd5e1)",
-          }}
-        >
-          <ShieldCheck size={14} style={{ color: "#10b981" }} />
-          <span>100% Offline &amp; Private</span>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "7px 16px",
-            borderRadius: "var(--radius-full, 9999px)",
-            backgroundColor: "var(--glass-surface, rgba(255, 255, 255, 0.04))",
-            backdropFilter: "blur(16px)",
-            WebkitBackdropFilter: "blur(16px)",
-            border: "1px solid var(--glass-border, rgba(255, 255, 255, 0.08))",
-            fontSize: "12px",
-            fontWeight: 500,
-            color: "var(--text-secondary, #cbd5e1)",
-          }}
-        >
-          <Sparkles size={14} style={{ color: "#fbbf24" }} />
-          <span>Smart Clarity Enhancement</span>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "7px 16px",
-            borderRadius: "var(--radius-full, 9999px)",
-            backgroundColor: "var(--glass-surface, rgba(255, 255, 255, 0.04))",
-            backdropFilter: "blur(16px)",
-            WebkitBackdropFilter: "blur(16px)",
-            border: "1px solid var(--glass-border, rgba(255, 255, 255, 0.08))",
-            fontSize: "12px",
-            fontWeight: 500,
-            color: "var(--text-secondary, #cbd5e1)",
-          }}
-        >
-          <Lock size={14} style={{ color: "var(--accent-primary, var(--accent-ink))" }} />
-          <span>Protected Personal Vault</span>
-        </div>
-      </div>
+      <ul className="welcome-points" aria-label="What SecurePhotos does">
+        <li>
+          <ShieldCheck size={15} aria-hidden="true" /> Everything stays on this computer
+        </li>
+        <li>
+          <Sparkles size={15} aria-hidden="true" /> Photos made sharper, old prints brought back
+        </li>
+        <li>
+          <Lock size={15} aria-hidden="true" /> A locked vault for private photos
+        </li>
+      </ul>
     </div>
   );
 };
-

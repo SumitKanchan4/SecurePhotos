@@ -1,7 +1,8 @@
 /**
  * Dashboard, Duplicates and Big videos helpers (redesign R7c). Pure functions, unit-tested.
  */
-import type { AppStorageStats, DashboardOverview, DuplicateGroupItem, StorageCategoryKey } from "../../types";
+import type { AppStorageStats, DashboardOverview, DuplicateGroupItem, MediaCounts, StorageCategoryKey } from "../../types";
+import type { NavTab } from "../../store/useAppStore";
 import { formatSize } from "../import/importFormat";
 
 export { formatSize };
@@ -115,4 +116,24 @@ export function oldOriginalsNote(r: OldOriginalsCleanup | null): string | null {
     parts.push(`The originals of ${plural(moved, "enhanced video")} are now in Trash, where you can restore them for 30 days.`);
   }
   return parts.length ? parts.join(" ") : null;
+}
+
+export interface SentencePart {
+  key: string;
+  value: number;
+  label: string;
+  tab: NavTab;
+}
+
+/** The Dashboard's opening line (round 2, #4): "12,480 photos, 342 videos, 24 people, 12 albums
+ *  and 214 documents", only what the library has, each part a way into its screen. */
+export function librarySentence(counts: MediaCounts): SentencePart[] {
+  const all: SentencePart[] = [
+    { key: "photos", value: counts.images, label: counts.images === 1 ? "photo" : "photos", tab: "photos" },
+    { key: "videos", value: counts.videos, label: counts.videos === 1 ? "video" : "videos", tab: "photos" },
+    { key: "people", value: counts.people, label: counts.people === 1 ? "person" : "people", tab: "people" },
+    { key: "albums", value: counts.albums, label: counts.albums === 1 ? "album" : "albums", tab: "albums" },
+    { key: "documents", value: counts.documents, label: counts.documents === 1 ? "document" : "documents", tab: "documents" },
+  ];
+  return all.filter((p) => p.value > 0);
 }

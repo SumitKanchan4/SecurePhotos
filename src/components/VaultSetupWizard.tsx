@@ -20,6 +20,7 @@ import {
 import { useAppStore } from "../store/useAppStore";
 import { apiFetch } from "../services/api";
 import { downloadGridCardImage, downloadGridCardText, GridCardData } from "../utils/gridCardRenderer";
+import appIcon from "../assets/brand/app-icon.svg";
 
 interface VaultSetupWizardProps {
   onComplete: () => void;
@@ -745,15 +746,8 @@ export const VaultSetupWizard: React.FC<VaultSetupWizardProps> = ({
                 {/* Card Top Brand Strip */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <div
-                      style={{
-                        width: "24px",
-                        height: "18px",
-                        borderRadius: "3px",
-                        background: "linear-gradient(135deg, #fbbf24, #b45309)",
-                        border: "1px solid rgba(0,0,0,0.3)",
-                      }}
-                    />
+                    {/* The app's icon (owner feedback 2026-11-19; was a gold chip). */}
+                    <img src={appIcon} alt="" aria-hidden="true" width={24} height={24} style={{ borderRadius: "7px", display: "block" }} />
                     <span style={{ fontSize: "11px", fontWeight: 800, color: "#38bdf8", letterSpacing: "0.05em" }}>
                       SECUREPHOTOS
                     </span>

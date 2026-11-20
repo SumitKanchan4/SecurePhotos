@@ -4,7 +4,7 @@
  * Every imported photo is always enhanced (owner decision, C1), so there is no on/off switch.
  */
 import React from "react";
-import { AppSettings, OldPhotoRule } from "../../hooks/useAppSettings";
+import { AppSettings, OldPhotoRule, PhotoSize, VideoSize } from "../../hooks/useAppSettings";
 import { ToggleSwitch } from "../ui/ToggleSwitch";
 import { ChoicePills, SettingRow, SettingsGroup } from "./SettingsKit";
 
@@ -13,12 +13,34 @@ interface PhotosAISettingsProps {
   updateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
 }
 
-/** Slider 12 (best) .. 28 (smallest); the engine maps it to photo quality (12 -> 92, 18 -> 80, 28 -> 60). */
-export function qualityTier(level: number): { label: string; description: string } {
-  if (level <= 15) return { label: "Best quality", description: "Keeps the most fine detail. Uses the most space." };
-  if (level <= 20) return { label: "Balanced (Recommended)", description: "Looks the same as the original in normal viewing." };
-  if (level <= 24) return { label: "Smaller files", description: "Saves more space. Very fine detail may soften when zoomed in." };
-  return { label: "Smallest files", description: "Saves the most space. Fine detail softens noticeably when zoomed in." };
+/** Owner feedback (round 2, #7): three plain choices instead of a slider. Stored as the engine's
+ *  level (12 best .. 28 smallest; 14 -> quality 88, 18 -> 80, 24 -> 68). */
+export const QUALITY_OPTIONS: { value: number; label: string; description: string }[] = [
+  { value: 14, label: "Best", description: "Keeps the most fine detail. Uses the most space." },
+  { value: 18, label: "Balanced", description: "Looks the same as the original in normal viewing. Recommended." },
+  { value: 24, label: "Smaller", description: "Saves space. Very fine detail may soften when zoomed in." },
+];
+
+/** Owner, 2026-11-19: the size photos are enhanced to, next to Photo quality. Videos have their
+ *  own size (never above 4K; owner decision the same day). */
+export const SIZE_OPTIONS: { value: PhotoSize; label: string; description: string }[] = [
+  { value: "2k", label: "2K", description: "2560 px on the long side. The smallest files; fine for screens and sharing." },
+  { value: "4k", label: "4K", description: "3840 px on the long side. Sharp on big screens; about a third of the space of 8K." },
+  { value: "8k", label: "8K", description: "7680 px on the long side. The most room to zoom and print; the biggest files." },
+];
+
+export const VIDEO_SIZE_OPTIONS: { value: VideoSize; label: string; description: string }[] = [
+  { value: "original", label: "As recorded", description: "Videos keep the size they were recorded at." },
+  { value: "hd", label: "HD", description: "Old, low-quality clips are enlarged to HD (1080p)." },
+  { value: "2k", label: "2K", description: "Every video below 2K (1440p) is enlarged to 2K: slower without a graphics card, and bigger files." },
+  { value: "4k", label: "4K", description: "Every video below 4K is enlarged to 4K: slow without a graphics card, and bigger files." },
+];
+
+/** The choice that matches a stored level (older levels from the slider show as the nearest). */
+export function qualityChoice(level: number): number {
+  if (level <= 15) return 14;
+  if (level <= 20) return 18;
+  return 24;
 }
 
 /** 0 = never pause; otherwise pause on battery below this charge (100 = whenever on battery). */
@@ -62,32 +84,39 @@ const BeforeAfterChip: React.FC<{ look: string }> = ({ look }) => (
 );
 
 export const PhotosAISettings: React.FC<PhotosAISettingsProps> = ({ settings, updateSetting }) => {
-  const tier = qualityTier(settings.quality_crf);
+  const quality = QUALITY_OPTIONS.find((o) => o.value === qualityChoice(settings.quality_crf))!;
   return (
     <>
       <SettingsGroup title="Photos">
-        <SettingRow
-          title={
-            <>
-              Photo quality <span className="settings-badge">{tier.label}</span>
-            </>
-          }
-          description={`${tier.description} Applies to photos you import from now on.`}
-          stacked
-        >
-          <input
-            type="range"
-            min={12}
-            max={28}
-            value={settings.quality_crf}
-            aria-label="Photo quality"
-            className="settings-range"
-            onChange={(e) => updateSetting("quality_crf", Number(e.target.value))}
+        <SettingRow title="Photo quality" description={`${quality.description} Applies to photos you import from now on.`}>
+          <ChoicePills
+            label="Photo quality"
+            value={qualityChoice(settings.quality_crf)}
+            onChange={(value) => updateSetting("quality_crf", value)}
+            options={QUALITY_OPTIONS}
           />
-          <div className="settings-range-ends" aria-hidden="true">
-            <span>Best quality</span>
-            <span>Smallest files</span>
-          </div>
+        </SettingRow>
+        <SettingRow
+          title="Photo size"
+          description={`${(SIZE_OPTIONS.find((o) => o.value === settings.photo_resolution) ?? SIZE_OPTIONS[2]).description} ${settings.photo_resolution === "8k" || !settings.photo_resolution ? "" : "Larger photos are reduced, and the larger version isn't kept. "}For new imports.`}
+        >
+          <ChoicePills
+            label="Photo size"
+            value={settings.photo_resolution ?? "8k"}
+            onChange={(value) => updateSetting("photo_resolution", value)}
+            options={SIZE_OPTIONS}
+          />
+        </SettingRow>
+        <SettingRow
+          title="Video size"
+          description={`${(VIDEO_SIZE_OPTIONS.find((o) => o.value === settings.video_resolution) ?? VIDEO_SIZE_OPTIONS[1]).description} For new imports; never above 4K.`}
+        >
+          <ChoicePills
+            label="Video size"
+            value={settings.video_resolution ?? "hd"}
+            onChange={(value) => updateSetting("video_resolution", value)}
+            options={VIDEO_SIZE_OPTIONS}
+          />
         </SettingRow>
         <SettingRow
           title="Pause background work on battery"
@@ -144,13 +173,6 @@ export const PhotosAISettings: React.FC<PhotosAISettingsProps> = ({ settings, up
       </SettingsGroup>
 
       <SettingsGroup title="Stories">
-        <SettingRow title="Background music" description="Plays music during story slideshows.">
-          <ToggleSwitch
-            checked={settings.ambient_music}
-            onChange={(checked) => updateSetting("ambient_music", checked)}
-            ariaLabel="Ambient story soundtracks"
-          />
-        </SettingRow>
         <SettingRow title="Slow pan and zoom" description="Gently moves still photos during stories.">
           <ToggleSwitch
             checked={settings.ken_burns_motion}

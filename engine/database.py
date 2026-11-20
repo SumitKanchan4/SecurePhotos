@@ -81,7 +81,8 @@ CREATE TABLE IF NOT EXISTS photos (
     ai_params TEXT,                 -- H10: JSON settings used, e.g. {"style": "natural"}
     edited_at DATETIME,             -- H10: when the improved copy was made
     choice_pending INTEGER NOT NULL DEFAULT 0, -- A8: kept automatically; the user hasn't chosen improved / original / both
-    document_source TEXT            -- A8: 'scan' when "Find in photos" marked it a document (re-checked); NULL = the user
+    document_source TEXT,           -- A8: 'scan' when "Find in photos" marked it a document (re-checked); NULL = the user
+    restore_checked INTEGER NOT NULL DEFAULT 0 -- After-import P2: the old-photo rules have looked at it (8K waits for this)
 );
 
 -- ── 2. Albums Table ──────────────────────────────────────────────────────────
@@ -160,6 +161,22 @@ CREATE TABLE IF NOT EXISTS story_items (
     focal_x REAL DEFAULT 0.5,       -- Ken-Burns focus point (face center)
     focal_y REAL DEFAULT 0.5
 );
+
+-- After-import P3: stories the owner deleted are never suggested again (by their key).
+CREATE TABLE IF NOT EXISTS story_dismissals (
+    story_key TEXT PRIMARY KEY,
+    dismissed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Owner feedback 2026-11-18: places the owner said are not a face (a cushion, feet);
+-- a later scan of the photo never adds them again.
+CREATE TABLE IF NOT EXISTS face_dismissals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    photo_id INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+    box_x REAL NOT NULL, box_y REAL NOT NULL, box_w REAL NOT NULL, box_h REAL NOT NULL,
+    dismissed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_face_dismissals_photo ON face_dismissals (photo_id);
 
 -- ── 8. Creative Assets Table (Collages & Wallpapers) ─────────────────────────
 CREATE TABLE IF NOT EXISTS creative_assets (
@@ -811,6 +828,17 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
             back = await recheck_scanned_documents(conn)
             if back:
                 logger.info("Moved %d photos wrongly marked as documents back to Photos.", back)
+
+        # After-import P2: the old-photo rules look at each new photo before 8K enhancement (the
+        # fix works on the scan's own size). Photos already in the library count as looked at.
+        if "restore_checked" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN restore_checked INTEGER NOT NULL DEFAULT 0;")
+            await conn.execute("UPDATE photos SET restore_checked = 1;")
+
+        # Owner feedback 2026-11-18: the grid shows each video's length. NULL = not measured yet
+        # (filled once in the background); 0 = unknown.
+        if "duration_seconds" not in existing_photo_cols:
+            await conn.execute("ALTER TABLE photos ADD COLUMN duration_seconds REAL;")
 
         # A8: improved copies kept by an automatic rule wait for the user's choice. Copies made
         # before this column existed by automatic jobs are marked once, when it is added.

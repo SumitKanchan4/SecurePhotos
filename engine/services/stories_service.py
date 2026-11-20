@@ -18,6 +18,29 @@ from pydantic import BaseModel, model_validator
 from engine.database import get_db_connection
 from engine.services.media_paths import resolve_stored_path
 from engine.services.music_service import get_track_for_mood
+from engine.services.photo_versions import stack_top
+
+
+def story_photo(alias: str) -> str:
+    """SQL condition (after-import P3, owner-approved rules): a photo good for a dated story.
+
+    - what the library shows (an original stacked behind its improved copy is left out),
+    - not a document, receipt or page of text,
+    - one photo per group of duplicates (the first one),
+    - not an old print brought back by the app: a scan carries the date it was scanned, not
+      the year it was taken, so it never makes "this week" or a trip; it goes to "Old photos".
+    """
+    return (
+        f"{stack_top(alias)} AND COALESCE({alias}.is_document, 0) = 0 "
+        f"AND NOT EXISTS (SELECT 1 FROM duplicate_groups d1 JOIN duplicate_groups d2 ON d2.group_id = d1.group_id "
+        f"                WHERE d1.photo_id = {alias}.id AND d2.photo_id < {alias}.id) "
+        f"AND {alias}.ai_kind IS NULL "
+        f"AND NOT EXISTS (SELECT 1 FROM restore_jobs rj WHERE rj.photo_id = {alias}.id AND rj.status = 'done')"
+    )
+
+
+STORY_P = story_photo("p")
+STORY_PHOTOS = story_photo("photos")
 
 logger = logging.getLogger("securephotos.stories_service")
 
@@ -94,14 +117,15 @@ def generate_punchy_title(
     if story_type == "on_this_day":
         if years_ago:
             plural = "Years" if years_ago != 1 else "Year"
+            # P3: these stories cover this week (3 days either side of today), not one day.
             templates = [
-                f"{years_ago} {plural} Ago Today",
-                f"Remember This Day? ({year})" if year else f"{years_ago} {plural} Ago Today",
-                f"A Day to Remember ({year})" if year else "A Day to Remember",
-                f"Flashback to {year}" if year else f"{years_ago} {plural} Ago Today",
+                f"This Week, {years_ago} {plural} Ago",
+                f"Remember This Week? ({year})" if year else f"This Week, {years_ago} {plural} Ago",
+                f"This Week in {year}" if year else "This Week, Years Ago",
+                f"Flashback to {year}" if year else f"This Week, {years_ago} {plural} Ago",
             ]
             return templates[seed % len(templates)]
-        return f"A Day to Remember ({year})" if year else "A Day to Remember"
+        return f"This Week in {year}" if year else "This Week, Years Ago"
 
     if story_type == "seasonal_highlight":
         s = season or "Summer"
@@ -151,6 +175,8 @@ class StoryModel(BaseModel):
     slides_count: int = 0
     first_taken_at: Optional[str] = None  # R7e: story cards say when ("Nov 2026", "2019 – 2026")
     last_taken_at: Optional[str] = None
+    # Stories page (owner feedback, round 2 #8): a few of the story's photos for its card.
+    preview_photo_ids: List[int] = []
     slides: List[StorySlide] = []
 
     @model_validator(mode="after")
@@ -193,6 +219,9 @@ async def _store_story(
     replaced by the fresh one, so making stories again refreshes suggestions instead of
     piling up copies.
     """
+    async with conn.execute("SELECT 1 FROM story_dismissals WHERE story_key = ?;", (key,)) as cur:
+        if await cur.fetchone():  # The owner deleted this story: never suggested again (P3).
+            return None
     async with conn.execute("SELECT id, COALESCE(is_saved, 0) AS is_saved FROM stories WHERE story_key = ?;", (key,)) as cur:
         same_key = await cur.fetchall()
     if any(r["is_saved"] for r in same_key):
@@ -252,7 +281,7 @@ async def generate_through_the_years_story(person_id: int) -> Optional[StoryMode
             SELECT p.id, p.filename, p.taken_at, strftime('%Y', p.taken_at) as yr, f.box_x, f.box_y
             FROM photos p
             JOIN faces f ON p.id = f.photo_id
-            WHERE f.person_id = ? AND p.is_encrypted = 0 AND p.taken_at IS NOT NULL AND p.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = p.id AND v.trashed_at IS NULL)
+            WHERE f.person_id = ? AND p.is_encrypted = 0 AND p.taken_at IS NOT NULL AND p.trashed_at IS NULL AND """ + STORY_P + """
             GROUP BY yr
             ORDER BY yr ASC;
             """,
@@ -306,22 +335,24 @@ async def generate_on_this_day_stories() -> List[StoryModel]:
     stories: List[StoryModel] = []
     now = datetime.datetime.now()
     cur_year = now.strftime("%Y")
-    cur_month = now.strftime("%m")
+    # P3: this week in earlier years (3 days either side of today), so For you changes as the
+    # weeks go by; one story per earlier year and week.
+    days = [(now + datetime.timedelta(days=d)).strftime("%m-%d") for d in range(-3, 4)]
+    week = f"W{now.isocalendar()[1]:02d}"
 
     try:
-        # Look for photos taken in the same month across previous years
         async with conn.execute(
             """
             SELECT p.id, p.filename, p.taken_at, strftime('%Y', p.taken_at) as yr, strftime('%m', p.taken_at) as mo
             FROM photos p
             WHERE p.taken_at IS NOT NULL 
-              AND p.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = p.id AND v.trashed_at IS NULL) 
+              AND p.trashed_at IS NULL AND """ + STORY_P + """ 
               AND p.is_encrypted = 0
-              AND strftime('%m', p.taken_at) = ?
+              AND strftime('%m-%d', p.taken_at) IN (""" + ",".join("?" * len(days)) + """)
               AND strftime('%Y', p.taken_at) != ?
             ORDER BY strftime('%Y', p.taken_at) DESC, p.is_favorite DESC, p.id DESC;
             """,
-            (cur_month, cur_year),
+            (*days, cur_year),
         ) as cursor:
             rows = await cursor.fetchall()
 
@@ -358,7 +389,7 @@ async def generate_on_this_day_stories() -> List[StoryModel]:
                 for r in p_list[:12]
             ]
 
-            story_id = await _store_story(conn, key=f"on_this_day:{yr}-{cur_month}", title=title, story_type="on_this_day", mood="nostalgic", slides=slides)
+            story_id = await _store_story(conn, key=f"on_this_day:{yr}-{week}", title=title, story_type="on_this_day", mood="nostalgic", slides=slides)
             if story_id is None:
                 continue
 
@@ -381,6 +412,23 @@ async def generate_on_this_day_stories() -> List[StoryModel]:
         await conn.close()
 
 
+# Folder names that say nothing about a trip or event (P3): such photos get a month title and
+# need more of them to make a story.
+GENERIC_FOLDERS = {
+    "originals", "data", "photos", "downloads", "dcim", "misc", "camera", "camera roll", "pictures", "images",
+    "screenshots", "whatsapp", "whatsapp images", "new folder", "import", "imports", "backup", "temp", "desktop",
+    "documents", "phone", "mobile", "100andro", "100apple", "burst", "unsorted", "other", "others",
+}
+GENERIC_TRIP_MIN = 5
+
+
+def _generic_folder(name: str) -> bool:
+    import re
+
+    clean = (name or "").strip().lower()
+    return not clean or clean in GENERIC_FOLDERS or bool(re.fullmatch(r"[\d\s._-]+", clean))
+
+
 async def generate_vacation_and_trip_stories() -> List[StoryModel]:
     """Generates vacation, getaway, and trip burst stories.
 
@@ -394,7 +442,7 @@ async def generate_vacation_and_trip_stories() -> List[StoryModel]:
             """
             SELECT folder_name, strftime('%Y', taken_at) as yr, strftime('%m', taken_at) as mo, COUNT(*) as cnt
             FROM photos
-            WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0 AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = photos.id AND v.trashed_at IS NULL)
+            WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0 AND """ + STORY_PHOTOS + """
             GROUP BY folder_name, yr, mo
             HAVING cnt >= 3
             ORDER BY (CASE WHEN folder_name IS NOT NULL AND folder_name != '' THEN 1 ELSE 0 END) DESC, cnt DESC
@@ -412,7 +460,10 @@ async def generate_vacation_and_trip_stories() -> List[StoryModel]:
             clean_name = folder.replace("_", " ").replace("-", " ")
             if clean_name.islower() or clean_name.isupper():
                 clean_name = clean_name.title()
-            if not clean_name or clean_name.lower() in {"originals", "data", "photos", "downloads", "dcim"}:
+            generic = _generic_folder(clean_name)
+            if generic and cl["cnt"] < GENERIC_TRIP_MIN:
+                continue  # A handful of photos in "Camera" or "misc" is not a trip (P3: good taste).
+            if generic:
                 month_names = {
                     "01": "January", "02": "February", "03": "March", "04": "April",
                     "05": "May", "06": "June", "07": "July", "08": "August",
@@ -427,7 +478,7 @@ async def generate_vacation_and_trip_stories() -> List[StoryModel]:
                 """
                 SELECT id, filename, taken_at, strftime('%Y', taken_at) as yr
                 FROM photos
-                WHERE folder_name = ? AND trashed_at IS NULL AND is_encrypted = 0 AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = photos.id AND v.trashed_at IS NULL)
+                WHERE folder_name = ? AND trashed_at IS NULL AND is_encrypted = 0 AND """ + STORY_PHOTOS + """
                 ORDER BY is_favorite DESC, id ASC
                 LIMIT 12;
                 """,
@@ -493,7 +544,7 @@ async def generate_seasonal_retrospectives() -> List[StoryModel]:
                 SELECT strftime('%Y', taken_at) as yr, COUNT(*) as cnt
                 FROM photos
                 WHERE strftime('%m', taken_at) IN ({placeholders})
-                  AND taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0 AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = photos.id AND v.trashed_at IS NULL)
+                  AND taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0 AND """ + STORY_PHOTOS + """
                 GROUP BY yr
                 HAVING cnt >= 4
                 ORDER BY yr DESC
@@ -515,7 +566,7 @@ async def generate_seasonal_retrospectives() -> List[StoryModel]:
                 FROM photos
                 WHERE strftime('%m', taken_at) IN ({placeholders})
                   AND strftime('%Y', taken_at) = ?
-                  AND trashed_at IS NULL AND is_encrypted = 0 AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = photos.id AND v.trashed_at IS NULL)
+                  AND trashed_at IS NULL AND is_encrypted = 0 AND """ + STORY_PHOTOS + """
                 ORDER BY is_favorite DESC, id ASC
                 LIMIT 10;
                 """,
@@ -571,7 +622,7 @@ async def generate_year_in_review_story(year: Optional[str] = None) -> Optional[
                 """
                 SELECT strftime('%Y', taken_at) as yr 
                 FROM photos 
-                WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0 AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = photos.id AND v.trashed_at IS NULL) 
+                WHERE taken_at IS NOT NULL AND trashed_at IS NULL AND is_encrypted = 0 AND """ + STORY_PHOTOS + """ 
                 GROUP BY yr 
                 ORDER BY COUNT(*) DESC 
                 LIMIT 1;
@@ -586,7 +637,7 @@ async def generate_year_in_review_story(year: Optional[str] = None) -> Optional[
             """
             SELECT id, filename, taken_at, strftime('%Y', taken_at) as yr
             FROM photos
-            WHERE strftime('%Y', taken_at) = ? AND trashed_at IS NULL AND is_encrypted = 0 AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = photos.id AND v.trashed_at IS NULL)
+            WHERE strftime('%Y', taken_at) = ? AND trashed_at IS NULL AND is_encrypted = 0 AND """ + STORY_PHOTOS + """
             ORDER BY is_favorite DESC, id ASC
             LIMIT 10;
             """,
@@ -639,7 +690,7 @@ async def generate_recent_highlights_story() -> Optional[StoryModel]:
             """
             SELECT id, filename, taken_at, strftime('%Y', taken_at) as yr
             FROM photos
-            WHERE trashed_at IS NULL AND is_encrypted = 0 AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = photos.id AND v.trashed_at IS NULL)
+            WHERE trashed_at IS NULL AND is_encrypted = 0 AND """ + STORY_PHOTOS + """
             ORDER BY is_favorite DESC, id DESC
             LIMIT 12;
             """
@@ -685,14 +736,59 @@ async def generate_recent_highlights_story() -> Optional[StoryModel]:
         await conn.close()
 
 
-async def delete_story(story_id: int) -> bool:
-    """Deletes a story from database, cascading to story_items and unlinking cached video export."""
+async def generate_old_photos_story() -> Optional[StoryModel]:
+    """'Old photos, brought back' (P3): old prints the app improved in the last weeks.
+
+    Their dates are scan dates, so they stay out of dated stories (``story_photo``) and are
+    shown here instead, the improved version (what the library shows), newest first.
+    """
     conn = await get_db_connection()
     try:
-        async with conn.execute("SELECT rendered_video_path FROM stories WHERE id = ?;", (story_id,)) as cur:
+        async with conn.execute(
+            f"""
+            SELECT id, filename, taken_at, edited_at FROM photos p
+            WHERE p.ai_kind IS NOT NULL AND p.trashed_at IS NULL AND p.is_encrypted = 0 AND {stack_top('p')}
+              AND COALESCE(p.is_document, 0) = 0 AND p.edited_at >= datetime('now', '-30 days')
+            ORDER BY p.edited_at DESC, p.id DESC
+            LIMIT 12;
+            """
+        ) as cursor:
+            rows = await cursor.fetchall()
+        if len(rows) < 2:
+            return None
+        slides = [
+            StorySlide(photo_id=r["id"], filename=r["filename"], taken_at=r["taken_at"], year_label="Old photos",
+                       transition_type="crossfade", focal_x=0.5, focal_y=0.5)
+            for r in rows
+        ]
+        title = "Old photos, brought back"
+        key = f"old_photos:{(rows[0]['edited_at'] or '')[:7] or 'recent'}"
+        story_id = await _store_story(conn, key=key, title=title, story_type="old_photos", mood="nostalgic", slides=slides)
+        if story_id is None:
+            return None
+        await conn.commit()
+        return StoryModel(
+            id=story_id, title=title, story_type="old_photos", vibe_mood="nostalgic",
+            music_track_path=VIBE_TRACKS["nostalgic"], audio_url=_resolve_audio_url_for_mood("nostalgic"),
+            cover_photo_id=slides[0].photo_id, slides=slides,
+        )
+    finally:
+        await conn.close()
+
+
+async def delete_story(story_id: int, remember: bool = False) -> bool:
+    """Deletes a story from database, cascading to story_items and unlinking cached video export.
+
+    ``remember`` (the owner deleted it): its kind and subject are never suggested again (P3).
+    """
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT rendered_video_path, story_key FROM stories WHERE id = ?;", (story_id,)) as cur:
             row = await cur.fetchone()
             if not row:
                 return False
+            if remember and row["story_key"]:
+                await conn.execute("INSERT OR IGNORE INTO story_dismissals (story_key) VALUES (?);", (row["story_key"],))
             # Cached export, if any (path relative to the data folder; safe lookup).
             v_path = resolve_stored_path(row["rendered_video_path"])
             if v_path is not None:

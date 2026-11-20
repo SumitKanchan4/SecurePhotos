@@ -119,6 +119,9 @@ async def test_suggest_reject_survives_reclustering_and_merge():
         first = suggestions[0]
         assert first["person_photo_count"] == 3 and first["cluster_photo_count"] == 2
         assert first["cluster_face_id"] in group_a and first["person_face_id"] is not None
+        # Several examples per side, one per photo (round 1, #24).
+        assert sorted(first["cluster_face_ids"]) == sorted(group_a) and first["cluster_face_ids"][0] == first["cluster_face_id"]
+        assert len(first["person_face_ids"]) == 3 and first["person_face_ids"][0] == first["person_face_id"]
         assert first["similarity"] >= SUGGESTION_SIMILARITY
 
         clusters = (await client.get("/api/people/clusters")).json()

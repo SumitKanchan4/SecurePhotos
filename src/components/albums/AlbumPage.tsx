@@ -4,7 +4,7 @@
  * Favourites, the automatic Collages album and Saved stories.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Download, FolderPlus, LayoutGrid, Loader2, MoreHorizontal, Play, Trash2, X } from "lucide-react";
+import { ArrowLeft, Download, FolderPlus, Heart, Images, LayoutGrid, Loader2, MoreHorizontal, Play, Trash2, X } from "lucide-react";
 import type { AlbumItem, PhotoItem, StoryModel } from "../../types";
 import { useAppStore } from "../../store/useAppStore";
 import { apiFetch, getApiUrl, getThumbnailUrl } from "../../services/api";
@@ -423,6 +423,7 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({
       {target.kind === "stories" ? (
         savedStories.length === 0 ? (
           <div className="dash-empty">
+            <Play aria-hidden="true" />
             <h2>No saved stories yet</h2>
             <p>Save a story you like from Stories and it will stay here.</p>
             <button type="button" className="dash-btn" onClick={() => setActiveTab("stories")}>
@@ -460,11 +461,16 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({
               <div className="dash-empty">
                 {target.kind === "favourites" ? (
                   <>
+                    <Heart aria-hidden="true" />
                     <h2>No favourites yet</h2>
-                    <p>Tap the heart on any photo and it will show up here.</p>
+                    <p>Tap the heart on a photo you love, in Photos or while viewing it, and it will be kept here.</p>
+                    <button type="button" className="dash-btn dash-btn-primary" onClick={() => setActiveTab("photos")}>
+                      Go to Photos
+                    </button>
                   </>
                 ) : (
                   <>
+                    <Images aria-hidden="true" />
                     <h2>This album is empty</h2>
                     <p>{isUserAlbum ? "Add photos from your library or from this computer." : "Collages you save will show up here."}</p>
                     {isUserAlbum && (

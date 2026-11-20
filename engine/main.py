@@ -66,8 +66,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         asyncio.create_task(photos.run_background_optimization())
         # Permanently delete trash older than 30 days, now and every 6 hours (M7).
         asyncio.create_task(trash.run_trash_purge_loop())
-        from engine.services.face_scan_worker import start_background_scan
-        start_background_scan()
+        # ONNX Runtime first: once Windows OCR has run, it can no longer load in this process.
+        from engine.services.document_service import load_onnxruntime_first
+        load_onnxruntime_first()
+        # After-import process (P1): reads text and finds faces for every photo that still
+        # needs it, new imports first (replaces the one-off face scan at start).
+        from engine.services import after_import
+        after_import.start()
         from engine.services.video_queue_service import start_video_queue_worker
         start_video_queue_worker()
         # Old-photo improvements (H10): one job at a time on the CPU.
@@ -80,6 +85,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # One-off: handle video originals left in hidden .trash folders by older versions (R7c2).
         from engine.services.video_leftovers import run_once as clean_up_old_video_originals
         asyncio.create_task(clean_up_old_video_originals())
+        # The grid shows video lengths; videos from before lengths were saved are measured once.
+        from engine.services.video_service import fill_video_durations
+
+        asyncio.create_task(fill_video_durations())
+        # One-off (2026-11-19): faces found on sideways-stored phone photos are turned upright.
+        from engine.services.face_scan_worker import repair_sideways_faces
+
+        asyncio.create_task(repair_sideways_faces())
+        # Thumbnails/previews nothing uses any more (left by rewritten photos; 2026-11-19).
+        from engine.services.storage_cleanup import sweep_unused_files
+
+        asyncio.create_task(sweep_unused_files())
 
     # H10: plug in "Add colour" and "Fix faded colours" (the worker runs them; tests use fakes).
     from engine.services import old_photo_processors

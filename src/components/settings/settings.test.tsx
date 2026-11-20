@@ -4,7 +4,7 @@ import { useAppStore } from "../../store/useAppStore";
 import { DEFAULT_SETTINGS } from "../../hooks/useAppSettings";
 import { SETTINGS_SECTIONS, SettingsView } from "../SettingsView";
 import { VaultSettings } from "./VaultSettings";
-import { PhotosAISettings, batteryChoice, qualityTier } from "./PhotosAISettings";
+import { PhotosAISettings, batteryChoice, qualityChoice } from "./PhotosAISettings";
 import { StorageSettings } from "./StorageSettings";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -12,6 +12,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn(async () => null) }));
 vi.mock("../../utils/gridCardRenderer", () => ({
   renderGridCardCanvas: vi.fn(),
+  loadCardIcon: vi.fn(async () => null),
   downloadGridCardImage: vi.fn(async () => {}),
   downloadGridCardText: vi.fn(),
 }));
@@ -50,7 +51,7 @@ afterEach(() => {
 });
 
 describe("Settings layout", () => {
-  it("lists the five sections on the left and opens one at a time", () => {
+  it("lists the sections on the left and opens one at a time", () => {
     mockEngine({ "GET /api/system/settings": { body: { settings: DEFAULT_SETTINGS } } });
     invokeMock.mockResolvedValue({ path: "D:/Library", is_custom: true, has_database: true });
     render(<SettingsView />);
@@ -62,7 +63,19 @@ describe("Settings layout", () => {
     expect(screen.getByText("Lock automatically after")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Photos & AI" }));
     expect(screen.getByRole("radiogroup", { name: "Pause background work on battery" })).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "Ambient story soundtracks" })).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: /music/i })).not.toBeInTheDocument();
+    // Music has its own section (round 2, #6).
+    fireEvent.click(screen.getByRole("button", { name: "Music" }));
+    expect(screen.getByRole("switch", { name: "Play music in stories" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Songs" })).toBeInTheDocument();
+  });
+
+  it("opens the section another screen asks for (Stories' music button)", () => {
+    mockEngine({ "GET /api/system/settings": { body: { settings: DEFAULT_SETTINGS } } });
+    useAppStore.getState().openSettings("music");
+    render(<SettingsView />);
+    expect(screen.getByRole("heading", { level: 2, name: "Music" })).toBeInTheDocument();
+    expect(useAppStore.getState().settingsSection).toBeNull();
   });
 });
 
@@ -142,16 +155,29 @@ describe("Private Vault settings", () => {
 });
 
 describe("Photos & AI and Storage", () => {
-  it("names the photo quality in plain words", () => {
-    expect(qualityTier(14).label).toBe("Best quality");
-    expect(qualityTier(18).label).toBe("Balanced (Recommended)");
-    expect(qualityTier(22).label).toBe("Smaller files");
-    expect(qualityTier(28).label).toBe("Smallest files");
+  it("offers photo quality as three plain choices (round 2, #7)", () => {
+    expect([12, 14, 15].map(qualityChoice)).toEqual([14, 14, 14]);
+    expect([16, 18, 20].map(qualityChoice)).toEqual([18, 18, 18]);
+    expect([22, 28].map(qualityChoice)).toEqual([24, 24]);
     const updateSetting = vi.fn();
     render(<PhotosAISettings settings={DEFAULT_SETTINGS} updateSetting={updateSetting} />);
-    expect(screen.getByText("Balanced (Recommended)")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Photo quality"), { target: { value: "25" } });
-    expect(updateSetting).toHaveBeenCalledWith("quality_crf", 25);
+    const group = screen.getByRole("radiogroup", { name: "Photo quality" });
+    expect(within(group).getByRole("radio", { name: "Balanced" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText(/Looks the same as the original/)).toBeInTheDocument();
+    fireEvent.click(within(group).getByRole("radio", { name: "Smaller" }));
+    expect(updateSetting).toHaveBeenCalledWith("quality_crf", 24);
+    // Photo size and Video size, separate, as pills like the rest (2026-11-19).
+    const size = screen.getByRole("radiogroup", { name: "Photo size" });
+    expect(within(size).getByRole("radio", { name: "8K" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(within(size).getByRole("radio", { name: "4K" }));
+    expect(updateSetting).toHaveBeenCalledWith("photo_resolution", "4k");
+    const video = screen.getByRole("radiogroup", { name: "Video size" });
+    expect(within(video).getAllByRole("radio").map((r) => r.textContent)).toEqual(["As recorded", "HD", "2K", "4K"]);
+    expect(within(video).getByRole("radio", { name: "HD" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(within(video).getByRole("radio", { name: "4K" }));
+    expect(updateSetting).toHaveBeenCalledWith("video_resolution", "4k");
+    // Every row as in Appearance: text left, choices right (owner feedback 2026-11-19).
+    expect(document.querySelectorAll(".settings-row.is-stacked")).toHaveLength(0);
   });
 
   it("pauses background work only below the chosen battery level", () => {
@@ -214,9 +240,9 @@ describe("Photos & AI and Storage", () => {
     expect(screen.getByText("Connected")).toBeInTheDocument();
     expect(screen.queryByText("No library found here")).not.toBeInTheDocument();
     const usage = await screen.findByRole("list", { name: "What SecurePhotos uses" });
-    expect(usage.textContent).toContain("Photos3.0 GB");
-    expect(usage.textContent).toContain("Videos1.5 GB");
-    expect(usage.textContent).toContain("App data · database and AI models512 MB");
+    expect(usage.textContent).toContain("Photos60%3.0 GB");
+    expect(usage.textContent).toContain("Videos30%1.5 GB");
+    expect(usage.textContent).toContain("App data · database and AI models10%512 MB");
     expect(screen.getByText("Free on Photos")).toBeInTheDocument();
     expect(screen.getByText("600.0 GB")).toBeInTheDocument();
   });

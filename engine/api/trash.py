@@ -113,16 +113,26 @@ async def restore_photos(payload: RestorePhotosRequest) -> dict:
 
     conn = await get_db_connection()
     try:
-        placeholders = ",".join("?" for _ in payload.photo_ids)
-        cursor = await conn.execute(
-            f"UPDATE photos SET trashed_at = NULL WHERE id IN ({placeholders}) AND trashed_at IS NOT NULL;",
-            payload.photo_ids,
-        )
-        restored_count = cursor.rowcount
+        # A group deleted together (original + improved copies) comes back together.
+        from engine.services.photo_versions import restore_with_versions
+
+        restored_count = await restore_with_versions(conn, payload.photo_ids)
         await conn.commit()
         return {"status": "ok", "restored_count": restored_count}
     finally:
         await conn.close()
+
+
+def _sweep_unused_files_soon() -> None:
+    """After deleting for good, also remove thumbnails/previews nothing uses (owner, 2026-11-19)."""
+    import asyncio
+    import os
+
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return  # Tests call the sweep themselves.
+    from engine.services.storage_cleanup import sweep_unused_files
+
+    asyncio.get_running_loop().create_task(sweep_unused_files())
 
 
 async def purge_photos(conn, photo_ids: List[int]) -> int:
@@ -227,6 +237,7 @@ async def permanently_delete_selected(payload: PermanentDeleteRequest) -> dict:
         deleted = await purge_photos(conn, ids)
     finally:
         await conn.close()
+    _sweep_unused_files_soon()
     return {"status": "ok", "deleted_count": deleted}
 
 
@@ -240,4 +251,5 @@ async def empty_trash_permanently() -> dict:
         deleted = await purge_photos(conn, ids)
     finally:
         await conn.close()
+    _sweep_unused_files_soon()
     return {"status": "ok", "deleted_count": deleted}

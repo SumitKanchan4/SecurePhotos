@@ -26,6 +26,8 @@ import {
   Volume1,
   VolumeX,
   Zap,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { PhotoItem, OptimizationProgress, PhotoContext } from "../types";
 import { useAppStore } from "../store/useAppStore";
@@ -134,8 +136,22 @@ export const Lightbox: React.FC<LightboxProps> = ({
   // A8 (smooth loading): a 2560 px preview at "fit" (the engine makes it once; ~7x faster to
   // decode than the 8K photo); the full photo only once the user zooms in. The grid's thumbnail
   // shows at once underneath while either loads.
+  // Owner feedback 2026-11-18: the preview stays on screen until the full photo has loaded,
+  // so zooming in never blanks the photo while the 8K file decodes.
   const isZoomedIn = zoom > 1.2;
-  const primaryImageUrl = isVaultItem ? vaultStreamUrl : isZoomedIn ? originalUrl : previewUrl;
+  const [fullLoadedUrl, setFullLoadedUrl] = useState<string | null>(null);
+  const primaryImageUrl = isVaultItem ? vaultStreamUrl : isZoomedIn && fullLoadedUrl === originalUrl ? originalUrl : previewUrl;
+  useEffect(() => {
+    if (!isOpen || !isZoomedIn || isVaultItem || fullLoadedUrl === originalUrl) return;
+    let alive = true;
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = () => alive && setFullLoadedUrl(originalUrl);
+    img.src = originalUrl;
+    return () => {
+      alive = false;
+    };
+  }, [isOpen, isZoomedIn, isVaultItem, originalUrl, fullLoadedUrl]);
 
   useEffect(() => {
     if (currentPhoto) {
@@ -564,18 +580,30 @@ export const Lightbox: React.FC<LightboxProps> = ({
             }}
           />
 
-          {zoom > 1 && (
-            <button
-              type="button"
-              className="viewer-zoom-pill"
-              title="Back to fit (0)"
-              onClick={() => {
-                setZoom(1);
-                setPanOffset({ x: 0, y: 0 });
-              }}
-            >
-              {Math.round(zoom * 100)}%
-            </button>
+          {!isVideo && !isDocumentView && (
+            // Owner feedback 2026-11-18: zoom needs visible buttons (wheel, double-click and +/- still work).
+            <div className="viewer-zoom" role="group" aria-label="Zoom">
+              <button type="button" className="viewer-zoom-btn" aria-label="Zoom out" title="Zoom out (-)" disabled={zoom <= 1} onClick={handleZoomOut}>
+                <ZoomOut size={15} />
+              </button>
+              <button
+                type="button"
+                className="viewer-zoom-pill"
+                aria-label={zoom > 1 ? "Fit to screen" : "Zoom to 200%"}
+                title={zoom > 1 ? "Back to fit (0)" : "Zoom in (double-click the photo)"}
+                onClick={() => {
+                  if (zoom > 1) {
+                    setZoom(1);
+                    setPanOffset({ x: 0, y: 0 });
+                  } else setZoom(2);
+                }}
+              >
+                {zoom > 1 ? `${Math.round(zoom * 100)}%` : "Fit"}
+              </button>
+              <button type="button" className="viewer-zoom-btn" aria-label="Zoom in" title="Zoom in (+)" disabled={zoom >= 4} onClick={() => setZoom((z) => Math.min(z + 0.5, 4))}>
+                <ZoomIn size={15} />
+              </button>
+            </div>
           )}
 
           {isDocumentView ? (

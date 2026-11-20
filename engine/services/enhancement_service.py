@@ -31,7 +31,15 @@ from engine.services.super_resolution_service import enhance_pixels
 
 logger = logging.getLogger("securephotos.enhancement")
 
-TARGET_LONG_EDGE = 7680  # 8K
+TARGET_LONG_EDGE = 7680  # 8K, the default photo size.
+# Settings → Photo size (owner, 2026-11-19): the long edge each choice brings photos to.
+PHOTO_SIZES = {"2k": 2560, "4k": 3840, "8k": 7680}
+DEFAULT_PHOTO_SIZE = "8k"
+
+
+def photo_size_to_long_edge(value) -> int:
+    """The long edge for a stored ``photo_resolution`` setting (unknown values: 8K)."""
+    return PHOTO_SIZES.get(str(value or "").lower(), PHOTO_SIZES[DEFAULT_PHOTO_SIZE])
 EXIF_ORIENTATION_TAG = 0x0112
 
 QUALITY_SLIDER_MIN, QUALITY_SLIDER_MAX = 12, 28
@@ -80,7 +88,7 @@ def _has_alpha(img: Image.Image) -> bool:
     return img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
 
 
-def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int) -> Tuple[bytes, int, int]:
+def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int, target_long_edge: int = TARGET_LONG_EDGE) -> Tuple[bytes, int, int]:
     """Enhances an image entirely in memory and returns it encoded as AVIF.
 
     The camera details (EXIF: date, GPS, camera) and colour profile are kept.
@@ -91,6 +99,7 @@ def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int) -> Tuple
     Args:
         source: Image file path, or the image file's bytes (e.g. a decrypted vault photo).
         avif_quality: AVIF quality from :func:`slider_to_avif_quality`.
+        target_long_edge: Photo size from :func:`photo_size_to_long_edge`.
 
     Returns:
         (AVIF bytes, width, height).
@@ -99,6 +108,8 @@ def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int) -> Tuple
     with opened as im:
         exif = im.getexif()
         icc_profile = im.info.get("icc_profile")
+        # An improved copy's AI label (IPTC digital source type, H10) must survive 8K (P2).
+        xmp = im.info.get("xmp")
         upright = ImageOps.exif_transpose(im)
         alpha = _has_alpha(upright)
         upright = upright.convert("RGBA" if alpha else "RGB")
@@ -106,13 +117,15 @@ def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int) -> Tuple
     if EXIF_ORIENTATION_TAG in exif:
         exif[EXIF_ORIENTATION_TAG] = 1
 
-    enhanced = enhance_pixels(upright, TARGET_LONG_EDGE)
+    enhanced = enhance_pixels(upright, target_long_edge)
 
     save_kwargs = {"quality": avif_quality}
     if len(exif):
         save_kwargs["exif"] = exif.tobytes()
     if icc_profile:
         save_kwargs["icc_profile"] = icc_profile
+    if xmp:
+        save_kwargs["xmp"] = xmp if isinstance(xmp, (bytes, bytearray)) else str(xmp).encode("utf-8")
     buffer = io.BytesIO()
     enhanced.save(buffer, "AVIF", **save_kwargs)
     data = buffer.getvalue()
@@ -125,7 +138,7 @@ def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int) -> Tuple
     return data, enhanced.size[0], enhanced.size[1]
 
 
-def enhance_to_avif(source: Path, avif_quality: int) -> EnhancedPhoto:
+def enhance_to_avif(source: Path, avif_quality: int, target_long_edge: int = TARGET_LONG_EDGE) -> EnhancedPhoto:
     """Enhances one library photo and writes it as AVIF next to the source.
 
     See :func:`render_enhanced_avif` for what is kept and changed. The file is
@@ -146,7 +159,7 @@ def enhance_to_avif(source: Path, avif_quality: int) -> EnhancedPhoto:
     dest = source if source.suffix.lower() == ".avif" else unique_path(source.with_suffix(".avif"))
     temp = dest.parent / f".{dest.name}.opt.tmp"
     try:
-        data, width, height = render_enhanced_avif(source, avif_quality)
+        data, width, height = render_enhanced_avif(source, avif_quality, target_long_edge)
         with open(temp, "wb") as fh:
             fh.write(data)
             fh.flush()

@@ -134,8 +134,15 @@ describe("DashboardView", () => {
     expect(screen.getByText("12 videos can be made smaller without visible change. About 3.4 GB to save.")).toBeInTheDocument();
     expect(screen.getByText("1,204 of 1,218 photos enhanced · 18.0 GB saved so far")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /12,480\s*Photos/ }));
+    // The library as one sentence, every number a way in (round 2, #4).
+    const hero = screen.getByRole("region", { name: "Your library" });
+    expect(hero).toHaveTextContent("12,480 photos, 342 videos, 24 people, 12 albums and 214 documents.");
+    fireEvent.click(within(hero).getByRole("button", { name: "12,480 photos" }));
     expect(onNavigate).toHaveBeenCalledWith("photos");
+    // Storage rows open their place (round 1, #19); app data has none.
+    fireEvent.click(within(usage).getByRole("button", { name: "Private Vault, 6.0 GB: open" }));
+    expect(onNavigate).toHaveBeenCalledWith("vault");
+    expect(within(usage).queryByRole("button", { name: /App data/ })).not.toBeInTheDocument();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Pause" }));
     });

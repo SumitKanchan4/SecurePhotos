@@ -72,14 +72,22 @@ export interface TimelinePhoto {
   is_favorite: boolean;
   is_optimized: boolean;
   is_enhanced: boolean;
-  /** H10: an improved copy made with AI (grid shows the "AI" badge). */
+  /** H10: an improved copy made with AI (the grid shows one icon per fix). */
   is_ai?: boolean;
+  /** What the improved copy had done: "colour", "fade", "faces", "scratches". */
+  ai_kinds?: string[];
+  /** After-import P4: text, faces, old-photo check, duplicates or 8K still to do (progress ring). */
+  is_preparing?: boolean;
+  /** Which of the five steps it is on (1-5; 0 when ready). */
+  prepare_step?: number;
+  /** A video's length in seconds (0 or missing: unknown). */
+  duration?: number;
 }
 
-/** /api/photos/timeline: rows are [id, taken_at, width, height, "p" | "v", flags]. */
+/** /api/photos/timeline: rows are [id, taken_at, width, height, "p" | "v", flags, seconds]. */
 export interface TimelineResponse {
   total: number;
-  items: [number, string | null, number, number, string, number][];
+  items: ([number, string | null, number, number, string, number] | [number, string | null, number, number, string, number, number])[];
 }
 
 /** /api/photos/{id}/context: what the viewer's details panel shows besides EXIF (redesign R3). */
@@ -145,6 +153,9 @@ export interface MergeSuggestion {
   cluster_photo_count: number;
   cluster_face_id: number | null;
   similarity: number;
+  /** Up to four clear faces per side, best first (round 1, #24). */
+  person_face_ids?: number[];
+  cluster_face_ids?: number[];
 }
 
 export interface FaceScanStatus {
@@ -288,6 +299,8 @@ export interface StoryModel {
   /** Oldest and newest photo dates in the story (story list only). */
   first_taken_at?: string | null;
   last_taken_at?: string | null;
+  /** A few of the story's photos, in story order (story list only; round 2, #8). */
+  preview_photo_ids?: number[];
   slides: StorySlide[];
 }
 

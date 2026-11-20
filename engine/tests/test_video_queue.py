@@ -61,6 +61,25 @@ async def test_classify_video_for_ingestion_heavy():
     assert result["action"] == "compress"
 
 
+def test_video_size_setting_decides_how_far_videos_are_enlarged():
+    """Owner, 2026-11-19: Settings → Video size, separate from Photo size, never above 4K."""
+    vintage = {"width": 640, "height": 480, "codec": "h264", "file_size": 15_000_000}
+    phone = {"width": 1920, "height": 1080, "codec": "hevc", "file_size": 20_000_000}
+    uhd = {"width": 3840, "height": 2160, "codec": "hevc", "file_size": 250_000_000}
+    # As recorded: the old clip isn't enlarged.
+    assert classify_video_for_ingestion(vintage, "original")["action"] == "none"
+    # HD (default): only the old clip is enlarged, to 1080p.
+    assert classify_video_for_ingestion(vintage, "hd")["target_height"] == 1080
+    assert classify_video_for_ingestion(phone, "hd")["action"] == "none"
+    # 2K: everything below 1440p is enlarged to 1440p; a 1440p+ video goes on to the usual checks.
+    assert classify_video_for_ingestion(phone, "2k")["target_height"] == 1440
+    assert classify_video_for_ingestion({**phone, "width": 2560, "height": 1440}, "2k")["action"] == "none"
+    # 4K: everything below 4K is enlarged to 4K; 4K stays as it is (nothing goes above 4K).
+    assert classify_video_for_ingestion(vintage, "4k")["target_height"] == 2160
+    assert classify_video_for_ingestion(phone, "4k")["target_height"] == 2160
+    assert classify_video_for_ingestion(uhd, "4k")["action"] == "none"
+
+
 @pytest.mark.asyncio
 async def test_video_queue_lifecycle():
     """Verify queue database initialization, enqueueing, and state reporting."""
@@ -107,8 +126,15 @@ async def test_video_queue_lifecycle():
 
 
 @pytest.mark.asyncio
-async def test_video_queue_disconnection_safety():
+async def test_video_queue_disconnection_safety(monkeypatch):
     """Verify that when source storage is disconnected (file missing), queue safely marks job paused without crashing."""
+    from engine.services import video_queue_service as vq
+
+    async def no_photos_waiting():
+        return False
+
+    # Videos wait for photos (2026-11-19); other tests leave photos "being prepared".
+    monkeypatch.setattr(vq, "_photos_waiting", no_photos_waiting)
     await init_video_queue_db()
 
     conn = await get_db_connection()
@@ -264,3 +290,55 @@ async def test_video_queue_self_healing_on_photo_deletion_and_trash():
         finally:
             await conn.close()
 
+
+
+def test_videos_are_enlarged_by_their_shorter_side():
+    """A portrait phone video made 4K is 2160 px wide (2026-11-19); landscape: 2160 px tall."""
+    from engine.services.video_service import video_scale_filter
+
+    assert video_scale_filter(720, 1280, 2160) == "scale=2160:-2:flags=lanczos"
+    assert video_scale_filter(1920, 1080, 2160) == "scale=-2:2160:flags=lanczos"
+    assert video_scale_filter(0, 0, 1440) == "scale=-2:1440:flags=lanczos"
+
+
+@pytest.mark.asyncio
+async def test_automatic_video_jobs_wait_until_no_photo_is_being_prepared():
+    """Owner, 2026-11-19: video work comes after the photos (an import's 2K video took the slot first)."""
+    import uuid
+
+    from engine.database import get_db_connection, run_migrations
+    from engine.services import video_queue_service as vq
+
+    await run_migrations()
+    tag = uuid.uuid4().hex[:8]
+    conn = await get_db_connection()
+    try:
+        cur = await conn.execute(
+            "INSERT INTO photos (filename, filepath, file_size, mime_type, is_optimized) VALUES (?, ?, 1, 'image/jpeg', 0);",
+            (f"wait_{tag}.jpg", f"originals/wait_{tag}.jpg"),
+        )
+        photo_id = cur.lastrowid
+        cur = await conn.execute(
+            "INSERT INTO photos (filename, filepath, file_size, mime_type) VALUES (?, ?, 1, 'video/mp4');",
+            (f"wait_{tag}.mp4", f"originals/wait_{tag}.mp4"),
+        )
+        video_id = cur.lastrowid
+        await conn.execute("INSERT INTO video_processing_queue (photo_id, action, target_height) VALUES (?, 'enhance', 1440);", (video_id,))
+        await conn.commit()
+    finally:
+        await conn.close()
+    try:
+        assert await vq._photos_waiting()
+        assert await vq._process_next_video_job() is False
+        conn = await get_db_connection()
+        try:
+            async with conn.execute("SELECT status, retry_count FROM video_processing_queue WHERE photo_id = ?;", (video_id,)) as cur:
+                assert tuple(await cur.fetchone()) == ("queued", 0)  # Untouched: it waits its turn.
+        finally:
+            await conn.close()
+    finally:
+        conn = await get_db_connection()
+        await conn.execute("DELETE FROM video_processing_queue WHERE photo_id = ?;", (video_id,))
+        await conn.execute("DELETE FROM photos WHERE id IN (?, ?);", (photo_id, video_id))
+        await conn.commit()
+        await conn.close()
