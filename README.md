@@ -10,6 +10,17 @@ It sorts your photos by date, finds the people in them, picks out documents and 
 
 If you want to build or change the app, start with the [developer guide](docs/development.md).
 
+## A look inside
+
+![The photo grid: photos by month, each tagged with its size, and a year bar on the right](docs/images/screenshot-photos.jpg)
+
+| | |
+| --- | --- |
+| ![Old family photos next to the coloured versions SecurePhotos made](docs/images/screenshot-what-to-keep.jpg) | ![Stories suggested from the photos, with the newest one playing at the top](docs/images/screenshot-stories.jpg) |
+| Old prints, brought back in colour. The original is always kept. | Stories made from your photos. |
+
+The screenshots use free sample photos, none of them personal; see [the credits](docs/images/CREDITS.md).
+
 ## What it does
 
 ### Your library, on your drive
@@ -33,6 +44,8 @@ SecurePhotos can add colour to black-and-white prints, bring back faded colours,
 
 ### People
 Name a face once and SecurePhotos finds that person across your library. You can mark close family and friends, merge groups that turn out to be the same person, and remove anything that was wrongly taken for a face.
+
+![The People page asking who is in the old family photos](docs/images/screenshot-people.jpg)
 
 ### Documents
 Receipts, tickets, IDs and other paperwork are separated from your memories, and the words printed on them can be searched.
