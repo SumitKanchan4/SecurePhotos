@@ -1,4 +1,8 @@
-# SecurePhotos
+<p align="center">
+  <img src="src/assets/brand/app-icon.svg" width="112" height="112" alt="SecurePhotos icon">
+</p>
+
+<h1 align="center">SecurePhotos</h1>
 
 SecurePhotos keeps your photos, videos and documents on your own computer or external drive. Nothing is uploaded, there is no account to create and no subscription to pay.
 
