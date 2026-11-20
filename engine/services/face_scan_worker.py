@@ -105,6 +105,11 @@ async def save_scanned_faces(conn, photo_id: int, faces: list, thumbnails_dir: P
     """
     from engine.services.face_recognition_service import EMBEDDING_MODEL
 
+    # Read and replace in one write transaction (2026-11-21): two scans of the same photo, even
+    # from two engines on one library, then run one after the other, and the second replaces
+    # the first's faces instead of adding a second copy of each.
+    if not conn.in_transaction:
+        await conn.execute("BEGIN IMMEDIATE;")
     async with conn.execute(
         "SELECT id, person_id, box_x, box_y, box_w, box_h, embedding_model FROM faces WHERE photo_id = ?;", (photo_id,)
     ) as cur:
@@ -459,5 +464,76 @@ async def repair_sideways_faces() -> int:
         if fixed:
             logger.info("Turned the faces of %d sideways-stored photos upright.", fixed)
         return fixed
+    finally:
+        await conn.close()
+
+
+# ── One-time cleanup: faces saved twice (2026-11-21) ─────────────────────────────────────────
+# Two engines on one library could find a photo's faces at the same time and both save them.
+# A duplicate can never join its twin's group (one person can't be twice in a photo), so it
+# showed as an extra "Who is this?" card. This removes the extra copies once.
+
+DUPLICATE_FACE_IOU = 0.8
+DUPLICATES_REPAIR_KEY = "repair_duplicate_faces_done"
+
+
+def duplicate_faces_to_remove(faces: list) -> List[Tuple[int, int]]:
+    """Pairs (remove, keep) among one photo's faces that are the same face saved twice.
+
+    Of a pair, a named face is kept over an unnamed one, otherwise the older (lower id).
+    Two faces named as different people are both kept: which one is right can't be told.
+    """
+    pairs: List[Tuple[int, int]] = []
+    removed: set = set()
+    ordered = sorted(faces, key=lambda f: (f["person_id"] is None, f["id"]))
+    for i, keep in enumerate(ordered):
+        if keep["id"] in removed:
+            continue
+        for other in ordered[i + 1:]:
+            if other["id"] in removed or _iou(_stored_box(keep), _stored_box(other)) < DUPLICATE_FACE_IOU:
+                continue
+            if keep["person_id"] is not None and other["person_id"] is not None and keep["person_id"] != other["person_id"]:
+                continue
+            pairs.append((other["id"], keep["id"]))
+            removed.add(other["id"])
+    return pairs
+
+
+async def remove_duplicate_faces() -> int:
+    """Removes faces saved twice, once per library; returns how many were removed."""
+    from engine.database import get_db_connection
+
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT 1 FROM app_settings WHERE key = ?;", (DUPLICATES_REPAIR_KEY,)) as cur:
+            if await cur.fetchone():
+                return 0
+        async with conn.execute(
+            """SELECT id, photo_id, person_id, box_x, box_y, box_w, box_h FROM faces
+               WHERE photo_id IN (SELECT photo_id FROM faces GROUP BY photo_id HAVING COUNT(*) > 1)
+               ORDER BY photo_id, id;"""
+        ) as cur:
+            rows = await cur.fetchall()
+        by_photo: Dict[int, list] = {}
+        for r in rows:
+            by_photo.setdefault(r["photo_id"], []).append(r)
+        gone: List[int] = []
+        for faces in by_photo.values():
+            for remove, keep in duplicate_faces_to_remove(faces):
+                # A person's chosen profile face moves to the copy that stays.
+                await conn.execute("UPDATE persons SET cover_face_id = ? WHERE cover_face_id = ?;", (keep, remove))
+                await conn.execute("DELETE FROM faces WHERE id = ?;", (remove,))
+                gone.append(remove)
+        await conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, '1');", (DUPLICATES_REPAIR_KEY,))
+        await conn.commit()
+        folder = get_face_thumbnails_dir()
+        for face_id in gone:
+            (folder / f"{face_id}.webp").unlink(missing_ok=True)
+        if gone:
+            logger.info("Removed %d faces that had been saved twice.", len(gone))
+            from engine.services.face_clustering_service import recluster_all_faces
+
+            await recluster_all_faces()
+        return len(gone)
     finally:
         await conn.close()
