@@ -1,103 +1,74 @@
-# 🤝 Contributing to SecurePhotos
+# Contributing to SecurePhotos
 
-Thank you for your interest in contributing to SecurePhotos! We are building a truly private, offline media vault that respects user ownership, and we welcome contributions from developers, designers, and privacy advocates of all experience levels.
+Thank you for your interest in SecurePhotos. It is a private, offline photo library, and help of every kind is welcome.
 
----
+## Ways to help
 
-## 🌟 Ways to Contribute
+You don't need to write code to make a difference:
 
-You do not need to write complex Rust or Python code to make a difference:
+- **Report a bug.** Open an issue with the steps that cause it and what you expected to happen.
+- **Suggest an idea.** Open an issue that describes the problem you'd like solved.
+- **Improve the documentation.** Fix a mistake or make an instruction clearer.
+- **Help with design.** Layouts, icons, wording and accessibility all matter.
+- **Write code.** Fix a bug, add a test or build something new.
 
-- 🐛 **Report Bugs**: Find something broken? Open an issue with clear steps to reproduce.
-- 💡 **Suggest Ideas**: Have an idea for a feature or workflow? Start a discussion or open an enhancement issue.
-- 📖 **Improve Documentation**: Found a typo or unclear instruction? Help us make our guides easier to understand.
-- 🎨 **Design and UX**: Help refine icons, layouts, themes, or micro-interactions.
-- 💻 **Write Code**: Fix bugs, add unit tests, improve performance, or build planned features from our [Roadmap](docs/roadmap.md).
+For security problems, please follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
 
----
+## Setting up
 
-## 🛠️ Quick Local Setup
+You need:
 
-Before making code changes, make sure your computer has the necessary tools:
+- Node.js 20 or 22
+- Python 3.12
+- Rust 1.80 or later, with the MSVC toolchain
+- Windows 10 or 11
 
-1. **Prerequisites**:
-   - **Node.js** (v20 or v22 LTS)
-   - **Python** (v3.11 or v3.12)
-   - **Rust and Cargo** (v1.80+)
-2. **Clone and Install**:
-   ```bash
-   git clone https://github.com/SumitKanchan4/SecurePhotos.git
-   cd SecurePhotos
-   npm install
-   ```
-3. **Run Locally**:
-   - Double-click `scripts/dev.bat` or run:
-     ```bash
-     npm run tauri dev
-     ```
+Then:
 
-For complete environment configuration, sidecar details, and dependency troubleshooting, check out our [Developer Guide](docs/development.md).
+```powershell
+git clone https://github.com/SumitKanchan4/SecurePhotos.git
+cd SecurePhotos
+npm install
+.\scripts\run-desktop-app.ps1
+```
 
----
+The script starts the photo engine and the app together. The [developer guide](docs/development.md) covers everything else, including the Python environment and building the installer.
 
-## 🌿 Branching and Workflow
+## Branches and commits
 
-To keep our git history clean and protect our main branch:
+- Never commit to `master` directly. Work on a branch:
+  - `feature/short-name` for something new,
+  - `fix/short-name` for a bug fix,
+  - `chore/short-name` for documentation, dependencies or upkeep.
+- Write commit messages that say what changed, for example `fix: stop story music overlapping`.
+- Push your branch and open a pull request against `master`.
 
-1. **Always Work on a Topic Branch**:
-   - Never commit directly to `master`.
-   - Create a dedicated branch for your work:
-     - `feature/your-feature-name` for new capabilities
-     - `fix/issue-description` for bug fixes
-     - `chore/task-name` for documentation, dependencies, or maintenance
-2. **Keep Commits Clear**:
-   - Write clear, friendly commit messages following standard conventions (e.g. `fix: prevent audio playback overlap in stories`).
-3. **Push to Your Branch**:
-   - Push your topic branch to your fork or origin before opening a pull request.
+## Before you open a pull request
 
----
+SecurePhotos looks after people's memories, so please check that nothing breaks:
 
-## 🧪 Testing and Quality Checks
+```powershell
+.venv\Scripts\python.exe -m pytest engine/tests   # engine tests
+npm test                                          # app tests
+npm run build                                     # type check and production build
+```
 
-We take reliability seriously because SecurePhotos manages personal memories. Please ensure your changes do not break existing features:
+- If you fix a bug, add a test that would have caught it.
+- If you add an engine endpoint, add tests for it.
+- Give Python functions a docstring, and use TypeScript types rather than `any`.
+- Keep files focused; split a component that grows too large.
 
-1. **Run Backend Tests**:
-   ```bash
-   cd engine
-   pytest tests/
-   ```
-   All tests should pass before opening a PR.
-2. **Check Frontend Build**:
-   ```bash
-   npm run build
-   ```
-3. **Write Helpful Tests**:
-   - If you fix a bug, add a test case to prevent regressions.
-   - If you build a new API endpoint, include automated test coverage.
-4. **Follow Project Style**:
-   - Write clear docstrings for Python functions.
-   - Use TypeScript types instead of `any`.
-   - Keep files modular and avoid giant single-file components.
+## The pull request
 
----
+Please describe:
 
-## 📬 Submitting a Pull Request
+- what the change does and why,
+- how you tested it,
+- screenshots for anything you changed on screen,
+- the issue it fixes, if there is one (for example `Fixes #42`).
 
-When you are ready:
+You'll get a review with friendly, specific feedback.
 
-1. Open a Pull Request against the `master` branch.
-2. Fill out the PR description:
-   - What does this change accomplish?
-   - How did you test it?
-   - Any screenshots or recordings for UI updates.
-3. Link related issues (e.g. `Fixes #42`).
-4. Our maintainers will review your PR and provide friendly, constructive feedback.
+## How we work together
 
----
-
-## 📜 Community Values
-
-SecurePhotos is a collaborative, respectful open-source project. We expect all contributors to:
-- Be kind, welcoming, and patient with others.
-- Respect different viewpoints and experience levels.
-- Focus on what is best for user privacy, security, and simplicity.
+Be kind and patient, respect other points of view and levels of experience, and keep the people who use SecurePhotos, their privacy and their photos, at the centre of every decision.
