@@ -176,8 +176,11 @@ async def recluster_all_faces() -> Dict[str, Any]:
         )
 
         # Update database with clusters & medoids
-        for c_num, cluster_indices in enumerate(clusters):
-            cluster_id = f"cluster_{c_num + 1}"
+        for cluster_indices in clusters:
+            # Named after the group's oldest face (2026-11-21): positions changed at every
+            # regrouping, so a card loaded before one could name or close a different group.
+            # New faces never change a group's oldest face; merged groups keep the older id.
+            cluster_id = f"cluster_{face_ids[cluster_indices[0]]}"
             medoid_idx = select_cluster_medoid(cluster_indices, embeddings_arr, quality_scores)
             medoid_face_id = face_ids[medoid_idx]
 
