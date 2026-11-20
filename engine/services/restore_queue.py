@@ -32,6 +32,7 @@ The actual image work for each kind is plugged in with :func:`register_processor
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -404,6 +405,13 @@ async def _holding_auto_jobs() -> bool:
     return photos_api.battery_guard_applies(app_settings)
 
 
+async def _plain_photos_first() -> bool:
+    """True while plain photos are getting 8K (they need far less work than an old print)."""
+    from engine.api import photos as photos_api
+
+    return await photos_api.plain_photos_first()
+
+
 async def _next_job(conn: aiosqlite.Connection, vault_open: bool, auto_allowed: bool = True) -> Optional[aiosqlite.Row]:
     """Oldest queued job, preferring one that uses the model already in memory.
 
@@ -521,7 +529,9 @@ async def process_next_job() -> bool:
     async with db_connection() as conn:
         key = _vault_key()
         hold_auto = await _holding_auto_jobs()
-        job = await _next_job(conn, key is not None, auto_allowed=not hold_auto)
+        # Quick wins first (owner, 2026-11-18): automatic fixes wait while plain photos get 8K.
+        quick_first = not hold_auto and await _plain_photos_first()
+        job = await _next_job(conn, key is not None, auto_allowed=not hold_auto and not quick_first)
         if hold_auto:
             async with conn.execute("SELECT 1 FROM restore_jobs WHERE status = 'queued' AND origin = 'auto' LIMIT 1;") as cur:
                 state["paused_reason"] = "on_battery" if await cur.fetchone() else None
@@ -538,7 +548,19 @@ async def process_next_job() -> bool:
             await _set(conn, job_id, status="failed", error_message="models_missing")
             return True
 
-        await _set(conn, job_id, status="working", progress=0)
+        # One heavy job at a time (owner D2): what the user asked for goes first, then automatic
+        # fixes (before 8K). The job shows "waiting" until it has the slot.
+        from engine.services import cpu_budget
+
+        slot = contextlib.AsyncExitStack()
+        await slot.enter_async_context(
+            cpu_budget.heavy(cpu_budget.USER if job["origin"] == "manual" else cpu_budget.AUTO_RESTORE, f"restore:{job_id}")
+        )
+        try:
+            await _set(conn, job_id, status="working", progress=0)
+        except BaseException:
+            await slot.aclose()
+            raise
         state["active_job_id"] = job_id
         _progress[job_id] = 0
 
@@ -599,7 +621,20 @@ async def process_next_job() -> bool:
             _progress.pop(job_id, None)
             state["active_job_id"] = None
             key = None
+            await slot.aclose()
+        # The photo (and a kept copy) can go on to 8K now (after-import order: fix, then 8K).
+        _kick_enhancement()
         return True
+
+
+def _kick_enhancement() -> None:
+    """Starts the 8K pass if it isn't running (it picks up whatever is ready)."""
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return  # Tests run the passes themselves.
+    from engine.api import photos as photos_api
+
+    if not photos_api.optimization_state["is_active"]:
+        asyncio.get_running_loop().create_task(photos_api.run_background_optimization())
 
 
 KEEP_CHOICES = ("keep_both", "replace", "discard")

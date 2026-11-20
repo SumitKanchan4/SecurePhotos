@@ -107,6 +107,32 @@ describe("Vault lock screen", () => {
     await waitFor(() => expect(useAppStore.getState().isVaultUnlocked).toBe(true));
   });
 
+  it("stays open after unlocking with the PIN, even when the lock screen was up longer than the auto-lock time", async () => {
+    // Owner report 2026-11-19: reopening with the PIN after an idle lock locked again in 2-3 s.
+    let now = 1_000_000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    mockEngine({
+      "/api/vault/unlock": { status: "unlocked" },
+      "/api/vault/photos": [],
+      "/api/vault/albums": [],
+      "/api/system/settings": { settings: { auto_lock_duration: 300 } },
+    });
+    render(<VaultView />);
+    now += 10 * 60_000; // The lock card was up for 10 minutes.
+    for (const [i, d] of [..."2468"].entries()) {
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText(`PIN digit ${i + 1}`), { target: { value: d } });
+      });
+    }
+    await waitFor(() => expect(useAppStore.getState().isVaultUnlocked).toBe(true));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1300)); // Past the countdown's first tick.
+    });
+    expect(useAppStore.getState().isVaultUnlocked).toBe(true);
+    expect(screen.getByText(/locks in 5:00/)).toBeInTheDocument();
+    clock.mockRestore();
+  });
+
   it("unlocks with the master password", async () => {
     const calls = mockEngine({ "/api/vault/unlock": { status: "unlocked" } });
     useAppStore.setState({ hasVaultPin: false });

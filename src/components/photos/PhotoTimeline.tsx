@@ -8,7 +8,8 @@
  * instead of opening it.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Heart, Loader2, Play } from "lucide-react";
+import { Check, Copy, Eraser, Heart, History, Loader2, Palette, Play, ScanFace, ScanText, Sparkles, SunMedium, type LucideIcon } from "lucide-react";
+import { improvedLabel } from "../activity/activityFormat";
 import { useAppStore } from "../../store/useAppStore";
 import type { TimelinePhoto } from "../../types";
 import { getThumbnailUrl } from "../../services/api";
@@ -22,9 +23,62 @@ import {
   scrubberEntries,
   sectionAt,
   shortMonthLabel,
+  PREPARE_STEPS,
+  preparingTitle,
+  qualityTag,
   UNDATED_KEY,
+  videoLength,
   visibleRange,
 } from "../../utils/photoTimeline";
+
+/** The five after-import steps as icons, in order (owner: icons, not words). */
+const STEP_ICONS: LucideIcon[] = [ScanText, ScanFace, History, Copy, Sparkles];
+
+/**
+ * A photo still being prepared (owner, 2026-11-19): the steps' icons, translucent, take turns in
+ * the middle of the photo, whatever step it is on, so it reads as "work in progress". Pure CSS
+ * (no timers); only the tiles near the screen exist, so a big import stays light. With reduced
+ * motion one icon stands still.
+ */
+function StepsCycle({ title }: { title: string }) {
+  return (
+    // Decorative for screen readers: the ring next to it already says the same.
+    <span className="timeline-cycle" aria-hidden="true" title={title}>
+      <span className="timeline-cycle-badge" aria-hidden="true">
+        {STEP_ICONS.map((Icon, i) => (
+          <Icon key={i} size={22} strokeWidth={2.1} style={{ animationDelay: `${i * 1.2}s` }} />
+        ))}
+      </span>
+    </span>
+  );
+}
+
+/** The after-import progress ring: the share of the five steps done, the step in words on hover. */
+function PreparingRing({ step }: { step: number }) {
+  const total = PREPARE_STEPS.length;
+  const done = step > 0 ? step - 1 : 0;
+  const r = 6;
+  const circumference = 2 * Math.PI * r;
+  const title = preparingTitle(step);
+  return (
+    <span className="timeline-preparing" role="img" aria-label={title} title={title}>
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+        <circle cx="8" cy="8" r={r} className="timeline-preparing-track" />
+        <circle
+          cx="8"
+          cy="8"
+          r={r}
+          className="timeline-preparing-fill"
+          strokeDasharray={`${Math.max(circumference * (done / total), 2.2)} ${circumference}`}
+          transform="rotate(-90 8 8)"
+        />
+      </svg>
+    </span>
+  );
+}
+
+/** One icon per fix on an improved copy's tag (owner feedback 2026-11-18). */
+const KIND_ICONS: Record<string, LucideIcon> = { colour: Palette, fade: SunMedium, faces: ScanFace, scratches: Eraser };
 
 const ROW_HEIGHT = { compact: 150, comfortable: 210, spacious: 300 } as const;
 const GAP = 4;
@@ -58,6 +112,12 @@ interface TileProps {
 const Tile: React.FC<TileProps> = React.memo(
   ({ photo, index, left, width, height, isSelected, selectionMode, selectable, isVault, processing, onActivate, onToggleSelect, onToggleFavorite }) => {
     const [loaded, setLoaded] = useState(false);
+    const improvedKinds = photo.is_ai && !photo.is_video ? (photo.ai_kinds?.length ? photo.ai_kinds : ["improved"]) : [];
+    const improvedTitle = `${improvedLabel(photo.ai_kinds?.join(","))}. The original is kept: open the photo to compare.`;
+    const quality = qualityTag(photo);
+    // While a photo is being prepared its ring takes the tags' corner; the tags come once it's done.
+    const preparing = Boolean(photo.is_preparing && !photo.is_video);
+    const length = photo.is_video ? videoLength(photo.duration) : null;
     return (
       <div
         role="button"
@@ -85,16 +145,52 @@ const Tile: React.FC<TileProps> = React.memo(
             onLoad={() => setLoaded(true)}
             style={{ opacity: loaded ? 1 : 0 }}
           />
-          {photo.is_video && (
-            <span className="timeline-chip" title={processing ? "This video is being prepared. It can be played soon." : "Video"}>
-              {processing ? <Loader2 size={11} className="spin" /> : <Play size={10} fill="currentColor" />}
-              {processing ? "Preparing" : "Video"}
+          {/* Owner feedback 2026-11-18: tags at the bottom left, translucent black with neon text.
+              Photos: one icon per fix on an improved copy, and "8K" once enhanced (both when both).
+              Videos: a play button in the middle (round 2026-11-19), so the corner is free for
+              its quality (4K, 2K, HD or SD); the length at the bottom right. */}
+          {preparing && <StepsCycle title={preparingTitle(photo.prepare_step)} />}
+          {/* Tags once the photo or video is done (2026-11-19: a video being made 2K said "HD"). */}
+          {!preparing && !processing && (improvedKinds.length > 0 || quality) && (
+            <span className="timeline-tags">
+              {(improvedKinds.length > 0 || quality) && (
+                <span className="timeline-tag-row">
+                  {improvedKinds.length > 0 && (
+                    <span className="timeline-tag" role="img" aria-label={improvedTitle} title={improvedTitle}>
+                      {improvedKinds.map((k) => {
+                        const Icon = KIND_ICONS[k] ?? Sparkles;
+                        return <Icon key={k} size={12} strokeWidth={2.4} aria-hidden="true" />;
+                      })}
+                    </span>
+                  )}
+                  {quality && (
+                    <span className="timeline-tag" title={photo.is_video ? `${quality} video` : `Enhanced, ${quality}`}>
+                      {quality}
+                    </span>
+                  )}
+                </span>
+              )}
             </span>
           )}
-          {photo.is_ai && (
-            <span className="timeline-ai" title="Improved with AI (colour, faces or scratches)">
-              AI
+          {photo.is_video && (
+            <span
+              className={`timeline-play${processing ? " is-preparing" : ""}`}
+              role="img"
+              aria-label={processing ? "Video, being prepared" : "Video"}
+              title={processing ? "This video is being prepared. It can be played soon." : "Video"}
+            >
+              {processing ? <Loader2 size={18} className="spin" /> : <Play size={18} fill="currentColor" />}
             </span>
+          )}
+          {photo.is_video && length && (
+            <span className="timeline-chip timeline-length" aria-label={`Length ${length}`}>
+              {length}
+            </span>
+          )}
+          {preparing && (
+            // Owner feedback 2026-11-19: a ring that fills step by step, in the same tag style,
+            // and plain words for the step it's on (was a lone dot).
+            <PreparingRing step={photo.prepare_step ?? 0} />
           )}
         </div>
 
@@ -251,20 +347,22 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({
   );
 
   // ── Scrubber (approved Photos board, R9d) ───────────────────────────────
-  // The newest year's months, then one entry per older year, stacked from the top; the one
-  // you are looking at is the lime pill. Click to jump, or press and drag along the list.
+  // Every year, the months of the year you are looking at under it; where you are is the lime
+  // pill (and its year is marked too). Click to jump, or press and drag along the list.
   const trackRef = useRef<HTMLElement>(null);
   const [trackHeight, setTrackHeight] = useState(0);
   const dragging = useRef(false);
   useEffect(() => {
     setTrackHeight(trackRef.current?.clientHeight ?? 0);
   }, [size.height]);
+  const current = sectionAt(sections, layout.sectionTops, contentTop);
+  // The year you are looking at shows its months under it (round 1, #13).
+  const openYear = current && current.key !== UNDATED_KEY ? current.key.slice(0, 4) : null;
   const entries = useMemo(
-    () => scrubberEntries(sections, trackHeight > 0 ? Math.max(1, Math.floor(trackHeight / SCRUB_ENTRY_HEIGHT)) : Infinity),
-    [sections, trackHeight],
+    () => scrubberEntries(sections, trackHeight > 0 ? Math.max(1, Math.floor(trackHeight / SCRUB_ENTRY_HEIGHT)) : Infinity, openYear),
+    [sections, trackHeight, openYear],
   );
   const showScrubber = sections.length >= Math.max(2, minScrubberSections) && layout.totalHeight > size.height;
-  const current = sectionAt(sections, layout.sectionTops, contentTop);
 
   const jumpTo = (key: string) => {
     const el = scrollRef.current;
@@ -329,7 +427,7 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({
               <button
                 key={entry.key}
                 type="button"
-                className={`timeline-scrub-entry${isCurrent ? " is-current" : ""}`}
+                className={`timeline-scrub-entry${entry.kind === "month" ? " is-month" : ""}${isCurrent ? " is-current" : ""}`}
                 aria-label={entry.name}
                 aria-current={isCurrent ? "true" : undefined}
                 title={entry.name}

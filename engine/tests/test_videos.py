@@ -364,8 +364,9 @@ async def test_video_enhance_resolution_aware_upscale(tmp_path):
     conn = await get_db_connection()
     try:
         photo_id = await ingest_single_photo(conn, clip_path, mode="managed")
-        # Artificially set is_enhanced = 1 and height = 1080
-        await conn.execute("UPDATE photos SET is_enhanced = 1, height = 1080, width = 608 WHERE id = ?", (photo_id,))
+        # Artificially mark it an enhanced 1080p video (landscape, like the real clip: the size is
+        # measured on the shorter side since 2026-11-19).
+        await conn.execute("UPDATE photos SET is_enhanced = 1, height = 1080, width = 1440 WHERE id = ?", (photo_id,))
         await conn.commit()
     finally:
         await conn.close()

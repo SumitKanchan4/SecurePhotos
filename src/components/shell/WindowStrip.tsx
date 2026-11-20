@@ -1,7 +1,7 @@
 /**
  * WindowStrip: the slim 32 px top strip of the frameless window (redesign R1).
  *
- * Drag area for moving the window, the theme toggle and the window buttons. (The search
+ * The app's name, a drag area for moving the window, the theme toggle and the window buttons. (The search
  * chip is gone: search is its own page since R9c and never filters other pages.)
  */
 import React from "react";
@@ -46,7 +46,13 @@ export const WindowStrip: React.FC = () => {
         zIndex: 200,
       }}
     >
-      <div data-tauri-drag-region style={{ flex: 1, height: "100%" }} />
+      {/* Owner feedback 2026-11-18: the app's name, so it's known without the taskbar. Part of
+          the drag area (clicks pass through to it). */}
+      <div data-tauri-drag-region style={{ flex: 1, height: "100%", display: "flex", alignItems: "center" }}>
+        <span className="window-name" data-tauri-drag-region>
+          SecurePhotos
+        </span>
+      </div>
 
 
       <div data-tauri-drag-region style={{ flex: 1, height: "100%", display: "flex", justifyContent: "flex-end", alignItems: "center" }}>

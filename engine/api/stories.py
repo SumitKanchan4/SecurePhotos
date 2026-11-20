@@ -21,11 +21,13 @@ from engine.services.music_service import (
     save_uploaded_music,
     update_track_mood,
 )
+from engine.services.stories_planner import FOR_YOU  # For you keeps ~6 suggestions (P3).
 from engine.services.stories_service import (
     StoryModel,
     StorySlide,
     _resolve_audio_url_for_mood,
     delete_story,
+    generate_old_photos_story,
     generate_on_this_day_stories,
     generate_recent_highlights_story,
     generate_seasonal_retrospectives,
@@ -37,6 +39,9 @@ from engine.services.stories_service import (
 )
 
 logger = logging.getLogger("securephotos.api.stories")
+
+# Photos per story sent with the list, for the Stories page's moving cover.
+STORY_PREVIEW_PHOTOS = 4
 
 router = APIRouter(prefix="/api/stories", tags=["Stories"])
 
@@ -82,7 +87,7 @@ async def list_stories(
         # Self-healing: if loading initial page and unbounded un-saved stories accumulated, prune down to cap
         if offset == 0 and not saved_only:
             try:
-                await prune_ephemeral_stories(keep_cap=15)
+                await prune_ephemeral_stories(keep_cap=FOR_YOU)
             except Exception as e:
                 # Trimming old suggestions is housekeeping; listing stories must still work.
                 logger.warning("Could not trim old story suggestions: %s", e)
@@ -110,6 +115,23 @@ async def list_stories(
         async with conn.execute(query, (limit, offset)) as cursor:
             rows = await cursor.fetchall()
 
+        # A few photos per story, in story order, for the page's moving cover (round 2, #8).
+        previews: dict = {}
+        ids = [r["id"] for r in rows]
+        if ids:
+            marks = ",".join("?" * len(ids))
+            async with conn.execute(
+                f"""SELECT si.story_id, si.photo_id FROM story_items si JOIN photos p ON p.id = si.photo_id
+                    WHERE si.story_id IN ({marks}) AND p.trashed_at IS NULL AND COALESCE(p.is_encrypted, 0) = 0
+                      AND (p.mime_type IS NULL OR p.mime_type NOT LIKE 'video/%')
+                    ORDER BY si.story_id, si.sort_order;""",
+                ids,
+            ) as cursor:
+                for item in await cursor.fetchall():
+                    shown = previews.setdefault(item["story_id"], [])
+                    if len(shown) < STORY_PREVIEW_PHOTOS:
+                        shown.append(item["photo_id"])
+
         stories = []
         for r in rows:
             mood = r["vibe_mood"] or "acoustic"
@@ -126,6 +148,7 @@ async def list_stories(
                     slides_count=r["slides_count"],
                     first_taken_at=str(r["first_taken_at"]) if r["first_taken_at"] else None,
                     last_taken_at=str(r["last_taken_at"]) if r["last_taken_at"] else None,
+                    preview_photo_ids=previews.get(r["id"], []),
                     slides=[],  # Lightweight summary: slides fetched on-demand via GET /api/stories/{id}
                 )
             )
@@ -154,8 +177,6 @@ async def generate_stories() -> List[StoryModel]:
         for pr in person_rows:
             await generate_through_the_years_story(pr["id"])
 
-        # 2. 'On This Day' Flashback milestones
-        await generate_on_this_day_stories()
 
         # 3. Vacation & trip bursts
         await generate_vacation_and_trip_stories()
@@ -169,8 +190,14 @@ async def generate_stories() -> List[StoryModel]:
         # 6. Recent Highlights / Golden Moments fallback story
         await generate_recent_highlights_story()
 
+        # 6b. Old prints the app brought back (after-import P3)
+        await generate_old_photos_story()
+
+        # 2. 'This week, years ago' last: For you keeps the newest ~6 (P3), and this one leads.
+        await generate_on_this_day_stories()
+
         # 7. Prune older un-saved ephemeral stories to maintain a focused 10-15 reel
-        await prune_ephemeral_stories(keep_cap=15)
+        await prune_ephemeral_stories(keep_cap=FOR_YOU)
     finally:
         await conn.close()
 
@@ -430,8 +457,9 @@ async def get_story(story_id: int) -> StoryModel:
 
 @router.delete("/{story_id}", status_code=status.HTTP_200_OK)
 async def remove_story(story_id: int):
-    """Deletes a story from database, cascading to slide items and unlinking cached exports."""
-    success = await delete_story(story_id)
+    """Deletes a story from database, cascading to slide items and unlinking cached exports.
+    The owner deleted it, so the same story is never suggested again (after-import P3)."""
+    success = await delete_story(story_id, remember=True)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

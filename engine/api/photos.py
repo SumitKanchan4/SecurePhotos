@@ -1,4 +1,5 @@
 import asyncio
+import os
 import time
 import logging
 from pathlib import Path
@@ -9,7 +10,8 @@ from pydantic import BaseModel
 
 from engine.database import get_db_connection
 from engine.config import settings, resolve_media_path
-from engine.services.photo_versions import pair_order, stack_top
+from engine.services.after_import import PREPARING, PREPARING_STEP
+from engine.services.photo_versions import pair_order, stack_top, with_versions
 from engine.services.ingestion_service import ingest_single_photo
 
 logger = logging.getLogger("securephotos.api.photos")
@@ -94,14 +96,24 @@ TIMELINE_FAVORITE = 1
 TIMELINE_OPTIMIZED = 2
 TIMELINE_ENHANCED = 4
 TIMELINE_AI = 8  # H10: an improved copy (the grid shows the AI badge).
+TIMELINE_PREPARING = 16  # After-import P4: still being prepared (the grid's progress ring).
+# The step a photo being prepared is on (after_import.PREPARING_STEP, 1-5), in bits 9-11.
+TIMELINE_STEP_SHIFT = 9
+# Owner feedback 2026-11-18: what an improved copy had done, one icon each on its grid tag.
+TIMELINE_KIND_BITS = {"colour": 32, "fade": 64, "faces": 128, "scratches": 256}
+
+
+def _kind_bits(ai_kind: Optional[str]) -> int:
+    return sum(TIMELINE_KIND_BITS.get(k.strip(), 0) for k in set((ai_kind or "").split(",")))
 DETAILS_MAX_IDS = 500
 
 
 class TimelineResponse(BaseModel):
     """Every library photo in display order, as compact rows.
 
-    Each item is ``[id, taken_at or null, width, height, kind, flags]``: kind is
-    "v" for videos and "p" otherwise; flags combine TIMELINE_* bits.
+    Each item is ``[id, taken_at or null, width, height, kind, flags, seconds]``: kind is
+    "v" for videos and "p" otherwise; flags combine TIMELINE_* bits (and the improved copy's
+    kinds, TIMELINE_KIND_BITS); seconds is a video's length (0 for photos or when unknown).
     """
     total: int
     items: List[List[Any]]
@@ -321,32 +333,26 @@ async def run_background_optimization():
         optimization_state["is_active"] = True
         optimization_state["last_completed_photo_id"] = None
         try:
-            conn = await get_db_connection()
-            try:
-                async with conn.execute(
-                    """
-                    SELECT id, filename, filepath, preview_path
-                    FROM photos
-                    WHERE (mime_type IS NULL OR mime_type NOT LIKE 'video/%')
-                      AND is_optimized = 0
-                      AND trashed_at IS NULL
-                      AND is_encrypted = 0
-                    ORDER BY id ASC;
-                    """
-                ) as cursor:
-                    unoptimized = await cursor.fetchall()
-            finally:
-                await conn.close()
+            from engine.services import cpu_budget
 
-            optimization_state["total_count"] = len(unoptimized)
+            skipped: set = set()  # Missing files: retried on the next run, not in a loop now.
             optimization_state["completed_count"] = 0
+            idx = -1
 
-            for idx, row in enumerate(unoptimized):
-                photo_id = row["id"]
-                filename = row["filename"]
-
+            # After-import order: a photo is enhanced once its earlier steps are done (text,
+            # faces, the old-photo rules and any open old-photo job), so an old print is fixed at
+            # its own size first and 8K runs once. Picked one at a time (newly ready photos join):
+            # plain photos first (quick wins), then improved copies, then originals; newest first.
+            while True:
                 await _wait_while_paused_by_user()
                 await _wait_while_on_battery()
+                row = await _next_to_enhance(skipped)
+                if row is None:
+                    break
+                idx += 1
+                optimization_state["total_count"] = idx + await _count_to_enhance(skipped)
+                photo_id = row["id"]
+                filename = row["filename"]
 
                 optimization_state["active_photo_id"] = photo_id
                 optimization_state["active_filename"] = filename
@@ -355,63 +361,11 @@ async def run_background_optimization():
                 source = resolve_stored_path(row["filepath"])
                 if source is None:
                     logger.warning("Photo %s not found on disk; will retry on the next run: %s", photo_id, row["filepath"])
+                    skipped.add(photo_id)
                     continue
 
-                try:
-                    app_settings = await _load_enhancement_settings()
-                    quality = enhancement_service.slider_to_avif_quality(
-                        app_settings.get("quality_crf", enhancement_service.DEFAULT_QUALITY_SLIDER)
-                    )
-                    optimization_state["item_progress"] = 30
-                    result = await asyncio.to_thread(
-                        enhancement_service.enhance_to_avif,
-                        source,
-                        quality,
-                    )
-                    optimization_state["item_progress"] = 80
-                    new_hash = await asyncio.to_thread(calculate_file_hash, result.path)
-
-                    conn = await get_db_connection()
-                    try:
-                        await conn.execute(
-                            """
-                            UPDATE photos
-                            SET filepath = ?, filename = ?, mime_type = ?,
-                                original_file_size = COALESCE(original_file_size, file_size),
-                                original_file_hash = COALESCE(original_file_hash, file_hash),
-                                file_hash = ?, file_size = ?, width = ?, height = ?,
-                                is_optimized = 1, is_enhanced = 1, preview_path = NULL
-                            WHERE id = ?;
-                            """,
-                            (
-                                to_db_path(result.path),
-                                result.path.name,
-                                result.mime_type,
-                                new_hash,
-                                result.size,
-                                result.width,
-                                result.height,
-                                photo_id,
-                            ),
-                        )
-                        await conn.commit()
-                    finally:
-                        await conn.close()
-
-                    # The row now points at the AVIF: the old files are no longer needed.
-                    if result.path.resolve() != source.resolve():
-                        source.unlink(missing_ok=True)
-                    old_preview = resolve_stored_path(row["preview_path"])
-                    if old_preview is not None and old_preview.resolve() != result.path.resolve():
-                        old_preview.unlink(missing_ok=True)
-                    # A8: the viewer's 2560 px preview now, so the first view is quick too.
-                    await ensure_display_preview(photo_id, to_db_path(result.path), new_hash)
-
-                except Exception as err:
-                    logger.warning("Could not enhance photo %s (%s): %s", photo_id, filename, err)
-                    # Mark it so an unreadable file isn't retried on every run.
-                    await _mark_optimized_without_change(photo_id)
-
+                # One heavy job at a time (owner D2); what the user asked for goes first.
+                await _enhance_one(row, source, cpu_budget, enhancement_service, calculate_file_hash, to_db_path, resolve_stored_path)
                 optimization_state["item_progress"] = 100
                 optimization_state["completed_count"] = idx + 1
                 optimization_state["last_completed_photo_id"] = photo_id
@@ -420,10 +374,147 @@ async def run_background_optimization():
         finally:
             optimization_state["is_active"] = False
             optimization_state["active_photo_id"] = None
+            # 8K gives photos new files: their old thumbnails/previews are now unused (2026-11-19).
+            if optimization_state.get("completed_count") and not os.environ.get("PYTEST_CURRENT_TEST"):
+                from engine.services.storage_cleanup import sweep_unused_files
+
+                asyncio.get_running_loop().create_task(sweep_unused_files())
             optimization_state["active_filename"] = None
             optimization_state["item_progress"] = 0
             optimization_state["last_completed_photo_id"] = None
             optimization_state["paused_reason"] = None
+
+
+# Ready for 8K: everything earlier in the after-import process is done for this photo.
+ENHANCE_READY = """
+    (mime_type IS NULL OR mime_type NOT LIKE 'video/%')
+    AND is_optimized = 0 AND trashed_at IS NULL AND is_encrypted = 0
+    AND ocr_text IS NOT NULL
+    AND (faces_scanned = 1 OR COALESCE(is_document, 0) = 1)
+    AND (restore_checked = 1 OR derived_from_id IS NOT NULL)
+    AND NOT EXISTS (SELECT 1 FROM restore_jobs j WHERE j.photo_id = photos.id AND j.status IN ('queued', 'working', 'review'))
+"""
+
+
+# Quick wins first (owner, 2026-11-18): a plain photo needs only 8K (~12 s); an old print needs its
+# fix and then 8K for the copy and the original (~40 s). Plain photos are enhanced first, then
+# improved copies, then their originals; newest first within each.
+PAIR_MEMBER = "(derived_from_id IS NOT NULL OR EXISTS (SELECT 1 FROM photos c WHERE c.derived_from_id = photos.id))"
+
+
+async def plain_photos_first() -> bool:
+    """True while automatic old-print fixes should wait: plain photos are ready for 8K and the
+    8K pass is running (not paused by the user). Starts the pass if it isn't running yet."""
+    if enhancement_paused_by_user:
+        return False
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(f"SELECT 1 FROM photos WHERE {ENHANCE_READY} AND NOT {PAIR_MEMBER} LIMIT 1;") as cur:
+            waiting = await cur.fetchone() is not None
+    finally:
+        await conn.close()
+    if not waiting:
+        return False
+    if optimization_state["is_active"]:
+        return True
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        asyncio.get_running_loop().create_task(run_background_optimization())
+    return False  # Not running yet: never hold the old prints on a pass that may not start.
+
+
+async def _next_to_enhance(skipped: set):
+    conn = await get_db_connection()
+    try:
+        marks = ",".join(str(int(i)) for i in skipped) or "0"
+        async with conn.execute(
+            f"""SELECT id, filename, filepath, preview_path FROM photos
+                WHERE {ENHANCE_READY} AND id NOT IN ({marks})
+                ORDER BY {PAIR_MEMBER}, (derived_from_id IS NULL), id DESC LIMIT 1;"""
+        ) as cursor:
+            return await cursor.fetchone()
+    finally:
+        await conn.close()
+
+
+async def _count_to_enhance(skipped: set) -> int:
+    conn = await get_db_connection()
+    try:
+        marks = ",".join(str(int(i)) for i in skipped) or "0"
+        async with conn.execute(f"SELECT COUNT(*) FROM photos WHERE {ENHANCE_READY} AND id NOT IN ({marks});") as cursor:
+            return int((await cursor.fetchone())[0])
+    finally:
+        await conn.close()
+
+
+async def _enhance_one(row, source, cpu_budget, enhancement_service, calculate_file_hash, to_db_path, resolve_stored_path) -> None:
+    """Enhances one photo to 8K (holding the heavy-work slot) and points its row at the AVIF."""
+    photo_id, filename = row["id"], row["filename"]
+    async with cpu_budget.heavy(cpu_budget.ENHANCE, f"enhance:{photo_id}"):
+        # The photo was picked before waiting for the slot: if it was enhanced, moved or deleted
+        # meanwhile, leave it (2026-11-19: a stale pick tried to read a file already replaced).
+        conn = await get_db_connection()
+        try:
+            async with conn.execute("SELECT filepath, is_optimized, trashed_at FROM photos WHERE id = ?;", (photo_id,)) as cur:
+                now = await cur.fetchone()
+        finally:
+            await conn.close()
+        if not now or now["is_optimized"] or now["trashed_at"] or now["filepath"] != row["filepath"]:
+            return
+        try:
+            app_settings = await _load_enhancement_settings()
+            quality = enhancement_service.slider_to_avif_quality(
+                app_settings.get("quality_crf", enhancement_service.DEFAULT_QUALITY_SLIDER)
+            )
+            optimization_state["item_progress"] = 30
+            result = await asyncio.to_thread(
+                enhancement_service.enhance_to_avif,
+                source,
+                quality,
+                enhancement_service.photo_size_to_long_edge(app_settings.get("photo_resolution")),
+            )
+            optimization_state["item_progress"] = 80
+            new_hash = await asyncio.to_thread(calculate_file_hash, result.path)
+
+            conn = await get_db_connection()
+            try:
+                await conn.execute(
+                    """
+                    UPDATE photos
+                    SET filepath = ?, filename = ?, mime_type = ?,
+                        original_file_size = COALESCE(original_file_size, file_size),
+                        original_file_hash = COALESCE(original_file_hash, file_hash),
+                        file_hash = ?, file_size = ?, width = ?, height = ?,
+                        is_optimized = 1, is_enhanced = 1, preview_path = NULL
+                    WHERE id = ?;
+                    """,
+                    (
+                        to_db_path(result.path),
+                        result.path.name,
+                        result.mime_type,
+                        new_hash,
+                        result.size,
+                        result.width,
+                        result.height,
+                        photo_id,
+                    ),
+                )
+                await conn.commit()
+            finally:
+                await conn.close()
+
+            # The row now points at the AVIF: the old files are no longer needed.
+            if result.path.resolve() != source.resolve():
+                source.unlink(missing_ok=True)
+            old_preview = resolve_stored_path(row["preview_path"])
+            if old_preview is not None and old_preview.resolve() != result.path.resolve():
+                old_preview.unlink(missing_ok=True)
+            # A8: the viewer's 2560 px preview now, so the first view is quick too.
+            await ensure_display_preview(photo_id, to_db_path(result.path), new_hash)
+
+        except Exception as err:
+            logger.warning("Could not enhance photo %s (%s): %s", photo_id, filename, err)
+            # Mark it so an unreadable file isn't retried on every run.
+            await _mark_optimized_without_change(photo_id)
 
 
 thumbnail_regen_state = {
@@ -615,7 +706,8 @@ async def get_photo_timeline() -> TimelineResponse:
     try:
         async with conn.execute(
             f"""
-            SELECT id, taken_at, width, height, mime_type, is_favorite, is_optimized, is_enhanced, ai_kind
+            SELECT id, taken_at, width, height, mime_type, is_favorite, is_optimized, is_enhanced, ai_kind,
+                   duration_seconds, CASE WHEN {PREPARING} THEN 1 ELSE 0 END AS preparing, {PREPARING_STEP} AS prep_step
             FROM photos
             WHERE is_encrypted = 0 AND trashed_at IS NULL AND {stack_top()}
             ORDER BY taken_at DESC, {pair_order()};
@@ -634,7 +726,12 @@ async def get_photo_timeline() -> TimelineResponse:
             (TIMELINE_FAVORITE if r["is_favorite"] else 0)
             | (TIMELINE_OPTIMIZED if r["is_optimized"] else 0)
             | (TIMELINE_ENHANCED if r["is_enhanced"] else 0)
-            | (TIMELINE_AI if r["ai_kind"] else 0),
+            | (TIMELINE_AI if r["ai_kind"] else 0)
+            | (TIMELINE_PREPARING if r["preparing"] else 0)
+            | ((r["prep_step"] or 0) << TIMELINE_STEP_SHIFT)
+            | _kind_bits(r["ai_kind"]),
+            # A video's length in whole seconds (0: unknown or a photo).
+            int(round(r["duration_seconds"] or 0)) if (r["mime_type"] or "").startswith("video/") else 0,
         ]
         for r in rows
     ]
@@ -1125,8 +1222,13 @@ async def delete_photo(photo_id: int) -> dict:
         if row["trashed_at"] is not None:
             return {"status": "ok", "photo_id": photo_id, "already_trashed": True}
 
-        await conn.execute("UPDATE photos SET trashed_at = CURRENT_TIMESTAMP WHERE id = ?;", (photo_id,))
-        await conn.execute("DELETE FROM video_processing_queue WHERE photo_id = ?;", (photo_id,))
+        # The tile stands for the whole group: its original and improved copies go too.
+        group = await with_versions(conn, [photo_id])
+        marks = ",".join("?" * len(group))
+        await conn.execute(
+            f"UPDATE photos SET trashed_at = CURRENT_TIMESTAMP WHERE id IN ({marks}) AND trashed_at IS NULL;", group
+        )
+        await conn.execute(f"DELETE FROM video_processing_queue WHERE photo_id IN ({marks});", group)
         await conn.commit()
     finally:
         await conn.close()
@@ -1142,13 +1244,15 @@ async def batch_trash_photos(payload: BatchTrashRequest) -> BatchTrashResponse:
 
     conn = await get_db_connection()
     try:
-        placeholders = ",".join("?" for _ in payload.photo_ids)
+        # Each tile stands for its whole group: originals and improved copies go together.
+        ids = await with_versions(conn, payload.photo_ids)
+        placeholders = ",".join("?" for _ in ids)
         cursor = await conn.execute(
             f"UPDATE photos SET trashed_at = CURRENT_TIMESTAMP WHERE id IN ({placeholders}) AND trashed_at IS NULL;",
-            payload.photo_ids,
+            ids,
         )
         trashed_count = cursor.rowcount
-        await conn.execute(f"DELETE FROM video_processing_queue WHERE photo_id IN ({placeholders});", payload.photo_ids)
+        await conn.execute(f"DELETE FROM video_processing_queue WHERE photo_id IN ({placeholders});", ids)
         await conn.commit()
     finally:
         await conn.close()
@@ -1179,6 +1283,30 @@ async def trigger_optimization(background_tasks: BackgroundTasks) -> dict:
     return {"status": "started"}
 
 
+@router.get("/preparing", status_code=status.HTTP_200_OK)
+async def get_preparing_progress() -> dict:
+    """The after-import process (P1): what it is doing and how many photos still wait per step."""
+    from engine.services import after_import
+
+    counts = await after_import.counts()
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(f"SELECT COUNT(*) FROM photos WHERE trashed_at IS NULL AND {PREPARING};") as cursor:
+            preparing_total = (await cursor.fetchone())[0]
+    finally:
+        await conn.close()
+    return {
+        "active": bool(after_import.state["active"]),
+        "step": after_import.state["step"],
+        "photo_id": after_import.state["photo_id"],
+        "paused_reason": after_import.state["paused_reason"],
+        **counts,
+        # P4: photos with any step left (8K included), and the last import's summary when ready.
+        "preparing_total": int(preparing_total),
+        "import_summary": await after_import.import_summary(),
+    }
+
+
 @router.post("/regenerate-thumbnails", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_thumbnail_regeneration(background_tasks: BackgroundTasks) -> dict:
     """Triggers background regeneration of all library thumbnails to 512px Retina resolution."""
@@ -1206,16 +1334,28 @@ def _collect_import_files(source_directory: Optional[str], file_paths: Optional[
     from engine.services.ingestion_service import SUPPORTED_EXTENSIONS
 
     found: List[Path] = []
+    # P4 ("Add more"): file_paths may also hold folders (several places in one import); a file
+    # picked twice (on its own and inside a chosen folder) is counted and imported once.
     for fp in file_paths or []:
         path = Path(fp)
         if path.exists() and path.is_file():
             found.append(path)
+        elif path.exists() and path.is_dir():
+            found.extend(child for child in path.rglob("*") if child.is_file())
         else:
             logger.warning("Specified file path could not be located on disk: %s", fp)
     if source_directory:
         source_dir = Path(source_directory)
         if source_dir.exists() and source_dir.is_dir():
             found.extend(path for path in source_dir.rglob("*") if path.is_file())
+    seen: set = set()
+    unique: List[Path] = []
+    for path in found:
+        key = os.path.normcase(str(path.resolve()))
+        if key not in seen:
+            seen.add(key)
+            unique.append(path)
+    found = unique
     supported = [path for path in found if path.suffix.lower() in SUPPORTED_EXTENSIONS]
     return supported, len(found) - len(supported), bool(found)
 
@@ -1253,8 +1393,14 @@ async def preview_import(payload: ImportPreviewRequest) -> ImportPreviewResponse
 
     videos = sum(1 for path in files if path.suffix.lower() in VIDEO_EXTENSIONS)
     documents = sum(1 for path in files if path.suffix.lower() in DOCUMENT_EXTENSIONS)
-    if payload.source_directory:
+    sources = (1 if payload.source_directory else 0) + len(payload.file_paths or [])
+    folders = [p for p in (payload.file_paths or []) if Path(p).is_dir()]
+    if payload.source_directory and not payload.file_paths:
         name, is_folder = Path(payload.source_directory).name or payload.source_directory, True
+    elif len(folders) == 1 and sources == 1:
+        name, is_folder = Path(folders[0]).name or folders[0], True
+    elif folders:  # P4: several places chosen with "Add more".
+        name, is_folder = f"{sources} places", True
     elif len(files) == 1:
         name, is_folder = files[0].name, False
     else:
@@ -1437,12 +1583,12 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
         await conn.close()
 
     if imported > 0:
-        background_tasks.add_task(run_background_optimization)
-    if imported_photo_ids:
-        # H10 / A6: the "Automatically" rows of Settings → Old photos (scans of prints only).
-        from engine.services.old_photo_rules import on_imported
+        # The after-import process: text, faces, the old-photo rules (Settings → Old photos),
+        # then 8K, which it starts itself once a photo's earlier steps are done.
+        from engine.services import after_import
 
-        background_tasks.add_task(on_imported, list(imported_photo_ids))
+        after_import.remember_import(imported_photo_ids)  # For the summary once it's ready (P4).
+        after_import.wake()
 
     return ImportResponse(
         total_found=total_found,

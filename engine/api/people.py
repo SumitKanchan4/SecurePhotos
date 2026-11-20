@@ -15,6 +15,7 @@ from engine.config import resolve_media_path
 from engine.services.face_recognition_service import get_face_thumbnails_dir
 from engine.services.people_merge_service import load_merge_inputs, rank_merge_suggestions
 from engine.services.face_scan_worker import (
+    dismiss_faces,
     get_scan_status,
     reset_scan_state,
     start_background_scan,
@@ -214,6 +215,9 @@ class MergeSuggestion(BaseModel):
     cluster_photo_count: int
     cluster_face_id: Optional[int] = None
     similarity: float
+    # Owner feedback (round 1, #24): several examples per side, so the two can be compared.
+    person_face_ids: List[int] = []
+    cluster_face_ids: List[int] = []
 
 
 class MergeAnswer(BaseModel):
@@ -240,19 +244,34 @@ async def _library_photo_count(conn, column: str, value) -> int:
 
 
 async def _best_face(conn, column: str, value) -> Optional[int]:
+    faces = await _best_faces(conn, column, value, 1)
+    return faces[0] if faces else None
+
+
+async def _best_faces(conn, column: str, value, count: int = 4) -> List[int]:
+    """The clearest faces of a person or unnamed group, one per photo (best first)."""
     async with conn.execute(
         f"""
-        SELECT f.id FROM faces f
+        SELECT f.id, f.photo_id FROM faces f
         JOIN photos p ON p.id = f.photo_id
         WHERE f.{column} = ? AND p.trashed_at IS NULL AND NOT EXISTS (SELECT 1 FROM photos v WHERE v.derived_from_id = p.id AND v.trashed_at IS NULL) AND p.is_encrypted = 0
         {"AND f.person_id IS NULL" if column == "cluster_id" else ""}
         ORDER BY f.is_anchor_medoid DESC, f.quality_score DESC, f.id
-        LIMIT 1;
+        LIMIT ?;
         """,
-        (value,),
+        (value, count * 5),
     ) as cursor:
-        row = await cursor.fetchone()
-    return row["id"] if row else None
+        rows = await cursor.fetchall()
+    picked: List[int] = []
+    photos: set = set()
+    for row in rows:
+        if row["photo_id"] in photos:
+            continue
+        photos.add(row["photo_id"])
+        picked.append(row["id"])
+        if len(picked) == count:
+            break
+    return picked
 
 
 @router.get("/merge-suggestions", response_model=List[MergeSuggestion], status_code=status.HTTP_200_OK)
@@ -268,16 +287,23 @@ async def list_merge_suggestions() -> List[MergeSuggestion]:
                 person = await cursor.fetchone()
             if not person:
                 continue
+            person_faces = await _best_faces(conn, "person_id", person_id)
+            cover = person["cover_face_id"]
+            if cover:
+                person_faces = [cover] + [f for f in person_faces if f != cover][:3]
+            cluster_faces = await _best_faces(conn, "cluster_id", cluster_id)
             results.append(
                 MergeSuggestion(
                     person_id=person_id,
                     person_name=person["name"],
                     person_photo_count=await _library_photo_count(conn, "person_id", person_id),
-                    person_face_id=person["cover_face_id"] or await _best_face(conn, "person_id", person_id),
+                    person_face_id=person_faces[0] if person_faces else None,
                     cluster_id=cluster_id,
                     cluster_photo_count=await _library_photo_count(conn, "cluster_id", cluster_id),
-                    cluster_face_id=await _best_face(conn, "cluster_id", cluster_id),
+                    cluster_face_id=cluster_faces[0] if cluster_faces else None,
                     similarity=round(similarity, 3),
+                    person_face_ids=person_faces,
+                    cluster_face_ids=cluster_faces,
                 )
             )
         return results
@@ -434,8 +460,17 @@ async def get_face_crop(face_id: int):
 
 @router.post("/scan", response_model=ScanStatusResponse, status_code=status.HTTP_202_ACCEPTED)
 async def trigger_face_scan(force: bool = False) -> ScanStatusResponse:
-    """Manually triggers or resumes the background face recognition scan worker."""
-    start_background_scan(force=force)
+    """Manually triggers or resumes the background face recognition scan worker.
+
+    Without ``force`` the after-import process does it (photos still waiting for faces, newest
+    first, alongside everything else); ``force`` re-scans the whole library from scratch.
+    """
+    if force:
+        start_background_scan(force=True)
+    else:
+        from engine.services import after_import
+
+        after_import.wake()
     return ScanStatusResponse(**get_scan_status())
 
 
@@ -554,20 +589,31 @@ async def dismiss_unlabeled_cluster(cluster_id: str) -> dict:
         ) as cur:
             rows = await cur.fetchall()
 
-        deleted_count = 0
-        for r in rows:
-            face_id = r["id"]
-            thumb_file = thumbnails_dir / f"{face_id}.webp"
-            if thumb_file.exists():
-                try:
-                    thumb_file.unlink()
-                except OSError:
-                    pass
-            deleted_count += 1
-
-        await conn.execute("DELETE FROM faces WHERE cluster_id = ? AND person_id IS NULL;", (cluster_id,))
+        # Remembered (owner feedback 2026-11-18): a rescan never adds these places again.
+        deleted_count = await dismiss_faces(conn, [r["id"] for r in rows])
         await conn.commit()
+        for r in rows:
+            (thumbnails_dir / f"{r['id']}.webp").unlink(missing_ok=True)
         return {"status": "dismissed", "cluster_id": cluster_id, "faces_removed": deleted_count}
+    finally:
+        await conn.close()
+
+
+@router.post("/faces/{face_id}/dismiss", status_code=status.HTTP_200_OK)
+async def dismiss_face(face_id: int) -> dict:
+    """'Not a face' for one unnamed face (a cushion, feet): removed and remembered."""
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT person_id FROM faces WHERE id = ?;", (face_id,)) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Face record not found")
+        if row["person_id"] is not None:
+            raise HTTPException(status_code=409, detail="This face has a name. Remove it from the person first.")
+        removed = await dismiss_faces(conn, [face_id])
+        await conn.commit()
+        (get_face_thumbnails_dir() / f"{face_id}.webp").unlink(missing_ok=True)
+        return {"status": "dismissed", "face_id": face_id, "faces_removed": removed}
     finally:
         await conn.close()
 

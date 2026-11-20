@@ -1,3 +1,4 @@
+import appIcon from "../assets/brand/app-icon.svg";
 /**
  * Utility for rendering, exporting, and parsing ICICI Bank-style Emergency Grid Cards.
  *
@@ -145,7 +146,29 @@ export async function extractGridCardFromPng(file: File, keyword = "SecurePhotos
 /**
  * Draws the high-aesthetic luxury metallic Emergency Grid Card on an HTML5 canvas.
  */
-export function renderGridCardCanvas(canvas: HTMLCanvasElement, card: GridCardData): void {
+let cardIcon: Promise<HTMLImageElement | null> | null = null;
+
+/** The app's icon for the card (owner feedback 2026-11-19), loaded once; null if it can't be. */
+export function loadCardIcon(): Promise<HTMLImageElement | null> {
+  if (!cardIcon) {
+    cardIcon = new Promise((resolve) => {
+      const img = new Image();
+      const timer = setTimeout(() => resolve(null), 800);
+      img.onload = () => {
+        clearTimeout(timer);
+        resolve(img);
+      };
+      img.onerror = () => {
+        clearTimeout(timer);
+        resolve(null);
+      };
+      img.src = appIcon;
+    });
+  }
+  return cardIcon;
+}
+
+export function renderGridCardCanvas(canvas: HTMLCanvasElement, card: GridCardData, icon?: HTMLImageElement | null): void {
   const width = 1050;
   const height = 620;
   canvas.width = width;
@@ -177,14 +200,26 @@ export function renderGridCardCanvas(canvas: HTMLCanvasElement, card: GridCardDa
   ctx.fillStyle = radialGlow;
   ctx.fillRect(0, 0, width, height);
 
-  // 2. Card Header
+  // 2. Card Header: the app's icon and name (owner feedback 2026-11-19; was an emoji and a gold chip).
+  const textX = icon ? 50 + 52 + 16 : 50;
+  if (icon) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(50, 34, 52, 52, 14);
+    ctx.clip();
+    ctx.drawImage(icon, 50, 34, 52, 52);
+    ctx.restore();
+    // The rounded clip stays in the current path: clear it, or the boxes drawn next would fill
+    // over the icon and outline it.
+    ctx.beginPath();
+  }
   ctx.fillStyle = "#38bdf8";
   ctx.font = "bold 20px 'Archivo', system-ui, sans-serif";
-  ctx.fillText("🛡️ SECUREPHOTOS", 50, 60);
+  ctx.fillText("SECUREPHOTOS", textX, 60);
 
   ctx.fillStyle = "#94a3b8";
   ctx.font = "600 13px 'Archivo', system-ui, sans-serif";
-  ctx.fillText("ZERO-TRUST VAULT EMERGENCY GRID CARD", 50, 84);
+  ctx.fillText("ZERO-TRUST VAULT EMERGENCY GRID CARD", textX, 84);
 
   // Card Serial Badge on Top-Right
   const serialText = `CARD ID: ${card.card_id}`;
@@ -193,32 +228,9 @@ export function renderGridCardCanvas(canvas: HTMLCanvasElement, card: GridCardDa
   const serialWidth = ctx.measureText(serialText).width;
   ctx.fillText(serialText, width - 50 - serialWidth, 64);
 
-  // Decorative Golden Chip graphic
-  const chipX = 50;
-  const chipY = 120;
-  const chipW = 70;
-  const chipH = 50;
-  const chipGrad = ctx.createLinearGradient(chipX, chipY, chipX + chipW, chipY + chipH);
-  chipGrad.addColorStop(0, "#fbbf24");
-  chipGrad.addColorStop(0.5, "#d97706");
-  chipGrad.addColorStop(1, "#b45309");
-  ctx.fillStyle = chipGrad;
-  ctx.roundRect(chipX, chipY, chipW, chipH, 8);
-  ctx.fill();
-
-  ctx.strokeStyle = "rgba(0,0,0,0.4)";
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(chipX + 24, chipY);
-  ctx.lineTo(chipX + 24, chipY + chipH);
-  ctx.moveTo(chipX + 46, chipY);
-  ctx.lineTo(chipX + 46, chipY + chipH);
-  ctx.moveTo(chipX, chipY + 25);
-  ctx.lineTo(chipX + chipW, chipY + 25);
-  ctx.stroke();
-
   // 3. The 4x4 Grid (16 boxes: A to P)
-  const gridStartX = 160;
+  // Centred now that the chip on the left is gone: (1050 - (4 * 190 + 3 * 18)) / 2.
+  const gridStartX = 118;
   const gridStartY = 110;
   const boxW = 190;
   const boxH = 95;
@@ -288,7 +300,7 @@ export function renderGridCardCanvas(canvas: HTMLCanvasElement, card: GridCardDa
  */
 export async function downloadGridCardImage(card: GridCardData, filename = "SecurePhotos_Emergency_Grid_Card.png"): Promise<void> {
   const canvas = document.createElement("canvas");
-  renderGridCardCanvas(canvas, card);
+  renderGridCardCanvas(canvas, card, await loadCardIcon());
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(async (blob) => {

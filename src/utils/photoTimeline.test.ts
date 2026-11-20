@@ -9,6 +9,9 @@ import {
   monthKey,
   monthLabel,
   parseTimeline,
+  preparingTitle,
+  qualityTag,
+  videoLength,
   scrubberEntries,
   sectionAt,
   viewerWindow,
@@ -23,16 +26,41 @@ describe("parseTimeline", () => {
       total: 3,
       items: [
         [7, "2026-05-14 10:00:00", 4000, 3000, "p", 1 | 4],
-        [8, null, 0, 0, "v", 2],
-        [9, "2026-05-14 10:00:00", 4000, 3000, "p", 8],
+        [8, null, 0, 0, "v", 2, 95],
+        [9, "2026-05-14 10:00:00", 4000, 3000, "p", 8 | 16 | 32 | 256 | (3 << 9)],
       ],
     });
     expect(parsed[0]).toEqual({
       id: 7, taken_at: "2026-05-14 10:00:00", width: 4000, height: 3000,
-      is_video: false, is_favorite: true, is_optimized: false, is_enhanced: true, is_ai: false,
+      is_video: false, is_favorite: true, is_optimized: false, is_enhanced: true, is_ai: false, is_preparing: false,
+      ai_kinds: [], duration: 0, prepare_step: 0,
     });
+    expect(parsed[2].is_preparing).toBe(true); // P4: still being prepared (quiet dot).
     expect(parsed[1]).toMatchObject({ id: 8, is_video: true, is_favorite: false, is_optimized: true, is_enhanced: false });
     expect(parsed[2]).toMatchObject({ id: 9, is_ai: true, is_favorite: false });  // H10: improved copy.
+    // Owner feedback 2026-11-18: what the copy had done, and a video's length.
+    expect(parsed[2].ai_kinds).toEqual(["colour", "scratches"]);
+    expect(parsed[2].prepare_step).toBe(3); // Checking old prints.
+    expect(preparingTitle(5)).toBe("Getting this photo ready: enhancing (5 of 5). You can open it now.");
+    expect(preparingTitle(0)).toBe("Getting this photo ready. You can open it now.");
+    expect(parsed[1].duration).toBe(95);
+  });
+
+  it("names the tile's quality tag and a video's length", () => {
+    // The size the enhanced photo really has (Settings → Photo size, 2026-11-19).
+    const base = { is_video: false, is_optimized: true, is_enhanced: true, width: 7680, height: 5760 };
+    expect(qualityTag(base)).toBe("8K");
+    expect(qualityTag({ ...base, width: 3840, height: 2880 })).toBe("4K");
+    expect(qualityTag({ ...base, width: 1920, height: 2560 })).toBe("2K");
+    expect(qualityTag({ ...base, width: 1600, height: 1200 })).toBeNull();
+    expect(qualityTag({ ...base, is_optimized: false })).toBeNull(); // Not enhanced yet.
+    expect(qualityTag({ ...base, is_video: true, width: 3840, height: 2160 })).toBe("4K");
+    expect(qualityTag({ ...base, is_video: true, width: 1440, height: 2560 })).toBe("2K");
+    expect(qualityTag({ ...base, is_video: true, width: 1080, height: 1920 })).toBe("HD");
+    expect(qualityTag({ ...base, is_video: true, width: 720, height: 1280 })).toBe("HD"); // The test library's video.
+    expect(qualityTag({ ...base, is_video: true, width: 640, height: 480 })).toBe("SD");
+    expect(qualityTag({ ...base, is_video: true, width: 0, height: 0 })).toBeNull(); // Size unknown.
+    expect([videoLength(42), videoLength(725), videoLength(3725), videoLength(0)]).toEqual(["0:42", "12:05", "1:02:05", null]);
   });
 });
 
@@ -123,14 +151,16 @@ describe("windowing and scrubber", () => {
     expect(sectionAt(sections, layout.sectionTops, 0)?.key).toBe("2026-12");
   });
 
-  it("lists the newest year's months, then each older year once, then No date", () => {
+  it("lists every year with the open year's months under it, then No date (round 1, #13)", () => {
     const mixed = [photo("2026-11-01"), photo("2026-10-01"), photo("2026-08-01"), photo("2025-12-01"), photo("2025-03-01"), photo("2023-01-01"), photo(null)];
     const sections = groupByMonth(mixed);
     const entries = scrubberEntries(sections);
-    expect(entries.map((e) => e.label)).toEqual(["Nov", "Oct", "Aug", "2025", "2023", "No date"]);
-    expect(entries[0].name).toBe("November 2026");
-    expect(entries[3]).toMatchObject({ key: "2025-12", keys: ["2025-12", "2025-03"] });
-    // Not enough room: the newest year collapses to one entry.
+    expect(entries.map((e) => e.label)).toEqual(["2026", "Nov", "Oct", "Aug", "2025", "2023", "No date"]);
+    expect(entries[1]).toMatchObject({ name: "November 2026", kind: "month" });
+    expect(entries[4]).toMatchObject({ key: "2025-12", keys: ["2025-12", "2025-03"], kind: "year" });
+    // Looking at 2025: its months open under it instead.
+    expect(scrubberEntries(sections, Infinity, "2025").map((e) => e.label)).toEqual(["2026", "2025", "Dec", "Mar", "2023", "No date"]);
+    // Not enough room: years only.
     expect(scrubberEntries(sections, 5).map((e) => e.label)).toEqual(["2026", "2025", "2023", "No date"]);
     expect(scrubberEntries([])).toEqual([]);
   });

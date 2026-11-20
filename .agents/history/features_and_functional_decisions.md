@@ -6285,3 +6285,85 @@ Built as on the approved **Private Vault · setup, shield, albums, documents** b
 
 ### State & Lifecycle Impact
 - New columns `photos.choice_pending` (migration marks copies made earlier by automatic jobs) and `photos.document_source`. New setting `battery_pause_below` (20). Preview files in `previews/display/`.
+
+## 158. After-Import Process, Step P1: Text and Faces for Every Photo
+
+### Functionality Overview
+- New photos get their **text read** (documents found) and their **faces found** straight after import, newest first, without restarting the app. Older libraries catch up the same way (text was never read before).
+- Activity shows "Getting photos ready · Reading text / Finding faces · N photos left"; People shows its progress while faces are found.
+- Documents never get faces (owner D1); a document the owner turns back into a photo gets its faces then, and is never marked a document again by a scan.
+- Pause all and the battery setting hold it (D5); vault and Trash are never touched.
+
+### Functional Decision Points & Rationale
+- Each step is recorded on the photo itself (`ocr_text` NULL = not read, '' = read, no text; `faces_scanned`), not in a separate table: one record per fact, nothing to drift; a restart resumes.
+- Faces wait until the text is read, so documents are known first.
+- Found while testing with the real models: once Windows OCR has run in a process, ONNX Runtime can no longer load there (faces, 8K and old-photo work would all stop). The engine loads ONNX Runtime first; the text reader does too.
+
+### Technical Touchpoints
+- New: `engine/services/after_import.py`, `engine/tests/test_after_import.py`.
+- Changed: `face_scan_worker.py` (`scan_photo_faces` per photo), `document_service.py` (OCR order, `document_source='user'`, no re-reading), `main.py` (start), `api/photos.py` (`GET /api/photos/preparing`, wake on import), `api/people.py` (scan button wakes it; force re-scan unchanged), `activityFormat.ts`, `ActivityView.tsx`, `useBackgroundProgress.ts`, `App.tsx`.
+- Checks: engine 426, frontend 193; end to end in a throwaway library with the real models: 5 photos in 2.7 s, faces in 3, receipt marked a document without faces.
+
+### State & Lifecycle Impact
+- No schema change. Existing libraries: every photo's text is read once in the background (about 0.2-0.3 s per photo).
+
+## 159. After-Import Process, Step P2: Heavy Work One at a Time, Fix Before 8K
+
+### Functionality Overview
+- **One heavy job at a time** (owner D2): 8K, old-photo improvements, video preparation and the vault enhancer take turns through one slot; what the user asked for goes first, then automatic fixes, then 8K, then automatic video work. A running job is never cut off.
+- **Old-photo fix before 8K**: the automatic rules are now a step after text and faces; 8K waits until they have looked at the photo and any old-photo job for it has ended. The fix works at the scan's own size and 8K runs once.
+- **Both get 8K** (owner D3): the improved copy (first; it is in front) and its original, so Original vs Improved compare like for like. The copy keeps its AI label through 8K.
+- **Documents are improved too** by the automatic rules, always keeping the original (A8).
+
+### Functional Decision Points & Rationale
+- One slot rather than a full scheduler rewrite: each worker keeps its own queue and safety rules; only "when may I use the CPU" is shared.
+- The video worker takes the slot before marking a job "processing", so waiting never looks like a stalled job to its 3-minute watchdog.
+- Found in the end-to-end run: a scan named "scan…" was treated as a document; "scan" is no longer a document word.
+
+### Technical Touchpoints
+- New: `engine/services/cpu_budget.py`, `engine/tests/test_cpu_budget.py`.
+- Changed: `api/photos.py` (8K pass picks one ready photo at a time, `ENHANCE_READY`), `restore_queue.py` (slot, starts 8K after a job), `video_queue_service.py`, `vault_enhancer.py`, `old_photo_rules.py` (`check_photo`), `after_import.py` (rules step), `photo_versions.py` (copy gets 8K, keeps text), `enhancement_service.py` (keeps XMP), `database.py` (`restore_checked`), `document_service.py`.
+- Checks: engine 433; end to end in a throwaway library with the real models: text → faces → rules → colour (19 s) → 8K copy (12 s) → 8K original (11 s).
+
+### State & Lifecycle Impact
+- New column `photos.restore_checked` (existing photos count as checked).
+
+## 160. After-Import Process, Step P3: Duplicates and Stories
+
+### Functionality Overview
+- **Duplicates** are found for new photos: each photo's fingerprint is made from its thumbnail as a step of the after-import process, and the groups are rebuilt once when a batch is done (the Photos "N duplicates" pill follows).
+- **Stories are suggested automatically** under the owner-approved rules: every day "This week, years ago" (For you changes as the weeks go by); after an import, the trip or event, "Through the years" for the people who matter most, highlights, and "Old photos, brought back" for prints the app improved; "Year in review" around the new year; a season's highlights after it ends.
+- **Good taste:** For you keeps about 6 suggestions (saved stories untouched); a story the owner deletes is never suggested again; dated stories use only photos the library shows, no documents, one photo per duplicate group, and no restored old prints (their date is the scan date); generic folders ("Camera", "misc", dates) are not trips unless there are at least 5 photos.
+
+### Functional Decision Points & Rationale
+- The near-duplicate comparison is vectorised (numpy popcount): 10,000 photos in 0.2 s instead of ~50 million Python comparisons; same pairs (tested against the old function).
+- Fingerprints come from the thumbnail (same 9x8 result, no 8K decode).
+- "Make new stories" makes "This week" last, so the 6-suggestion limit never drops it.
+
+### Technical Touchpoints
+- New: `engine/services/stories_planner.py`, tests `test_stories_planner.py`, `test_duplicate_speed.py`.
+- Changed: `after_import.py` (fingerprint step, `finish_run`), `duplicate_service.py` (`_close_pairs`, thumbnail first), `stories_service.py` (`story_photo`, `generate_old_photos_story`, week window, dismissals, generic folders, titles), `api/stories.py`, `database.py` (`story_dismissals`), `StoryPlayerModal.tsx` (Old Photos badge).
+- Checks: engine 443, frontend 193; end to end in a throwaway library with synthetic photos: one duplicate group, "Escape to Goa", "This Week, 2 Years Ago", highlights without the duplicate.
+
+### State & Lifecycle Impact
+- New table `story_dismissals`; setting `stories_daily_on` (the day's stories were made).
+
+## 161. After-Import Process, Step P4: What You See
+
+### Functionality Overview
+- **One Activity card** for everything new photos go through: "Getting 124 photos ready", with the step it is on (Reading text, Finding faces, Checking old prints, Looking for duplicates, Enhancing to 8K) and the photo being worked on; it replaces the separate 8K card and counts each photo once.
+- **A quiet dot** (lime, softly pulsing; still with reduced motion) on photos in the grid that still have a step to go, 8K included. The photo can be used already.
+- **Import summary** once the import's quick steps are done: "Your new photos are ready: 124 added · 18 people · 3 documents · 5 old photos improved" (once per import).
+- **"Add more"** in the import panel: after a first choice the buttons read "Add files" / "Add a folder" and add to it; several places go in one import (the engine walks folders in the list; a file picked twice is imported once); "Clear" starts again; a big selection (500+ items or 10+ GB) says big imports are fine.
+
+### Functional Decision Points & Rationale
+- Designed and built without a mock-up, as agreed with the owner before the overnight session; the owner reviews it in the joint test.
+- The summary doesn't wait for 8K (it takes much longer and changes nothing the summary says).
+
+### Technical Touchpoints
+- Engine: `after_import.py` (`PREPARING`, `remember_import`, `import_summary`), `api/photos.py` (timeline flag 16, `/preparing` adds `preparing_total` and `import_summary`, folders in `file_paths`, "N places" preview name).
+- Frontend: `activityFormat.ts` (one card, `importSummaryLine`), `App.tsx` (summary toast), `photoTimeline.ts`, `PhotoTimeline.tsx` (dot), `ImportModal.tsx` (`addToSelection`), `importFormat.ts` (`largeImportNote`), `index.css`, `types/index.ts`.
+- Checks: engine 445, frontend 195; production build.
+
+### State & Lifecycle Impact
+- No schema change. The last import's ids are kept in memory for its summary (gone after a restart).

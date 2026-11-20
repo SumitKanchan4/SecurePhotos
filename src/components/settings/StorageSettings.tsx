@@ -62,8 +62,15 @@ export const StorageSettings: React.FC = () => {
         }
         description={<span className="settings-path">{location?.path ?? "Finding your library…"}</span>}
       >
+      </SettingRow>
+      {/* Owner feedback (round 1, #1): what "switching" is for, in plain words. One library is
+          open at a time (it is locked against a second app), so this replaces the open one. */}
+      <SettingRow
+        title="Moved to a new computer, or restoring a backup?"
+        description="Open the library folder you copied or restored. This library stays as it is; the app restarts with the one you choose."
+      >
         <button type="button" className="settings-btn" onClick={switchLibrary} disabled={switching}>
-          {switching ? "Choosing…" : "Switch library…"}
+          {switching ? "Choosing…" : "Open a library folder…"}
         </button>
       </SettingRow>
       <SettingRow title="Space used" description={app ? "What SecurePhotos keeps in this folder." : "Measuring…"}>
@@ -71,7 +78,15 @@ export const StorageSettings: React.FC = () => {
       </SettingRow>
       {app && (
         <div className="settings-usage">
-          <StorageBreakdown stats={app} />
+          <StorageBreakdown
+            stats={app}
+            openable={["photos", "videos", "documents", "vault", "trash", "music"]}
+            onOpen={(key) => {
+              const store = useAppStore.getState();
+              if (key === "music") store.openSettings("music");
+              else store.setActiveTab(key === "videos" ? "photos" : key === "documents" ? "documents" : key === "vault" ? "vault" : key === "trash" ? "trash" : "photos");
+            }}
+          />
         </div>
       )}
       {drive && drive.total_bytes > 0 && (

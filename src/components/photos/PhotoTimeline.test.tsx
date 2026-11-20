@@ -53,6 +53,53 @@ describe("PhotoTimeline", () => {
     expect(tiles.length).toBeLessThan(200);
   });
 
+  it("marks photos still being prepared with a progress ring naming the step (2026-11-19), and only those", () => {
+    const photos = makeLibrary(6).map((p, i) => ({ ...p, is_preparing: i < 2, prepare_step: i < 2 ? 2 : 0 }));
+    render(<PhotoTimeline photos={photos} onOpen={vi.fn()} />);
+    const dots = screen.getAllByRole("img", { name: "Getting this photo ready: finding faces (2 of 5). You can open it now." });
+    expect(dots).toHaveLength(2);
+    expect(dots.map((d) => d.closest("[data-photo-id]")?.getAttribute("data-photo-id")).sort()).toEqual(["1", "2"]);
+  });
+
+  it("tags tiles: fix icons and real size bottom-left; a video's play button in the middle and length bottom-right (2026-11-18/19)", () => {
+    const photos = makeLibrary(3);
+    photos[0] = { ...photos[0], width: 7680, height: 5760, is_ai: true, ai_kinds: ["colour", "scratches"] };
+    photos[1] = { ...photos[1], is_optimized: false };
+    photos[2] = { ...photos[2], is_video: true, width: 3840, height: 2160, duration: 94 };
+    render(<PhotoTimeline photos={photos} onOpen={vi.fn()} />);
+    const tile = (id: number) => within(document.querySelector(`[data-photo-id="${id}"]`) as HTMLElement);
+    expect(tile(1).getByRole("img", { name: /Colour added · scratches removed/ })).toBeInTheDocument();
+    expect(tile(1).getByText("8K")).toBeInTheDocument();
+    expect(tile(1).queryByText("Improved")).not.toBeInTheDocument();
+    expect(tile(2).queryByText("8K")).not.toBeInTheDocument(); // Not enhanced yet.
+    expect(tile(3).getByText("4K")).toBeInTheDocument();
+    expect(tile(3).getByRole("img", { name: "Video" })).toHaveClass("timeline-play");
+    expect(tile(3).queryByText("Video")).not.toBeInTheDocument(); // The corner is free for the tags.
+    expect(tile(3).getByLabelText("Length 1:34")).toBeInTheDocument();
+  });
+
+  it("while preparing: the ring instead of the tags, and the steps' icons taking turns on every such photo (2026-11-19)", () => {
+    const photos = makeLibrary(3);
+    photos[0] = { ...photos[0], width: 7680, height: 5760, is_ai: true, ai_kinds: ["colour"], is_preparing: true, prepare_step: 2 };
+    photos[1] = { ...photos[1], width: 7680, height: 5760, is_ai: true, ai_kinds: ["colour"] };
+    photos[2] = { ...photos[2], is_video: true, is_optimized: false, is_enhanced: false, width: 720, height: 1280 };
+    render(<PhotoTimeline photos={photos} onOpen={vi.fn()} />);
+    const tile = (id: number) => within(document.querySelector(`[data-photo-id="${id}"]`) as HTMLElement);
+    // Being prepared: the ring only; its tags wait until it's done.
+    expect(tile(1).getByRole("img", { name: /Getting this photo ready/ })).toBeInTheDocument();
+    expect(tile(1).queryByText("8K")).not.toBeInTheDocument();
+    // In progress: the five steps' icons take turns (whatever step it is on), named on hover.
+    const cycle = document.querySelector('[data-photo-id="1"] .timeline-cycle')!;
+    expect(cycle.querySelectorAll("svg")).toHaveLength(5);
+    expect(cycle).toHaveAttribute("title", "Getting this photo ready: finding faces (2 of 5). You can open it now.");
+    // A video still being made bigger shows no size yet (it said "HD" while becoming 2K).
+    expect(tile(3).queryByText("HD")).not.toBeInTheDocument();
+    // Done: tags, no ring, no icons.
+    expect(tile(2).getByText("8K")).toBeInTheDocument();
+    expect(tile(2).queryByRole("img", { name: /Getting this photo ready/ })).not.toBeInTheDocument();
+    expect(document.querySelector('[data-photo-id="2"] .timeline-cycle')).toBeNull();
+  });
+
   it("opens a photo, but selects instead while a selection is active", () => {
     const onOpen = vi.fn();
     render(<PhotoTimeline photos={makeLibrary(20)} onOpen={onOpen} />);
@@ -93,13 +140,13 @@ describe("PhotoTimeline", () => {
     fireEvent.click(document.querySelector('[data-photo-id="2"]')!);
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining("still being prepared"), "info");
     expect(onOpen).not.toHaveBeenCalled();
-    expect(screen.getByText("Preparing")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Video, being prepared" })).toBeInTheDocument();
   });
 
   it("jumps by month or year from the scrubber and marks where you are", async () => {
     render(<PhotoTimeline photos={makeLibrary(3000)} onOpen={vi.fn()} />);
     const scrubber = screen.getByRole("navigation", { name: "Jump to date" });
-    // The newest year by month, older years once each (as on the approved board).
+    // Every year; the newest year's months under it.
     expect(within(scrubber).getByRole("button", { name: "December 2026" })).toHaveTextContent("Dec");
     expect(within(scrubber).getByRole("button", { name: "December 2026" })).toHaveAttribute("aria-current", "true");
     const scroller = screen.getByTestId("photo-timeline");
@@ -113,7 +160,9 @@ describe("PhotoTimeline", () => {
       await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
     });
     expect(within(scrubber).getByRole("button", { name: "2024" })).toHaveAttribute("aria-current", "true");
-    expect(within(scrubber).getByRole("button", { name: "December 2026" })).not.toHaveAttribute("aria-current");
+    // 2024's months now open under it; 2026's fold away (round 1, #13).
+    expect(within(scrubber).getByRole("button", { name: "December 2024" })).toHaveAttribute("aria-current", "true");
+    expect(within(scrubber).queryByRole("button", { name: "December 2026" })).not.toBeInTheDocument();
 
     // Further into 2024 (between its start and 2023's), the year entry stays current.
     const top2024 = scroller.scrollTop;

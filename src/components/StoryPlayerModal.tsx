@@ -169,6 +169,13 @@ function getArchetypeDetails(storyType?: string, title?: string) {
         color: "#34d399",
         border: "rgba(16, 185, 129, 0.4)",
       };
+    case "old_photos": // After-import P3: prints the app brought back.
+      return {
+        label: "🖼️ Old Photos",
+        bg: "rgba(180, 140, 90, 0.22)",
+        color: "#e3c08d",
+        border: "rgba(180, 140, 90, 0.45)",
+      };
     case "seasonal_highlight": {
       const sIcon = title?.includes("Summer") ? "☀️" : title?.includes("Winter") ? "❄️" : title?.includes("Spring") ? "🌸" : "🍂";
       return {

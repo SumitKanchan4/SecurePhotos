@@ -11,9 +11,27 @@ export const FLAG_FAVORITE = 1;
 export const FLAG_OPTIMIZED = 2;
 export const FLAG_ENHANCED = 4;
 export const FLAG_AI = 8; // H10: an improved copy (colour, faces...).
+export const FLAG_PREPARING = 16; // After-import P4: still being prepared (progress ring in the grid).
+/** The step a photo being prepared is on (1-5), in bits 9-11 of the flags. */
+const STEP_SHIFT = 9;
+/** The after-import steps, in order (owner feedback 2026-11-19: the ring names the step). */
+export const PREPARE_STEPS = ["Reading text", "Finding faces", "Checking old prints", "Looking for duplicates", "Enhancing"];
+
+/** "Getting this photo ready: finding faces (2 of 5). You can open it now." */
+export function preparingTitle(step: number | undefined): string {
+  if (!step || step < 1 || step > PREPARE_STEPS.length) return "Getting this photo ready. You can open it now.";
+  return `Getting this photo ready: ${PREPARE_STEPS[step - 1].toLowerCase()} (${step} of ${PREPARE_STEPS.length}). You can open it now.`;
+}
+/** What an improved copy had done (owner feedback 2026-11-18: one icon each on its grid tag). */
+export const KIND_FLAGS: [string, number][] = [
+  ["colour", 32],
+  ["fade", 64],
+  ["faces", 128],
+  ["scratches", 256],
+];
 
 export function parseTimeline(data: TimelineResponse): TimelinePhoto[] {
-  return data.items.map(([id, takenAt, width, height, kind, flags]) => ({
+  return data.items.map(([id, takenAt, width, height, kind, flags, seconds]) => ({
     id,
     taken_at: takenAt,
     width,
@@ -23,6 +41,10 @@ export function parseTimeline(data: TimelineResponse): TimelinePhoto[] {
     is_optimized: (flags & FLAG_OPTIMIZED) !== 0,
     is_enhanced: (flags & FLAG_ENHANCED) !== 0,
     is_ai: (flags & FLAG_AI) !== 0,
+    is_preparing: (flags & FLAG_PREPARING) !== 0,
+    prepare_step: (flags >> STEP_SHIFT) & 7,
+    ai_kinds: KIND_FLAGS.filter(([, bit]) => (flags & bit) !== 0).map(([k]) => k),
+    duration: seconds ?? 0,
   }));
 }
 
@@ -196,20 +218,22 @@ export function sectionAt(sections: MonthSection[], sectionTops: Map<string, num
 export interface ScrubberEntry {
   /** Section to jump to (the entry's first month). */
   key: string;
-  /** "Nov" for a month of the newest year, "2025" for an older year, "No date". */
+  /** "2025" for a year, "Nov" for a month under its year, "No date". */
   label: string;
   /** Spoken / hover name: "November 2026", "2025", "No date". */
   name: string;
   /** Every section the entry stands for (to mark it current). */
   keys: string[];
+  /** A year, or a month listed under its year. */
+  kind?: "year" | "month";
 }
 
 /**
- * The month/year scrubber as on the approved Photos board (R9d): the newest year's months
- * one by one, then one entry per older year, then "No date", stacked evenly from the top.
- * When there are more entries than fit (`maxEntries`), the newest year collapses to one entry.
+ * The year bar (owner feedback, round 1 #13): every year, with the months of one year listed
+ * under it (the year you are looking at; the newest year at first), then "No date".
+ * When there are more entries than fit (`maxEntries`), only the years are listed.
  */
-export function scrubberEntries(sections: MonthSection[], maxEntries = Infinity): ScrubberEntry[] {
+export function scrubberEntries(sections: MonthSection[], maxEntries = Infinity, openYear?: string | null): ScrubberEntry[] {
   const years: { year: string; sections: MonthSection[] }[] = [];
   let undated: MonthSection | null = null;
   for (const section of sections) {
@@ -222,22 +246,27 @@ export function scrubberEntries(sections: MonthSection[], maxEntries = Infinity)
     if (last && last.year === year) last.sections.push(section);
     else years.push({ year, sections: [section] });
   }
+  const tail: ScrubberEntry[] = undated ? [{ key: UNDATED_KEY, label: "No date", name: "No date", keys: [UNDATED_KEY] }] : [];
+  if (!years.length) return tail;
+  const open = years.find((y) => y.year === openYear) ?? years[0];
   const yearEntry = (y: { year: string; sections: MonthSection[] }): ScrubberEntry => ({
     key: y.sections[0].key,
     label: y.year,
     name: y.year,
     keys: y.sections.map((x) => x.key),
+    kind: "year",
   });
-  const tail = years.slice(1).map(yearEntry);
-  if (undated) tail.push({ key: UNDATED_KEY, label: "No date", name: "No date", keys: [UNDATED_KEY] });
-  if (!years.length) return tail;
-  const months = years[0].sections.map((x) => ({
+  const yearsOnly = [...years.map(yearEntry), ...tail];
+  const months = open.sections.map((x): ScrubberEntry => ({
     key: x.key,
     label: shortMonthLabel(x.key).slice(0, 3),
     name: monthLabel(x.key),
     keys: [x.key],
+    kind: "month",
   }));
-  return months.length + tail.length <= maxEntries ? [...months, ...tail] : [yearEntry(years[0]), ...tail];
+  if (yearsOnly.length + months.length > maxEntries) return yearsOnly;
+  const at = years.indexOf(open) + 1;
+  return [...yearsOnly.slice(0, at), ...months, ...yearsOnly.slice(at)];
 }
 
 /**
@@ -285,4 +314,34 @@ export function sortNewestFirst<T extends { id: number; taken_at?: string | null
 /** Whether every id in the list is selected (false for an empty list). */
 export function allSelected(ids: number[], selected: Set<number>): boolean {
   return ids.length > 0 && ids.every((id) => selected.has(id));
+}
+
+/**
+ * The grid's quality tag (owner feedback 2026-11-18/19): for an enhanced photo, the size it really
+ * has ("8K", "4K" or "2K", by its long side: Settings → Photo size); "4K", "2K", "HD" or "SD" for a
+ * video by its size. Null when there is nothing to say.
+ */
+export function qualityTag(photo: Pick<TimelinePhoto, "is_video" | "is_optimized" | "is_enhanced" | "width" | "height">): string | null {
+  if (!photo.is_video) {
+    if (!(photo.is_optimized && photo.is_enhanced)) return null;
+    const long = Math.max(photo.width || 0, photo.height || 0);
+    return long >= 7680 ? "8K" : long >= 3840 ? "4K" : long >= 2560 ? "2K" : null;
+  }
+  // Every video shows its quality (owner feedback 2026-11-19: a 720p video had no tag).
+  const short = Math.min(photo.width || 0, photo.height || 0);
+  if (short <= 0) return null;
+  if (short >= 2160) return "4K";
+  if (short >= 1440) return "2K";
+  if (short >= 720) return "HD";
+  return "SD";
+}
+
+/** "0:42", "12:05", "1:02:05" from seconds; null when unknown. */
+export function videoLength(seconds?: number | null): string | null {
+  if (!seconds || seconds <= 0) return null;
+  const s = Math.round(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const rest = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${rest}` : `${m}:${rest}`;
 }

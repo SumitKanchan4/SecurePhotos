@@ -1,3 +1,4 @@
+import { watchMediaSession } from "./services/mediaSession";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { 
   Lock, 
@@ -35,7 +36,7 @@ import { AlbumsView } from "./components/AlbumsView";
 import { DocumentsView } from "./components/DocumentsView";
 import { TrashView } from "./components/TrashView";
 import { ActivityView } from "./components/activity/ActivityView";
-import { buildActivity } from "./components/activity/activityFormat";
+import { buildActivity, importSummaryLine } from "./components/activity/activityFormat";
 import { SettingsView } from "./components/SettingsView";
 import { CollageModal } from "./components/CollageModal";
 import { AddToAlbumModal } from "./components/AddToAlbumModal";
@@ -130,16 +131,20 @@ export const App: React.FC = () => {
   const displayedPhotos = photos;
 
   // Background work for the Photos header (enhancing, preparing videos, importing).
-  const { optimizationProgress, videoProgress, importProgress, restoreJobs } = useBackgroundProgress({
+  const { optimizationProgress, videoProgress, importProgress, restoreJobs, preparing } = useBackgroundProgress({
     onPhotoEnhanced: (id) => setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, is_optimized: true, is_enhanced: true } : p))),
     onBatchFinished: () => loadPhotos(),
   });
+
 
   // Updater and diagnostics state
   const [activeUpdate, setActiveUpdate] = useState<Update | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
 
   // Find, start and connect to the photo engine; reload what depends on it once reached.
+  // Photos keep showing if the engine restarts and forgets the image login (2026-11-19).
+  useEffect(() => watchMediaSession(), []);
+
   const { isRecheckingPrereqs, startEngine: handleStartEngine, recheckPrerequisites: handleRecheckPrerequisites } = useEngineConnection(() => {
     checkVaultStatus();
     loadPhotos();
@@ -458,9 +463,35 @@ export const App: React.FC = () => {
   // H10 / A4: everything working in the background, for the Activity page, the header pill
   // and the rail's status ring.
   const activity = useMemo(
-    () => buildActivity({ restore: restoreJobs, enhance: optimizationProgress, video: videoProgress, importing: importProgress }),
-    [restoreJobs, optimizationProgress, videoProgress, importProgress],
+    () => buildActivity({ restore: restoreJobs, enhance: optimizationProgress, video: videoProgress, importing: importProgress, preparing }),
+    [restoreJobs, optimizationProgress, videoProgress, importProgress, preparing],
   );
+  // P4: once the last import's photos are ready, say what it brought (once per import).
+  const shownImportBatch = useRef<number | null>(null);
+  useEffect(() => {
+    const summary = preparing?.import_summary;
+    if (!summary || shownImportBatch.current === summary.batch) return;
+    let seen: string | null = null;
+    try {
+      seen = sessionStorage.getItem("securephotos:import-summary-shown");
+    } catch {
+      /* Private mode or blocked storage: show it once for this window. */
+    }
+    shownImportBatch.current = summary.batch;
+    if (seen === String(summary.batch)) return;
+    try {
+      sessionStorage.setItem("securephotos:import-summary-shown", String(summary.batch));
+    } catch {
+      /* As above. */
+    }
+    // Truthful (2026-11-19): the quick steps are done; 8K may still be running.
+    const left = preparing?.preparing_total ?? 0;
+    showToast(
+      `Your new photos are ready to use: ${importSummaryLine(summary)}.${left > 0 ? ` Enhancing continues: ${left.toLocaleString()} left.` : ""}`,
+      "success",
+    );
+  }, [preparing?.import_summary, showToast]);
+
   const setActivitySummary = useAppStore((s) => s.setActivitySummary);
   useEffect(() => {
     const { remaining, paused, headline } = activity;

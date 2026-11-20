@@ -68,6 +68,12 @@ describe("WindowStrip", () => {
     expect(screen.queryByRole("button", { name: "Clear search" })).not.toBeInTheDocument();
   });
 
+  it("shows the app's name, as part of the drag area (owner feedback 2026-11-18)", () => {
+    render(<WindowStrip />);
+    const name = screen.getByText("SecurePhotos");
+    expect(name).toHaveAttribute("data-tauri-drag-region");
+  });
+
   it("drives the frameless window buttons", () => {
     render(<WindowStrip />);
     fireEvent.click(screen.getByRole("button", { name: "Minimise window" }));

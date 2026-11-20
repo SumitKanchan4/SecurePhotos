@@ -31,9 +31,10 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({ settings
         ]}
       />
     </SettingRow>
-    <SettingRow title="Photo size" description="How big photos are in Photos, the Vault and albums.">
+    {/* "Grid size", not "Photo size": that name is the 2K / 4K / 8K setting in Photos & AI. */}
+    <SettingRow title="Grid size" description="How big photos look in Photos, the Vault and albums.">
       <ChoicePills
-        label="Photo size"
+        label="Grid size"
         value={settings.grid_density}
         onChange={(value) => updateSetting("grid_density", value)}
         options={[

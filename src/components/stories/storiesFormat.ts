@@ -54,3 +54,18 @@ export function filterTracks<T extends Pick<MusicTrackItem, "title" | "artist" |
   if (!q) return tracks;
   return tracks.filter((t) => [t.title, t.artist, t.mood, t.detected_mood].some((v) => v && v.toLowerCase().includes(q)));
 }
+
+/** What kind of story it is, in a word or two (the tag on its card; round 2, #8). */
+const STORY_KINDS: Record<string, string> = {
+  on_this_day: "This week",
+  through_the_years: "Through the years",
+  vacation_adventure: "Trip",
+  seasonal_highlight: "Season",
+  year_in_review: "Year in review",
+  highlights: "Highlights",
+  old_photos: "Old photos",
+};
+
+export function storyKind(storyType: string | null | undefined): string {
+  return STORY_KINDS[storyType ?? ""] ?? "Story";
+}

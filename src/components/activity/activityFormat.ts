@@ -28,7 +28,7 @@ export interface RestoreJobsReport {
   choices_total?: number;
 }
 
-export type ActivityKind = "colour" | "fade" | "faces" | "scratches" | "import" | "enhance" | "video" | "models";
+export type ActivityKind = "colour" | "fade" | "faces" | "scratches" | "import" | "enhance" | "video" | "models" | "prepare";
 
 export interface ActivityItem {
   key: string;
@@ -64,11 +64,54 @@ export interface ActivityModel {
   headline: string | null;
 }
 
+/** The after-import process (P1): reading text and finding faces, newest photos first. */
+export interface PreparingProgress {
+  active: boolean;
+  step: "text" | "faces" | "rules" | "duplicates" | null;
+  photo_id: number | null;
+  paused_reason: string | null;
+  text_waiting: number;
+  faces_waiting: number;
+  rules_waiting?: number;
+  dups_waiting?: number;
+  /** P4: photos with any step left, 8K included (one Activity card for all of it). */
+  preparing_total?: number;
+  /** P4: what the last import brought, once its photos are ready. */
+  import_summary?: ImportSummary | null;
+}
+
+export interface ImportSummary {
+  batch: number;
+  added: number;
+  people: number;
+  documents: number;
+  old_photos: number;
+  duplicates: number;
+}
+
+/** "124 added · 18 people · 3 documents · 5 old photos improved" (only what's there). */
+export function importSummaryLine(s: ImportSummary): string {
+  const parts = [`${s.added.toLocaleString()} added`];
+  if (s.people) parts.push(plural(s.people, "person").replace(/persons$/, "people"));
+  if (s.documents) parts.push(plural(s.documents, "document"));
+  if (s.old_photos) parts.push(`${plural(s.old_photos, "old photo")} improved`);
+  if (s.duplicates) parts.push(`${plural(s.duplicates, "possible duplicate")}`);
+  return parts.join(" · ");
+}
+
+const STEP_LABELS: Record<string, string> = {
+  text: "Reading text",
+  faces: "Finding faces",
+  rules: "Checking old prints",
+  duplicates: "Looking for duplicates",
+};
+
 export interface ActivityInput {
   restore?: RestoreJobsReport | null;
   enhance?: OptimizationProgress | null;
   video?: VideoOptimizationProgress | null;
   importing?: ImportProgressState | null;
+  preparing?: PreparingProgress | null;
 }
 
 const plural = (n: number, word: string) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
@@ -97,10 +140,40 @@ function finishedOutcome(job: RestoreJobView): string {
   return job.error === "models_missing" ? "Needs a download" : "Couldn't be improved";
 }
 
-export function buildActivity({ restore, enhance, video, importing }: ActivityInput): ActivityModel {
+const PAUSED_NOTE: Record<string, string> = { on_battery: " · waiting: battery low", by_user: " · paused" };
+
+export function buildActivity({ restore, enhance, video, importing, preparing }: ActivityInput): ActivityModel {
   const working: ActivityItem[] = [];
   const waiting: ActivityItem[] = [];
   let remaining = 0;
+
+  // P4: one card for everything a photo goes through after import (8K included). Older engines
+  // report only text and faces (a photo waits for faces only once its text is read: no overlap).
+  const quickLeft = preparing ? preparing.text_waiting + preparing.faces_waiting + (preparing.rules_waiting ?? 0) + (preparing.dups_waiting ?? 0) : 0;
+  const preparingLeft = preparing ? Math.max(preparing.preparing_total ?? 0, quickLeft) : 0;
+  const foldsEnhance = Boolean(preparing && preparing.preparing_total !== undefined && preparingLeft > 0);
+  if (preparing && preparingLeft > 0) {
+    const onEnhance = !preparing.step && Boolean(enhance?.is_active);
+    const doing = preparing.step
+      ? STEP_LABELS[preparing.step] ?? "Getting ready"
+      : onEnhance
+      ? "Enhancing to 8K"
+      : preparing.text_waiting
+      ? "Reading text"
+      : preparing.faces_waiting
+      ? "Finding faces"
+      : "Enhancing to 8K";
+    const paused = PAUSED_NOTE[preparing.paused_reason ?? ""] ?? (onEnhance ? PAUSED_NOTE[enhance?.paused_reason ?? ""] ?? "" : "");
+    working.push({
+      key: "prepare",
+      kind: "prepare",
+      title: `Getting ${plural(preparingLeft, "photo")} ready`,
+      detail: `${doing}${paused}`,
+      progress: onEnhance ? enhance?.item_progress ?? null : null,
+      photoId: (onEnhance ? enhance?.active_photo_id : preparing.photo_id) ?? undefined,
+    });
+    remaining += preparingLeft;
+  }
 
   if (importing?.is_active) {
     const left = Math.max(importing.total_count - importing.completed_count, 0);
@@ -143,7 +216,7 @@ export function buildActivity({ restore, enhance, video, importing }: ActivityIn
       waiting.push({ key: "video-waiting", kind: "video", title: "Videos to prepare", detail: plural(left - 1, "video"), progress: null, count: left - 1 });
     }
   }
-  if (enhance?.is_active) {
+  if (enhance?.is_active && !foldsEnhance) {
     const left = Math.max(enhance.total_count - enhance.completed_count, 0);
     const pausedNote = enhance.paused_reason === "on_battery" ? " · waiting: battery low" : enhance.paused_reason === "by_user" ? " · paused" : "";
     working.push({

@@ -52,7 +52,7 @@ def test_avif_keeps_camera_details_and_is_upright(work_dir):
     assert src.read_bytes() == src_bytes  # Source untouched; the caller deletes it later.
     with Image.open(result.path) as out:
         assert out.format == "AVIF"
-        assert out.size == (3000, 4000)  # Upright: portrait.
+        assert out.size == (5760, 7680)  # Upright: portrait, at the default 8K size.
         exif = out.getexif()
         assert exif.get(0x010F) == "TestCam"  # Make
         # Orientation is "normal" (Pillow's AVIF writer drops a normal tag), so viewers don't rotate again.
@@ -71,6 +71,18 @@ def test_small_photo_is_enlarged_to_8k(work_dir):
     assert (result.width, result.height) == (7680, 5760)
 
 
+@pytest.mark.parametrize("size,expected", [("2k", (2560, 1920)), ("4k", (3840, 2880)), ("8k", (7680, 5760)), ("nonsense", (7680, 5760))])
+def test_photo_size_setting_is_the_size_photos_get(work_dir, size, expected):
+    """Owner, 2026-11-19: Settings → Photo size (2K, 4K, 8K). A phone-sized photo (4000 px) is
+    enlarged to 8K (before, 3840 px and up were only sharpened) or reduced to 2K / 4K."""
+    from engine.services.enhancement_service import photo_size_to_long_edge
+
+    src = work_dir / f"phone_{size}.jpg"
+    _jpeg_with_exif(src, (4000, 3000))
+    result = enhance_to_avif(src, 80, photo_size_to_long_edge(size))
+    assert (result.width, result.height) == expected
+
+
 def test_never_overwrites_an_existing_avif(work_dir):
     src = work_dir / "clash.jpg"
     _jpeg_with_exif(src, (1000, 800))
@@ -81,9 +93,56 @@ def test_never_overwrites_an_existing_avif(work_dir):
     assert other.read_bytes() == b"another photo"
 
 
+def test_an_improved_copys_ai_label_survives_8k(work_dir):
+    """P2: improved copies get 8K too (owner D3); their IPTC 'made with AI' label must stay."""
+    from engine.services.photo_versions import SOURCE_TYPE_AI, xmp_packet
+
+    src = work_dir / "copy.avif"
+    Image.new("RGB", (1200, 900), (120, 90, 60)).save(src, "AVIF", quality=80, xmp=xmp_packet(SOURCE_TYPE_AI))
+    result = enhance_to_avif(src, 80)
+    with Image.open(result.path) as out:
+        assert b"compositeWithTrainedAlgorithmicMedia" in out.info["xmp"]
+
+
+async def test_8k_waits_for_the_earlier_after_import_steps(work_dir, monkeypatch):
+    """P2: a photo is enhanced only once its text is read, its faces found, the old-photo rules
+    have looked at it and no old-photo job is open for it; improved copies go first."""
+    monkeypatch.setattr(photos, "_running_on_battery", lambda: False)
+    conn = await get_db_connection()
+    ids = {}
+    try:
+        await conn.execute("UPDATE photos SET is_optimized = 1;")  # Only this test's photos.
+        for name, cols in (
+            ("ready.jpg", {}),
+            ("text_unread.jpg", {"ocr_text": None}),
+            ("faces_waiting.jpg", {"faces_scanned": 0}),
+            ("document.jpg", {"faces_scanned": 0, "is_document": 1}),  # No faces on documents (D1).
+            ("rules_waiting.jpg", {"restore_checked": 0}),
+            ("job_open.jpg", {}),
+        ):
+            ids[name] = await _insert_photo(conn, work_dir / name, **cols)
+        ids["copy.jpg"] = await _insert_photo(conn, work_dir / "copy.jpg", restore_checked=0, derived_from_id=ids["ready.jpg"])
+        await conn.execute(
+            "INSERT INTO restore_jobs (photo_id, kind, status, origin) VALUES (?, 'colour', 'queued', 'auto');", (ids["job_open.jpg"],)
+        )
+        await conn.commit()
+        picked, skipped = [], set()
+        while (row := await photos._next_to_enhance(skipped)) is not None:
+            picked.append(row["filename"])
+            skipped.add(row["id"])
+        assert picked == ["document.jpg", "copy.jpg", "ready.jpg"]  # Quick wins first: plain photo, then copy, then original.
+    finally:
+        await conn.execute(f"DELETE FROM restore_jobs WHERE photo_id IN ({','.join('?' * len(ids))});", list(ids.values()))
+        await conn.execute(f"DELETE FROM photos WHERE id IN ({','.join('?' * len(ids))});", list(ids.values()))
+        await conn.commit()
+        await conn.close()
+
+
 async def _insert_photo(conn, path, **cols):
     fields = {"filename": path.name, "filepath": to_db_path(path), "file_size": path.stat().st_size if path.exists() else 1,
-              "mime_type": "image/jpeg", "file_hash": "abc123", **cols}
+              "mime_type": "image/jpeg", "file_hash": "abc123",
+              # After-import steps before 8K are done (text read, faces found, old-photo rules).
+              "ocr_text": "", "faces_scanned": 1, "restore_checked": 1, **cols}
     keys = ",".join(fields)
     cur = await conn.execute(f"INSERT INTO photos ({keys}) VALUES ({','.join('?' * len(fields))});", list(fields.values()))
     await conn.commit()
@@ -234,3 +293,35 @@ async def test_requeue_migration_runs_exactly_once(work_dir):
         assert (await _row(unreadable_later))["is_optimized"] == 1  # Not re-queued again.
     finally:
         await _delete([i for i in (first, unreadable_later) if i])
+
+
+async def test_8k_leaves_a_photo_that_changed_while_it_waited(work_dir, monkeypatch):
+    """2026-11-19: a photo picked before waiting for the heavy slot was already enhanced by then."""
+    from engine.services import cpu_budget, enhancement_service
+
+    await run_migrations()
+    src = work_dir / "done_meanwhile.jpg"
+    _jpeg_with_exif(src, (800, 600))
+    conn = await get_db_connection()
+    try:
+        cur = await conn.execute(
+            "INSERT INTO photos (filename, filepath, file_size, mime_type, is_optimized) VALUES ('done_meanwhile.jpg', ?, 1, 'image/jpeg', 1);",
+            (to_db_path(src),),
+        )
+        photo_id = cur.lastrowid
+        await conn.commit()
+    finally:
+        await conn.close()
+
+    def must_not_run(*_args, **_kwargs):
+        raise AssertionError("an already-enhanced photo was enhanced again")
+
+    monkeypatch.setattr(enhancement_service, "enhance_to_avif", must_not_run)
+    row = {"id": photo_id, "filename": "done_meanwhile.jpg", "filepath": to_db_path(src)}
+    try:
+        await photos._enhance_one(row, src, cpu_budget, enhancement_service, None, to_db_path, None)
+    finally:
+        conn = await get_db_connection()
+        await conn.execute("DELETE FROM photos WHERE id = ?;", (photo_id,))
+        await conn.commit()
+        await conn.close()

@@ -1,22 +1,36 @@
 /**
- * Dashboard (redesign R7c, approved board): one calm page about the library. What is in it,
- * how full the drive is, and two jobs worth doing (duplicates, big videos) with the space each
- * frees. Background photo enhancement shows its progress with Pause / Resume. Duplicates and
- * Big videos open as their own pages with a way back.
+ * Dashboard (redesign R7c; owner feedback round 2 #4 "looks like a settings page" and round 1 #19
+ * "storage more interactive"). The library opens as one sentence in big type over a strip of its
+ * newest photos, every number a way in. Storage is one map: the drive, then what SecurePhotos
+ * uses, linked bar and rows that open their place. Jobs worth doing lead with the space they
+ * free. Background enhancement shows its progress with Pause / Resume. Duplicates, What to keep
+ * and Big videos open as their own pages with a way back.
  */
 import React, { useCallback, useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
-import type { DashboardOverview, DuplicateSummaryResponse, OptimizationStatusResponse, PhotoItem, VideoSummary } from "../types";
+import { Copy, Film, RefreshCw, Sparkles } from "lucide-react";
+import type { DashboardOverview, DuplicateSummaryResponse, OptimizationStatusResponse, PhotoItem, StorageCategoryKey, VideoSummary } from "../types";
 import type { NavTab } from "../store/useAppStore";
-import { apiFetch } from "../services/api";
+import { apiFetch, getThumbnailUrl } from "../services/api";
+import { useAppStore } from "../store/useAppStore";
 import { DuplicatesView } from "./DuplicatesView";
 import { WhatToKeepView } from "./WhatToKeepView";
 import { VideoOptimizerView } from "./VideoOptimizerView";
-import { formatSize, oldOriginalsNote, plural, storageSegments } from "./dashboard/dashFormat";
+import { formatSize, librarySentence, oldOriginalsNote, plural, storageSegments } from "./dashboard/dashFormat";
 import { StorageBreakdown } from "./dashboard/StorageBreakdown";
 import type { OldOriginalsCleanup } from "./dashboard/dashFormat";
 
 export type DashboardPage = "overview" | "duplicates" | "videos" | "keep";
+
+/** Where each kind of stored content lives in the app (Storage rows open it). */
+const STORAGE_PLACES: Partial<Record<StorageCategoryKey, NavTab>> = {
+  photos: "photos",
+  videos: "photos",
+  documents: "documents",
+  vault: "vault",
+  collages: "albums",
+  trash: "trash",
+};
+const OPENABLE_STORAGE: StorageCategoryKey[] = ["photos", "videos", "documents", "vault", "collages", "trash", "music"];
 
 interface DashboardViewProps {
   onNavigate: (tab: NavTab) => void;
@@ -43,6 +57,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
   const [refreshing, setRefreshing] = useState(false);
   const [failed, setFailed] = useState(false);
   const [cleanup, setCleanup] = useState<OldOriginalsCleanup | null>(null);
+  const [ribbon, setRibbon] = useState<number[]>([]);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -54,13 +69,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
         return null;
       }
     };
-    const [o, d, v, e, c] = await Promise.all([
+    const [o, d, v, e, c, recent] = await Promise.all([
       json<DashboardOverview>("/api/system/dashboard"),
       json<DuplicateSummaryResponse>("/api/duplicates/summary"),
       json<VideoSummary>("/api/videos/summary"),
       json<OptimizationStatusResponse>("/api/system/optimization-status"),
       json<OldOriginalsCleanup>("/api/videos/old-originals"),
+      json<PhotoItem[]>("/api/photos?limit=14"),
     ]);
+    setRibbon(Array.isArray(recent) ? recent.filter((p) => !p.mime_type?.startsWith("video/")).map((p) => p.id).slice(0, 10) : []);
     setOverview(o);
     setDupes(d);
     setVideos(v);
@@ -133,20 +150,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
   }
 
   const counts = overview?.media_counts;
-  const tiles: { label: string; value: number; tab: NavTab }[] = counts
-    ? [
-        { label: "Photos", value: counts.images, tab: "photos" },
-        { label: "Videos", value: counts.videos, tab: "photos" },
-        { label: "Documents", value: counts.documents, tab: "documents" },
-        { label: "People", value: counts.people, tab: "people" },
-        { label: "Albums", value: counts.albums, tab: "albums" },
-      ]
-    : [];
+  const parts = counts ? librarySentence(counts) : [];
   const segments = overview ? storageSegments(overview) : [];
   const drive = overview?.drive_storage;
   const enhanced = enhance ? enhance.images_optimized : 0;
   const enhanceTotal = enhance ? enhance.images_total : 0;
   const enhancePct = enhanceTotal > 0 ? Math.round((enhanced / enhanceTotal) * 100) : 0;
+  const openStorage = (key: StorageCategoryKey) => {
+    if (key === "music") useAppStore.getState().openSettings("music");
+    else onNavigate(STORAGE_PLACES[key] ?? "photos");
+  };
 
   return (
     <div className="dash-page">
@@ -176,62 +189,85 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
       {failed && <p className="dash-note">The library details couldn't be loaded. Check that the photo engine is running (Settings → About).</p>}
 
       {counts && (
-        <div className="dash-counts">
-          {tiles.map((tile) => (
-            <button key={tile.label} type="button" className="dash-count" onClick={() => onNavigate(tile.tab)}>
-              <span className="dash-count-value">{tile.value.toLocaleString()}</span>
-              <span className="dash-count-label">{tile.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {drive && drive.total_bytes > 0 && (
-        <section className="dash-card" aria-labelledby="dash-storage">
-          <div className="dash-card-head">
-            <h2 id="dash-storage">Storage</h2>
-            <span className="dash-muted">
-              SecurePhotos uses {formatSize(overview?.app_storage?.total_bytes || 0)} · {formatSize(drive.free_bytes)} free of{" "}
-              {formatSize(drive.total_bytes)}
-            </span>
-          </div>
-          <div
-            className="dash-bar"
-            role="img"
-            aria-label={segments.map((s) => `${s.label} ${formatSize(s.bytes)}`).join(", ") + `, free ${formatSize(drive.free_bytes)}`}
-          >
-            {segments.map((s) => (
-              <span key={s.key} className={`dash-bar-${s.key}`} style={{ width: `${s.percent}%` }} />
+        <section className="dash-hero" aria-label="Your library">
+          {ribbon.length > 0 && (
+            <div className="dash-ribbon" aria-hidden="true">
+              {ribbon.map((id) => (
+                <img key={id} src={getThumbnailUrl(id)} alt="" loading="lazy" draggable={false} />
+              ))}
+            </div>
+          )}
+          <p className="dash-sentence">
+            {parts.map((part, i) => (
+              <React.Fragment key={part.key}>
+                {i > 0 && (i === parts.length - 1 ? " and " : " ")}
+                {/* The comma stays with its number when the line wraps. */}
+                <span className="dash-sentence-part">
+                  <button type="button" className="dash-sentence-link" onClick={() => onNavigate(part.tab)}>
+                    <span className="dash-count-value">{part.value.toLocaleString()}</span> <span className="dash-count-label">{part.label}</span>
+                  </button>
+                  {i < parts.length - 2 ? "," : i === parts.length - 1 ? "." : ""}
+                </span>
+              </React.Fragment>
             ))}
-          </div>
-          <div className="dash-legend">
-            {segments.map((s) => (
-              <span key={s.key}>
-                <span className={`dash-swatch dash-bar-${s.key}`} aria-hidden="true" />
-                {s.label} {formatSize(s.bytes)}
-              </span>
-            ))}
-            <span>
-              <span className="dash-swatch dash-bar-free" aria-hidden="true" />
-              Free {formatSize(drive.free_bytes)}
-            </span>
-          </div>
-          <h3 className="dash-usage-title">What SecurePhotos uses</h3>
-          <StorageBreakdown stats={overview?.app_storage} />
+            {parts.length ? null : "Nothing here yet. Import photos to start your library."}
+          </p>
         </section>
       )}
 
-      <div className="dash-jobs">
-        <section className="dash-card" aria-labelledby="dash-dupes">
-          <h2 id="dash-dupes">Duplicates</h2>
-          <p className="dash-muted">
-            {!dupes
-              ? "Checking for copies…"
-              : dupes.total_groups > 0
-              ? `${plural(dupes.total_groups, "group")} of copies and bursts. About ${formatSize(dupes.reclaimable_bytes)} can be freed.`
-              : "No duplicates found."}
-          </p>
-          <div>
+      <div className="dash-grid">
+        {drive && drive.total_bytes > 0 && (
+          <section className="dash-card dash-space" aria-labelledby="dash-storage">
+            <div className="dash-card-head">
+              <h2 id="dash-storage">Space</h2>
+              <span className="dash-muted">
+                SecurePhotos uses {formatSize(overview?.app_storage?.total_bytes || 0)} · {formatSize(drive.free_bytes)} free of{" "}
+                {formatSize(drive.total_bytes)}
+              </span>
+            </div>
+            <div
+              className="dash-bar"
+              role="img"
+              aria-label={segments.map((seg) => `${seg.label} ${formatSize(seg.bytes)}`).join(", ") + `, free ${formatSize(drive.free_bytes)}`}
+            >
+              {segments.map((seg) => (
+                <span key={seg.key} className={`dash-bar-${seg.key}`} style={{ width: `${seg.percent}%` }} />
+              ))}
+            </div>
+            <div className="dash-legend">
+              {segments.map((seg) => (
+                <span key={seg.key}>
+                  <span className={`dash-swatch dash-bar-${seg.key}`} aria-hidden="true" />
+                  {seg.label} {formatSize(seg.bytes)}
+                </span>
+              ))}
+              <span>
+                <span className="dash-swatch dash-bar-free" aria-hidden="true" />
+                Free {formatSize(drive.free_bytes)}
+              </span>
+            </div>
+            <h3 className="dash-usage-title">What SecurePhotos uses</h3>
+            <StorageBreakdown stats={overview?.app_storage} onOpen={openStorage} openable={OPENABLE_STORAGE} />
+          </section>
+        )}
+
+        <section className="dash-jobs" aria-labelledby="dash-worth">
+          <h2 id="dash-worth" className="dash-section-title">
+            Worth doing
+          </h2>
+          <article className="dash-job" aria-labelledby="dash-dupes">
+            <Copy size={18} className="dash-job-icon" aria-hidden="true" />
+            <div className="dash-job-text">
+              <h3 id="dash-dupes">Duplicates</h3>
+              <p className="dash-muted">
+                {!dupes
+                  ? "Checking for copies…"
+                  : dupes.total_groups > 0
+                  ? `${plural(dupes.total_groups, "group")} of copies and bursts. About ${formatSize(dupes.reclaimable_bytes)} can be freed.`
+                  : "No duplicates found."}
+              </p>
+            </div>
+            {dupes && dupes.total_groups > 0 && <span className="dash-job-gain">{formatSize(dupes.reclaimable_bytes)}</span>}
             <button
               type="button"
               className={dupes && dupes.total_groups > 0 ? "dash-btn dash-btn-primary" : "dash-btn"}
@@ -239,39 +275,43 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
             >
               {dupes && dupes.total_groups > 0 ? "Review duplicates" : "Look for duplicates"}
             </button>
-          </div>
-        </section>
+          </article>
 
-        {choicesTotal > 0 && (
-          <section className="dash-card" aria-labelledby="dash-keep">
-            <h2 id="dash-keep">What to keep</h2>
-            <p className="dash-muted">
-              {plural(choicesTotal, "photo")} improved automatically. Keep the improved one, the original, or both.
-            </p>
-            <div>
+          {choicesTotal > 0 && (
+            <article className="dash-job" aria-labelledby="dash-keep">
+              <Sparkles size={18} className="dash-job-icon" aria-hidden="true" />
+              <div className="dash-job-text">
+                <h3 id="dash-keep">What to keep</h3>
+                <p className="dash-muted">{plural(choicesTotal, "photo")} improved automatically. Keep the improved one, the original, or both.</p>
+              </div>
+              <span className="dash-job-gain">{choicesTotal.toLocaleString()}</span>
               <button type="button" className="dash-btn dash-btn-primary" onClick={() => setPage("keep")}>
                 Choose
               </button>
-            </div>
-          </section>
-        )}
+            </article>
+          )}
 
-        <section className="dash-card" aria-labelledby="dash-videos">
-          <h2 id="dash-videos">Big videos</h2>
-          <p className="dash-muted">
-            {!videos
-              ? "Checking your videos…"
-              : !videos.runtime_available
-              ? "Video tools aren't available on this computer."
-              : videos.compressible_count > 0
-              ? `${plural(videos.compressible_count, "video")} can be made smaller without visible change. About ${formatSize(videos.projected_reclaimable_bytes)} to save.`
-              : "Your videos are already a good size."}
-          </p>
-          <div>
+          <article className="dash-job" aria-labelledby="dash-videos">
+            <Film size={18} className="dash-job-icon" aria-hidden="true" />
+            <div className="dash-job-text">
+              <h3 id="dash-videos">Big videos</h3>
+              <p className="dash-muted">
+                {!videos
+                  ? "Checking your videos…"
+                  : !videos.runtime_available
+                  ? "Video tools aren't available on this computer."
+                  : videos.compressible_count > 0
+                  ? `${plural(videos.compressible_count, "video")} can be made smaller without visible change. About ${formatSize(videos.projected_reclaimable_bytes)} to save.`
+                  : "Your videos are already a good size."}
+              </p>
+            </div>
+            {videos && videos.runtime_available && videos.compressible_count > 0 && (
+              <span className="dash-job-gain">{formatSize(videos.projected_reclaimable_bytes)}</span>
+            )}
             <button type="button" className="dash-btn" onClick={() => setPage("videos")} disabled={videos ? !videos.runtime_available : false}>
               Review videos
             </button>
-          </div>
+          </article>
         </section>
       </div>
 

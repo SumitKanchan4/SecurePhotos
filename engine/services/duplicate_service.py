@@ -12,7 +12,7 @@ import logging
 import struct
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
-from PIL import Image
+from PIL import Image, ImageOps
 import aiosqlite
 
 from engine.config import resolve_media_path
@@ -52,7 +52,9 @@ def compute_image_dhash(image_path: str | Path, hash_size: int = 8) -> Optional[
         return None
 
     try:
-        with Image.open(path) as img:
+        with Image.open(path) as raw:
+            # Upright first, so a sideways-stored original matches its upright copy (2026-11-19).
+            img = ImageOps.exif_transpose(raw)
             # Convert to grayscale 8-bit
             gray = img.convert("L")
             # Resize to 9x8 for an 8x8 comparison grid
@@ -74,6 +76,30 @@ def compute_image_dhash(image_path: str | Path, hash_size: int = 8) -> Optional[
     except Exception as exc:
         logger.warning(f"Failed to compute dHash for {path}: {exc}")
         return None
+
+
+def _close_pairs(items: List[Dict[str, Any]], max_distance: int) -> List[Tuple[int, int, int]]:
+    """(i, j, distance) for every pair i < j whose 64-bit dHashes differ in at most
+    ``max_distance`` bits. Same result as ``hamming_distance`` on each pair; unreadable hashes
+    never match."""
+    import numpy as np
+
+    values = np.zeros(len(items), dtype=np.uint64)
+    valid = np.zeros(len(items), dtype=bool)
+    for k, item in enumerate(items):
+        try:
+            values[k] = np.uint64(int(item["phash"], 16) & 0xFFFFFFFFFFFFFFFF)
+            valid[k] = len(item["phash"]) <= 16
+        except (ValueError, TypeError):
+            valid[k] = False
+    pairs: List[Tuple[int, int, int]] = []
+    for i in range(len(items) - 1):
+        if not valid[i]:
+            continue
+        dist = np.bitwise_count(values[i + 1:] ^ values[i])
+        for offset in np.nonzero((dist <= max_distance) & valid[i + 1:])[0]:
+            pairs.append((i, i + 1 + int(offset), int(dist[offset])))
+    return pairs
 
 
 def hamming_distance(hash1: str, hash2: str) -> int:
@@ -368,7 +394,8 @@ async def scan_and_cluster_duplicates(conn: aiosqlite.Connection) -> List[Dict[s
     for p in remaining_photos:
         if not p.get("phash"):
             # Check original file or preview/thumbnail
-            candidate_paths = [p.get("filepath"), p.get("preview_path"), p.get("thumbnail_path")]
+            # Thumbnail first (P3): the 9x8 fingerprint is the same, and an 8K photo decodes ~0.7 s.
+            candidate_paths = [p.get("thumbnail_path"), p.get("preview_path"), p.get("filepath")]
             computed_phash = None
             for cp in candidate_paths:
                 if cp:
@@ -389,20 +416,16 @@ async def scan_and_cluster_duplicates(conn: aiosqlite.Connection) -> List[Dict[s
     phash_photos = [p for p in remaining_photos if p.get("phash")]
     distances: Dict[Tuple[int, int], int] = {}
 
-    # Pairwise comparison with Hamming distance <= 8 (over 64 bits = ~87.5%+ visual match)
-    for i in range(len(phash_photos)):
-        p1 = phash_photos[i]
-        h1 = p1["phash"]
-        for j in range(i + 1, len(phash_photos)):
-            p2 = phash_photos[j]
-            pair_key = (min(p1["id"], p2["id"]), max(p1["id"], p2["id"]))
-            if pair_key in dismissed_pairs:
-                continue
-            h2 = p2["phash"]
-            dist = hamming_distance(h1, h2)
-            if dist <= 8:
-                uf.union(p1["id"], p2["id"])
-                distances[pair_key] = dist
+    # Pairwise comparison with Hamming distance <= 8 (over 64 bits = ~87.5%+ visual match).
+    # After-import P3: vectorised (one numpy pass per photo instead of a Python loop per pair):
+    # 10,000 photos went from ~50 million Python comparisons to 10,000 array operations.
+    for i, j, dist in _close_pairs(phash_photos, 8):
+        p1, p2 = phash_photos[i], phash_photos[j]
+        pair_key = (min(p1["id"], p2["id"]), max(p1["id"], p2["id"]))
+        if pair_key in dismissed_pairs:
+            continue
+        uf.union(p1["id"], p2["id"])
+        distances[pair_key] = dist
 
     # Group connected components
     components: Dict[int, List[Dict[str, Any]]] = {}
