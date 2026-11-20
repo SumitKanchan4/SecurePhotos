@@ -1,37 +1,36 @@
-# 📐 SecurePhotos: System Architecture & Technical Design
+# Architecture
 
----
+This document explains how SecurePhotos works inside: the parts it is made of, what happens to a photo from import to enhancement, how the vault keeps files safe and how deletion works. [development.md](development.md) covers running and building the app.
 
-## 1. Architectural Philosophy & Core Principles
+## 1. Principles
 
-SecurePhotos is designed as an **offline-first, zero-cloud personal media vault**. The system prioritizes:
-1. **Data Sovereignty**: No telemetry and no uploads. The AI models ship with the app; the only automatic network call is the update check (GitHub's latest-version file).
-2. **High Scale & Low Latency**: Fast access across libraries of 100,000+ photos and videos; heavy work runs off the engine's request loop (H7).
-3. **Defense-in-Depth Cryptography**: Vault files use AES-256-GCM (SPENC03, per-file keys); keys are derived with Argon2id; viewing decrypts in memory.
-4. **Drive Portability**: Database, media, thumbnails and models live in one library folder with paths stored relative to it, so it can travel on an external drive.
+1. **The user's data stays with the user.** There is no tracking and nothing is uploaded. The app only goes online to check for a newer version and, if the installer couldn't, to download the old-photo models.
+2. **Large libraries stay fast.** Libraries of 100,000 photos are expected. Slow work (images, files, AI) runs off the engine's request loop, and heavy work runs one job at a time.
+3. **The vault is properly encrypted.** Vault files use AES-256-GCM with a key per file; the master key comes from the user's password through Argon2id; viewing decrypts in memory.
+4. **A library can move.** The database, photos, thumbnails and models live in one library folder, and paths are stored relative to it, so the folder can travel on an external drive.
+5. **It runs on an ordinary computer.** Every AI model is chosen and tuned to run on a CPU. A graphics card helps but is never required.
 
----
-
-## 2. High-Level System Architecture
+## 2. The parts
 
 ```mermaid
 graph TB
-    subgraph UI_Layer ["Presentation Tier (Tauri 2 / React 19)"]
-        ReactUI["React 19 SPA (Vite, TypeScript, Zustand)<br/>• Pure CSS Design Tokens<br/>• Month timeline with its own windowing<br/>• Lightbox & Keyboard Shortcuts"]
-        TauriShell["Tauri 2 Native Shell (Rust)<br/>• WebView2, strict CSP<br/>• Spawns the engine with a random token<br/>• Native dialogs, tray, updater"]
+    subgraph UI_Layer ["Desktop app (Tauri 2, React 19)"]
+        ReactUI["React 19 app (Vite, TypeScript, Zustand)<br/>Screens, photo grid with its own windowing, viewer"]
+        TauriShell["Tauri 2 shell (Rust)<br/>WebView2, strict content security policy<br/>Starts the engine with a random token<br/>Native dialogs, updater"]
         TauriShell --> ReactUI
     end
 
-    subgraph Service_Layer ["Application Tier (FastAPI Engine sidecar)"]
-        FastAPIApp["FastAPI on 127.0.0.1 (dynamic port)"]
-        AuthMiddleware["Engine login: IPC token header or session cookie"]
-        subgraph Domain_Routers ["Domain Routers"]
-            PhotosR["Photos, import & enhancement"]
-            VaultR["Private vault"]
-            PeopleR["Faces & People"]
-            DocsR["Documents & OCR"]
+    subgraph Service_Layer ["Photo engine (FastAPI, Python 3.12)"]
+        FastAPIApp["FastAPI on 127.0.0.1, port chosen at start-up"]
+        AuthMiddleware["Access check: token header or session cookie"]
+        subgraph Domain_Routers ["Endpoints"]
+            PhotosR["Photos, import, enhancement"]
+            RestoreR["Old photos"]
+            VaultR["Private Vault"]
+            PeopleR["Faces and people"]
+            DocsR["Documents"]
             DupR["Duplicates"]
-            StoriesR["Stories, collages & videos"]
+            StoriesR["Stories, collages, videos"]
             TrashR["Trash"]
             SearchR["Search (FTS5)"]
         end
@@ -39,24 +38,26 @@ graph TB
         AuthMiddleware --> Domain_Routers
     end
 
-    subgraph Background_Workers ["Background Workers"]
-        Enhancer["Photo enhancer (AVIF, battery guard)"]
+    subgraph Background_Workers ["Background workers"]
+        AfterImport["After-import process (text, faces, checks, duplicates)"]
+        Enhancer["Photo enhancer (AVIF, chosen size)"]
+        Restore["Old-photo queue"]
         VaultEnhancer["Vault enhancer (only while unlocked)"]
-        FaceWorker["Face scan (YuNet + SFace)"]
-        VideoWorker["Video queue (ffmpeg)"]
-        TrashWorker["Trash purge (startup, then every 6 h; 30-day retention)"]
+        VideoWorker["Video queue (FFmpeg)"]
+        TrashWorker["Trash purge (at start-up, then every 6 hours)"]
+        Cleanup["Unused thumbnail and preview cleanup"]
     end
 
-    subgraph Storage_Tier ["Library folder (portable)"]
+    subgraph Storage_Tier ["Library folder"]
         DB[(SQLite, WAL)]
-        Originals["originals/ (dated folders, collages/YYYY/MM)"]
-        ThumbStore["thumbnails/, previews/ (hash-sharded)"]
+        Originals["originals/ (dated folders)"]
+        ThumbStore["thumbnails/, previews/"]
         EncryptedVault["Vault files *.enc (SPENC03)"]
-        ModelsDir["models/ (bundled, SHA-256 verified ONNX)"]
+        ModelsDir["models/ (each file checked by SHA-256)"]
     end
 
-    ReactUI -->|HTTP + token / cookie| FastAPIApp
-    TauriShell -->|Spawns & monitors| FastAPIApp
+    ReactUI -->|HTTP with token or cookie| FastAPIApp
+    TauriShell -->|Starts and watches| FastAPIApp
     Domain_Routers --> DB
     Domain_Routers --> Originals
     Domain_Routers --> ThumbStore
@@ -66,236 +67,168 @@ graph TB
     Background_Workers --> Originals
 ```
 
----
+## 3. How things work
 
-## 3. Subsystem Workflows & Flowcharts
-
-### 3.1 Photo Import Pipeline
+### 3.1 Import
 
 ```mermaid
 flowchart TD
-    Pick([User picks files or a folder]) --> Ext{Supported type?}
+    Pick([User chooses files or a folder]) --> Ext{Supported type?}
     Ext -- No --> Skip[Skip]
-    Ext -- Yes --> Hash[SHA-256 of the source]
-    Hash --> Dup{Same hash already in library?}
+    Ext -- Yes --> Hash[SHA-256 of the file]
+    Hash --> Dup{Already in the library?}
     Dup -- Yes --> Skip
-    Dup -- No --> Meta[Read EXIF: date, GPS, camera]
-    Meta --> Copy["Copy into originals/YYYY/MM/DD<br/>temp file, verify hash, atomic rename"]
-    Copy --> Thumb["Thumbnail (hash-sharded)"]
-    Thumb --> Row[(Insert row, relative paths)]
-    Row --> Optional{Move instead of copy?}
-    Optional -- Yes --> DelSrc[Delete the source only now]
+    Dup -- No --> Meta[Read the date, place and camera]
+    Meta --> Copy["Copy into originals/YYYY/MM/DD<br/>temporary file, check the hash, then rename"]
+    Copy --> Thumb[Make the thumbnail]
+    Thumb --> Row[(Add the row, with relative paths)]
+    Row --> Move{Remove the originals after importing?}
+    Move -- Yes --> DelSrc[Only now delete the source file]
 ```
 
-- Imports always copy into the library; there is no in-place mode (M4). One import batch runs at a time and file work runs off the request loop (H7). Each photo is enhanced afterwards (§3.4).
+- An import always copies into the library; there is no "use in place" mode. One import runs at a time.
+- Each new photo then goes through the after-import process (3.2).
 
----
+### 3.2 After an import
 
-### 3.2 Search
+Every photo goes through the same steps, in this order. Each step is recorded on the photo, so nothing is skipped or done twice, even if the app closes halfway.
+
+1. **Read the text** with the OCR built into Windows. Documents and receipts are found from it, and the text becomes searchable.
+2. **Find faces** (YuNet and SFace). Documents are skipped.
+3. **Check old prints:** the old-photo rules decide whether a scan needs colour, fading fixed, faces sharpened or scratches removed. Depending on Settings this happens automatically or only when the user asks.
+4. **Fingerprint for duplicates** (a dHash of the thumbnail).
+5. **Enhance** to the chosen photo size (3.4).
+
+Steps 1 to 4 are quick (under a second each) and run for every new photo first, newest first, so People, Documents and duplicates are ready within minutes of a large import. Enhancement follows, one photo at a time. Photos that need the least work go first; old prints that need fixing go last. When a run ends, duplicates are regrouped and stories are suggested.
+
+The grid shows a progress ring on each photo still being prepared, with the steps shown as icons. The step a photo is on is sent to the app as part of the photo grid's data.
+
+### 3.3 One heavy job at a time
+
+Enhancement, old-photo fixes, video work and the vault enhancer would each use every CPU core. They share one slot (`engine/services/cpu_budget.py`) and take turns:
+
+| Priority | Work |
+| --- | --- |
+| 1 (first) | An old-photo fix the user asked for |
+| 2 | Automatic old-photo fixes |
+| 3 | Photo enhancement |
+| 4 | Automatic video work and the vault enhancer |
+
+A job is never interrupted; the slot passes on when it finishes. A video the user enhances from the Big videos page doesn't use the slot: it starts straight away. Two extra rules keep the order sensible: automatic old-photo fixes wait while plain photos are being enhanced, and automatic video work waits while any photo is still being prepared. All of it pauses when the computer runs on battery below the level chosen in Settings.
+
+### 3.4 Photo enhancement
 
 ```mermaid
 flowchart LR
-    UserQuery["Search: 'electric bill'"] --> FTS["SQLite FTS5<br/>file name, folder name, caption, tags, OCR text"]
-    FTS --> Filters["Type filter: all, photos, videos, documents, favourites"]
-    Filters --> Results[Results]
-```
-
-- Search is lexical (FTS5) plus filters. There is no vector or AI search today; see the `sqlite-vector-search` skill for future ideas.
-
----
-
-### 3.3 Encrypted Vault Security Lifecycle
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User
-    participant UI as React UI (Vault Page)
-    participant API as Vault API
-    participant State as In-memory session (master key)
-    participant Crypto as crypto_vault / vault_storage
-    participant Disk as Library folder
-
-    Note over User,Disk: 1. Unlock
-    User->>UI: Master password (or PIN after a normal lock, or the emergency card)
-    UI->>API: POST /api/vault/unlock (engine token / cookie)
-    API->>Crypto: Argon2id(password, salt) -> unwrap master key (AES-256-GCM)
-    API->>State: Keep the master key in memory; auto-lock after the configured idle time
-
-    Note over User,Disk: 2. Move a photo into the vault
-    User->>UI: Select photo -> "Move to Vault"
-    UI->>API: POST /api/vault/photos/lock
-    API->>Crypto: Journal, then encrypt (off the request loop, one vault job at a time)
-    Crypto->>Crypto: Per-file key = HKDF(master key, random file salt); 64 KB chunks, AES-256-GCM
-    Crypto->>Disk: Write SPENC03 (temp, fsync, replace) and verify it decrypts
-    Crypto->>Disk: Commit the row, then delete the original; seal OCR text + GPS
-    API-->>UI: 200 OK
-
-    Note over User,Disk: 3. View a vault photo / video
-    User->>UI: Open vault thumbnail / lightbox
-    UI->>API: GET /api/vault/stream/{id}
-    API->>Crypto: decrypt_file_chunked_stream(file.enc, master key)
-    Crypto->>Disk: Read chunks, verify each tag; reject missing last chunk, extra data or old formats
-    Crypto-->>UI: Stream decrypted bytes (no decrypted file on disk)
-```
-
-#### Vault key in memory (what is and isn't protected)
-
-- **Protected:** the master vault key is never written to disk by the app; the vault files on disk are useless without it. While the vault is open, the key lives in one session buffer. When the vault fully locks (no PIN set, or the PIN is locked out), that buffer is overwritten with zeros and dropped. With a PIN set, a normal lock keeps the key in memory so the PIN can reopen the vault until the app closes. When the app closes, the app shell ends the engine process and Windows clears that process's memory before reusing it; on a graceful engine shutdown (e.g. in development) the engine also overwrites the key itself first.
-- **Not guaranteed:** Python and the cryptography library make short-lived copies of the key (one per request, plus the cipher's own copy). Python cannot overwrite those; they stay in freed memory until it is reused. Windows may also write memory to the page file or hibernation file.
-- **So:** someone who can read this PC's memory or its page file while the app is running could find the key. Lock the vault when stepping away, and use full-disk encryption (e.g. BitLocker) so the page file and hibernation file are encrypted too.
-
----
-
-### 3.4 Single-Version Photo Enhancement Pipeline
-
-```mermaid
-flowchart LR
-    Import[Photo Import] --> Queue[Background Enhancer]
-    Queue --> Battery{On battery and guard on?}
-    Battery -- yes --> Wait[Pause until plugged in]
-    Battery -- no --> Enhance[Upright + sharpen / enlarge to 8K in memory]
-    Enhance --> Save[Save one AVIF: temp, fsync, verify, atomic replace]
+    Ready[Earlier steps done] --> Slot[Wait for the heavy-work slot]
+    Slot --> Battery{On battery, below the chosen level?}
+    Battery -- yes --> Wait[Wait until charged or plugged in]
+    Battery -- no --> Enhance[Turn upright, resize to the chosen size, sharpen]
+    Enhance --> Save[Save one AVIF: temporary file, flush, check, replace]
     Save --> DB[(Row points at the AVIF)]
     DB --> Delete[Delete the old file]
 ```
 
-- Every imported photo is enhanced once and the AVIF replaces the original (one version per photo). Camera details are kept; quality follows the Settings slider.
-- No AI model is used in this pipeline. Blurry-face restoration was removed (no permissively licensed model); see `THIRD_PARTY_NOTICES.md`.
-- Details: `.agents/history/features_and_functional_decisions.md` §102.
+- Each photo is enhanced once, and the AVIF replaces the imported file. Camera details, the date and the place are kept.
+- **Photo size** (Settings) sets the long side: 2K is 2560 px, 4K is 3840 px and 8K is 7680 px. Smaller photos are enlarged to it and larger ones reduced. **Photo quality** (Best, Balanced, Smaller) sets the AVIF quality.
+- This step uses Lanczos resizing and sharpening, not an AI model.
+- **Old photos** are fixed before enhancement, at the scan's own size, by AI models (DDColor for colour, GFPGAN for faces, a scratch detector with LaMa for scratches). The improved photo is saved as a copy linked to its original (`derived_from_id`); both are then enhanced, so they compare like for like. The grid shows one tile per pair.
+- **Videos** follow Settings, Video size: as recorded, HD (old low-quality clips enlarged to 1080p), 2K or 4K, measured on the shorter side. Nothing goes above 4K.
 
----
+### 3.5 Search
 
-### 3.5 Soft-Delete Trash & Retention Lifecycle
+```mermaid
+flowchart LR
+    UserQuery["Search: 'electric bill'"] --> FTS["SQLite FTS5<br/>file name, folder name, caption, tags, text in the photo"]
+    FTS --> Filters["Filter: all, photos, videos, documents, favourites"]
+    Filters --> Results[Results]
+```
+
+Search matches words (FTS5) and applies filters. There is no search by meaning yet.
+
+### 3.6 The vault
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor User
-    participant Lightbox as Lightbox / Grid UI
-    participant API as FastAPI photos.py
-    participant DB as SQLite WAL
-    participant Purge as Trash purge (startup, then every 6 h)
+    participant UI as App (Private Vault)
+    participant API as Vault endpoints
+    participant State as Session in memory (master key)
+    participant Crypto as crypto_vault / vault_storage
+    participant Disk as Library folder
 
-    User->>Lightbox: Press Delete/Backspace or Click Trash
-    Lightbox->>API: DELETE /api/photos/{id} (or POST /batch-trash)
-    API->>DB: UPDATE photos SET trashed_at = CURRENT_TIMESTAMP, trash_expires_at = NOW + 30 Days
-    API-->>Lightbox: 200 OK
-    Lightbox->>Lightbox: Advance to adjacent photo or close
+    Note over User,Disk: 1. Unlock
+    User->>UI: Master password (or the PIN after a normal lock, or the Emergency Card)
+    UI->>API: POST /api/vault/unlock
+    API->>Crypto: Argon2id(password, salt), then unwrap the master key (AES-256-GCM)
+    API->>State: Keep the master key in memory; lock after the chosen idle time
 
-    Note over DB,Purge: 30-Day TTL Background Cleanup
-    Purge->>DB: Delete rows trashed more than 30 days ago (rows first)
-    Purge->>Purge: Then delete their files (originals, thumbnails, previews)
+    Note over User,Disk: 2. Move a photo into the vault
+    User->>UI: Select a photo, then Move to Vault
+    UI->>API: POST /api/vault/photos/lock
+    API->>Crypto: Write a journal entry, then encrypt (one vault job at a time)
+    Crypto->>Crypto: File key = HKDF(master key, random salt); 64 KB chunks, AES-256-GCM
+    Crypto->>Disk: Write SPENC03 (temporary file, flush, replace) and check it decrypts
+    Crypto->>Disk: Save the row, then delete the original; seal its text and GPS position
+    API-->>UI: 200 OK
+
+    Note over User,Disk: 3. View a vault photo or video
+    User->>UI: Open a vault photo
+    UI->>API: GET /api/vault/stream/{id}
+    API->>Crypto: decrypt_file_chunked_stream(file.enc, master key)
+    Crypto->>Disk: Read the chunks and check each tag; refuse a missing last chunk, extra data or an old format
+    Crypto-->>UI: Stream the decrypted bytes (no decrypted file on disk)
 ```
 
-- **Query Isolation**: All library grids, searches, albums, and facial clusters enforce `WHERE trashed_at IS NULL`.
-- **Restoration Guarantee**: Photos remain safely restorable for 30 days before permanent file system unlinking.
+#### The vault key in memory: what is and isn't protected
 
----
+- **Protected:** the app never writes the master vault key to disk, and the vault files are useless without it. While the vault is open, the key lives in one session buffer. When the vault locks fully (no PIN set, or the PIN locked out), the buffer is overwritten with zeros and dropped. With a PIN set, a normal lock keeps the key in memory so the PIN can reopen the vault until the app closes. When the app closes, the shell ends the engine process and Windows clears its memory before reusing it; on a clean engine shutdown the engine also overwrites the key itself first.
+- **Not guaranteed:** Python and the cryptography library make short-lived copies of the key (one per request, plus the cipher's own). Python can't overwrite those; they stay in freed memory until it is reused. Windows may also write memory to the page file or the hibernation file.
+- **So:** someone who can read the computer's memory or page file while the app runs could find the key. Lock the vault when stepping away, and use full-disk encryption (such as BitLocker) so the page file and hibernation file are encrypted too.
 
-## 4. Database Schema (Entity-Relationship Model)
+### 3.7 Trash
 
 ```mermaid
-erDiagram
-    PHOTO ||--o{ PHOTO_ALBUM : contains
-    ALBUM ||--o{ PHOTO_ALBUM : groups
-    PHOTO ||--o{ FACE : contains
-    PERSON ||--o{ FACE : identifies
-    PHOTO ||--o{ PHOTO_DOC_FOLDER : categorized_in
-    DOCUMENT_FOLDER ||--o{ PHOTO_DOC_FOLDER : contains
-    PHOTO ||--o{ DUPLICATE_GROUP : member_of
-    SCAN_PATH ||--o{ IMPORT_TASK : triggers
-    IMPORT_TASK ||--o{ IMPORT_ITEM : tracks
+sequenceDiagram
+    autonumber
+    actor User
+    participant App as Grid or viewer
+    participant API as photos.py
+    participant DB as SQLite
+    participant Purge as Trash purge
 
-    PHOTO {
-        int id PK
-        string filename
-        string filepath UK
-        int file_size
-        datetime created_at
-        datetime taken_at
-        string camera_make
-        string camera_model
-        float latitude
-        float longitude
-        int iso
-        float aperture
-        string shutter_speed
-        float focal_length
-        boolean is_favorite
-        boolean is_encrypted
-        string vault_type
-        string thumbnail_path
-        float blur_score
-        string phash
-        boolean is_document
-        boolean faces_scanned
-        boolean is_managed
-        string file_hash
-        datetime trashed_at
-        datetime trash_expires_at
-    }
+    User->>App: Delete
+    App->>API: DELETE /api/photos/{id} (or POST /batch-trash)
+    API->>DB: Mark the photo, its original and any improved copies as trashed
+    API-->>App: 200 OK
 
-    ALBUM {
-        int id PK
-        string name
-        string description
-        datetime created_at
-        int cover_photo_id FK
-        boolean is_vault
-        string vault_type
-        boolean is_favorite
-    }
-
-    PERSON {
-        int id PK
-        string name
-        string reference_embedding
-        datetime created_at
-    }
-
-    FACE {
-        int id PK
-        int photo_id FK
-        int person_id FK
-        float box_x
-        float box_y
-        float box_w
-        float box_h
-        string embedding
-    }
-
-    DOCUMENT_FOLDER {
-        int id PK
-        string name
-        datetime created_at
-    }
-
-    SCAN_PATH {
-        int id PK
-        string path UK
-        string volume_uuid
-        string mode
-        datetime last_scanned
-        boolean is_active
-        boolean is_scanning
-    }
-
-    VAULT_CONFIG {
-        int id PK
-        string vault_type
-        string mvk_wrapped_password
-        string mvk_wrapped_recovery
-        string mvk_wrapped_card_cells
-        string pin_verifier
-        string password_hint
-        boolean is_configured
-    }
-
-    APP_SETTINGS {
-        int id PK
-        string key UK
-        string value
-        datetime updated_at
-    }
+    Note over DB,Purge: After 30 days
+    Purge->>DB: Delete the rows first
+    Purge->>Purge: Then delete their files
+    Purge->>Purge: Remove thumbnails and previews nothing uses any more
 ```
+
+- Every library view, search, album and face group leaves out trashed photos (`trashed_at IS NULL`).
+- A photo and its improved copies are deleted and restored together.
+- Rows are deleted before files, so a crash can leave a stray file but never a row pointing at a missing one.
+
+## 4. The database
+
+The schema and its migrations are in [engine/database.py](../engine/database.py), the single source of truth. The main tables:
+
+| Table | Holds |
+| --- | --- |
+| `photos` | Every photo, video and document: file, dates, camera, place, flags (favourite, vault, document), the after-import steps done, links between originals and improved copies, trash dates |
+| `faces`, `persons` | Faces found in photos and the people they belong to |
+| `albums`, `photo_album` | Albums and their photos |
+| `document_folders`, `photo_document_folder` | Document folders |
+| `duplicate_groups` | Groups of exact copies and similar shots |
+| `stories`, `story_items`, `story_dismissals` | Suggested and saved stories, and suggestions the user deleted |
+| `restore_jobs` | Old-photo fixes waiting, running and done |
+| `video_processing_queue` | Automatic video work |
+| `vault_configs`, `vault_pending_ops` | The wrapped vault keys and the PIN check; a journal so an interrupted vault move can be finished or undone |
+| `app_settings` | Settings, stored in the library so they travel with it |
+| `photos_fts` | The full-text search index |
+
+[database_schema.md](database_schema.md) describes the database settings, indexes and search in more detail.

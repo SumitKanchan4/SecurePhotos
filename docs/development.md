@@ -1,229 +1,153 @@
-# 🛠️ SecurePhotos: Developer & Engineering Guide
+# Developer guide
 
-> **Comprehensive architectural blueprint, environment setup, local development workflows, testing guidelines, and packaging procedures for the SecurePhotos engineering team.**
+This guide explains how SecurePhotos is put together, how to run it locally, how to test a change and how a release is built. For what the app does from a user's point of view, see the [README](../README.md).
 
-Looking for the end-user overview and user guide? See [README.md](../README.md).
+## How the app is built
 
----
-
-## 🏛️ System Architecture Overview
-
-SecurePhotos is engineered as a local-first, zero-cloud desktop application combining a high-performance **Tauri 2.0 (Rust)** shell with an autonomous **Python 3.12 Engine (FastAPI)** sidecar and a reactive **React 19 / TypeScript** user interface.
+SecurePhotos has three parts that run on the user's computer:
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        Tauri 2.0 Desktop Host (Rust)                   │
-│  - Native Window Lifecycle & Webview2 Hosting                          │
-│  - Ephemeral Port Allocation (127.0.0.1:0)                             │
-│  - OS secure random token (getrandom); engine not started without it  │
-│  - Child Process Lifetime & Sidecar Process Supervision                │
-└────────────────────────────────────┬───────────────────────────────────┘
-                                     │ Local Loopback (CSPRNG Authenticated)
-       ┌─────────────────────────────┴─────────────────────────────┐
-       ▼                                                           ▼
-┌─────────────────────────────────────────┐   ┌────────────────────────────────────────┐
-│        Frontend Client (React 19)       │   │        Backend Engine (Python 3.12)    │
-│  - TanStack Virtualized Grid (60fps)    │   │  - FastAPI REST Endpoints & Streaming  │
-│  - Pure CSS Liquid-Glass Design Tokens  │   │  - SQLite WAL Database & FTS5 Search   │
-│  - Centralized apiFetch & Cookie Client │   │  - On-Device AI: ONNX Face / OCR / CLIP│
-│  - Zustand State Isolation Store        │   │  - AES-256-GCM Zero-Trust Crypto Vault │
-└─────────────────────────────────────────┘   └────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ Desktop shell (Tauri 2, Rust)                                │
+│  Opens the window (WebView2), picks a free local port,       │
+│  creates a random access token and starts the engine with it │
+└──────────────────────────────┬───────────────────────────────┘
+                               │ 127.0.0.1, token or session cookie
+            ┌──────────────────┴──────────────────┐
+            ▼                                     ▼
+┌─────────────────────────────┐   ┌─────────────────────────────────┐
+│ App (React 19, TypeScript)  │   │ Photo engine (Python 3.12)      │
+│  Screens, photo grid,       │   │  FastAPI, SQLite (WAL, FTS5),   │
+│  viewer; state in Zustand   │   │  import, AI on the CPU (ONNX),  │
+│                             │   │  vault encryption, workers      │
+└─────────────────────────────┘   └─────────────────────────────────┘
 ```
 
-### Core Technologies
-- **Desktop Host**: Tauri 2.0 (Rust) using Windows WebView2 runtime.
-- **Backend Runtime**: Python 3.12, FastAPI, Uvicorn, SQLite 3 (WAL mode + FTS5 full-text indexing), `aiosqlite`.
-- **AI & Acceleration**: ONNX Runtime with DirectML hardware acceleration; YuNet (face finding, MIT), SFace (face recognition, Apache-2.0), Real-ESRGAN (upscaling, BSD-3). Only permissively licensed models; see `THIRD_PARTY_NOTICES.md`.
-- **Frontend Framework**: React 19, TypeScript, Vite, Zustand, Lucide React icons.
-- **Cryptography**: AES-256-GCM chunked streaming, Argon2id key derivation, OS secure random source via the `getrandom` crate (no weaker fallback).
+- **Desktop shell:** Tauri 2 with the Windows WebView2 runtime. It owns the window, native dialogs and the engine's lifetime.
+- **App:** React 19, TypeScript, Vite, Zustand and Lucide icons. The photo grid does its own windowing, so only the tiles near the screen exist.
+- **Photo engine:** Python 3.12 with FastAPI, Uvicorn and SQLite through `aiosqlite`. It reads and writes the library, runs the AI models and does all background work.
+- **AI:** ONNX Runtime. Everything is designed to run on an ordinary CPU; DirectML is used for face recognition when it's available. The models are YuNet (finding faces, MIT), SFace (recognising faces, Apache-2.0), Real-ESRGAN (BSD-3-Clause), and for old photos DDColor, GFPGAN, LaMa and the "Bringing Old Photos Back to Life" scratch detector. Text is read with the OCR built into Windows. Licences are in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
+- **Encryption:** AES-256-GCM in chunks, keys from Argon2id, and random numbers from the operating system (the `getrandom` crate in the shell).
 
----
+[architecture.md](architecture.md) goes deeper into each part.
 
-## 📋 Prerequisites & Toolchain Setup
+## What you need
 
-Ensure the following runtimes and build tools are installed on your workstation:
+| Tool | Version | Check with |
+| --- | --- | --- |
+| Node.js | 20 or 22 | `node -v` |
+| Python | 3.12 | `python --version` |
+| Rust | 1.80 or later, MSVC toolchain | `rustc --version` |
+| WebView2 | Evergreen runtime | Included in Windows 10 and 11 |
+| FFmpeg and FFprobe | Any recent build | Needed for videos: put them in `bin/` in the repository root, or on your `PATH` |
 
-| Dependency | Required Version | Verification Command | Purpose |
-| :--- | :--- | :--- | :--- |
-| **Node.js** | v20.x or v22.x LTS | `node -v` & `npm -v` | Frontend build tooling & package management |
-| **Python** | v3.11+ or v3.12+ | `python --version` | Backend engine runtime and AI pipelines |
-| **Rust & Cargo** | 1.80+ (MSVC target) | `rustc --version` & `cargo --version` | Tauri desktop shell & CSPRNG host binary |
-| **WebView2** | Evergreen Runtime | Built into Windows 10/11 | Desktop rendering runtime |
+Create the Python environment once:
 
----
-
-## ⚡ Local Development Workflows
-
-SecurePhotos provides 1-click startup automation scripts in the `scripts/` directory:
-
-### 1. Launch Full Desktop App (Recommended)
-Spawns the backend engine, starts the Vite development server, and launches the native Tauri desktop window:
 ```powershell
-.\scripts\run-desktop-app.ps1
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r engine/requirements-dev.txt
+npm install
 ```
 
-### 2. Standalone Frontend Development
-Starts only the Vite dev server with hot module replacement (HMR) at [http://localhost:1420](http://localhost:1420):
+## Running it
+
+| Command | What it starts |
+| --- | --- |
+| `.\scripts\run-desktop-app.ps1` | The whole app: engine, Vite and the desktop window. Use this most of the time. |
+| `.\scripts\run-frontend.ps1` | Only the app in Vite, at http://localhost:1420 |
+| `.\scripts\run-backend.ps1` | Only the engine, with auto-reload, at http://127.0.0.1:8000 (API docs at `/docs`) |
+
+**The library folder.** By default the app keeps its library next to the program. To test against another folder, put `path=C:\Some\Folder` in a `data_location.txt` file in the repository root (it is ignored by git), or set the `SECUREPHOTOS_DATA_DIR` environment variable. Any script that imports engine code must set `SECUREPHOTOS_DATA_DIR` before its first engine import, or it will work on the folder named in `data_location.txt`.
+
+**Auto-reload.** The engine started by these scripts restarts whenever an engine file changes. A restart forgets the image login (see below), and the app logs in again by itself within a few seconds.
+
+## How the app and the engine trust each other
+
+The engine only listens on 127.0.0.1, but other programs on the same computer could still try to reach it. So:
+
+1. **A port chosen at start-up.** The shell asks Windows for a free port, so there is no fixed port to guess or collide with.
+2. **A random access token.** The shell creates a 256-bit token from the operating system's random source (`src-tauri/src/token.rs`) and passes it to the engine in `SECUREPHOTOS_IPC_SECRET`. If it can't create one, the engine is not started.
+3. **Every request is checked.** [auth_middleware.py](../engine/middleware/auth_middleware.py) accepts a request only with the token in the `X-SecurePhotos-Token` header or a valid session cookie, compared in constant time. Anything else gets `403`.
+4. **Images use a session cookie.** `<img>` and `<video>` can't send headers, so at start-up the app calls `POST /api/auth/handshake` ([auth.py](../engine/api/auth.py)) and gets an `HttpOnly` cookie holding a separate random value. That cookie lasts until the engine restarts. When an image is refused afterwards, `src/services/mediaSession.ts` logs in again and reloads the broken images.
+
+## Testing a change
+
+Every change must pass the same checks the pull-request check runs:
+
 ```powershell
-.\scripts\run-frontend.ps1
+.venv\Scripts\python.exe -m ruff check .            # Python lint
+.venv\Scripts\python.exe -m pytest engine/tests     # engine tests
+npm test                                            # app tests (Vitest)
+npm run build                                       # type check and production build
+cargo check --manifest-path src-tauri/Cargo.toml    # desktop shell
 ```
 
-### 3. Standalone Backend Development
-Initializes the Python virtual environment and launches FastAPI with auto-reload at [http://127.0.0.1:8000](http://127.0.0.1:8000):
+- **Engine tests** use their own throwaway library folder, never yours.
+- **App tests** sit next to the code they test (`src/**/*.test.ts` and `.tsx`) and run in a simulated browser. Always start them with `npm test`: it launches Vitest from the upper-case form of the folder path, because Vitest fails every file when started from a lower-case drive letter (some VS Code terminals use `c:\`).
+- **Checking on screen:** run the app against a throwaway library, or use Playwright with Microsoft Edge against `npx vite` and answer the engine's requests with sample data.
+
+## Building a release
+
+The installer is a Windows NSIS setup that contains the app, the engine as one program, and the smaller AI models. The old-photo models (about 2.7 GB) are too big to include: the installer downloads them, and if that fails the app offers the download before the first feature that needs them.
+
+1. **Fetch and check the bundled models:**
+   ```powershell
+   python scripts/fetch_models.py build/models
+   ```
+   Every file must match its pinned SHA-256, or the build stops.
+2. **Build the engine program** (PyInstaller, into `src-tauri/binaries/`):
+   ```powershell
+   python scripts/build-engine.py
+   ```
+3. **Build the installer:**
+   ```powershell
+   npm run tauri build
+   ```
+   The installer is written to `src-tauri/target/release/bundle/nsis/`.
+
+The old-photo models are served from this repository's GitHub release `models-v1`. That download only works for other people once the repository is public. How the models are made: [scripts/model_export/README.md](../scripts/model_export/README.md).
+
+## Continuous integration
+
+- **Quality Gate** (`.github/workflows/quality.yml`) runs on every pull request: ruff, the engine tests, an npm audit, the app tests, the production build and the Rust checks.
+- **SecurePhotos CI/CD Pipeline** (`.github/workflows/pipeline.yml`) only runs when started by hand from the **Actions** tab. Choose the branch, the version bump (`patch`, `minor` or `major`) and what to do with the result:
+  - `test_build` (the default) builds the installer and attaches it to the run. Nothing is published.
+  - `public_release` builds the installer, tags the commit `v<version>` and publishes a GitHub release. It only runs from `master`.
+
+To preview or apply a version number locally:
+
 ```powershell
-.\scripts\run-backend.ps1
-```
-> 📍 **Interactive OpenAPI Docs**: Explore Swagger UI at **[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)**.
-
----
-
-## 🔒 Local IPC Security Architecture
-
-To prevent unauthorized local processes, rogue scripts, or third-party browser tabs from accessing private media or manipulating the database via loopback, SecurePhotos enforces a zero-trust Inter-Process Communication (IPC) barrier:
-
-1. **Dynamic Ephemeral Port Allocation**:
-   - The Tauri host binds to `127.0.0.1:0`.
-   - The operating system assigns an available, unassigned port at runtime, avoiding fixed-port collisions with developer servers.
-2. **CSPRNG Shared Secret**:
-   - Rust generates a 256-bit token from the OS secure random source (`getrandom`, `src-tauri/src/token.rs`); if that fails after a few retries, the engine is not started (M5).
-   - The token is passed to the Python sidecar via the `SECUREPHOTOS_IPC_SECRET` environment variable.
-3. **Defense-in-Depth Middleware ([auth_middleware.py](../engine/middleware/auth_middleware.py))**:
-   - Outermost Starlette middleware validates `X-SecurePhotos-Token` headers and `securephotos_ipc` cookies via constant-time comparison (`hmac.compare_digest`).
-   - Unauthorized requests immediately receive `403 Forbidden`.
-4. **Media Streaming Handshake ([auth.py](../engine/api/auth.py))**:
-   - On frontend startup, `performHandshake()` calls `POST /api/auth/handshake` to obtain an `HttpOnly; SameSite=Lax` cookie.
-   - Standard HTML `<img>`, `<video>`, and `<audio>` tags stream authenticated media seamlessly without exposing tokens in URL query strings.
-
----
-
-## 🧪 Testing & Verification
-
-All contributions must pass automated tests and typechecks before merging.
-
-### Backend Automated Tests (Pytest)
-Run the full test suite covering database operations, volume tracking, face identification, zero-trust crypto, and IPC auth:
-```powershell
-.venv\Scripts\python.exe -m pytest engine/tests -v
-```
-To run only the IPC authentication test suite:
-```powershell
-.venv\Scripts\python.exe -m pytest engine/tests/test_ipc_auth.py -v
-```
-
-### Frontend Unit Tests (Vitest)
-Unit tests live next to the code they test (`src/**/*.test.ts[x]`) and run in a simulated browser (jsdom):
-```powershell
-npm test               # run once (what the GitHub check runs)
-npm test -- --watch    # re-run on every change
-```
-`npm test` goes through `scripts/run-vitest.mjs`, which starts Vitest from the uppercase form of the folder path; started from a lowercase drive letter (some VS Code terminals use `c:\...`), Vitest fails every file with "failed to find the current suite". Whole-app checks are done with Playwright against a throwaway library.
-
-### Frontend Typechecking & Compilation
-Run the TypeScript compiler and Vite production build:
-```powershell
-npm run build
-```
-
-### Rust Host Verification
-Verify Tauri Rust crates offline without network overhead:
-```powershell
-cd src-tauri
-cargo check --offline
-cd ..
-```
-
----
-
-## 📦 Building Standalone Production Releases
-
-The production build pipeline generates a self-contained, offline-ready Windows NSIS installer that packages the compiled Python engine, ONNX models, and WebView2 runtime loader.
-
-### Step 1: Compile the Python Engine Sidecar
-Freezes the Python engine into a standalone Windows executable (`securephotos-engine.exe`) using PyInstaller:
-```powershell
-python scripts/build-engine.py
-```
-This produces the standalone sidecar in `src-tauri/binaries/` with all required dependencies, hidden imports, and ONNX models bundled.
-
-### Step 2: Build the Native Desktop Installer (NSIS)
-Compiles the final installer executable (`SecurePhotos_0.1.0_x64-setup.exe`):
-```powershell
-npm run tauri build
-```
-Output artifacts are located in:
-`src-tauri/target/release/bundle/nsis/`
-
----
-
-## 🚀 CI/CD & Automated Release Pipeline
-
-SecurePhotos uses a **manual-trigger only** GitHub Actions workflow (`.github/workflows/pipeline.yml`) to eliminate unwanted CI runs and prevent unverified releases from being published.
-
-### Triggering via GitHub Actions Web UI
-1. Navigate to **Actions** &rarr; **SecurePhotos CI/CD Pipeline**.
-2. Click **Run workflow**.
-3. Choose the branch to build from.
-4. Select the **Version Bump Type**:
-   - `patch`: Increments patch component (e.g. `0.1.0` &rarr; `0.1.1`).
-   - `minor`: Increments minor component (e.g. `0.1.0` &rarr; `0.2.0`).
-   - `major`: Increments major component (e.g. `0.1.0` &rarr; `1.0.0`).
-5. Select the **Distribution Mode**:
-   - `test_build` *(Default)*: Compiles the full installer and uploads it to **GitHub Actions Run Artifacts**. **Nothing is published to GitHub Releases**, keeping public feeds clean while allowing developers to download and test the full installation lifecycle.
-   - `public_release`: Packages the installer, tags the repository with `v<version>`, and publishes an official release on GitHub with release notes. *(Enforced Guard: Can **only** be triggered from the repository's default branch `master`. Triggering on any topic branch will immediately abort the run).*
-
-### Local Version Detection & Sync CLI
-You can test SemVer calculation or update manifests locally using:
-```bash
-# Preview next version calculation
 python scripts/release_version.py detect --bump patch
-
-# Synchronize version across all configuration files
-python scripts/release_version.py sync --version 0.1.1
+python scripts/release_version.py sync --version 0.2.0
 ```
 
----
-
-## 📁 Directory Structure Reference
+## Where things are
 
 ```
 SecurePhotos/
-├── engine/                       # Python 3.12 Backend Engine
-│   ├── api/                      # FastAPI Route Controllers (Photos, Albums, Vault, etc.)
-│   ├── database/                 # SQLite Connection, Schema, FTS5 & Migrations
-│   ├── middleware/               # Local IPC Authentication & Security Middleware
-│   ├── services/                 # Business Logic (Ingestion, Crypto, AI, Thumbnails)
-│   ├── tests/                    # Automated Pytest Test Suites (230+ tests)
-│   ├── config.py                 # Pydantic Settings & Directory Resolution
-│   └── main.py                   # FastAPI Application Entrypoint
-├── src/                          # React 19 / TypeScript Desktop Frontend
-│   ├── assets/                   # Static Icons & Artwork
-│   ├── components/               # UI Views (Grid, Lightbox, People, Vault, Albums, etc.)
-│   ├── services/                 # Centralized apiFetch & Media URL Client
-│   ├── store/                    # Zustand Global Application State
-│   ├── types/                    # Shared TypeScript Type Definitions
-│   └── App.tsx                   # Main Root Desktop Layout & Router
-├── src-tauri/                    # Tauri 2.0 Host Shell (Rust)
-│   ├── binaries/                 # Pre-compiled Sidecar Executables
-│   ├── src/lib.rs                # Host Engine State, Port Allocation & Window Setup
-│   ├── tauri.conf.json           # Tauri Desktop Configuration & Resource Mappings
-│   └── Cargo.toml                # Rust Dependencies & Build Configuration
-├── docs/                         # Technical Documentation & Specifications
-│   ├── architecture.md           # System Architecture & Pipelines
-│   ├── database_schema.md        # SQLite WAL Schema & Indexing Model
-│   ├── design_system.md          # Design system: tokens, shell, screens
-│   ├── development.md            # This Developer & Engineering Guide
-│   └── roadmap.md                # Community Product Roadmap
-├── scripts/                      # Developer Helper & Build Scripts
-└── README.md                     # End-User Product Showcase & Guide
+├── engine/                 Photo engine (Python)
+│   ├── api/                HTTP endpoints, one file per area (photos, vault, people...)
+│   ├── middleware/         The access check for every request
+│   ├── services/           The work itself: import, after-import steps, AI, vault, workers
+│   ├── tests/              Engine tests (pytest)
+│   ├── config.py           Settings and the library folder
+│   ├── database.py         Schema and migrations
+│   └── main.py             Start-up and background workers
+├── src/                    App (React, TypeScript)
+│   ├── components/         Screens and shared pieces
+│   ├── hooks/              Engine connection, settings, background progress
+│   ├── services/           Talking to the engine
+│   ├── store/              App state (Zustand)
+│   └── utils/              Pure helpers, unit-tested
+├── src-tauri/              Desktop shell (Rust), installer settings and hooks
+├── scripts/                Run, build, release and model-export scripts
+└── docs/                   Developer documentation
 ```
 
----
+## Conventions
 
-## 🛡️ Enterprise Engineering Guidelines
-
-When contributing to SecurePhotos, strictly adhere to the project standards defined in `.agents/rules/strict-approval-and-standards.md`:
-1. **Branch Protection**: Never commit directly to `master`/`main`. Always use dedicated topic branches (`feature/*`, `fix/*`, `chore/*`) and immediately push commits to `origin`.
-2. **Approval Gate**: Propose concrete implementation plans with problem breakdown, root cause, and verification steps before modifying code.
-3. **UI/UX Header Standard**: All view headers must use the frosted liquid-glass floating container with balanced 3-column flex layout and inline capsule badges.
-4. **Code Quality**: Google-style Python docstrings and comprehensive TypeScript JSDoc comments are mandatory on all public symbols.
-5. **Living Registry**: Every functional addition or decision point must be registered in `.agents/history/features_and_functional_decisions.md`.
+- Work on a branch and merge to `master` through a pull request ([CONTRIBUTING.md](../CONTRIBUTING.md)).
+- Python: Google-style docstrings on public functions. Slow work (images, files, AI) runs off the engine's request loop with `asyncio.to_thread`.
+- TypeScript: no `any`; pure logic goes in `utils` or a `*Format.ts` file with its own tests.
+- Paths in the database are stored relative to the library folder (`to_db_path`, `resolve_stored_path`), so a library can move with its drive.
+- Words on screen: plain, short and friendly. [design_system.md](design_system.md) has the visual rules and the keyboard shortcuts.

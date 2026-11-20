@@ -85,3 +85,15 @@ New feedback is added here the same day. Status: **Done** (needs owner re-check)
 | 25 | Processing order: expected one photo through all steps, then the next | Decided (owner, 2026-11-19) | Keep quick steps for all new photos first, then 8K one at a time; video work after the photos. Every photo still in progress shows the five steps' icons taking turns (translucent, centre), whatever step it is on; the ring stays bottom-left; tags once done. Pure CSS; only tiles near the screen exist. |
 | 26 | All photos said done, yet rings stayed | Done (after-import) | The 'ready' message came after the quick steps while 8K was still to run; 8K had waited behind the import's automatic video job, which counted as user-asked and took the heavy slot first. Now: the message says 'ready to use … Enhancing continues: N left'; automatic video jobs have low priority and wait while any photo is being prepared; 8K re-checks a photo after waiting for the slot (a stale pick tried to read a file already replaced). |
 | 27 | Chose 2K for videos, but the video showed HD | Done (after-import) | It was made 2K (now 1440×2560); while waiting/enlarging the tag showed its current 720p size. A video's size tag now shows only once it's done, like photos. (It also ran twice because a dev engine reload interrupted it.) |
+
+## Documentation review for the release (2026-11-20)
+
+| Item | Status | Notes |
+|------|--------|-------|
+| README, CHANGELOG, SECURITY, CONTRIBUTING rewritten for end users and contributors | Done (docs/review) | Plain, accurate, current; no emoji, em dashes or marketing words. False claims removed (Windows Hello/2FA in 0.1.0, a fake security e-mail, scripts/dev.bat). |
+| docs/development, architecture, database_schema, design_system, model_export README updated | Done (docs/review) | After-import process, one heavy job at a time, photo/video size, old-photo models; wrong pragma and table names fixed; stale copied table definitions replaced by a pointer to engine/database.py. |
+| docs/roadmap.md | Marked: not for the release | Promises features that won't ship in that form (24-word recovery phrase, JWT logins, mobile app) and has duplicate numbering. Owner to decide: remove, or replace with a short plain list. Not linked from any document any more. |
+| EULA vs MIT licence | Open: owner decision | EULA grants a personal, non-transferable, revocable licence; README and LICENSE say MIT. Only facts were corrected in the EULA (Emergency Card instead of a recovery phrase, no biometrics). |
+| THIRD_PARTY_NOTICES GFPGAN note | Open: owner decision | The NVIDIA non-commercial terms question is still marked 'revisit before the app is sold or the repository is made public'. |
+| Old-photo model downloads need the repository public | Open: release blocker | The installer downloads them from the models-v1 GitHub release, which only works for others once the repository is public. |
+| A video enhanced by hand from Big videos doesn't wait for the heavy-work slot | Open: small code gap | Found while documenting; documented as it is. |
