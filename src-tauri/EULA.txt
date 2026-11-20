@@ -1,5 +1,5 @@
 END USER LICENSE AGREEMENT (EULA) FOR SECUREPHOTOS
-Last Updated: September 2026
+Last Updated: November 2026
 
 PLEASE READ THIS END USER LICENSE AGREEMENT ("AGREEMENT") CAREFULLY BEFORE INSTALLING OR USING SECUREPHOTOS ("SOFTWARE"). BY CLICKING "I AGREE", DOWNLOADING, INSTALLING, OR USING THE SOFTWARE, YOU AGREE TO BE BOUND BY THE TERMS AND CONDITIONS OF THIS AGREEMENT. IF YOU DO NOT AGREE, DO NOT INSTALL OR USE THE SOFTWARE.
 
@@ -7,14 +7,14 @@ PLEASE READ THIS END USER LICENSE AGREEMENT ("AGREEMENT") CAREFULLY BEFORE INSTA
 Subject to the terms of this Agreement, the developers ("Licensor") grant you a personal, non-exclusive, non-transferable, revocable license to install and use SecurePhotos solely for your personal or internal media management and digital vault purposes.
 
 2. OWNERSHIP & USER CONTENT RIGHTS
-(a) Software Intellectual Property: SecurePhotos, including its software code, architecture, design tokens, visual assets, and zero-trust cryptographic implementations, is protected by copyright and intellectual property laws.
-(b) 100% User Media Ownership: You retain 100% full, exclusive ownership, copyright, and all intellectual property rights over all photos, videos, documents, and data imported into, managed by, or stored in SecurePhotos. Licensor claims ZERO ownership, title, copyright, license, or control over any user media.
+(a) Software Intellectual Property: SecurePhotos, including its software code, architecture, design tokens, visual assets, and encryption, is protected by copyright and intellectual property laws.
+(b) User Media Ownership: You retain full and exclusive ownership, copyright, and all intellectual property rights over all photos, videos, documents, and data imported into, managed by, or stored in SecurePhotos. Licensor claims ZERO ownership, title, copyright, license, or control over any user media.
 
-3. ZERO-TRUST ENCRYPTION & DATA RECOVERY RESPONSIBILITY
-SecurePhotos incorporates zero-trust, client-side authenticated encryption (AES-256-GCM) with Argon2id key derivation. You acknowledge and agree that:
-(a) Licensor does not hold, manage, or store your passwords, PINs, biometrics, master encryption keys, or recovery phrases.
-(b) IF YOU FORGET OR LOSE YOUR PASSWORD, PIN, OR 24-WORD RECOVERY PHRASE, YOUR ENCRYPTED DATA IS MATHEMATICALLY IRRECOVERABLE. LICENSOR CANNOT RESET, RECOVER, OR DECRYPT YOUR ENCRYPTED MEDIA UNDER ANY CIRCUMSTANCES.
-(c) You bear sole and absolute responsibility for securing, recording, and maintaining backups of all credentials, recovery phrases, and original files.
+3. ENCRYPTION & DATA RECOVERY RESPONSIBILITY
+SecurePhotos encrypts the contents of its Private Vault on your device with authenticated encryption (AES-256-GCM), using a key derived from your master password with Argon2id. You acknowledge and agree that:
+(a) Licensor does not hold, manage, or store your passwords, PINs, master encryption keys, or Emergency Cards.
+(b) IF YOU FORGET YOUR MASTER PASSWORD AND LOSE YOUR EMERGENCY CARD, YOUR ENCRYPTED DATA CANNOT BE RECOVERED. LICENSOR CANNOT RESET, RECOVER, OR DECRYPT YOUR ENCRYPTED MEDIA UNDER ANY CIRCUMSTANCES.
+(c) You bear sole responsibility for keeping your master password, your Emergency Card, and backups of your original files safe.
 
 4. DISCLAIMER OF WARRANTIES ("AS IS")
 THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITH ALL FAULTS AND WITHOUT WARRANTY OF ANY KIND. TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, LICENSOR EXPRESSLY DISCLAIMS ALL WARRANTIES, WHETHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. LICENSOR DOES NOT WARRANT THAT THE OPERATION OF THE SOFTWARE WILL BE UNINTERRUPTED, ERROR-FREE, SECURE, OR COMPATIBLE WITH ALL HARDWARE OR EXTERNAL STORAGE MEDIA.

@@ -1,9 +1,10 @@
-# Old-photo models: how they are made (H10)
+# Old-photo models: how they are made
 
-The app downloads five ONNX files from this repo's Release **`models-v1`** the first time
-someone improves an old photo, and refuses any file whose SHA-256 differs
-(`engine/services/ai_models.py`, `ON_DEMAND_MODELS`). They are not in git and not in the
-installer (about 2.7 GB together).
+The old-photo features use five ONNX files, about 2.7 GB together. They are too big for git
+or the installer, so they are attached to this repository's GitHub release **`models-v1`**.
+The installer downloads them; if that fails, the app offers the download before the first
+feature that needs one. Any file whose SHA-256 differs from the pinned value is refused
+(`engine/services/ai_models.py`, `ON_DEMAND_MODELS`).
 
 | File | Purpose | Upstream code (commit) | Official weights (SHA-256) | Licence |
 |---|---|---|---|---|
@@ -14,8 +15,8 @@ installer (about 2.7 GB together).
 | `gfpgan_v1.4_512.onnx` | Sharper faces | [TencentARC/GFPGAN](https://github.com/TencentARC/GFPGAN) `7552a7791caad982045a7bbe5634bbf1cd5c8679` | [GFPGANv1.4.pth](https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.4.pth) `e2cd4703ab14f4d01fd1383a8a8b266f9a5833dacee8e6a79d3bf21a1b6be5ad` | Apache-2.0 |
 
 Training data: DDColor was trained on ImageNet and GFPGAN on FFHQ; both datasets have their
-own terms (see THIRD_PARTY_NOTICES.md). Non-commercial models (e.g. CodeFormer) are not used
-(owner decision D1).
+own terms (see THIRD_PARTY_NOTICES.md). Models licensed for non-commercial use only, such as
+CodeFormer, are not used.
 
 ## Rebuild
 
@@ -31,7 +32,7 @@ python -I export_models.py ddcolor <DDColor checkout> ddcolor_artistic.bin   ddc
 python -I export_models.py gfpgan  <GFPGAN checkout>  GFPGANv1.4.pth          gfpgan_v1.4_512.onnx
 ```
 
-Scratch models (A7, 2026-11-17; also needs `onnxscript` 0.7.2 for LaMa's Fourier layers).
+The scratch models also need `onnxscript` 0.7.2, for LaMa's Fourier layers.
 Only the detector file is needed from the 2 GB release zip (it can be read out with HTTP
 range requests):
 

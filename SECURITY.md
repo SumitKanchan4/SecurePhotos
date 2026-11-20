@@ -1,60 +1,42 @@
-# 🔒 Security Policy
+# Security
 
-Security and privacy are the foundation of SecurePhotos. We built this application so you can keep your personal memories completely private, offline, and in your full control.
+SecurePhotos is built so that your photos stay private and under your control. This page explains how your data is protected, how to report a security problem, and what you can do to keep your library safe.
 
----
+## Supported versions
 
-## 🛡️ Supported Versions
-
-We provide security updates for the following versions of SecurePhotos:
+Security fixes are made for the latest version. Please update to it before reporting a problem.
 
 | Version | Supported |
-| :--- | :---: |
-| 0.2.x | ✅ |
-| 0.1.x | ✅ |
-| < 0.1.0 | ❌ |
+| --- | --- |
+| 0.1.x | Yes |
+| Older | No |
 
----
+## How your data is protected
 
-## 🏰 Our Security Model
+- **It stays on your computer.** There is no tracking, no analytics and no remote server. The app goes online only to check for a newer version and, if the installer couldn't, to download the old-photo models. Nothing about you or your library is sent.
+- **The vault is encrypted.** Photos and documents in your Private Vault are encrypted with AES-256-GCM, each file with its own key, in a format that detects any tampering or a cut-off file. The key is made from your password with Argon2id and a random salt.
+- **Vault photos are opened in memory.** When you view a vault photo it is decrypted in memory. No unencrypted copy is written to disk. The vault key is never saved to disk either; [the architecture notes](docs/architecture.md) explain what is and isn't protected while the app is running.
+- **The app and its engine talk only on your computer.** They use a local connection (127.0.0.1) on a port chosen at start-up, protected by a random access token. Other devices on your network can't reach it.
+- **There is no back door.** If you forget your password, the Emergency Card you saved during setup (the card image, or the 16 numbers on it) can reset it. There is no other way in. A 4-digit PIN reopens the vault quickly, but only while the app stays open.
 
-SecurePhotos is designed with a zero-trust, zero-cloud architecture:
+## Reporting a security problem
 
-- 🌐 **Offline by Design**: Everything works without internet; the AI models ship with the app. There are no tracking scripts, telemetry collectors or remote servers. The only automatic network call is the update check (it downloads GitHub's latest-version file; nothing about you or your library is sent).
-- 🔑 **Strong Encryption**: Photos in your Private Vault are encrypted with AES-256-GCM, each file with its own key, in a format that detects any tampering or truncation. Your master password is turned into a key with Argon2id (unique random salt). The vault key is never written to disk; see `docs/architecture.md` ("Vault key in memory") for what is and isn't protected while the app runs.
-- 🧠 **Memory-Only Decryption**: When you view a photo from your Private Vault, it is decrypted directly in RAM. Unencrypted files are never written to temporary disk folders.
-- 🛡️ **Protected Local Communication**: The desktop app (Tauri) and local engine (FastAPI) talk only over a local loopback connection (127.0.0.1) using dynamic ports and a random access token from the operating system's secure random source (the engine refuses to start without one). External devices on your network cannot access this channel.
-- 🔒 **Recovery Without a Backdoor**: A printed emergency card (card file or its 16 numbers) can reset a forgotten password; there is no other way in. A 4-digit PIN reopens the vault quickly only while the app stays open. (Windows Hello is planned, not available yet.)
+Thank you for helping keep SecurePhotos users safe. Please report problems privately so they can be fixed before they are made public.
 
----
+1. Don't open a public issue.
+2. On GitHub, open the repository's **Security** tab and choose **Report a vulnerability**.
+3. Include:
+   - what the problem is,
+   - the steps to reproduce it,
+   - the SecurePhotos version and Windows version you used,
+   - what an attacker could do with it.
 
-## 🚨 Reporting a Security Issue
+You can expect a reply within 48 hours and a plan for a fix within 5 working days. When the fix is released, you'll be credited in the release notes unless you prefer not to be.
 
-We welcome security reports from developers, researchers, and users. If you discover a potential vulnerability, please help us protect everyone by following responsible disclosure.
+## Keeping your library safe
 
-### How to Report
-
-1. **Do not open a public issue.** Please report security issues privately to protect all users until a fix is released.
-2. Send an email to **security@securephotos.local** (or submit a private security advisory on GitHub under the **Security** tab).
-3. Include clear details:
-   - A short description of the issue.
-   - Steps to reproduce or a proof of concept.
-   - The version of SecurePhotos and operating system you tested on.
-   - Any potential impact you identified.
-
-### Response Timeline
-
-- **Initial acknowledgment**: Within 48 hours.
-- **Triage and fix plan**: Within 5 business days.
-- **Release and disclosure**: We will publish a fix release promptly and credit you in our release notes (unless you prefer to remain anonymous).
-
----
-
-## 💡 Best Practices for Users
-
-While SecurePhotos keeps your media private and encrypted, here are steps you can take to keep your computer and vault safe:
-
-- 🗝️ **Choose a Strong Master Password**: Use a password or passphrase that is hard to guess. Since there is no cloud recovery, nobody (including us) can reset your password if you forget it.
-- 📝 **Save Your Recovery Key**: Store your recovery phrase in a safe, physical location (like a notebook or safe).
-- 💾 **Maintain Regular Backups**: Keep copies of your photos and external drives in multiple locations. Hardware failure can happen to any drive.
-- 🛑 **Lock When Leaving**: Lock your Private Vault or close the application when stepping away from your computer in public or shared spaces.
+- **Choose a strong master password.** Nobody, including us, can reset it for you.
+- **Keep your Emergency Card somewhere safe.** Print it or save it away from this computer. It is the only way back in if you forget your password.
+- **Keep backups.** Copy your original photos and videos to a separate drive. Any drive can fail.
+- **Lock the vault when you step away.** Press L or use **Lock now**, especially on a shared computer.
+- **Encrypt your disk.** Turn on BitLocker (or similar), so the files Windows writes from memory, such as the page file, are protected too.
