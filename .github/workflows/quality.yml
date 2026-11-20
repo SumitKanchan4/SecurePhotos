@@ -1,13 +1,12 @@
 name: Quality Gate
 
-# Runs after every merge to master and on pull requests (owner decision, Q2).
-# The manual release pipeline (pipeline.yml) is unchanged in purpose.
+# Runs on every pull request to master and after every merge to master.
+# The installer is built and released by pipeline.yml, started by hand.
 'on':
   push:
     branches: [master]
   pull_request:
-    # feature/redesign: the frontend redesign integration branch (owner decision 2026-11-12).
-    branches: [master, feature/redesign]
+    branches: [master]
   workflow_dispatch:
 
 concurrency:
