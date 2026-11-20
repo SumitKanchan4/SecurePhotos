@@ -19,6 +19,10 @@ pub struct AppEngineState {
     pub process: Arc<Mutex<Option<std::process::Child>>>,
     /// Why the last engine start was refused (shown in the startup banner), if it was.
     pub last_start_error: Mutex<Option<String>>,
+    /// Held for the whole of `start_backend_engine`, so two callers (the start-up thread and
+    /// the window) can never both start an engine (2026-11-21: two engines on one library
+    /// found the same faces twice).
+    pub start_lock: Mutex<()>,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -352,6 +356,24 @@ fn find_project_root() -> Option<PathBuf> {
 
 #[tauri::command]
 fn start_backend_engine(state: tauri::State<AppEngineState>) -> serde_json::Value {
+    // One start at a time; a second caller waits here, then sees the engine already started.
+    let _starting = state.start_lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    // An engine this app started that is still running (perhaps still starting up, so it
+    // doesn't answer on its port yet) must not get a twin on the same library.
+    if let Ok(mut lock) = state.process.lock() {
+        if let Some(child) = lock.as_mut() {
+            if let Ok(None) = child.try_wait() {
+                let port = state.port.load(Ordering::SeqCst);
+                return serde_json::json!({
+                    "status": "starting",
+                    "port": port,
+                    "message": format!("Engine is already starting or running on port {}", port)
+                });
+            }
+        }
+    }
+
     let current_port = state.port.load(Ordering::SeqCst);
     if current_port > 0 {
         let addr_str = format!("127.0.0.1:{}", current_port);
@@ -691,6 +713,7 @@ pub fn run() {
         token: RwLock::new(String::new()),
         process: Arc::new(Mutex::new(None)),
         last_start_error: Mutex::new(None),
+        start_lock: Mutex::new(()),
     };
 
     tauri::Builder::default()
