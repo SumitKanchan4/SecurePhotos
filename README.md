@@ -1,128 +1,108 @@
-# 📸 SecurePhotos
+<p align="center">
+  <img src="src/assets/brand/app-icon.svg" width="112" height="112" alt="SecurePhotos icon">
+</p>
 
-> **The 100% Private, Zero-Cloud Photo & Video Vault for Your Desktop and External Drives.**
+<h1 align="center">SecurePhotos</h1>
 
-*SecurePhotos is a lightning-fast, beautifully designed personal media library that keeps your family photos, videos, and private documents completely on your own hardware, with zero cloud uploads, zero subscriptions, and zero tracking.*
+SecurePhotos keeps your photos, videos and documents on your own computer or external drive. Nothing is uploaded, there is no account to create and no subscription to pay.
 
----
+It sorts your photos by date, finds the people in them, picks out documents and receipts, brings old prints back to life, and keeps private files in a locked vault. All of this runs on your computer.
 
-> 👨‍💻 **Are you a developer or contributor?**
-> Looking for system architecture, build instructions, or local development setup? Please see the [**Developer Guide**](docs/development.md).
+If you want to build or change the app, start with the [developer guide](docs/development.md).
 
----
+## A look inside
 
-## 🌟 Why SecurePhotos?
+![The photo grid: photos by month, each tagged with its size, and a year bar on the right](docs/images/screenshot-photos.jpg)
 
-Most modern photo apps want your photos in their cloud, require ongoing monthly subscriptions, and scan your personal life for ad tracking. **SecurePhotos takes the opposite approach: complete privacy and total ownership.**
+| | |
+| --- | --- |
+| ![Old family photos next to the coloured versions SecurePhotos made](docs/images/screenshot-what-to-keep.jpg) | ![Stories suggested from the photos, with the newest one playing at the top](docs/images/screenshot-stories.jpg) |
+| Old prints, brought back in colour. The original is always kept. | Stories made from your photos. |
 
-| Feature | SecurePhotos | Cloud Services (Google, Apple, OneDrive) |
-| :--- | :--- | :--- |
-| **Privacy** | 🔒 **100% On-Device & Offline** | ☁️ Uploaded to corporate cloud servers |
-| **Storage Location** | 💾 **Your PC or External SSD** | 🏢 Remote third-party data centers |
-| **Cost** | 💸 **Free & Lifetime Ownership** | 💳 Recurring monthly storage fees |
-| **Speed** | ⚡ **Instant 60fps Native Performance** | ⏳ Buffering, network lag & upload delays |
-| **Private Vault** | 🛡️ **Strong Encryption (AES-256-GCM, per-file keys)** | 🔓 Plainly readable by cloud admins/AI |
-| **AI Processing** | 🧠 **100% On-Device Offline AI** | 🤖 Remote server-side AI training |
+The screenshots use free sample photos, none of them personal; see [the credits](docs/images/CREDITS.md).
 
----
+## What it does
 
-## ✨ Key Capabilities
+### Your library, on your drive
+Everything SecurePhotos keeps lives in one library folder: your photos, the vault, thumbnails and the app's own data. You can put that folder on an external drive, plug the drive into another computer and carry on where you left off.
 
-### 🛡️ 100% Private & Truly Offline
-Every photo, video, face recognition scan, and document search runs strictly on your computer's local hardware. The AI models ship inside the installer, so everything works offline from the first start. SecurePhotos never uploads your photos or data, and has zero telemetry. The only time it goes online on its own is a quick check for app updates (a download of the latest version number from GitHub; nothing about you or your library is sent).
+### Bringing photos in
+Choose files or a folder, or drop them on the window. SecurePhotos copies them into your library and leaves your originals where they are. If you prefer, it can remove each original once its copy has been checked. Photos you already have are skipped.
 
-### 💾 Portable External Drive Vault
-You can install and store your entire library directly on an external hard drive or high-speed portable SSD. When you unplug the drive and connect it to another PC, your entire library, albums, face tags, and encrypted vault are ready to use immediately.
+After an import, each new photo is prepared in the background. You can use your photos while this happens:
 
-### ⚡ Silky-Smooth Browsing (100,000+ Photos)
-Engineered for massive collections. Scroll through decades of memories at a locked 60 frames per second without stuttering, loading spinners, or freezing.
+1. The text in it is read, so documents and receipts are found and can be searched.
+2. Faces are found, so People fills in.
+3. Old prints are checked for missing colour, fading and scratches.
+4. Duplicates are looked for.
+5. The photo is enhanced to the size you chose (2K, 4K or 8K).
 
-### 👥 Smart People & Family Recognition
-Group photos by the people you love without sending your biometric data to the cloud.
-- **"Name Once, Tag 1,000 Photos"**: Name a face once, and SecurePhotos automatically identifies that person across your entire collection.
-- **VIP "Close Ones"**: Pin your closest family and friends to the top for quick access.
-- **Offline & Safe**: All face detection runs 100% locally on your machine.
+A small ring on each photo shows its progress. Videos are prepared after the photos.
 
-### 🔒 Encrypted Private Vault
-Protect sensitive paperwork, financial records, medical documents, and intimate photos behind a dedicated master password or PIN. Vault photos are encrypted with AES-256-GCM and are decrypted strictly in memory while you view them, never left exposed on the disk.
+### Old photos
+SecurePhotos can add colour to black-and-white prints, bring back faded colours, sharpen blurry faces and remove scratches and spots. It always keeps the original next to the improved copy, so you can compare them and choose which to keep. You decide in Settings whether this happens only when you ask or automatically.
 
-### 🧹 Duplicate Cleaner & Disk Space Saver
-Free up valuable gigabytes on your computer:
-- **Intelligent Duplicate Finder**: Automatically spots exact copies and burst shots, suggesting the best photo to keep while safely moving redundancies to the trash.
-- **Video Optimizer**: Compresses oversized phone videos to modern formats with zero perceptible loss in visual quality.
-- **30-Day Safety Net**: Trashed items are held safely for 30 days before permanent deletion, so you never have to worry about accidental loss.
+### People
+Name a face once and SecurePhotos finds that person across your library. You can mark close family and friends, merge groups that turn out to be the same person, and remove anything that was wrongly taken for a face.
 
-### 🎞️ Cinematic Stories & 4K Collages
-- **Beat-Matched Stories**: Turn any vacation or album into a cinematic video slideshow with smooth Ken-Burns pan/zoom effects and offline musical soundtracks.
-- **Instant Collages**: Generate stunning 2K/4K photo grids with customized spacing and aspect ratios in seconds.
+![The People page asking who is in the old family photos](docs/images/screenshot-people.jpg)
 
-### 📄 Documents & Receipts Hub
-Automatically separates receipts, tickets, diplomas, and official documents from your personal memories. Extracts searchable text offline so you can search for a receipt or document by the words printed inside it.
+### Documents
+Receipts, tickets, IDs and other paperwork are separated from your memories, and the words printed on them can be searched.
 
----
+### Stories and albums
+SecurePhotos suggests stories from your trips, the people you love, this week in past years and old photos it has restored. Save the ones you like. Music for stories is in Settings, under Music. You can also make albums of your own and save suggested collages.
 
-## 🚀 Getting Started in 3 Simple Steps
+### Private Vault
+Keep sensitive photos and documents behind a password. Vault files are encrypted, and they are only decrypted in memory while you look at them. A 4-digit PIN reopens the vault quickly while the app stays open. If you forget your password, the Emergency Card you saved during setup is the only way back in.
 
-1. **Install SecurePhotos**:
-   Run the desktop installer (`SecurePhotos_0.1.0_x64-setup.exe`). You can choose your main computer drive or select an external SSD.
-2. **Import Your Photos**:
-   Click **Import Photos** on the top toolbar. Select any folder, memory card, or drive. SecurePhotos will automatically organize them by date.
-3. **Enjoy & Organize**:
-   Explore your timeline, create custom albums, name faces in the **People** tab, or lock sensitive items into your **Private Vault**.
+### Keeping things tidy
+The Dashboard shows what's in your library and how much space it uses. It also points you to duplicates you can remove, improved photos still waiting for your choice, and large videos that can be made smaller. Deleted items stay in Trash for 30 days before they are removed for good.
 
----
+## Getting started
 
-## ⌨️ Effortless Keyboard Shortcuts
+1. Run the installer, `SecurePhotos_<version>_x64-setup.exe`. It needs an internet connection once, to download the old-photo models (about 2.7 GB).
+2. Click **Import** and choose your photos, or drop a folder on the window.
+3. Browse your photos, name the faces in **People**, and move anything private into the **Private Vault**.
 
-Navigate your entire collection without taking your hands off the keyboard:
+SecurePhotos runs on 64-bit Windows 10 and 11. It works on an ordinary computer; a graphics card is not needed.
 
-| Shortcut | Action | Where It Works |
-| :---: | :--- | :--- |
-| `J` / `→` | **Next Photo** | Photo Grid & Fullscreen Lightbox |
-| `K` / `←` | **Previous Photo** | Photo Grid & Fullscreen Lightbox |
-| `Space` | **Quick Preview / Play Video** | Anywhere |
-| `F` | **Toggle Favorite Star** | Anywhere |
-| `L` | **Lock to Private Vault** | Fullscreen Lightbox & Photo Grid |
-| `Delete` | **Move to 30-Day Trash** | Anywhere |
-| `T` | **Switch Dark 🌙 / Light ☀️ Theme** | Anywhere |
-| `Ctrl + K` | **Open Instant Search** | Anywhere |
-| `Ctrl + I` | **View Camera & EXIF Details** | Fullscreen Lightbox |
-| `Escape` | **Close View / Clear Selection** | Anywhere |
+## Keyboard shortcuts
 
----
+| Keys | What it does | Where |
+| --- | --- | --- |
+| Ctrl + K | Search | Anywhere |
+| T | Switch between light and dark | Anywhere |
+| Esc | Close the current menu or dialog, then clear the selection | Anywhere |
+| ← / → (or K / J) | Previous or next photo | Photo viewer |
+| + / − / 0 | Zoom in, zoom out, back to fit | Photo viewer |
+| F | Add to or remove from favourites | Photo viewer |
+| I | Show or hide the photo's details | Photo viewer |
+| Delete | Move to Trash | Photo viewer |
+| L | Move to the vault; while the vault is open, lock it | Photo viewer, anywhere |
+| P | Hide everything on screen (privacy shield) | Private Vault |
 
-## 🛡️ The SecurePhotos Privacy Promise
+Shortcuts are ignored while you type in a text box.
 
-1. **Your Photos Are Yours**: Your pictures are stored in standard formats on your own drive. You are never locked in.
-2. **Zero Internet Dependency**: Every feature works the same in airplane mode, including face recognition and photo enhancement (the AI models are bundled and checksum-verified). With internet, the app only checks GitHub for updates.
-3. **Zero Data Harvesting**: We do not collect analytics, email addresses, error logs, or usage metrics.
+## Your privacy
 
----
+- **Your photos stay yours.** They are kept in standard formats in your own library folder, so you are never locked in.
+- **It works offline.** Face recognition, text reading and photo enhancement all run on your computer. When you are online, the app only checks GitHub for a newer version, and downloads the old-photo models if the installer couldn't. Nothing about you or your library is sent.
+- **Nothing is collected.** There are no analytics, no usage tracking and no error reports sent anywhere.
 
-## 📚 Documentation & Guides
+## Keep a backup
 
-- 🛠️ [**Developer Guide**](docs/development.md): Environment setup, running locally, and build commands.
-- 📐 [**System Architecture**](docs/architecture.md): High-level system design, FastAPI sidecar, and offline AI inference.
-- 🗄️ [**Database Schema**](docs/database_schema.md): SQLite WAL setup, indexes, and search architecture.
-- 🎨 [**Design System**](docs/design_system.md): Visual design tokens, dark/light themes, and 60fps virtualization.
-- 🚀 [**Product Roadmap**](docs/roadmap.md): Planned features, multi-vault capabilities, and future companion apps.
-- 🔒 [**Security Policy**](SECURITY.md): Cryptography design, threat model, and vulnerability reporting.
-- 🤝 [**Contributing Guide**](CONTRIBUTING.md): How to contribute, report issues, and propose improvements.
-- 📜 [**Changelog**](CHANGELOG.md): Version history and release notes.
+SecurePhotos replaces each imported photo with its enhanced version, and the vault can only be opened with your password or Emergency Card. Please keep your own backup of your original photos and videos on a separate drive.
 
----
+## More information
 
-## 📄 License, User Ownership & Liability Disclaimer
+- [Changelog](CHANGELOG.md): what changed in each version
+- [Security](SECURITY.md): how your data is protected, and how to report a security problem
+- [Contributing](CONTRIBUTING.md): how to help
+- [Developer guide](docs/development.md), [architecture](docs/architecture.md) and [design system](docs/design_system.md): for developers
 
-### 1. 100% User Media Ownership
-**You own your photos and videos.** SecurePhotos, its developers, and contributors claim **zero** ownership, title, copyright, license, or control over any photos, videos, or documents imported into or managed by the app. Your personal content belongs entirely to you.
+## Licence
 
-### 2. Software License (MIT)
-SecurePhotos is released as free software under the **[MIT License](LICENSE)**.
+SecurePhotos is free software under the [MIT License](LICENSE). You keep full ownership of every photo, video and document you add to it.
 
-### 3. Limitation of Liability & Zero Liability for Data or Quality Loss
-The software is provided **"AS IS"**, without warranty of any kind. 
-- Under no circumstances shall the authors, developers, or contributors be liable for any direct, indirect, incidental, or consequential damages resulting from the use of this software.
-- This includes, but is not limited to: **any loss of original photos/videos, alteration or loss of visual quality, compression artifacts, accidental deletions, external drive corruption, hardware failures, or unrecoverable media due to forgotten vault passwords or lost recovery phrases.**
-- **User Backup Obligation**: Users are solely responsible for maintaining independent, regular backups of all original media files on separate storage devices before using this application.
-
+The app is provided as it is, without any warranty. Its authors are not responsible for lost or damaged photos, videos or files, loss of quality from enhancement or compression, failing drives, or vault contents that can't be opened because a password or Emergency Card was lost. Keep your own backups.
