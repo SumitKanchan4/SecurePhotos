@@ -314,3 +314,93 @@ async def test_faces_are_found_on_the_upright_picture(monkeypatch, tmp_path):
         await conn.commit()
     finally:
         await conn.close()
+
+
+async def test_two_scans_of_one_photo_at_once_never_save_its_faces_twice(photo_with_legacy_faces):
+    """2026-11-21: two engines on one library found the same faces twice; the duplicates could
+    never join a group (one person can't be twice in a photo), so each showed as its own card."""
+    import asyncio
+
+    env = photo_with_legacy_faces
+    other = await get_db_connection()
+    try:
+        found = [_new_face(0.5, 0.5), _new_face(0.8, 0.5)]
+        await worker.save_scanned_faces(env["conn"], env["photo_id"], found, env["folder"])  # First scan: not committed yet.
+        second = asyncio.create_task(worker.save_scanned_faces(other, env["photo_id"], found, env["folder"]))
+        await asyncio.sleep(0.3)
+        assert not second.done()  # The second scan waits for the first to finish.
+        await env["conn"].commit()
+        await second
+        await other.commit()
+    finally:
+        await other.close()
+    async with env["conn"].execute(
+        "SELECT ROUND(box_x, 2) FROM faces WHERE photo_id = ? AND person_id IS NULL ORDER BY box_x;", (env["photo_id"],)
+    ) as cur:
+        assert [r[0] for r in await cur.fetchall()] == [0.5, 0.8]  # Each face once.
+
+
+def test_a_face_saved_twice_is_found_and_the_right_copy_kept():
+    """2026-11-21 cleanup: named copies win, then the older one; two different names are left alone."""
+    def face(fid, x, person=None):
+        return {"id": fid, "person_id": person, "box_x": x, "box_y": 0.2, "box_w": 0.1, "box_h": 0.1}
+
+    assert worker.duplicate_faces_to_remove([face(1, 0.1), face(2, 0.1)]) == [(2, 1)]
+    assert worker.duplicate_faces_to_remove([face(1, 0.1), face(2, 0.1, person=7)]) == [(1, 2)]
+    assert worker.duplicate_faces_to_remove([face(1, 0.1, person=7), face(2, 0.1, person=8)]) == []
+    assert worker.duplicate_faces_to_remove([face(1, 0.1), face(2, 0.6)]) == []  # Two different faces.
+    assert worker.duplicate_faces_to_remove([face(1, 0.1), face(2, 0.1), face(3, 0.1)]) == [(2, 1), (3, 1)]
+
+
+async def test_duplicates_already_saved_are_removed_once(photo_with_legacy_faces):
+    env = photo_with_legacy_faces
+    conn = env["conn"]
+    await conn.execute("DELETE FROM app_settings WHERE key = ?;", (worker.DUPLICATES_REPAIR_KEY,))
+    asha_face = env["ids"]["A"]
+    cur = await conn.execute(  # A second, unnamed copy of Asha's face.
+        "INSERT INTO faces (photo_id, box_x, box_y, box_w, box_h, embedding) SELECT photo_id, box_x, box_y, box_w, box_h, embedding FROM faces WHERE id = ?;",
+        (asha_face,),
+    )
+    copy_id = cur.lastrowid
+    await conn.commit()
+    assert await worker.remove_duplicate_faces() >= 1
+    async with conn.execute("SELECT id FROM faces WHERE id IN (?, ?);", (asha_face, copy_id)) as c:
+        assert [r[0] for r in await c.fetchall()] == [asha_face]
+    assert await worker.remove_duplicate_faces() == 0  # Only once per library.
+
+
+async def test_a_groups_id_stays_the_same_when_faces_are_regrouped(photo_with_legacy_faces):
+    """2026-11-21: ids were positions, so a card loaded before a regrouping could close another group."""
+    env = photo_with_legacy_faces
+    conn = env["conn"]
+    vec = json.dumps([1.0] + [0.0] * (frs.EMBEDDING_DIM - 1))
+    photos = []
+    for _ in range(3):
+        cur = await conn.execute(
+            "INSERT INTO photos (filename, filepath, file_size, mime_type) VALUES ('h9.jpg', ?, 1, 'image/jpeg');",
+            (f"originals/h9_{secrets.token_hex(3)}.jpg",),
+        )
+        photos.append(cur.lastrowid)
+    first = await conn.execute(
+        "INSERT INTO faces (photo_id, box_x, box_y, box_w, box_h, embedding, embedding_model) VALUES (?, 0.1, 0.1, 0.2, 0.2, ?, ?);",
+        (photos[0], vec, frs.EMBEDDING_MODEL),
+    )
+    first_id = first.lastrowid
+    await conn.execute(
+        "INSERT INTO faces (photo_id, box_x, box_y, box_w, box_h, embedding, embedding_model) VALUES (?, 0.1, 0.1, 0.2, 0.2, ?, ?);",
+        (photos[1], vec, frs.EMBEDDING_MODEL),
+    )
+    await conn.commit()
+    await recluster_all_faces()
+    async with conn.execute("SELECT cluster_id FROM faces WHERE id = ?;", (first_id,)) as c:
+        group = (await c.fetchone())[0]
+    assert group == f"cluster_{first_id}"
+    # A new photo of the same face joins the group; the group keeps its id.
+    await conn.execute(
+        "INSERT INTO faces (photo_id, box_x, box_y, box_w, box_h, embedding, embedding_model) VALUES (?, 0.1, 0.1, 0.2, 0.2, ?, ?);",
+        (photos[2], vec, frs.EMBEDDING_MODEL),
+    )
+    await conn.commit()
+    await recluster_all_faces()
+    async with conn.execute("SELECT DISTINCT cluster_id FROM faces WHERE photo_id IN (?, ?, ?);", photos) as c:
+        assert [r[0] for r in await c.fetchall()] == [group]
