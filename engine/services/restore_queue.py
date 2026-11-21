@@ -401,8 +401,10 @@ async def _holding_auto_jobs() -> bool:
     """
     from engine.api import photos as photos_api
 
+    from engine.services import computers
+
     app_settings = await photos_api._load_enhancement_settings()
-    return photos_api.battery_guard_applies(app_settings)
+    return computers.hold_reason() is not None or photos_api.battery_guard_applies(app_settings)
 
 
 async def _plain_photos_first() -> bool:
@@ -534,7 +536,12 @@ async def process_next_job() -> bool:
         job = await _next_job(conn, key is not None, auto_allowed=not hold_auto and not quick_first)
         if hold_auto:
             async with conn.execute("SELECT 1 FROM restore_jobs WHERE status = 'queued' AND origin = 'auto' LIMIT 1;") as cur:
-                state["paused_reason"] = "on_battery" if await cur.fetchone() else None
+                if await cur.fetchone():
+                    from engine.services import computers
+
+                    state["paused_reason"] = computers.hold_reason() or "on_battery"
+                else:
+                    state["paused_reason"] = None
         else:
             state["paused_reason"] = None
         if job is None:

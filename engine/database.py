@@ -178,6 +178,17 @@ CREATE TABLE IF NOT EXISTS face_dismissals (
 );
 CREATE INDEX IF NOT EXISTS idx_face_dismissals_photo ON face_dismissals (photo_id);
 
+-- T3 (owner, 2026-11-21): every computer the drive has been plugged into, and whether it does
+-- the background work: 'always', 'ask' (asks each time) or 'view' (only views). The id is a
+-- one-way scrambled form of Windows' computer ID.
+CREATE TABLE IF NOT EXISTS computers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    choice TEXT NOT NULL DEFAULT 'ask',
+    first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_seen DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ── 8. Creative Assets Table (Collages & Wallpapers) ─────────────────────────
 CREATE TABLE IF NOT EXISTS creative_assets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

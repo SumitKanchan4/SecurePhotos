@@ -357,6 +357,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
             <Loader2 size={12} className="spin" />
             {vaultEnhancement.paused_reason === "on_battery"
               ? `Enhancing paused on battery (${vaultEnhancement.completed_count} of ${vaultEnhancement.total_count} done)`
+              : vaultEnhancement.paused_reason === "other_computer"
+              ? `Enhancing waits for one of your other computers (${vaultEnhancement.completed_count} of ${vaultEnhancement.total_count} done)`
               : `Enhancing vault photos · ${Math.min(vaultEnhancement.completed_count + 1, vaultEnhancement.total_count)} of ${vaultEnhancement.total_count}`}
           </span>
         )}

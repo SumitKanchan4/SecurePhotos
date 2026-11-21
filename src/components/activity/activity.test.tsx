@@ -110,6 +110,14 @@ describe("buildActivity", () => {
     expect(m.headline).toBe("Paused · 3 items left");
   });
 
+  it("says when improving waits for another computer (T3), and shows nothing when there is nothing to enhance", () => {
+    const enhance = { is_active: true, active_photo_id: null, active_filename: null, item_progress: 0, completed_count: 0, total_count: 3 };
+    const m = buildActivity({ enhance: { ...enhance, paused_reason: "other_computer" } });
+    expect(m.working[0]?.detail).toBe("1 of 3 · waiting for one of your other computers");
+    expect(m.headline).toBe("Waiting for another computer · 3 items left");
+    expect(buildActivity({ enhance: { ...enhance, total_count: 0, paused_reason: "other_computer" } }).headline).toBeNull();
+  });
+
   it("lists results waiting for a decision, and only finished work that needs the user", () => {
     const m = buildActivity({
       restore: report({
