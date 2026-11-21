@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from engine.config import settings
 from engine.database import get_db_connection
+from engine.services.photo_versions import stack_top
 from engine.volume_tracker import list_connected_volumes, VolumeInfo
 
 logger = logging.getLogger("securephotos.system")
@@ -292,8 +293,10 @@ async def get_dashboard_overview() -> DashboardOverviewResponse:
                 COALESCE(SUM(CASE WHEN is_favorite = 1 THEN 1 ELSE 0 END), 0) as favorites_count,
                 COUNT(*) as total_count
             FROM photos
-            WHERE trashed_at IS NULL AND is_encrypted = 0;
-            """
+            WHERE trashed_at IS NULL AND is_encrypted = 0 AND """
+            # T4: one per tile, as Photos shows them: an original and its improved copies count once.
+            + stack_top()
+            + ";"
         ) as cursor:
             row = await cursor.fetchone()
             images_cnt = row[0] or 0

@@ -646,3 +646,44 @@ async def test_old_originals_cleanup_runs_once_and_its_report_can_be_dismissed(t
         ack = await client.post("/api/videos/old-originals/acknowledge", headers=headers)
         assert ack.status_code == 200 and ack.json()["acknowledged"] is True
     assert vl.read_result()["acknowledged"] is True
+
+
+async def test_a_video_the_user_starts_waits_for_the_heavy_work_slot(monkeypatch):
+    """T6: enhancing or compressing a video from Big videos used to run beside 8K work."""
+    import asyncio
+    from httpx import ASGITransport, AsyncClient
+
+    from engine.api import videos as videos_api
+    from engine.main import app
+    from engine.services import cpu_budget
+
+    ran = []
+
+    async def fake_enhance(photo_id, target_height=720):
+        ran.append(("enhance", photo_id, cpu_budget.status()["holder"]))
+        return {"success": True}
+
+    async def fake_compress(photo_id, crf=None, preset=None):
+        ran.append(("compress", photo_id, cpu_budget.status()["holder"]))
+        return {"success": True}
+
+    monkeypatch.setattr(videos_api, "enhance_old_video", fake_enhance)
+    monkeypatch.setattr(videos_api, "compress_video", fake_compress)
+
+    release = asyncio.Event()
+
+    async def eight_k_photo():
+        async with cpu_budget.heavy(cpu_budget.ENHANCE, "photo:1"):
+            await release.wait()
+
+    busy = asyncio.create_task(eight_k_photo())
+    await asyncio.sleep(0.05)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        enhance = asyncio.create_task(client.post("/api/videos/7/enhance", json={"target_height": 720}))
+        compress = asyncio.create_task(client.post("/api/videos/8/compress"))
+        await asyncio.sleep(0.3)
+        assert ran == []  # both wait while the photo holds the slot
+        release.set()
+        assert (await enhance).status_code == 200 and (await compress).status_code == 200
+    await busy
+    assert sorted(ran) == [("compress", 8, "video:8"), ("enhance", 7, "video:7")]
