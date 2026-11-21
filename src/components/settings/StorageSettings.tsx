@@ -63,11 +63,12 @@ export const StorageSettings: React.FC = () => {
         description={<span className="settings-path">{location?.path ?? "Finding your library…"}</span>}
       >
       </SettingRow>
-      {/* Owner feedback (round 1, #1): what "switching" is for, in plain words. One library is
+      {/* Owner feedback (round 1, #1; 2026-11-21): only for restoring a backup. A new computer
+          needs nothing, since the app and its library travel together on the drive. One library is
           open at a time (it is locked against a second app), so this replaces the open one. */}
       <SettingRow
-        title="Moved to a new computer, or restoring a backup?"
-        description="Open the library folder you copied or restored. This library stays as it is; the app restarts with the one you choose."
+        title="Restoring a backup?"
+        description="Open the library folder you restored. The library open now stays as it is; the app restarts with the one you choose."
       >
         <button type="button" className="settings-btn" onClick={switchLibrary} disabled={switching}>
           {switching ? "Choosing…" : "Open a library folder…"}
