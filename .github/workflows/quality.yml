@@ -97,5 +97,5 @@ jobs:
       - name: Rust check
         run: cargo check --manifest-path src-tauri/Cargo.toml
 
-      - name: Rust tests (engine access token)
-        run: cargo test --manifest-path src-tauri/Cargo.toml --test token_rng
+      - name: Rust tests (engine access token, engine stops with the app)
+        run: cargo test --manifest-path src-tauri/Cargo.toml --test token_rng --test engine_job
