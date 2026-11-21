@@ -4,7 +4,22 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 
 ## Unreleased
 
-Nothing yet.
+### Sharper, lighter photos
+- New **Auto** photo size, now the default: full-size photos from your phone or camera are kept at 8K, smaller ones like WhatsApp photos at 4K, so they stay light. Videos get **Auto** too: they stay as recorded, and old, small clips are brought up to HD.
+- The Dashboard shows what enhancing did: the space saved (when there is a saving), and how many photos were kept at 8K or enlarged to 4K.
+- The print-ready copy is made at 8K with an AI model for crisp edges on large prints, about a minute per photo.
+
+### Photos, videos and people
+- Faces are found in videos on several moments through each video, not only on its first picture; each person is kept once.
+- Make a video Full HD, 2K or 4K from the viewer's menu, even after it was processed.
+- When adding colour, switching between Natural and Vivid shows the earlier result straight away instead of colouring again.
+- Collages use every cell: two photos make two, five make a row of two and a row of three.
+- The Collages album is always there, next to Favourites and Saved stories.
+- A video's quality tag (SD, HD, 2K, 4K) is the same on its tile and in the viewer.
+
+### Installing
+- The installer shows the progress of the old-photo model download, and their results in its own window.
+- Choosing to install on the computer itself asks only once.
 
 ## [0.2.0] - 2026-11-21
 
