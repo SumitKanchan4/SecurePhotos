@@ -3093,3 +3093,19 @@ button.dash-usage-open { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .timeline-cycle-badge svg { animation: none; } .timeline-cycle-badge svg:last-child { opacity: 0.85; } }
 :root[data-reduce-motion="true"] .timeline-cycle-badge svg { animation: none; }
 :root[data-reduce-motion="true"] .timeline-cycle-badge svg:last-child { opacity: 0.85; }
+
+/* T3: "Your computers" in Settings → Storage, and the one-time question on a new computer. */
+.settings-computer-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.settings-row-title .settings-badge { margin-left: 8px; }
+.newpc-dialog { width: min(520px, 100%); }
+.newpc-body { padding: 26px 26px 8px; text-align: center; }
+.newpc-icon {
+  display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; margin-bottom: 14px;
+  border-radius: 50%; color: var(--accent-ink); background: color-mix(in srgb, var(--accent-ink) 14%, transparent);
+}
+.newpc-body h2 { margin: 0 0 10px; font-family: var(--font-display); font-size: 22px; font-weight: 900; letter-spacing: -0.02em; }
+.newpc-body p { margin: 0 auto 10px; max-width: 42ch; color: var(--text-secondary); line-height: 1.5; }
+.newpc-body strong { color: var(--text-primary); }
+.newpc-hint { font-size: 13px; }
+.newpc-actions { display: flex; flex-direction: column; gap: 8px; padding: 12px 26px 24px; }
+.newpc-actions .dash-btn { justify-content: center; width: 100%; }

@@ -21,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from engine.config import settings
 from engine.database import run_migrations
 from engine.middleware import LocalIPCSecurityMiddleware
-from engine.api import health, system, photos, vault, stories, people, albums, creatives, trash, duplicates, videos, search, documents, auth, restore
+from engine.api import health, system, photos, vault, stories, people, albums, creatives, trash, duplicates, videos, search, documents, auth, restore, computers
 
 # Configure enterprise structured logging
 logging.basicConfig(
@@ -49,6 +49,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.critical(f"Database migration failed: {e}", exc_info=True)
         sys.exit(1)
+
+    # T3: which computer is this, and may it do the heavy background work? Before any worker.
+    try:
+        from engine.services.computers import register_this_computer
+        await register_this_computer()
+    except Exception as e:
+        logger.error(f"Could not look up this computer; heavy background work waits: {e}", exc_info=True)
+        from engine.services.computers import lookup_failed
+        lookup_failed()
 
     # Apply the saved vault auto-lock timeout (M8).
     try:
@@ -167,6 +176,7 @@ def create_app() -> FastAPI:
     app.include_router(search.router)
     app.include_router(documents.router)
     app.include_router(restore.router)
+    app.include_router(computers.router)
 
     return app
 

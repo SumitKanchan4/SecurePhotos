@@ -116,7 +116,7 @@ Enhancement, old-photo fixes, video work and the vault enhancer would each use e
 | 3 | Photo enhancement |
 | 4 | Automatic video work and the vault enhancer |
 
-A job is never interrupted; the slot passes on when it finishes. A video the user enhances from the Big videos page doesn't use the slot: it starts straight away. Two extra rules keep the order sensible: automatic old-photo fixes wait while plain photos are being enhanced, and automatic video work waits while any photo is still being prepared. All of it pauses when the computer runs on battery below the level chosen in Settings.
+A job is never interrupted; the slot passes on when it finishes. A video the user enhances from the Big videos page doesn't use the slot: it starts straight away. Two extra rules keep the order sensible: automatic old-photo fixes wait while plain photos are being enhanced, and automatic video work waits while any photo is still being prepared. All of it pauses when the computer runs on battery below the level chosen in Settings. It also waits on a computer set to "Only views": every computer the drive has been plugged into is listed in the `computers` table with its choice (always does the work, asks each time, or only views), asked once on a new computer and changed in Settings → Storage ([computers.py](../engine/services/computers.py)). The quick steps after an import, and anything the user starts, run on every computer.
 
 ### 3.4 Photo enhancement
 
@@ -228,6 +228,7 @@ The schema and its migrations are in [engine/database.py](../engine/database.py)
 | `duplicate_groups` | Groups of exact copies and similar shots |
 | `stories`, `story_items`, `story_dismissals` | Suggested and saved stories, and suggestions the user deleted |
 | `restore_jobs` | Old-photo fixes waiting, running and done |
+| `computers` | Every computer the drive has been plugged into, and whether it does the background work |
 | `video_processing_queue` | Automatic video work |
 | `vault_configs`, `vault_pending_ops` | The wrapped vault keys and the PIN check; a journal so an interrupted vault move can be finished or undone |
 | `app_settings` | Settings, stored in the library so they travel with it |
