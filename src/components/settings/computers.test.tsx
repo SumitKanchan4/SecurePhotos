@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../store/useAppStore";
 import { ComputersSettings } from "./ComputersSettings";
 import { NewComputerDialog } from "../NewComputerDialog";
-import { computerDescription, lastUsed } from "./computersFormat";
+import { choiceMeaning, lastUsed, lastUsedLine } from "./computersFormat";
 import type { ComputersResponse } from "../../services/computers";
 
 type Call = { key: string; body?: unknown };
@@ -46,6 +46,12 @@ describe("Your computers (Settings → Storage)", () => {
     const home = screen.getByRole("radiogroup", { name: "What HOME-PC does" });
     expect(within(home).getByRole("radio", { name: "Always does the work" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByText("This computer")).toBeInTheDocument();
+    // One tile each; the one in use is outlined and says what its choice means.
+    const tiles = screen.getAllByRole("listitem");
+    expect(tiles).toHaveLength(2);
+    expect(tiles[0]).toHaveClass("is-this", "is-view");
+    expect(within(tiles[0]).getByText("Only for viewing. Improving waits for one of your other computers.")).toBeInTheDocument();
+    expect(within(tiles[1]).getByText("Last used yesterday", { exact: false })).toBeInTheDocument();
     // Forget is offered for the other computers, not the one in use.
     expect(screen.getByRole("button", { name: "Forget HOME-PC" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Forget FRIEND-LAPTOP" })).not.toBeInTheDocument();
@@ -115,9 +121,26 @@ describe("computer wording", () => {
     expect(lastUsed(null, now)).toBe("some time ago");
   });
   it("explains each choice in plain words", () => {
-    expect(computerDescription("always", null, true, now)).toBe("In use now. Improves your photos here.");
-    expect(computerDescription("view", "2026-11-20 09:00:00", false, now)).toBe(
-      "Last used yesterday. Only for viewing. Improving waits for another computer.",
-    );
+    expect(choiceMeaning("always")).toBe("Improves your photos whenever your drive is plugged in.");
+    expect(choiceMeaning("ask")).toBe("Asks whether to improve photos each time your drive is plugged in.");
+    expect(choiceMeaning("view")).toBe("Only for viewing. Improving waits for one of your other computers.");
+    expect(lastUsedLine("2026-11-20 09:00:00", true, now)).toBe("In use now");
+    expect(lastUsedLine("2026-11-20 09:00:00", false, now)).toBe("Last used yesterday");
+  });
+});
+
+describe("drive wording", () => {
+  it("names the drive, says what kind it is and splits it in three", async () => {
+    const { driveKind, driveName, driveParts, percentLabel } = await import("./storageFormat");
+    expect(driveName({ drive_letter: "E:\\", volume_name: "Photos" })).toBe("Photos (E:)");
+    expect(driveName({ drive_letter: "F:", volume_name: "" })).toBe("Drive F:");
+    expect(driveKind({ is_internal: true })).toBe("This computer's own drive");
+    const parts = driveParts({
+      drive_letter: "E:", volume_name: "", drive_type: "removable", is_internal: false, disclaimer: "",
+      total_bytes: 100, free_bytes: 60, app_consumed_bytes: 10, system_other_bytes: 0, other_files_bytes: 0,
+    });
+    expect(parts.map((p) => [p.key, p.bytes, p.percent])).toEqual([["app", 10, 10], ["other", 30, 30], ["free", 60, 60]]);
+    expect(percentLabel(0.4)).toBe("<1%");
+    expect(driveParts(null)).toEqual([]);
   });
 });

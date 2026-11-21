@@ -1,5 +1,6 @@
 /**
- * Wording for "Your computers" (T3): the three choices and when a computer was last used.
+ * Wording for "Your computers" (T3): the three choices, what each means, and when a computer was
+ * last used.
  */
 import type { ComputerChoice } from "../../services/computers";
 
@@ -9,16 +10,16 @@ export const CHOICE_OPTIONS: { value: ComputerChoice; label: string }[] = [
   { value: "view", label: "Only views" },
 ];
 
-/** One line under a computer's name: when it was last used, and what its choice means. */
-export function computerDescription(choice: ComputerChoice, lastSeen: string | null, isThis: boolean, now = new Date()): string {
-  const when = isThis ? "In use now" : `Last used ${lastUsed(lastSeen, now)}`;
-  const meaning =
-    choice === "always"
-      ? "Improves your photos here."
-      : choice === "ask"
-        ? "Asks each time the drive is plugged in."
-        : "Only for viewing. Improving waits for another computer.";
-  return `${when}. ${meaning}`;
+/** What a choice means for that computer, in one plain line. */
+export function choiceMeaning(choice: ComputerChoice): string {
+  if (choice === "always") return "Improves your photos whenever your drive is plugged in.";
+  if (choice === "ask") return "Asks whether to improve photos each time your drive is plugged in.";
+  return "Only for viewing. Improving waits for one of your other computers.";
+}
+
+/** "In use now" for this computer, else "Last used today / yesterday / 2 Nov 2026". */
+export function lastUsedLine(lastSeen: string | null, isThis: boolean, now = new Date()): string {
+  return isThis ? "In use now" : `Last used ${lastUsed(lastSeen, now)}`;
 }
 
 /** "today", "yesterday" or a date such as "12 Nov 2026". Stored times are UTC ("YYYY-MM-DD HH:MM:SS"). */
