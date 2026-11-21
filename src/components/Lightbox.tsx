@@ -42,6 +42,8 @@ import { ViewerDetails } from "./viewer/ViewerDetails";
 import { useVolumeBooster } from "./viewer/useVolumeBooster";
 import { useOldPhoto } from "./viewer/useOldPhoto";
 import { BeforeAfter, ChoiceBar, ImproveMenu, ModelDialog, OldPhotoPanel, VersionSwitch } from "./viewer/OldPhotoPanel";
+import { VideoImproveMenu } from "./viewer/VideoImproveMenu";
+import { VIDEO_TARGETS } from "./viewer/viewerFormat";
 import { TouchUpEditor, useMarks } from "./viewer/TouchUp";
 
 interface LightboxProps {
@@ -457,38 +459,39 @@ export const Lightbox: React.FC<LightboxProps> = ({
     }
   };
 
-  const handleEnhanceVideo = async () => {
+  // T29: make the video Full HD, 2K or 4K (only sizes above its current one are offered).
+  const handleEnhanceVideo = async (target = 2160) => {
+    const name = VIDEO_TARGETS.find((t) => t.target === target)?.name ?? "4K";
     try {
       setIsEnhancing4K(true);
-      showToast("Enhancing this video to 4K. This can take a few minutes.", "info");
+      showToast(`Making this video ${name}. This can take a few minutes; you can keep browsing.`, "info");
       const res = await apiFetch(`/api/videos/${currentPhoto.id}/enhance`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target_height: 2160 }),
+        body: JSON.stringify({ target_height: target }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
         if (data.already_enhanced) {
-          showToast("This video is already at 4K UHD resolution.", "info");
+          showToast(`This video is already ${name} or larger.`, "info");
         } else {
-          showToast("✨ Enhanced video to 4K UHD successfully!", "success");
-          // Update current photo in-place so UI badge immediately changes to 4K UHD
+          showToast(`This video is now ${name}.`, "success");
+          // Update the open video in place so its tag and the player show the new size.
           if (currentPhoto) {
             currentPhoto.is_enhanced = true;
             currentPhoto.is_optimized = true;
-            currentPhoto.height = data.height || 2160;
+            currentPhoto.height = data.height || currentPhoto.height;
             currentPhoto.width = data.width || currentPhoto.width;
             if (data.file_size) currentPhoto.file_size = data.file_size;
           }
-          // Invalidate video stream cache so player reloads the 4K stream
           setIsPreviewLoaded(false);
           setVideoVersion((v) => v + 1);
         }
       } else {
-        showToast(data.error || "Video enhancement failed", "warning");
+        showToast(data.error || data.detail || "The video couldn't be improved. Try again.", "warning");
       }
     } catch {
-      showToast("Failed to connect to video enhancement engine", "warning");
+      showToast("The video couldn't be improved. Try again.", "warning");
     } finally {
       setIsEnhancing4K(false);
     }
@@ -638,6 +641,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
           )}
 
           {!isDocumentView && !isVideo && <ImproveMenu old={old} />}
+          {isVideo && !isVaultItem && (
+            <VideoImproveMenu width={currentPhoto.width} height={currentPhoto.height} busy={isEnhancing4K} onImprove={(target) => void handleEnhanceVideo(target)} />
+          )}
 
           <div className="viewer-menu-anchor">
             <button
@@ -1353,7 +1359,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
           isCopied={isCopied}
           onClose={() => setShowInfo(false)}
           onDownloadPrint={() => handleDownload("studio_print")}
-          onEnhanceVideo={handleEnhanceVideo}
+          onEnhanceVideo={() => void handleEnhanceVideo(2160)}
           onCopyPath={copyStoragePath}
           onOpenPerson={(id) => openInSection("people", id)}
           onOpenAlbum={(id) => openInSection("albums", id)}

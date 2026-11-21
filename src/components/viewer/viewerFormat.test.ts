@@ -90,3 +90,13 @@ describe("filmstrip", () => {
     expect(filmstripRange(0, 0)).toEqual([0, -1]);
   });
 });
+
+describe("improve video options (T29)", () => {
+  it("offers only sizes above the video's own, by its shorter side", async () => {
+    const { videoImproveOptions } = await import("./viewerFormat");
+    expect(videoImproveOptions(480, 854).map((o) => o.name)).toEqual(["Full HD", "2K", "4K"]);
+    expect(videoImproveOptions(1920, 1080).map((o) => o.name)).toEqual(["2K", "4K"]);
+    expect(videoImproveOptions(2160, 3840)).toEqual([]);
+    expect(videoImproveOptions(undefined, undefined)).toEqual([]);
+  });
+});
