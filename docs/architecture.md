@@ -67,6 +67,8 @@ graph TB
     Background_Workers --> Originals
 ```
 
+**One engine, and it ends with the app.** The shell starts one engine at a time and never while its engine is still running. The engine runs inside a Windows Job Object set to stop its processes when the job closes; the shell holds the only handle, so when the app ends in any way, including a crash or a forced close, Windows stops the engine and any FFmpeg it started (`src-tauri/src/job.rs`). As a second line, the engine checks every second that the app's process (`SECUREPHOTOS_PARENT_PID`) is still running and shuts itself down when it isn't (`engine/services/parent_watch.py`). Either way nothing is left holding files open on the drive, so Windows can eject it.
+
 ## 3. How things work
 
 ### 3.1 Import

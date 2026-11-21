@@ -56,10 +56,11 @@ says so and names the task in `.agents/plans/feedback-backlog.md`; don't describ
 ## 7. One engine, and it stops with the app
 - Only one engine runs per library. The shell starts it under `start_lock` and never while its
   engine is still alive.
-- When the window closes, the shell stops the engine, so Windows can eject the drive.
-- **Not built yet (T1):** if the app crashes or is killed, the engine keeps running and holds
-  files on the drive open. The engine must stop as well (Windows Job Object with
-  kill-on-close in the shell, and the engine exiting when its parent process is gone).
+- The engine runs in a kill-on-close Windows Job Object held by the shell
+  (`src-tauri/src/job.rs`), so it stops whenever the app ends, even by a crash or a forced
+  close, together with any FFmpeg it started. The engine also watches the app's process
+  (`SECUREPHOTOS_PARENT_PID`, `engine/services/parent_watch.py`) and shuts down when it is gone.
+  Nothing may be left holding files open on the drive.
 
 ## 8. Updates never touch the library
 - An update replaces only the program files. The installer and uninstaller never delete
