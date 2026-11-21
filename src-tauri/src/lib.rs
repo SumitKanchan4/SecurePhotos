@@ -91,6 +91,14 @@ pub struct SystemPrerequisites {
 
 #[cfg(target_os = "windows")]
 fn check_vcredist_installed() -> bool {
+    // The engine carries its own copy of the runtime (T2), so a computer without it still works.
+    let carried = find_sidecar_executable()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("_internal")))
+        .map(|dir| dir.join("vcruntime140.dll").exists() && dir.join("msvcp140.dll").exists())
+        .unwrap_or(false);
+    if carried {
+        return true;
+    }
     let win_dir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string());
     let sys32 = std::path::Path::new(&win_dir).join("System32");
     sys32.join("vcruntime140.dll").exists() && sys32.join("msvcp140.dll").exists()
@@ -164,14 +172,7 @@ fn open_main_window(app: &tauri::App) -> tauri::Result<()> {
 }
 
 fn get_or_prepare_log_file() -> Option<std::fs::File> {
-    let mut dir = resolve_custom_data_dir().unwrap_or_else(|| PathBuf::from("data"));
-    if !dir.exists() {
-        if let Ok(curr) = std::env::current_exe() {
-            if let Some(parent) = curr.parent() {
-                dir = parent.join("data");
-            }
-        }
-    }
+    let dir = library_dir();
     let _ = std::fs::create_dir_all(&dir);
     let log_path = dir.join("engine_startup.log");
 
@@ -252,20 +253,18 @@ fn relaunch_app(app: AppHandle) {
     app.restart();
 }
 
+/// The engine program. The installer puts it unpacked in `<app>/engine/` (T2), so it never
+/// unpacks itself into the computer's temp folder.
 fn find_sidecar_executable() -> Option<PathBuf> {
     let mut candidates = Vec::new();
 
-    if let Ok(curr) = std::env::current_exe() {
-        if let Some(parent) = curr.parent() {
-            candidates.push(parent.join("securephotos-engine.exe"));
-            candidates.push(parent.join("securephotos-engine-x86_64-pc-windows-msvc.exe"));
-            candidates.push(parent.join("binaries").join("securephotos-engine-x86_64-pc-windows-msvc.exe"));
-        }
+    if let Some(dir) = app_dir() {
+        candidates.push(dir.join("engine").join("securephotos-engine.exe"));
     }
 
-    // Development path fallbacks
-    candidates.push(PathBuf::from("src-tauri/binaries/securephotos-engine-x86_64-pc-windows-msvc.exe"));
-    candidates.push(PathBuf::from("binaries/securephotos-engine-x86_64-pc-windows-msvc.exe"));
+    // A local release build, before it is installed.
+    candidates.push(PathBuf::from("src-tauri/binaries/securephotos-engine/securephotos-engine.exe"));
+    candidates.push(PathBuf::from("binaries/securephotos-engine/securephotos-engine.exe"));
 
     for path in candidates {
         if path.exists() {
@@ -517,10 +516,8 @@ fn start_backend_engine(state: tauri::State<AppEngineState>) -> serde_json::Valu
     // Priority 1: Launch compiled standalone sidecar binary
     if let Some(sidecar_path) = find_sidecar_executable() {
         let mut cmd = Command::new(&sidecar_path);
-        let custom_dir = resolve_custom_data_dir();
-        let data_dir = custom_dir.unwrap_or_else(|| {
-            sidecar_path.parent().map(|p| p.join("data")).unwrap_or_else(|| std::path::PathBuf::from("data"))
-        });
+        // The library is next to the app, not next to the engine (which sits in `engine/`, T2).
+        let data_dir = library_dir();
         cmd.env("SECUREPHOTOS_IPC_SECRET", &token);
         // The engine stops by itself if this process goes away (T1).
         cmd.env("SECUREPHOTOS_PARENT_PID", std::process::id().to_string());

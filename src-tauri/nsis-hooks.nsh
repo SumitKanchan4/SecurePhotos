@@ -88,6 +88,11 @@ FunctionEnd
   nsExec::Exec 'taskkill /F /IM securephotos-engine.exe'
   nsExec::Exec 'taskkill /F /IM SecurePhotos.exe'
 
+  ; The engine is a folder of program files only (never photos); clear it so an update leaves
+  ; no files from the previous version. Older versions kept it as one file next to the app.
+  RMDir /r "$INSTDIR\engine"
+  Delete "$INSTDIR\securephotos-engine.exe"
+
   ; Remove any legacy shortcut left behind in Public Desktop by older MSI installations
   Delete "$COMMONDESKTOP\SecurePhotos.lnk"
   ; Clean up any existing user desktop shortcut before writing the new one to prevent duplication
@@ -106,7 +111,7 @@ FunctionEnd
   ; Progress and per-model status go into the details list.
   SetDetailsPrint both
   DetailPrint "Getting the old-photo models (about 2.7 GB, once). This can take a while..."
-  nsExec::ExecToLog '"$INSTDIR\securephotos-engine.exe" --fetch-models "$INSTDIR\data\models"'
+  nsExec::ExecToLog '"$INSTDIR\engine\securephotos-engine.exe" --fetch-models "$INSTDIR\data\models"'
   Pop $0
   ; Show the per-model status, except in silent / passive installs (updates).
   ${IfNot} ${Silent}

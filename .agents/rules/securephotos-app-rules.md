@@ -27,7 +27,7 @@ says so and names the task in `.agents/plans/feedback-backlog.md`; don't describ
 ## 2. Any PC, any drive letter
 - Paths in SQLite are relative to the library folder: write with `media_paths.to_db_path`,
   read with `media_paths.resolve_stored_path`. Never store a drive letter.
-- Nothing has to be installed on the PC first: the engine is one program (PyInstaller), FFmpeg
+- Nothing has to be installed on the PC first: the engine is installed unpacked in `engine/` (PyInstaller, one folder; it never unpacks into the PC's temp folder), FFmpeg
   and FFprobe are in `bin/`, the small models in `data/models/`, and `WebView2Loader.dll` is
   next to the app. The Visual C++ runtime is linked into the shell and carried by the engine.
   WebView2 itself comes with Windows 10 and 11.
