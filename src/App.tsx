@@ -17,6 +17,7 @@ import {
 import { SearchPage } from "./components/search/SearchPage";
 import { useBackgroundProgress } from "./hooks/useBackgroundProgress";
 import { useEngineConnection } from "./hooks/useEngineConnection";
+import { NewComputerDialog } from "./components/NewComputerDialog";
 import { WindowStrip } from "./components/shell/WindowStrip";
 import { IconRail } from "./components/shell/IconRail";
 import { PrerequisitesBanner } from "./components/PrerequisitesBanner";
@@ -1083,6 +1084,9 @@ export const App: React.FC = () => {
 
       {/* Floating External Drive Status Banner */}
       <DriveStatusBanner />
+
+      {/* T3: on a computer the library doesn't know yet, ask once whether to improve photos here. */}
+      <NewComputerDialog />
 
       {/* Interactive Import Modal */}
       {isImportModalOpen && (

@@ -140,7 +140,12 @@ function finishedOutcome(job: RestoreJobView): string {
   return job.error === "models_missing" ? "Needs a download" : "Couldn't be improved";
 }
 
-const PAUSED_NOTE: Record<string, string> = { on_battery: " · waiting: battery low", by_user: " · paused" };
+// T3: "other_computer" while this computer only views; improving waits for one of the others.
+const PAUSED_NOTE: Record<string, string> = {
+  on_battery: " · waiting: battery low",
+  by_user: " · paused",
+  other_computer: " · waiting for one of your other computers",
+};
 
 export function buildActivity({ restore, enhance, video, importing, preparing }: ActivityInput): ActivityModel {
   const working: ActivityItem[] = [];
@@ -216,9 +221,10 @@ export function buildActivity({ restore, enhance, video, importing, preparing }:
       waiting.push({ key: "video-waiting", kind: "video", title: "Videos to prepare", detail: plural(left - 1, "video"), progress: null, count: left - 1 });
     }
   }
-  if (enhance?.is_active && !foldsEnhance) {
+  // Nothing to enhance (an empty library, or all done): no item, even while the loop waits.
+  if (enhance?.is_active && enhance.total_count > 0 && !foldsEnhance) {
     const left = Math.max(enhance.total_count - enhance.completed_count, 0);
-    const pausedNote = enhance.paused_reason === "on_battery" ? " · waiting: battery low" : enhance.paused_reason === "by_user" ? " · paused" : "";
+    const pausedNote = (enhance.paused_reason && PAUSED_NOTE[enhance.paused_reason]) || "";
     working.push({
       key: "enhance",
       kind: "enhance",
@@ -250,9 +256,13 @@ export function buildActivity({ restore, enhance, video, importing, preparing }:
 
   const paused = Boolean(restore?.paused);
   const first = working[0] ?? waiting[0];
+  // T3: on a computer that only views, the work waits for another one; say so, not "Enhancing".
+  const elsewhere = first?.key === "enhance" && enhance?.paused_reason === "other_computer";
   const headline = first
     ? paused
       ? `Paused · ${plural(remaining, "item")} left`
+      : elsewhere
+      ? `Waiting for another computer · ${plural(remaining, "item")} left`
       : remaining > 1
       ? `${first.title} · ${plural(remaining, "item")} left`
       : first.title

@@ -226,6 +226,11 @@ async def _process_next_video_job() -> bool:
     # Video size, "make videos smaller"), so they wait while any photo is still being prepared.
     if await _photos_waiting():
         return False
+    # T3: a computer set to "Only views" leaves video work to the others.
+    from engine.services import computers
+
+    if computers.hold_reason():
+        return False
 
     conn = await get_db_connection()
     try:

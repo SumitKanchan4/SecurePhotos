@@ -26,6 +26,8 @@ The screenshots use free sample photos, none of them personal; see [the credits]
 ### Your library, on your drive
 SecurePhotos is made to live on an external drive. Install it there, and the app and everything it keeps sit together on the drive: your photos, the vault, thumbnails and the app's own data. Plug the drive into another Windows computer, open SecurePhotos from the drive and carry on where you left off. Nothing needs to be installed on that computer first.
 
+The first time you use a computer, SecurePhotos asks whether it should improve your photos there too, or only let you view them. Settings, under Storage, lists every computer your drive has been plugged into, so you can change your mind at any time.
+
 ### Bringing photos in
 Choose files or a folder, or drop them on the window. SecurePhotos copies them into your library and leaves your originals where they are. If you prefer, it can remove each original once its copy has been checked. Photos you already have are skipped.
 
