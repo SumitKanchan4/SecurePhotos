@@ -567,6 +567,9 @@ DEFAULT_APP_SETTINGS: Dict[str, Any] = {
     "photo_resolution": "8k",        # Settings → Photo size: "2k" | "4k" | "8k" (owner, 2026-11-19).
     "video_resolution": "hd",        # Settings → Video size: "original" | "hd" | "4k" (never above 4K).
     "pause_on_battery": True,
+    # Owner, 2026-11-21: adding photos to the vault removes the originals by default, so no
+    # unprotected copy stays behind; the import window shows it and can change it per import.
+    "vault_import_remove_originals": True,
     "battery_pause_below": 20,       # Pause only below this charge; 100 = whenever on battery.
     "face_clustering": True,
     "ambient_music": True,

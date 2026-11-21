@@ -288,6 +288,19 @@ async def setup_vault(payload: VaultSetupRequest) -> dict:
     """
     if len(payload.password) < 8:
         raise HTTPException(status_code=400, detail="Master password must be at least 8 characters long.")
+    # 2026-11-21: setting up again over an existing vault replaced its key, so every photo already
+    # in it could never be opened again. A vault is set up once; Erase the vault comes first.
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT 1 FROM vault_configs WHERE is_configured = 1 LIMIT 1;") as cur:
+            exists = await cur.fetchone() is not None
+    finally:
+        await conn.close()
+    if exists:
+        raise HTTPException(
+            status_code=409,
+            detail="Your vault is already set up. To start a new one, erase the vault in Settings first.",
+        )
     pin_verifier = await asyncio.to_thread(hash_pin, _validate_pin(payload.pin)) if payload.pin else None
 
     salt = secrets.token_bytes(16)

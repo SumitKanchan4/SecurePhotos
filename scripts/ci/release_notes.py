@@ -18,6 +18,8 @@ INSTALL_NOTES = """
 
 Download `SecurePhotos_{version}_x64-setup.exe` below and run it. It updates an existing installation in place; your library is kept.
 
+- To carry your library with you, plug in your external drive first: the installer suggests a folder on it.
+
 - The installer downloads the old-photo models once (about 2.7 GB), so it needs an internet connection the first time.
 - If Windows shows "Windows protected your PC", choose **More info**, then **Run anyway**. Windows shows this for new apps until enough people have installed them.
 

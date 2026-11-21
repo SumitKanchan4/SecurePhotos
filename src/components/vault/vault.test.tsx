@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../store/useAppStore";
 import type { PhotoItem } from "../../types";
@@ -295,7 +295,7 @@ describe("Vault when unlocked", () => {
     expect(JSON.parse(String(unlock?.init?.body))).toEqual({ photo_ids: [20] });
   });
 
-  it("opens vault photos newest first, with vault thumbnails and no selection, even with a selection left over from Photos", async () => {
+  it("opens vault photos newest first, with vault thumbnails, and clears a selection left over from Photos", async () => {
     // jsdom has no layout: give elements a size so the timeline renders tiles.
     const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
     const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
@@ -305,8 +305,8 @@ describe("Vault when unlocked", () => {
       useAppStore.setState({ selectedPhotoIds: new Set([999]) });
       const onPhotoClick = renderUnlocked();
       await waitFor(() => expect(document.querySelectorAll("[data-photo-id]").length).toBe(4));
+      expect(useAppStore.getState().selectedPhotoIds.size).toBe(0); // never carried into the vault
       expect(screen.getByRole("heading", { name: "May 2026" })).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "Select" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Add to favourites/ })).not.toBeInTheDocument();
       const firstTile = document.querySelector('[data-photo-id="2"]')!;
       expect(firstTile.querySelector("img")?.getAttribute("src")).toContain("/api/vault/thumbnail/2");
@@ -315,11 +315,59 @@ describe("Vault when unlocked", () => {
       const [index, list] = onPhotoClick.mock.calls[0] as [number, PhotoItem[]];
       expect(index).toBe(0);
       expect(list.map((p) => p.id)).toEqual([2, 4, 1, 3]);
-      expect(useAppStore.getState().selectedPhotoIds).toEqual(new Set([999]));
     } finally {
       if (width) Object.defineProperty(HTMLElement.prototype, "clientWidth", width);
       if (height) Object.defineProperty(HTMLElement.prototype, "clientHeight", height);
     }
+  });
+
+  it("selects vault photos and moves them back to the library or to Trash (owner, 2026-11-21)", async () => {
+    const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+    const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 1100 });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => 800 });
+    try {
+      const calls = mockEngine({
+        "/api/vault/photos": photos,
+        "/api/vault/albums": [],
+        "/api/vault/enhancement-progress": { is_active: false, completed_count: 0, total_count: 0, paused_reason: null },
+        "/api/system/settings": { settings: { auto_lock_duration: 300 } },
+        "/api/vault/photos/unlock": { status: "ok" },
+        "/api/photos/batch-trash": { trashed: 1 },
+      });
+      useAppStore.setState({ isVaultUnlocked: true });
+      render(<VaultView onPhotoClick={vi.fn()} />);
+      await waitFor(() => expect(document.querySelectorAll("[data-photo-id]").length).toBe(4));
+
+      const tile = (id: number) => document.querySelector(`[data-photo-id="${id}"]`)!;
+      fireEvent.click(within(tile(2) as HTMLElement).getByRole("button", { name: "Select" }));
+      fireEvent.click(within(tile(4) as HTMLElement).getByRole("button", { name: "Select" }));
+      const bar = screen.getByRole("toolbar", { name: "Selected vault photos" });
+      expect(within(bar).getByText("2 selected")).toBeInTheDocument();
+
+      await act(async () => fireEvent.click(within(bar).getByRole("button", { name: "Move to library" })));
+      const unlock = calls.find((c) => c.url.endsWith("/api/vault/photos/unlock"));
+      expect(JSON.parse(String(unlock?.init?.body))).toEqual({ photo_ids: [2, 4] });
+      await waitFor(() => expect(document.querySelectorAll("[data-photo-id]").length).toBe(2));
+      expect(screen.queryByRole("toolbar", { name: "Selected vault photos" })).not.toBeInTheDocument();
+
+      fireEvent.click(within(tile(1) as HTMLElement).getByRole("button", { name: "Select" }));
+      await act(async () => fireEvent.keyDown(window, { key: "Delete" }));
+      const trash = calls.find((c) => c.url.endsWith("/api/photos/batch-trash"));
+      expect(JSON.parse(String(trash?.init?.body))).toEqual({ photo_ids: [1] });
+      await waitFor(() => expect(document.querySelectorAll("[data-photo-id]").length).toBe(1));
+    } finally {
+      if (width) Object.defineProperty(HTMLElement.prototype, "clientWidth", width);
+      if (height) Object.defineProperty(HTMLElement.prototype, "clientHeight", height);
+    }
+  });
+
+  it("opens the import window in vault mode from Add photos, with Remove the originals on", async () => {
+    renderUnlocked();
+    fireEvent.click(screen.getByRole("button", { name: "Add photos" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add to your vault" });
+    await waitFor(() => expect(within(dialog).getByRole("switch", { name: "Remove the originals after importing" })).toHaveAttribute("aria-checked", "true"));
+    expect(within(dialog).getByText(/once its locked copy in the vault has been checked/)).toBeInTheDocument();
   });
 });
 

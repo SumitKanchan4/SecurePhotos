@@ -6,6 +6,13 @@ decisions are in `.agents/decisions.md`.
 
 Status: **Next** (to do now), **Owner decision**, **Release blocker**, **Later**.
 
+## Vault (owner, 2026-11-21)
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| T16 | Vault photos can't be selected: no "move back to library", "Trash" or other actions | In review (feature/vault-selection-import) | Selection bar in the vault: Move to library, Move to Trash, Select all, Delete and Esc. |
+| T17 | No way to import straight into the vault | In review (feature/vault-selection-import) | "Add photos" in the vault; each photo encrypted as it is copied; "Remove the originals" on by default (Settings → Vault), shown on the import window. Also fixed on the way: a second vault setup replaced the key (photos unreadable), an empty import path imported the engine's folder, and a move-out skipped photos the enhancer had just rewritten. |
+
 ## Found during the release review (2026-11-20)
 
 | # | Task | Status | Notes |

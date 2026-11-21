@@ -5,7 +5,12 @@ import {
   Eye,
   Loader2,
   HelpCircle,
+  Plus,
+  Trash2,
+  Undo2,
+  X,
 } from "lucide-react";
+import { ImportModal } from "./ImportModal";
 import { useAppStore } from "../store/useAppStore";
 import { PhotoTimeline } from "./photos/PhotoTimeline";
 import { fromPhotoItem, sortNewestFirst } from "../utils/photoTimeline";
@@ -43,8 +48,18 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     vaultPasswordHint,
     checkVaultStatus,
     setActiveTab,
-    showToast 
+    showToast,
+    selectedPhotoIds,
+    clearSelection,
   } = useAppStore();
+  // Owner, 2026-11-21: photos can be added straight to the vault, and selected in it.
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [busyAction, setBusyAction] = useState<"restore" | "trash" | null>(null);
+  // A selection never carries between the vault and the rest of the app.
+  useEffect(() => {
+    clearSelection();
+    return () => clearSelection();
+  }, [clearSelection]);
 
   const [isPrivacyShieldActive, setIsPrivacyShieldActive] = useState(false);
   const [vaultPhotos, setVaultPhotos] = useState<PhotoItem[]>([]);
@@ -306,6 +321,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
   }, [isVaultUnlocked, autoLockSeconds]);
 
   const handleManualLock = async () => {
+    clearSelection();
     setIsVaultUnlocked(false);
     setVaultPhotos([]);
     setVaultAlbums([]);
@@ -322,6 +338,74 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
     await checkVaultStatus();
     showToast(pinCanReopen ? "Vault locked. Your PIN can reopen it." : "Vault locked.", "info");
   };
+
+  // Owner, 2026-11-21: act on several vault photos at once.
+  const selectedVault = useMemo(() => visualPhotos.filter((p) => selectedPhotoIds.has(p.id)), [visualPhotos, selectedPhotoIds]);
+  const items = (n: number) => `${n.toLocaleString()} ${n === 1 ? "item" : "items"}`;
+
+  const moveSelectedToLibrary = async () => {
+    const ids = selectedVault.map((p) => p.id);
+    if (!ids.length || busyAction) return;
+    setBusyAction("restore");
+    try {
+      const res = await apiFetch("/api/vault/photos/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo_ids: ids }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Only what really moved leaves the vault view; the engine lists any it couldn't move.
+      const failed: number[] = ((await res.json().catch(() => ({}))) as { failed_ids?: number[] }).failed_ids ?? [];
+      const moved = ids.filter((id) => !failed.includes(id));
+      setVaultPhotos((prev) => prev.filter((p) => !moved.includes(p.id)));
+      useAppStore.setState({ selectedPhotoIds: new Set(failed) });
+      fetchVaultAlbums();
+      if (failed.length === 0) showToast(`Moved ${items(moved.length)} back to your library.`, "success");
+      else
+        showToast(
+          `${moved.length ? `Moved ${items(moved.length)} back to your library. ` : ""}${items(failed.length)} couldn't be moved and ${failed.length === 1 ? "is" : "are"} still selected; they stay safely in the vault.`,
+          "warning",
+        );
+    } catch {
+      showToast("Those couldn't be moved back. Try again.", "warning");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const trashSelected = async () => {
+    const ids = selectedVault.map((p) => p.id);
+    if (!ids.length || busyAction) return;
+    setBusyAction("trash");
+    try {
+      const res = await apiFetch("/api/photos/batch-trash", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo_ids: ids }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setVaultPhotos((prev) => prev.filter((p) => !ids.includes(p.id)));
+      clearSelection();
+      showToast(`Moved ${items(ids.length)} to Trash. They stay locked there and can be restored for 30 days.`, "success");
+    } catch {
+      showToast("Those couldn't be moved to Trash. Try again.", "warning");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  // With a selection: Delete moves it to Trash, Esc clears it (not while typing).
+  useEffect(() => {
+    if (!selectedVault.length) return;
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "Delete") trashSelected();
+      else if (e.key === "Escape") clearSelection();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   // Auto-lock countdown as m:ss ("locks in 4:58").
   const formatTimeRemaining = (totalSec: number) => `${Math.floor(totalSec / 60)}:${String(totalSec % 60).padStart(2, "0")}`;
@@ -365,6 +449,9 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
         <div style={{ flex: 1 }} />
         {isVaultUnlocked ? (
           <>
+            <button type="button" className="dash-btn dash-btn-primary" onClick={() => setIsAddOpen(true)}>
+              <Plus size={15} strokeWidth={2.6} /> Add photos
+            </button>
             <button
               type="button"
               className={`vault-icon-btn${isPrivacyShieldActive ? " is-on" : ""}`}
@@ -461,6 +548,32 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
         ) : (
           <div className="vault-timeline">
             <PhotoTimeline photos={visualTimeline} onOpen={handlePhotoClick} vault minScrubberSections={4} />
+            {selectedVault.length > 0 && !isPrivacyShieldActive && (
+              <div className="alb-selbar" role="toolbar" aria-label="Selected vault photos">
+                <span className="alb-selbar-count">{selectedVault.length} selected</span>
+                <button
+                  type="button"
+                  className="alb-selbar-btn"
+                  onClick={() =>
+                    selectedVault.length === visualPhotos.length
+                      ? clearSelection()
+                      : useAppStore.setState({ selectedPhotoIds: new Set(visualPhotos.map((p) => p.id)) })
+                  }
+                >
+                  {selectedVault.length === visualPhotos.length ? "Select none" : "Select all"}
+                </button>
+                <span className="alb-selbar-divider" />
+                <button type="button" className="alb-selbar-btn" onClick={moveSelectedToLibrary} disabled={!!busyAction}>
+                  {busyAction === "restore" ? <Loader2 size={14} className="spin" /> : <Undo2 size={14} />} Move to library
+                </button>
+                <button type="button" className="alb-selbar-btn" onClick={trashSelected} disabled={!!busyAction}>
+                  {busyAction === "trash" ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />} Move to Trash
+                </button>
+                <button type="button" className="alb-selbar-btn alb-selbar-close" aria-label="Clear selection" onClick={clearSelection}>
+                  <X size={14} />
+                </button>
+              </div>
+            )}
           </div>
         )
       ) : activeVaultSection === "albums" ? (
@@ -486,6 +599,15 @@ export const VaultView: React.FC<VaultViewProps> = ({ onPhotoClick }) => {
           setShowPasswordResetModal(false);
           showToast("Master password reset successfully! Please unlock with your new password.", "success");
           setPasswordResetCount((n) => n + 1);
+        }}
+      />
+      <ImportModal
+        isOpen={isAddOpen}
+        intoVault
+        onClose={() => setIsAddOpen(false)}
+        onImportComplete={() => {
+          fetchVaultPhotos();
+          fetchVaultAlbums();
         }}
       />
     </div>
