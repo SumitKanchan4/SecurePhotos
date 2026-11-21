@@ -7,6 +7,8 @@ from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+
+from engine.services import cpu_budget
 import aiosqlite
 
 from engine.config import settings, resolve_media_path
@@ -262,7 +264,9 @@ async def compress_video_endpoint(photo_id: int, req: Optional[CompressRequest] 
     video_optimization_state["item_progress"] = 35
 
     try:
-        res = await compress_video(photo_id, crf=crf, preset=preset)
+        # T6: one heavy job at a time; what the user starts goes ahead of automatic work.
+        async with cpu_budget.heavy(cpu_budget.USER, f"video:{photo_id}"):
+            res = await compress_video(photo_id, crf=crf, preset=preset)
         if not res.get("success"):
             raise HTTPException(status_code=400, detail=res.get("error", "Transcoding failed."))
         video_optimization_state["completed_count"] = 1
@@ -288,7 +292,8 @@ async def enhance_video_endpoint(photo_id: int, req: Optional[EnhanceRequest] = 
     video_optimization_state["item_progress"] = 35
 
     try:
-        res = await enhance_old_video(photo_id, target_height=target_height)
+        async with cpu_budget.heavy(cpu_budget.USER, f"video:{photo_id}"):  # T6
+            res = await enhance_old_video(photo_id, target_height=target_height)
         if not res.get("success"):
             raise HTTPException(status_code=400, detail=res.get("error", "Enhancement failed."))
         video_optimization_state["completed_count"] = 1
@@ -345,7 +350,8 @@ async def compress_all_videos_endpoint() -> Dict[str, Any]:
             video_optimization_state["active_filename"] = c["filename"]
             video_optimization_state["item_progress"] = 35
 
-            res = await compress_video(c["id"])
+            async with cpu_budget.heavy(cpu_budget.USER, f"video:{c['id']}"):  # T6: one video at a time, between other work
+                res = await compress_video(c["id"])
             if res.get("success"):
                 processed += 1
                 total_reclaimed += res.get("saved_bytes", 0)

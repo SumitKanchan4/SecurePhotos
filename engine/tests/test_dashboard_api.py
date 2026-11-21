@@ -276,3 +276,34 @@ async def test_library_location_is_the_engines_own_folder():
         res = await client.get("/api/system/library")
     assert res.status_code == 200
     assert res.json() == {"path": str(settings.data_dir), "has_database": True}
+
+
+@pytest.mark.asyncio
+async def test_an_original_and_its_improved_copies_count_once():
+    """T4: the Dashboard said 30 photos where Photos showed 21; it counted every improved copy."""
+    await run_migrations()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        before = (await client.get("/api/system/dashboard")).json()["media_counts"]
+        conn = await get_db_connection()
+        try:
+            cur = await conn.execute(
+                "INSERT INTO photos (filename, filepath, file_size, mime_type) VALUES ('t4_old.jpg', 'originals/t4_old.jpg', 1, 'image/jpeg');"
+            )
+            original_id = cur.lastrowid
+            for n in (1, 2):
+                await conn.execute(
+                    "INSERT INTO photos (filename, filepath, file_size, mime_type, derived_from_id, ai_kind) VALUES (?, ?, 1, 'image/jpeg', ?, 'colour');",
+                    (f"t4_copy{n}.jpg", f"originals/t4_copy{n}.jpg", original_id),
+                )
+            await conn.execute(
+                "INSERT INTO photos (filename, filepath, file_size, mime_type) VALUES ('t4_plain.jpg', 'originals/t4_plain.jpg', 1, 'image/jpeg');"
+            )
+            await conn.commit()
+            after = (await client.get("/api/system/dashboard")).json()["media_counts"]
+        finally:
+            await conn.execute("DELETE FROM photos WHERE filename LIKE 't4_%';")
+            await conn.commit()
+            await conn.close()
+    assert after["images"] - before["images"] == 2  # the old print (shown as its newest copy) and the plain photo
+    assert after["total_media"] - before["total_media"] == 2
