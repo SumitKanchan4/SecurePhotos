@@ -340,7 +340,7 @@ def test_the_engine_launcher_runs_the_model_download_without_starting_the_server
     launcher = (_P(__file__).resolve().parents[2] / "run_engine.py").read_text(encoding="utf-8")
     assert launcher.index("--fetch-models") < launcher.index("from engine.main import")
     hooks = (_P(__file__).resolve().parents[2] / "src-tauri" / "nsis-hooks.nsh").read_text(encoding="utf-8")
-    assert '"$INSTDIR\\securephotos-engine.exe" --fetch-models "$INSTDIR\\data\\models"' in hooks
+    assert '"$INSTDIR\\engine\\securephotos-engine.exe" --fetch-models "$INSTDIR\\data\\models"' in hooks
     assert "$PassiveMode <> 1" in hooks  # No message box during silent updates.
 
 

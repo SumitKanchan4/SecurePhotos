@@ -1,8 +1,10 @@
-"""Build script to compile SecurePhotos Python backend engine into a Tauri sidecar binary.
+"""Builds the SecurePhotos engine into a folder the installer ships unpacked.
 
-This script uses PyInstaller to freeze `engine/main.py` along with all required
-dependencies into a single standalone binary inside `src-tauri/binaries/` named
-according to the host target triple (e.g. `securephotos-engine-x86_64-pc-windows-msvc.exe`).
+PyInstaller freezes `run_engine.py` and everything it needs into
+`src-tauri/binaries/securephotos-engine/` (the program plus an `_internal` folder). The
+installer copies that folder to `<app>/engine/`. A folder, not a single file: a single-file
+build unpacks itself (about 230 MB) into the computer's temp folder at every start and leaves it
+there, which doesn't suit an app that runs from an external drive on any computer (T2).
 """
 
 import platform
@@ -10,6 +12,9 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+
+ENGINE_NAME = "securephotos-engine"
 
 
 def get_target_triple() -> str:
@@ -57,9 +62,10 @@ def build_engine():
     binaries_dir.mkdir(parents=True, exist_ok=True)
 
     triple = get_target_triple()
-    binary_name = f"securephotos-engine-{triple}"
+    binary_name = ENGINE_NAME
     ext = ".exe" if platform.system().lower() == "windows" else ""
-    target_exe = binaries_dir / f"{binary_name}{ext}"
+    engine_dir = binaries_dir / binary_name
+    target_exe = engine_dir / f"{binary_name}{ext}"
 
     print(f"[*] Compiling SecurePhotos Engine Sidecar for target: {triple}")
     print(f"[*] Target destination: {target_exe}")
@@ -70,7 +76,7 @@ def build_engine():
         "PyInstaller",
         str(root_dir / "run_engine.py"),
         f"--paths={root_dir}",
-        "--onefile",
+        "--onedir",
         f"--name={binary_name}",
         f"--distpath={binaries_dir}",
         f"--workpath={root_dir / 'build' / 'pyinstaller_work'}",
@@ -145,28 +151,9 @@ def build_engine():
         print(f"[!] Error: Expected binary not found at {target_exe}")
         sys.exit(1)
 
-    size_mb = target_exe.stat().st_size / (1024 * 1024)
-    print("[+] Engine Sidecar compiled successfully!")
-    print(f"[+] File: {target_exe} ({size_mb:.2f} MB)")
-
-    # On Windows, mirror to both gnu and msvc triples for seamless cross-PC compatibility
-    if platform.system().lower() == "windows":
-        if "gnu" in triple:
-            alt_name = binary_name.replace("gnu", "msvc")
-            alt_exe = binaries_dir / f"{alt_name}{ext}"
-            try:
-                shutil.copy2(target_exe, alt_exe)
-                print(f"[+] Mirrored sidecar for MSVC target: {alt_exe.name}")
-            except Exception as e:
-                print(f"[*] Note: Could not mirror MSVC binary: {e}")
-        elif "msvc" in triple:
-            alt_name = binary_name.replace("msvc", "gnu")
-            alt_exe = binaries_dir / f"{alt_name}{ext}"
-            try:
-                shutil.copy2(target_exe, alt_exe)
-                print(f"[+] Mirrored sidecar for GNU target: {alt_exe.name}")
-            except Exception as e:
-                print(f"[*] Note: Could not mirror GNU binary: {e}")
+    size_mb = sum(f.stat().st_size for f in engine_dir.rglob("*") if f.is_file()) / (1024 * 1024)
+    print("[+] Engine compiled successfully!")
+    print(f"[+] Folder: {engine_dir} ({size_mb:.0f} MB)")
 
 
 if __name__ == "__main__":
