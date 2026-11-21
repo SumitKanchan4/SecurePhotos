@@ -95,6 +95,16 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
   const [resultVersion, setResultVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // T23 (owner, 2026-11-21): the other colour style's finished result, kept while you stay on the
+  // photo, so switching back to it is instant instead of colouring again. Dropped when one is kept,
+  // and when you move to another photo or close the viewer.
+  const parked = useRef<Map<string, RestoreJob>>(new Map());
+  const dropParked = useCallback(() => {
+    for (const other of parked.current.values()) {
+      void apiFetch(`/api/restore/jobs/${other.id}/keep`, jsonPost({ choice: "discard" })).catch(() => undefined);
+    }
+    parked.current.clear();
+  }, []);
 
   const isEligible = Boolean(photo && !photo.mime_type?.startsWith("video/") && !photo.is_document);
 
@@ -123,8 +133,9 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
       .catch(() => undefined);
     return () => {
       cancelled = true;
+      dropParked();
     };
-  }, [photoId, isOpen, isEligible]);
+  }, [photoId, isOpen, isEligible, dropParked]);
 
   // Follow the job while it waits or works.
   const active = job && (job.status === "queued" || job.status === "working");
@@ -163,10 +174,25 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
         setModelPrompt({ kind, action: kind, style: nextStyle, bytes, phase: "ask" });
         return;
       }
+      // Colour: the style's result is kept while on the photo (T23); switching back shows it again.
+      if (kind === "colour" && job?.status === "review" && job.kind === "colour") {
+        parked.current.set(style, job);
+        const ready = parked.current.get(nextStyle);
+        if (ready) {
+          parked.current.delete(nextStyle);
+          setStyle(nextStyle);
+          setIntensity(1);
+          setJob(ready);
+          setResultVersion((v) => v + 1);
+          return;
+        }
+      }
       setBusy(true);
       try {
-        // Trying the other style replaces the result waiting for a decision.
-        if (job?.status === "review") await apiFetch(`/api/restore/jobs/${job.id}/keep`, jsonPost({ choice: "discard" }));
+        // Anything else replaces the result waiting for a decision.
+        if (job?.status === "review" && !(kind === "colour" && job.kind === "colour")) {
+          await apiFetch(`/api/restore/jobs/${job.id}/keep`, jsonPost({ choice: "discard" }));
+        }
         const res = await apiFetch("/api/restore/jobs", jsonPost({ photo_ids: [photoId], kind, params: kind === "colour" ? { style: nextStyle } : {} }));
         if (res.status === 409) {
           // A model went missing since the photo was opened: ask for it.
@@ -183,7 +209,7 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
         setBusy(false);
       }
     },
-    [photoId, job, downloads],
+    [photoId, job, downloads, style],
   );
 
   const cancel = useCallback(async () => {
@@ -202,12 +228,13 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail ?? "Could not save the result.");
         const { photo_id } = await res.json();
         setJob(null);
+        dropParked(); // the other style's result isn't needed any more
         return photo_id ?? null;
       } finally {
         setBusy(false);
       }
     },
-    [job, intensity, facesOff],
+    [job, intensity, facesOff, dropParked],
   );
 
   const stopDownloadTimer = () => {
