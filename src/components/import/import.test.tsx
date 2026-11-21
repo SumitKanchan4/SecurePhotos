@@ -183,7 +183,7 @@ describe("ImportModal", () => {
 });
 
 describe("Welcome (empty library, owner feedback 2026-11-19)", () => {
-  it("shows the app's icon, plain words and the same library wording as Settings", async () => {
+  it("shows the app's icon, plain words and one way in", async () => {
     const { EmptyLibraryState } = await import("../EmptyLibraryState");
     const onImport = vi.fn();
     const { container } = render(<EmptyLibraryState onSelectFolder={vi.fn()} onImportMedia={onImport} />);
@@ -191,7 +191,9 @@ describe("Welcome (empty library, owner feedback 2026-11-19)", () => {
     expect(screen.getByRole("heading", { name: "Welcome to SecurePhotos" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Import photos and videos" }));
     expect(onImport).toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Open a library folder" })).toBeInTheDocument();
-    expect(screen.queryByText(/Connect Existing Library/)).not.toBeInTheDocument();
+    // Owner, 2026-11-21: the library travels with the app on the drive; restoring a backup is in Settings.
+    expect(screen.getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Import photos and videos"]);
+    expect(screen.queryByText(/library folder|Connect Existing Library|on this computer/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/on your drive/)).toHaveLength(2); // the line and the first pill
   });
 });
