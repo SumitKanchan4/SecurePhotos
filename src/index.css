@@ -3172,3 +3172,7 @@ button.dash-usage-open { cursor: pointer; }
 .newpc-hint { font-size: 13px; }
 .newpc-actions { display: flex; flex-direction: column; gap: 8px; padding: 12px 26px 24px; }
 .newpc-actions .dash-btn { justify-content: center; width: 100%; }
+
+/* T27: the Dashboard's space card. */
+.dash-space h2 { font-family: var(--font-display); font-size: 22px; font-weight: 900; letter-spacing: -0.02em; }
+.dash-space-detail { margin: 6px 0 4px; font-size: 14px; color: var(--text-primary); line-height: 1.5; }

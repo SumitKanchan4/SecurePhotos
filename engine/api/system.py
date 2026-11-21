@@ -415,6 +415,62 @@ class MediaOptimizationStatus(BaseModel):
     reclaimed_bytes: int = 0
 
 
+class SpaceSummary(BaseModel):
+    """The Dashboard's "space" card (T27, owner 2026-11-21): what enhancing did to the library."""
+    enhanced: int
+    before_bytes: int          # The enhanced photos' sizes when they came in.
+    after_bytes: int           # Their sizes now.
+    saved_bytes: int           # before - after, never below 0.
+    kept_8k: int               # Full-size photos now at 8K.
+    enlarged_small: int        # Smaller photos enlarged (to 4K or 2K): they gain detail and size.
+    waiting: int               # Photos still to enhance.
+
+
+@router.get("/space-summary", response_model=SpaceSummary, status_code=status.HTTP_200_OK)
+async def get_space_summary() -> SpaceSummary:
+    """Honest totals for the enhanced library photos (vault and Trash left out).
+
+    Unlike ``optimization-status``'s ``reclaimed_bytes`` (only photos that shrank), this counts
+    every enhanced photo, so a library whose small photos grew isn't shown as "saving" space.
+    """
+    conn = await get_db_connection()
+    try:
+        async with conn.execute(
+            """
+            SELECT width, height, original_width, original_height, file_size, original_file_size
+            FROM photos
+            WHERE is_enhanced = 1 AND is_optimized = 1 AND trashed_at IS NULL AND is_encrypted = 0
+              AND COALESCE(mime_type, '') NOT LIKE 'video/%' AND COALESCE(original_file_size, 0) > 0;
+            """
+        ) as cur:
+            rows = await cur.fetchall()
+        async with conn.execute(
+            """
+            SELECT COUNT(*) FROM photos
+            WHERE is_optimized = 0 AND trashed_at IS NULL AND is_encrypted = 0
+              AND COALESCE(mime_type, '') NOT LIKE 'video/%';
+            """
+        ) as cur:
+            waiting = (await cur.fetchone())[0]
+    finally:
+        await conn.close()
+
+    before = sum(r["original_file_size"] or 0 for r in rows)
+    after = sum(r["file_size"] or 0 for r in rows)
+    kept_8k = enlarged = 0
+    for r in rows:
+        long_now = max(r["width"] or 0, r["height"] or 0)
+        long_before = max(r["original_width"] or 0, r["original_height"] or 0)
+        if long_now >= 7680:
+            kept_8k += 1
+        elif long_before and long_now > long_before:
+            enlarged += 1
+    return SpaceSummary(
+        enhanced=len(rows), before_bytes=before, after_bytes=after, saved_bytes=max(0, before - after),
+        kept_8k=kept_8k, enlarged_small=enlarged, waiting=waiting,
+    )
+
+
 @router.get("/optimization-status", response_model=MediaOptimizationStatus, status_code=status.HTTP_200_OK)
 async def get_optimization_status() -> MediaOptimizationStatus:
     """Returns real-time processing counts, worker state, and active transcode telemetry."""
