@@ -31,9 +31,13 @@ says so and names the task in `.agents/plans/feedback-backlog.md`; don't describ
   and FFprobe are in `bin/`, the small models in `data/models/`, and `WebView2Loader.dll` is
   next to the app. The Visual C++ runtime is linked into the shell and carried by the engine.
   WebView2 itself comes with Windows 10 and 11.
-- **Not built yet (T3):** on a PC the library hasn't seen, ask once whether to do background
-  work there: make it the main computer, just this time, or only view (heavy work waits for the
-  main computer). Known PCs are remembered in the library, never on the PC.
+- Every computer the drive has been plugged into is listed in the library (`computers` table,
+  `engine/services/computers.py`) with its choice: always does the background work, asks each
+  time, or only views. The first time, the app asks once ("Yes, and remember this computer",
+  "Just this time", "No, only view here"); Settings → Storage changes it or forgets the
+  computer. On a computer that doesn't do the work, heavy automatic work (8K, automatic old-photo
+  fixes, automatic videos, vault enhancing) waits. Only a scrambled form of Windows' computer ID
+  is stored, and nothing is written to the computer.
 
 ## 3. Offline
 - Everything works without the internet. The app goes online only to check for an update and,

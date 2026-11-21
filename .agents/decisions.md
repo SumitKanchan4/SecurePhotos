@@ -6,7 +6,7 @@ made is in its commit and pull request.
 
 ## The product
 - The app and the whole library live on one external drive and work on any Windows PC it is plugged into (2026-11-21).
-- On a PC the library hasn't seen, ask once whether to do background work there: make it the main computer, just this time, or only view (heavy work waits for the main computer). Known PCs are remembered in the library (2026-11-21).
+- On a computer the library doesn't know, ask once whether to do background work there: yes and remember it (any number of computers), just this time, or only view (heavy work waits for a remembered computer). Settings → Storage lists the remembered computers by name, with "Stop using". Kept in the library (2026-11-21).
 - CPU only: every AI model must run well on an ordinary CPU; a graphics card is an optional speed-up (2026-11-15).
 - Everything works offline; downloads are only the update check and the old-photo models (2026-11-15).
 - One library open at a time. "Open a library folder" switches to another and restarts the app; there is no "connect a second library" (2026-11-17).
