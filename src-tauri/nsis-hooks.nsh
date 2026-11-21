@@ -1,8 +1,90 @@
-; SecurePhotos NSIS Installer Hooks
-; Ensures desktop icon idempotency and cleans up legacy MSI/public shortcuts across updates.
+; SecurePhotos NSIS installer hooks
+; Suggests the external drive, keeps the library on uninstall, and fetches the old-photo models.
+
+;
+; T2: SecurePhotos lives on an external drive, with the library beside it.
+; - When a removable drive is plugged in, the folder page suggests <drive>:\SecurePhotos.
+; - Choosing a folder on this computer's own drive asks once whether that's intended.
+; Updates (/UPDATE) and passive or silent installs are never asked anything.
+
+!define MUI_CUSTOMFUNCTION_GUIINIT SpSuggestDrive
+; Check the folder only when Next is pressed, so the question isn't asked on every keystroke.
+!define MUI_DIRECTORYPAGE_VERIFYONLEAVE
+
+Var SpDriveFound
+Var SpThisComputerOk
+
+Function SpIsUpdateOrQuiet
+  ; Leaves 1 on the stack for an update, a passive or a silent install, else 0.
+  ${If} ${Silent}
+    Push 1
+    Return
+  ${EndIf}
+  ClearErrors
+  ${GetOptions} $CMDLINE "/UPDATE" $0
+  ${IfNot} ${Errors}
+    Push 1
+    Return
+  ${EndIf}
+  ClearErrors
+  ${GetOptions} $CMDLINE "/P" $0
+  ${IfNot} ${Errors}
+    Push 1
+    Return
+  ${EndIf}
+  Push 0
+FunctionEnd
+
+Function SpRememberDrive
+  ; Called by GetDrives for each removable drive: $9 is like "E:\". Keeps "E:"; skips the
+  ; floppy letters.
+  StrCpy $0 $9 1
+  ${If} $0 != "A"
+  ${AndIf} $0 != "B"
+    StrCpy $SpDriveFound $9 2
+    Push "StopGetDrives"
+    Return
+  ${EndIf}
+  Push $0
+FunctionEnd
+
+Function SpSuggestDrive
+  Call SpIsUpdateOrQuiet
+  Pop $0
+  ${If} $0 = 1
+    Return
+  ${EndIf}
+  ; Only replace the standard suggestion, never the folder of an earlier install.
+  ${If} $INSTDIR != "$LOCALAPPDATA\SecurePhotos"
+  ${OrIf} ${FileExists} "$INSTDIR\SecurePhotos.exe"
+    Return
+  ${EndIf}
+  StrCpy $SpDriveFound ""
+  ${GetDrives} "FDD" SpRememberDrive
+  ${If} $SpDriveFound != ""
+    StrCpy $INSTDIR "$SpDriveFound\SecurePhotos"
+  ${EndIf}
+FunctionEnd
+
+Function .onVerifyInstDir
+  Call SpIsUpdateOrQuiet
+  Pop $0
+  ${If} $0 = 1
+    Return
+  ${EndIf}
+  StrCpy $0 $INSTDIR 2
+  StrCpy $1 $WINDIR 2
+  ${If} $0 == $1
+  ${AndIf} $SpThisComputerOk != $INSTDIR
+    MessageBox MB_ICONQUESTION|MB_YESNO "SecurePhotos will be installed on this computer, and your photos and videos will be kept here too.$\r$\n$\r$\nThat means they won't come with you when you use another computer.$\r$\n$\r$\nTo carry your library with you, choose No, plug in your external drive and pick it instead.$\r$\n$\r$\nInstall on this computer?" IDYES sp_this_computer_ok
+    Abort
+    sp_this_computer_ok:
+    StrCpy $SpThisComputerOk $INSTDIR
+  ${EndIf}
+FunctionEnd
 
 !macro NSIS_HOOK_PREINSTALL
-  ; Terminate any running SecurePhotos or backend engine processes to prevent file locking during in-place upgrade
+  ; Close a running SecurePhotos and its engine, so their files can be replaced in place.
   nsExec::Exec 'taskkill /F /IM securephotos-engine.exe'
   nsExec::Exec 'taskkill /F /IM SecurePhotos.exe'
 
@@ -10,25 +92,8 @@
   Delete "$COMMONDESKTOP\SecurePhotos.lnk"
   ; Clean up any existing user desktop shortcut before writing the new one to prevent duplication
   Delete "$DESKTOP\SecurePhotos.lnk"
-
-  ; Pre-flight validation: Check for Microsoft Visual C++ 2015-2022 Redistributable (x64)
-  ClearErrors
-  ReadRegDWORD $0 HKLM "SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64" "Installed"
-  ${If} ${Errors}
-    ClearErrors
-    ReadRegDWORD $0 HKLM "SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\X64" "Installed"
-  ${EndIf}
-  ${If} $0 != 1
-    ${If} ${FileExists} "$SYSDIR\vcruntime140.dll"
-      StrCpy $0 1
-    ${EndIf}
-  ${EndIf}
-  ${If} $0 != 1
-    MessageBox MB_ICONEXCLAMATION|MB_YESNO \
-      "Microsoft Visual C++ 2015-2022 Redistributable (x64) is required for SecurePhotos local AI processing and face recognition.$\r$\n$\r$\nIt is not currently detected on this machine.$\r$\n$\r$\nWould you like to open the official Microsoft installer download page now?" \
-      IDNO +2
-    ExecShell "open" "https://aka.ms/vs/17/release/vc_redist.x64.exe"
-  ${EndIf}
+  ; No Visual C++ check: the app and its engine carry that runtime themselves (T2), so they
+  ; also start on a computer the drive is plugged into that never had it installed.
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
@@ -63,13 +128,12 @@
 
 !macro NSIS_HOOK_PREUNINSTALL
   MessageBox MB_ICONINFORMATION|MB_OKCANCEL \
-    "SecurePhotos Uninstallation Notice:$\r$\n$\r$\n\
-1. Your photo library, SQLite database, and encrypted Vault are NOT deleted.$\r$\n\
-   They remain safely preserved in your data folder:$\r$\n\
-   $INSTDIR\data$\r$\n$\r$\n\
-2. If you have locked photos in your Vault that you want restored to regular unencrypted files, \
-please click CANCEL, open SecurePhotos, and unlock your vault first.$\r$\n$\r$\n\
-Click OK to proceed with removing the SecurePhotos application files." \
+    "Removing SecurePhotos takes away the app only.$\r$\n$\r$\n\
+Your photos, videos, albums and Private Vault stay where they are, in:$\r$\n\
+$INSTDIR\data$\r$\n$\r$\n\
+Photos in your Private Vault stay locked. If you'd like them back as ordinary photos, choose Cancel, \
+open SecurePhotos and move them out of the vault first.$\r$\n$\r$\n\
+Choose OK to remove the app." \
     IDOK proceed_uninstall
   Abort
   proceed_uninstall:
@@ -80,4 +144,3 @@ Click OK to proceed with removing the SecurePhotos application files." \
   Delete "$DESKTOP\SecurePhotos.lnk"
   Delete "$COMMONDESKTOP\SecurePhotos.lnk"
 !macroend
-
