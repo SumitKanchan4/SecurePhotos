@@ -27,8 +27,9 @@ says so and names the task in `.agents/plans/feedback-backlog.md`; don't describ
 - Nothing has to be installed on the PC first: the engine is one program (PyInstaller), FFmpeg
   and FFprobe are in `bin/`, the small models in `data/models/`, and `WebView2Loader.dll` is
   next to the app. WebView2 itself comes with Windows 10 and 11.
-- **Not built yet (T3):** knowing the drive is on a PC it hasn't seen before, and asking whether
-  to do heavy background work there.
+- **Not built yet (T3):** on a PC the library hasn't seen, ask once whether to do background
+  work there: make it the main computer, just this time, or only view (heavy work waits for the
+  main computer). Known PCs are remembered in the library, never on the PC.
 
 ## 3. Offline
 - Everything works without the internet. The app goes online only to check for an update and,
