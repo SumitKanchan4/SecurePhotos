@@ -4,6 +4,16 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 
 ## Unreleased
 
+### Your library on an external drive
+- Install SecurePhotos on your external drive: the installer suggests a folder on it, and asks before installing on the computer itself.
+- On any other Windows computer, open SecurePhotos from the drive. Nothing needs installing first, and SecurePhotos keeps nothing about your photos on that computer.
+- The first time a computer is used, choose whether it improves your photos there too, just this time, or only lets you view them. Settings, under Storage, lists every computer your drive has been plugged into, and you can change each one.
+- Settings, under Storage, shows your drive (SecurePhotos, other files and free space) next to what SecurePhotos keeps.
+
+### Private Vault
+- Add photos straight to the vault with **Add photos**. Each one is locked as it is copied, and by default the original is removed once its locked copy has been checked. You can change that in Settings, and for each import.
+- Select photos in the vault to move them back to your library or to Trash.
+
 ### A new look
 - The whole app has been redesigned: a slim side bar, a cleaner photo grid with a year and month bar, and a dark photo viewer with details when you want them.
 - New Dashboard: your library in one sentence, how your space is used, and the jobs worth doing, with the space each one frees.
@@ -40,6 +50,16 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 - Thumbnails and previews nobody uses any more are cleaned up.
 - Pictures come back by themselves if the photo engine restarts.
 - Videos are enlarged by their shorter side, so a portrait video made 4K really is 4K.
+- If the app stops unexpectedly, its photo engine now stops too, so Windows lets you eject the drive.
+- Setting up the vault a second time could replace its key and make the photos in it unreadable. It is now refused.
+- Closed "Who is this?" cards no longer come back.
+- The Dashboard counts a photo and its improved copies once, as Photos shows them.
+- A pale, foggy colour photo is no longer taken for a black-and-white print.
+- A video you enhance or make smaller yourself now waits its turn instead of slowing everything else down.
+- Moving photos out of the vault no longer skips a photo that was just enhanced.
+
+### Licence
+- SecurePhotos is free software under the MIT License. The installer shows a short page in plain words instead of a licence agreement.
 
 ## [0.1.0] - 2026-09-06
 
