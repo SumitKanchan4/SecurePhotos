@@ -74,7 +74,9 @@ describe("quality and size", () => {
     expect(formatBytes(0)).toBe("0 KB");
     expect(storageLine({ file_size: 6.2 * 1024 * 1024, original_file_size: 9.8 * 1024 * 1024, is_enhanced: true, is_optimized: true })).toBe("Enhanced · 6.2 MB (was 9.8 MB)");
     expect(storageLine({ file_size: 1024 * 1024, original_file_size: 1024 * 1024, is_enhanced: false, is_optimized: false })).toBe("Original · 1.0 MB");
-    expect(printLine({ width: 7680, height: 5760 })).toBe("Sharp prints up to 65 × 49 cm");
+    expect(printLine({ width: 7680, height: 5760 })).toBe("Print copy at 8K: sharp up to 65 × 49 cm");
+    // A photo kept at 4K is printed from an 8K copy, so the size is the same (T28).
+    expect(printLine({ width: 3840, height: 2880 })).toBe("Print copy at 8K: sharp up to 65 × 49 cm");
     expect(coordinatesLine(15.5553, -73.75)).toBe("15.5553° N, 73.7500° W");
   });
 });

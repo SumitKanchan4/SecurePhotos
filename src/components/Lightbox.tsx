@@ -498,11 +498,12 @@ export const Lightbox: React.FC<LightboxProps> = ({
     if (!currentPhoto) return;
     const baseName = currentPhoto.filename ? currentPhoto.filename.replace(/\.[^/.]+$/, "") : "media";
     const defaultExt = isVideo ? ".mp4" : ".jpg";
-    const filename = mode === "studio_print" ? `${baseName}_studio_300dpi.jpg` : (currentPhoto.filename || `media${defaultExt}`);
+    const filename = mode === "studio_print" ? `${baseName}_print_8k_300dpi.jpg` : (currentPhoto.filename || `media${defaultExt}`);
     const mediaTypeLabel = isVideo ? "video" : "photo";
 
     if (mode === "studio_print") {
-      showToast("Saving a print-ready copy to your Downloads folder…", "info");
+      // T28: made at 8K with Real-ESRGAN, about a minute on a computer without a graphics card.
+      showToast("Making your 8K print copy. This takes about a minute; it will appear in your Downloads folder.", "info");
     } else {
       showToast(`Saving the ${mediaTypeLabel} to your Downloads folder…`, "info");
     }

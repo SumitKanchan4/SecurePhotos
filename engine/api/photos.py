@@ -1047,6 +1047,35 @@ async def get_photo_original(photo_id: int):
     )
 
 
+# T28: the long edge of a print-ready copy (8K: 7680 px, about 65 x 43 cm at 300 DPI).
+PRINT_LONG_EDGE = 7680
+
+
+def _print_upscale(img):
+    """Brings a photo below 8K to exactly 8K for printing (T28, owner 2026-11-21).
+
+    Real-ESRGAN (AI) first: crisper edges and no enlarged noise or JPEG blocks, which matter on
+    a large print; about 40 s on a CPU, which is fine for a print made on request. The library's
+    own enhancement stays the fast resize. If the model can't be used, the fast resize is used, so
+    a print copy is always made.
+    """
+    from PIL import Image
+
+    from engine.services.super_resolution_service import enhance_pixels
+
+    try:
+        from engine.services.neural_sr_service import neural_upscale
+
+        up = neural_upscale(img)
+    except Exception as err:  # Model missing or ONNX failure: still make the print.
+        logger.warning("Print copy: Real-ESRGAN unavailable (%s); using the standard resize.", err)
+        return enhance_pixels(img, PRINT_LONG_EDGE)
+    scale = PRINT_LONG_EDGE / max(up.size)
+    if abs(scale - 1) > 0.001:
+        up = up.resize((max(1, round(up.width * scale)), max(1, round(up.height * scale))), Image.Resampling.LANCZOS)
+    return up
+
+
 @router.get("/{photo_id}/download")
 async def download_photo(photo_id: int, mode: str = Query("original", pattern="^(original|studio_print)$")):
     """Streams the photo file as an attachment download to the client machine.
@@ -1077,36 +1106,50 @@ async def download_photo(photo_id: int, mode: str = Query("original", pattern="^
 
     if mode == "studio_print":
         import os
-        import tempfile
+        import time as _time
         from PIL import Image, ImageOps
         from starlette.background import BackgroundTask
 
+        from engine.services import cpu_budget
         stem = src_file.stem
-        dl_filename = f"{stem}_studio_300dpi.jpg"
+        dl_filename = f"{stem}_print_8k_300dpi.jpg"
 
-        temp_dir = Path(tempfile.gettempdir())
-        temp_print = temp_dir / f"securephotos_studio_print_{photo_id}_{os.getpid()}.jpg"
+        # T28 (owner, 2026-11-21): the print copy is made at 8K, so prints are crisp even when the
+        # library keeps the photo at 4K. Its temporary file stays in the library (never the PC's
+        # own temp folder) and is removed after the download; leftovers from a crash an hour later.
+        temp_dir = settings.data_dir / "tmp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        for old in temp_dir.glob("securephotos_print_*.jpg"):
+            try:
+                if _time.time() - old.stat().st_mtime > 3600:
+                    old.unlink()
+            except OSError:
+                pass
+        temp_print = temp_dir / f"securephotos_print_{photo_id}_{os.getpid()}_{int(_time.time())}.jpg"
 
         def _write_studio_print() -> None:  # H7: image work runs off the event loop.
             with Image.open(src_file) as img:
-                exif_data = img.info.get("exif")
+                exif = img.getexif()
                 img = ImageOps.exif_transpose(img)
-                if img.mode in ("RGBA", "P"):
-                    img = img.convert("RGB")
+                img = img.convert("RGB")
+            if 0x0112 in exif:
+                exif[0x0112] = 1  # The pixels are upright now.
+            if max(img.size) < PRINT_LONG_EDGE:
+                img = _print_upscale(img)
+            save_kwargs = {
+                "format": "JPEG",
+                "quality": 95,
+                "subsampling": 0,  # 4:4:4 full colour, no chroma bleeding
+                "dpi": (300, 300),  # 300 DPI header for photo lab software
+                "optimize": True,
+            }
+            if len(exif):
+                save_kwargs["exif"] = exif.tobytes()
+            img.save(temp_print, **save_kwargs)
 
-                save_kwargs = {
-                    "format": "JPEG",
-                    "quality": 98,
-                    "subsampling": 0,  # 4:4:4 full color fidelity, eliminates chroma bleeding
-                    "dpi": (300, 300),  # Explicit 300 DPI header for photo lab RIP software
-                    "optimize": True,
-                }
-                if exif_data:
-                    save_kwargs["exif"] = exif_data
-
-                img.save(temp_print, **save_kwargs)
-
-        await asyncio.to_thread(_write_studio_print)
+        # What the user asked for goes ahead of automatic work, one heavy job at a time.
+        async with cpu_budget.heavy(cpu_budget.USER, f"print:{photo_id}"):
+            await asyncio.to_thread(_write_studio_print)
 
         def cleanup_temp():
             try:
