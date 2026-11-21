@@ -2,114 +2,69 @@
 trigger: always_on
 ---
 
-# 🛡️ SecurePhotos Application & Portable Vault Architecture Rules
+# SecurePhotos: portable app and library rules
 
-## 1. Primary Target: 100% Self-Contained External Disk Vault
-- **Primary Deployment Target**:
-  - SecurePhotos is engineered primarily to live, execute, and store all user assets directly on an **external portable drive** (high-speed portable SSD, external hard disk, or USB 3.2 drive).
-  - The entire application—including GUI binaries, engine sidecar, SQLite database, sharded thumbnail trees, display previews, AI model weights, and encrypted zero-trust vaults—must reside on the external drive.
-- **Strict Host Machine Isolation (Zero Host Pollution)**:
-  - **CRITICAL**: The application must **NEVER** write or leave user media, SQLite databases, thumbnails, encryption keys, or private artifacts on the host machine's `C:\` drive, `%APPDATA%`, `%LOCALAPPDATA%`, `C:\Users\<user>\AppData`, or user home directories (`~/.securephotos_data`).
-  - When the drive is unplugged, **zero trace** of the user's media collection, database records, search history, or decryption state must remain on the host computer.
-  - All temporary files, encoding scratch buffers, and thumbnail caches must be written strictly to `<drive>/data/tmp/` or relative application scratch directories.
+The idea behind the app: **the app and the whole library live on one external drive.** The
+owner plugs the drive into any Windows PC and carries on viewing, importing and improving
+photos. Every rule below serves that idea. Where the code does not do something yet, the rule
+says so and names the task in `.agents/plans/feedback-backlog.md`; don't describe it as built.
 
----
+## 1. Everything on the drive
+- The app is installed into a folder on the drive, and the library sits next to it in
+  `<app folder>/data` (`engine/config.py`). `SECUREPHOTOS_DATA_DIR` and `data_location.txt`
+  exist for development and tests only.
+- The app writes user data only inside the library: photos, the database, thumbnails, previews,
+  face pictures, models, the vault and temporary files. Never `%APPDATA%`, `%LOCALAPPDATA%`,
+  the user's home folder or the registry.
+- **Not built yet (T2):** the installer installs for the current user and suggests a folder on
+  C:, and the WebView2 profile goes to `%LOCALAPPDATA%\com.securephotos.app`. Both should be
+  on the drive.
+- Settings are stored in the database (`app_settings`), so they travel with the drive.
 
-## 2. Universal Multi-Device Plug-and-Play & Dynamic Drive Letter Independence
-- **Seamless Multi-PC Mobility**:
-  - The external drive is expected to be plugged into multiple different machines (e.g. Work PC, Home Desktop, Laptop, Azure VM, offline workstations).
-  - The application must execute instantly on any host machine simply by launching the executable directly from the external drive root or application folder without prior system setup.
-- **Dynamic Drive Letter Normalization**:
-  - On Windows, plugging an external drive into different PCs or different USB ports assigns dynamic, unpredictable drive letters (e.g., `D:\`, `E:\`, `F:\`, `Z:\`).
-  - **MANDATORY HARD RULE**: All paths recorded in SQLite (`securephotos.db`)—including media `filepath`, `thumbnail_path`, `preview_path`, and encrypted vault items—**MUST BE STORED RELATIVE TO THE PORTABLE DRIVE ROOT** (e.g. `data/originals/2026/photo.jpg`), or dynamically remapped on application boot to the currently active volume root.
-  - **NEVER hardcode absolute drive letters like `E:\data\...` into the database**. If the drive mounts as `F:\` on another PC, all assets must resolve without path breakage.
+## 2. Any PC, any drive letter
+- Paths in SQLite are relative to the library folder: write with `media_paths.to_db_path`,
+  read with `media_paths.resolve_stored_path`. Never store a drive letter.
+- Nothing has to be installed on the PC first: the engine is one program (PyInstaller), FFmpeg
+  and FFprobe are in `bin/`, the small models in `data/models/`, and `WebView2Loader.dll` is
+  next to the app. WebView2 itself comes with Windows 10 and 11.
+- **Not built yet (T3):** knowing the drive is on a PC it hasn't seen before, and asking whether
+  to do heavy background work there.
 
----
+## 3. Offline
+- Everything works without the internet. The app goes online only to check for an update and,
+  if the installer couldn't, to download the old-photo models (each checked by SHA-256).
+- No telemetry or analytics.
 
-## 3. Fully Bundled Self-Contained Prerequisites (Zero Host Setup)
-- **Zero Host Installation Requirement**:
-  - A user must **NEVER** be required to install Python, Node.js, C++ build tools, Git, or administrative packages on the host machine before running SecurePhotos.
-  - The external disk must bundle all required runtimes and prerequisites:
-    1. **Standalone Engine Sidecar**: Frozen standalone executable (`securephotos-engine.exe`) containing the complete Python runtime, FastAPI, Uvicorn, ONNXRuntime, and dependencies.
-    2. **Bundled Visual C++ Runtime DLLs**: The required MSVC runtime libraries (`vcruntime140.dll`, `msvcp140.dll`, `vcruntime140_1.dll`) must reside alongside the application executable on the drive. Because Windows checks the application folder first in its DLL search order, this guarantees the engine launches even on clean machines or Windows Server images lacking the system-wide VC++ Redistributable.
-    3. **Bundled Media Binaries**: Standalone FFmpeg and FFprobe binaries in `<drive>/bin/` for transcoding, thumbnail extraction, and video streaming.
-    4. **Offline AI Models**: The face detection, face recognition and super-resolution models ship inside the installer (`<drive>/data/models/`). Each is pinned to an exact upstream commit and SHA-256 in `engine/services/ai_models.py`; the release build fetches them with `scripts/fetch_models.py`, and the app never loads a file whose checksum doesn't match. OCR uses the on-device Windows OCR engine (no model file).
-    5. **Native GUI Runtime**: WebView2 loader bundled in `<drive>/WebView2Loader.dll`.
+## 4. Imports copy into the library
+- An import always copies into the library (`ingest_single_photo`); the original is removed
+  only if the user turns on "Remove the originals after importing", and only after the copy is
+  checked. Nothing outside the library is changed.
 
----
+## 5. The engine is reachable only by the app
+- It listens on 127.0.0.1 on a port chosen at start-up, never on the network.
+- Every request needs the access token (`X-SecurePhotos-Token`) or the session cookie from
+  `POST /api/auth/handshake`; anything else gets 403. The token comes from the OS random source;
+  if it can't be made, the engine isn't started.
 
-## 4. Universal Media Availability (Always Accessible Everywhere)
-- **100% Offline Availability**:
-  - Wherever the external disk is connected, all imported images, 4K videos, documents, face clusters, albums, and cinematic stories must be immediately viewable and searchable.
-  - Zero cloud reliance: The application must operate with 100% functionality with zero internet connectivity.
-- **Drive-Centric Media Ingestion**:
-  - When media is imported from a host machine or SD card, the primary master copy must be safely ingested into the external drive's library storage (`data/originals/` or target drive folders), never left solely on the host computer.
-  - The database, sharded thumbnail trees (`data/thumbnails/`), and display previews (`data/previews/`) reside strictly on the drive.
+## 6. Unplugging without ejecting
+- SQLite runs in WAL mode with `synchronous=NORMAL`; write transactions are short.
+- The app watches the drive (`DriveStatusBanner`), shows when it is gone and carries on when it
+  is back.
+- Slow drives that are waking up must not make photos look missing: show loading, retry.
 
----
+## 7. One engine, and it stops with the app
+- Only one engine runs per library. The shell starts it under `start_lock` and never while its
+  engine is still alive.
+- When the window closes, the shell stops the engine, so Windows can eject the drive.
+- **Not built yet (T1):** if the app crashes or is killed, the engine keeps running and holds
+  files on the drive open. The engine must stop as well (Windows Job Object with
+  kill-on-close in the shell, and the engine exiting when its parent process is gone).
 
-## 5. Zero-Trust Local IPC API Authorization (Strict Request Verification)
-- **Hardened Local API Guard**:
-  - The background engine must strictly bind to local loopback (`127.0.0.1`) with a dynamic ephemeral port. It must NEVER bind to `0.0.0.0` or expose ports to the local network / Wi-Fi.
-  - **Only legitimate SecurePhotos application requests are authorized to receive data or stream media**:
-    1. **Ephemeral Shared Secret**: On startup, Tauri Rust generates a cryptographically secure 256-bit token (`SECUREPHOTOS_IPC_SECRET`) passed in-memory to the engine process.
-    2. **Mandatory Token / Handshake Validation**: The engine enforces `LocalIPCSecurityMiddleware` on all endpoints. Requests must provide either the `X-SecurePhotos-Token` header or a valid session cookie established during mutual handshake.
-    3. **Rejection of Unauthorized Calls**: Any unauthorized process, external network probe, or rogue browser tab accessing the engine port must be rejected immediately with `401 Unauthorized` or `403 Forbidden`.
-    4. **Zero Telemetry**: No telemetry, analytics, or pinging to external servers is permitted.
+## 8. Updates never touch the library
+- An update replaces only the program files. The installer and uninstaller never delete
+  `data/`; the installer stops a running app and engine before replacing files.
 
----
-
-## 6. Hot-Unplug Safety & Transactional Durability
-- **Abrupt Drive Removal Resilience**:
-  - Users may disconnect external drives without ejecting.
-  - SQLite must run with WAL mode (`PRAGMA journal_mode=WAL`) and controlled transaction checkpointing (`PRAGMA synchronous=NORMAL`) to protect against database corruption during unexpected removal.
-  - Write transactions must be kept small and atomic. Long-running open write locks are strictly prohibited.
-  - The frontend must dynamically monitor volume connectivity (`activeVolume`, `get_system_drives`):
-    - If drive disconnection is detected, immediately suspend disk write queues and display a prominent, reassuring "Drive Offline" shield.
-    - When the drive is reconnected, automatically re-synchronize without crashing the app.
-
----
-
-## 7. In-Place Upgrades & Non-Destructive Update Guarantee (Zero Data Loss)
-- **Separation of Application Binaries vs. User Vault Data**:
-  - Application binaries (`SecurePhotos.exe`, `securephotos-engine.exe`, `bin/`) and user data (`data/database/`, `data/thumbnails/`, `data/originals/`, `data/vault/`) must remain strictly decoupled.
-- **In-Place Non-Destructive Upgrades**:
-  - Updating the app on the external disk must **NEVER** run an uninstallation flow that deletes user data or prompts to wipe folders (`RMDir /r $INSTDIR` must never wipe `data/`).
-  - Upgrades must overwrite only the application binaries in-place, permanently preserving all existing databases, face tags, albums, and encrypted vault contents.
-  - If the user re-installs or moves the application folder to a new path on the drive, the system must detect existing databases in `data/` and attach seamlessly rather than initializing an empty database.
-
----
-
-## 8. Clean Process Termination & Eject Lock Release
-- **No Background Process Hangs**:
-  - When the user closes the SecurePhotos window, all background processes (`SecurePhotos.exe`, `securephotos-engine.exe`, FFmpeg workers) must terminate immediately and cleanly.
-  - Open file handles on the external drive must be released within milliseconds.
-  - If a process hangs open on the drive, Windows blocks ejection with *"The device is currently in use"*, forcing dirty unplugs.
-- **Parent-Process Death Watch & Job Objects**:
-  - The Rust Tauri host process must register the engine child process inside a Windows Job Object configured with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`.
-  - The Python engine must maintain a heartbeat parent-PID monitor that immediately calls `sys.exit(0)` if the parent Tauri process exits or crashes.
-
----
-
-## 9. Zero Windows Registry & Host OS Configuration Dependency
-- **Portable State Persistence**:
-  - The application must NEVER store critical user preferences, vault configurations, encryption salts, or library paths in the Windows Registry (`HKCU\Software\...` or `HKLM\Software\...`).
-  - All configurations, user preferences, and vault metadata must be stored locally in `<drive>/data/config.json` or `securephotos.db`.
-  - Moving the drive to a different machine must preserve 100% of the user's settings, pinned albums, favorites, and vault state without reconfiguration.
-
----
-
-## 10. Cross-Platform File System Compatibility (exFAT, NTFS, FAT32)
-- **Filesystem-Agnostic File Handling**:
-  - External drives are frequently formatted as `exFAT` or `NTFS` for cross-platform portability between Windows, macOS, and Linux.
-  - Code must NOT rely on NTFS-only features such as Alternate Data Streams (ADS), Windows Access Control Lists (ACLs), or hard links.
-  - File and folder naming must sanitize illegal Windows characters (`:`, `*`, `?`, `"`, `<`, `>`, `|`) and maintain cross-filesystem case insensitivity.
-  - Avoid exceeding Windows `MAX_PATH` (260 characters) by keeping sharded thumbnail and preview folder structures compact (e.g. `data/thumbnails/ab/cd/hash.webp`).
-
----
-
-## 11. Drive Sleep & Spin-Down Latency Tolerance
-- **HDD Spin-Up Resilience**:
-  - External mechanical hard drives and power-saving external SSDs enter low-power sleep states after periods of inactivity.
-  - When a user clicks a photo or searches after an idle period, spinning up the drive can take 2 to 5 seconds.
-  - The frontend and backend must accommodate this latency gracefully with responsive loading skeletons and retry mechanisms, rather than timing out or falsely flagging assets as missing.
+## 9. Drives formatted exFAT or NTFS
+- Don't rely on NTFS-only features (alternate data streams, ACLs, hard links).
+- Keep file names free of `: * ? " < > |` and keep paths short (sharded folders such as
+  `thumbnails/ab/cd/…`) to stay under 260 characters.

@@ -1,80 +1,58 @@
 ---
 name: enterprise-standards-and-docs
 description: >-
-  Enterprise documentation and coding standards skill. Enforces Google-style Python docstrings, JSDoc comments, strict type hinting, inline non-obvious rationale comments, comprehensive unit/integration test coverage, and continuous documentation sync.
+  Coding, comment, test and documentation standards for SecurePhotos: Google-style Python docstrings,
+  JSDoc/TypeScript types, comments that explain why, a failing-first test for every fix, and docs
+  kept in step with the code. Use when writing or reviewing any code or documentation.
 ---
 
-# 📚 Enterprise Documentation, Coding Standards & Testing Skill
+# Code, tests and documentation
 
-This skill enforces professional-grade documentation, clean code conventions, inline architectural rationale, and comprehensive test coverage across the entire project.
-
----
-
-## 1. Documentation & Commenting Standards
-
-### A. Non-Obvious Rationale Comments
-- **Rule**: Do not write comments that merely restate what the code does (e.g., `# set x to 5`).
-- **Standard**: Comments must explain **WHY** a specific design decision, optimization, or workaround was chosen.
+## 1. Comments say why
+Don't restate the code. Explain the reason, the risk, or the rejected option.
 
 ```python
-# GOOD: Explains architectural rationale
-# Set journal_mode to WAL before spawning worker threads to allow concurrent 
-# readers without blocking background thumbnail generation writes.
-cursor.execute("PRAGMA journal_mode = WAL")
+# Never fall back to "any file with the same name": acting on a different file
+# with the same name would destroy the wrong data.
 ```
 
-### B. Google-Style Python Docstrings
-Every module, class, and public function must have Google-style docstrings with explicit type definitions:
+## 2. Python: Google-style docstrings and type hints
+Every module, class and public function has a docstring and full type hints. A real example
+from `engine/services/media_paths.py`:
 
 ```python
-def derive_vault_key(password: str, salt: bytes, iterations: int = 100_000) -> bytes:
-    """Derives a 256-bit cryptographic key using PBKDF2HMAC-SHA256.
+def resolve_stored_path(stored: Optional[str]) -> Optional[Path]:
+    """Resolves a path stored in SQLite to an existing file on disk.
+
+    Relative paths resolve against the data folder (not the working directory).
 
     Args:
-        password: User-provided plaintext password string.
-        salt: Cryptographically secure 16-byte random salt.
-        iterations: Number of PBKDF2 HMAC rounds (minimum 100,000).
+        stored: Path string from the database (relative or absolute).
 
     Returns:
-        32-byte derived master key for AES-256-GCM encryption.
-
-    Raises:
-        ValueError: If the salt is shorter than 16 bytes or password is empty.
+        The existing file path, or None if it cannot be located safely.
     """
 ```
 
-### C. JSDoc for Frontend & TypeScript/JavaScript
-```javascript
-/**
- * Computes optimal virtualized row layout for the media masonry grid.
- * 
- * @param {number} containerWidth - Available parent container width in pixels.
- * @param {number} targetColumnWidth - Desired card width (default: 220px).
- * @returns {{ columns: number, itemWidth: number }} Calculated column count and card width.
- */
-export function calculateGridColumns(containerWidth, targetColumnWidth = 220) {
-  // ...
-}
-```
+API endpoints return plain dicts or Pydantic models shaped for the screen, never raw rows with
+internal columns.
 
----
+## 3. TypeScript
+- No `any`. API responses have interfaces in `src/services/`.
+- Exported functions and components get a short JSDoc line when the name doesn't say it all.
+- Pure logic (formatting, counting, layout) goes in `src/utils/` or a `*Format.ts` next to the
+  screen, with its own test.
 
-## 2. Strict Type Annotations & Schemas as Contracts
+## 4. Tests
+- Every fix has a test that **fails on the old code**; check by putting the bug back briefly.
+- Engine tests (pytest) run on a throwaway library: `engine/tests/conftest.py` sets
+  `SECUREPHOTOS_DATA_DIR` to a temporary folder before any engine import.
+- App tests (Vitest) sit next to the file (`*.test.ts[x]`) and run with `npm test`.
+- No test needs the network, a GPU, or a real model download; tests that depend on timing are
+  made deterministic.
 
-- **Backend**: Every function signature must have 100% parameter and return type hints (`typing` / `pydantic`). Never return raw database models from endpoints; always map to validated Pydantic schemas.
-- **Frontend**: Explicit prop-types or TypeScript interfaces for all components and API responses.
-
----
-
-## 3. Comprehensive Testing Standards
-
-Every feature or bug fix must be accompanied by automated tests:
-
-### A. Test Isolation & Architecture
-1. **Unit Tests**: Test pure utility functions (e.g., crypto key derivation, EXIF parser, RRF ranker) in complete isolation.
-2. **Contract & API Tests**: Verify that API endpoints adhere to expected status codes, headers (`X-Total-Count`), and response schemas.
-3. **Regression Tests**: Any fixed bug must have a dedicated reproduction test added to the test suite to prevent regressions.
-
-### B. Testing Rules
-- No test should depend on external network access.
-- Temporary database fixtures must be created in-memory (`sqlite:///:memory:`) or in a temporary directory and torn down cleanly.
+## 5. Documentation follows the code
+- When behaviour changes, update every place that describes it: README, SECURITY, `docs/*.md`,
+  screen wording, comments, and the rules and skills in `.agents/`. Search for the old wording.
+- `engine/tests/test_docs_match_code.py` guards known false claims; add to it when one is found.
+- Plain words, short sentences, no marketing terms or em dashes.

@@ -11,7 +11,7 @@ from engine.services.ai_models import MODELS
 ROOT = Path(__file__).resolve().parents[2]
 USER_DOCS = ["README.md", "SECURITY.md", "docs/architecture.md", "docs/development.md"]
 
-# Claims that were false (see .agents/history §120); they must not come back.
+# Claims that were false in earlier docs; they must not come back.
 FALSE_CLAIMS = [
     r"military[- ]grade", r"bank[- ]grade", r"\bJWT\b", r"\bbcrypt\b", r"MobileCLIP", r"Moondream",
     r"BCryptGenRandom", r"\bTOTP\b", r"Windows Hello authentication", r"7-day TTL", r"never connects to the internet",
