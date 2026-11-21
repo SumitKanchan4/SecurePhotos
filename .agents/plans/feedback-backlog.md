@@ -6,6 +6,12 @@ decisions are in `.agents/decisions.md`.
 
 Status: **Next** (to do now), **Owner decision**, **Release blocker**, **Later**.
 
+## Next phase (owner, 2026-11-21)
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| T31 | Graphics card support | Next phase | The engine ships CPU-only ONNX Runtime, so DirectML is never used. Plan: onnxruntime-directml, per-computer speed test (GPU vs CPU) with CPU fallback, shown in Settings; then AI video enhancement on capable GPUs. Needs a PC with a graphics card to test. |
+
 ## Found during the release review (2026-11-20)
 
 | # | Task | Status | Notes |
