@@ -31,6 +31,7 @@ made is in its commit and pull request.
 - The Emergency Card (image or its 16 numbers) is the only way back in after a forgotten password; there is no back door (2026-11-11).
 - The 4-digit PIN reopens the vault only while the app stays open (2026-11-11).
 - Windows Hello: not now (2026-11-15).
+- Photos can be added straight to the vault. "Remove the originals" is on by default for the vault (Settings → Vault), shown and changeable on each import (2026-11-21).
 
 ## Look and words
 - Mono + acid lime design (`docs/design_system.md`). Background work is reached from the rail's ring and the header pill, not a rail item (2026-11-16).

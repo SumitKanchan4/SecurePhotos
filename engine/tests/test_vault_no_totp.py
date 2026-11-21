@@ -21,6 +21,7 @@ async def _totp_column():
 async def test_setup_ignores_enable_totp_and_unlocks_with_password_only():
     await run_migrations()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})  # setup won't replace a vault
         setup = await client.post("/api/vault/setup", json={"password": PASSWORD, "enable_totp": True})
         assert setup.status_code == 201
         assert "totp_secret" not in setup.json() and "totp_uri" not in setup.json()
@@ -35,6 +36,7 @@ async def test_setup_ignores_enable_totp_and_unlocks_with_password_only():
 async def test_old_stored_secret_is_blanked_and_does_not_block_unlock():
     await run_migrations()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})  # setup won't replace a vault
         assert (await client.post("/api/vault/setup", json={"password": PASSWORD})).status_code == 201
         conn = await get_db_connection()
         try:  # What an older version stored: the plain base32 secret.

@@ -489,6 +489,19 @@ async def enhance_vault_photo(
     return True
 
 
+async def current_row(conn: aiosqlite.Connection, photo_id: int, encrypted: bool) -> Optional[aiosqlite.Row]:
+    """A photo as it is now, if it is still in the expected state (in the vault or not).
+
+    Rows are read before the one-at-a-time vault queue is ours; meanwhile the vault enhancer may
+    have rewritten a photo's files (8K) or it may have moved. Acting on the old paths skipped the
+    photo silently (2026-11-21: "Move to library" moved one of two), so each step re-reads it.
+    """
+    async with conn.execute(
+        "SELECT * FROM photos WHERE id = ? AND COALESCE(is_encrypted, 0) = ?;", (photo_id, 1 if encrypted else 0)
+    ) as cur:
+        return await cur.fetchone()
+
+
 async def lock_photos(conn: aiosqlite.Connection, rows: Iterable[aiosqlite.Row], mvk: bytes) -> Tuple[List[int], List[int]]:
     """Locks several photos, one at a time, continuing past individual failures.
 
@@ -497,7 +510,10 @@ async def lock_photos(conn: aiosqlite.Connection, rows: Iterable[aiosqlite.Row],
     """
     locked, failed = [], []
     async with vault_files():  # H7: one vault operation at a time (a repeat becomes a no-op).
-        for row in rows:
+        for stale in rows:
+            row = await current_row(conn, stale["id"], encrypted=False)
+            if row is None:
+                continue  # Already in the vault, or gone.
             try:
                 if await lock_photo(conn, row, mvk):
                     locked.append(row["id"])
@@ -517,7 +533,10 @@ async def unlock_photos(conn: aiosqlite.Connection, rows: Iterable[aiosqlite.Row
     """
     unlocked, failed = [], []
     async with vault_files():  # H7: one vault operation at a time.
-        for row in rows:
+        for stale in rows:
+            row = await current_row(conn, stale["id"], encrypted=True)
+            if row is None:
+                continue  # Already out of the vault, or gone.
             try:
                 if await unlock_photo(conn, row, mvk):
                     unlocked.append(row["id"])

@@ -56,7 +56,7 @@ Receipts, tickets, IDs and other paperwork are separated from your memories, and
 SecurePhotos suggests stories from your trips, the people you love, this week in past years and old photos it has restored. Save the ones you like. Music for stories is in Settings, under Music. You can also make albums of your own and save suggested collages.
 
 ### Private Vault
-Keep sensitive photos and documents behind a password. Vault files are encrypted, and they are only decrypted in memory while you look at them. A 4-digit PIN reopens the vault quickly while the app stays open. If you forget your password, the Emergency Card you saved during setup is the only way back in.
+Keep sensitive photos and documents behind a password. Add them straight to the vault with **Add photos**, or move them in from your library. By default the originals are removed from where they were once their locked copy is checked, so no unprotected copy stays behind; you can change that in Settings. Select photos in the vault to move them back to your library or to Trash. Vault files are encrypted, and they are only decrypted in memory while you look at them. A 4-digit PIN reopens the vault quickly while the app stays open. If you forget your password, the Emergency Card you saved during setup is the only way back in.
 
 ### Keeping things tidy
 The Dashboard shows what's in your library and how much space it uses. It also points you to duplicates you can remove, improved photos still waiting for your choice, and large videos that can be made smaller. Deleted items stay in Trash for 30 days before they are removed for good.

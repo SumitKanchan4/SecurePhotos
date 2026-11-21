@@ -106,7 +106,12 @@ async def run_vault_enhancement() -> Dict[str, Any]:
                     if key is None:
                         logger.info("Vault locked; vault photo enhancement stops until the next unlock.")
                         break
-                    was_enhanced = await vault_storage.enhance_vault_photo(conn, row, key, quality, lambda: _key() is not None, long_edge)
+                    # The photo as it is now: it may have left the vault while we waited.
+                    fresh = await vault_storage.current_row(conn, row["id"], encrypted=True)
+                    if fresh is None or fresh["is_optimized"]:
+                        was_enhanced = False
+                    else:
+                        was_enhanced = await vault_storage.enhance_vault_photo(conn, fresh, key, quality, lambda: _key() is not None, long_edge)
                 if was_enhanced:
                     enhanced += 1
                 elif _key() is None:
