@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
+mod job;
 mod token;
 use token::generate_secure_token;
 use tauri::{
@@ -23,6 +24,21 @@ pub struct AppEngineState {
     /// the window) can never both start an engine (2026-11-21: two engines on one library
     /// found the same faces twice).
     pub start_lock: Mutex<()>,
+    /// Kill-on-close job the engine runs in, so it stops when the app ends, even by a crash
+    /// (T1). `None` only if Windows refused to create it; the engine's parent watch still works.
+    pub engine_job: Option<job::EngineJob>,
+}
+
+/// Keeps a just-started engine and puts it in the kill-on-close job (T1).
+fn adopt_engine(state: &AppEngineState, child: std::process::Child) {
+    if let Some(job) = state.engine_job.as_ref() {
+        if let Err(err) = job.assign(&child) {
+            eprintln!("Could not tie the engine to the app (it still watches the app itself): {}", err);
+        }
+    }
+    if let Ok(mut lock) = state.process.lock() {
+        *lock = Some(child);
+    }
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -436,6 +452,8 @@ fn start_backend_engine(state: tauri::State<AppEngineState>) -> serde_json::Valu
                     cmd.env("SECUREPHOTOS_DATA_DIR", c_dir.to_string_lossy().to_string());
                 }
                 cmd.env("SECUREPHOTOS_IPC_SECRET", &token);
+                // The engine stops by itself if this process goes away (T1).
+                cmd.env("SECUREPHOTOS_PARENT_PID", std::process::id().to_string());
                 cmd.args(["-m", "uvicorn", "engine.main:app", "--port", &chosen_port.to_string(), "--reload"]);
                 if let Some(ref file) = log_file {
                     if let Ok(f1) = file.try_clone() {
@@ -451,9 +469,7 @@ fn start_backend_engine(state: tauri::State<AppEngineState>) -> serde_json::Valu
                     cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
                 }
                 if let Ok(child) = cmd.spawn() {
-                    if let Ok(mut lock) = state.process.lock() {
-                        *lock = Some(child);
-                    }
+                    adopt_engine(&state, child);
                     return serde_json::json!({
                         "status": "starting",
                         "port": chosen_port,
@@ -472,6 +488,8 @@ fn start_backend_engine(state: tauri::State<AppEngineState>) -> serde_json::Valu
             sidecar_path.parent().map(|p| p.join("data")).unwrap_or_else(|| std::path::PathBuf::from("data"))
         });
         cmd.env("SECUREPHOTOS_IPC_SECRET", &token);
+        // The engine stops by itself if this process goes away (T1).
+        cmd.env("SECUREPHOTOS_PARENT_PID", std::process::id().to_string());
         cmd.args(["--port", &chosen_port.to_string(), "--data-dir", data_dir.to_str().unwrap_or("data")]);
         if let Some(ref file) = log_file {
             if let Ok(f1) = file.try_clone() {
@@ -489,9 +507,7 @@ fn start_backend_engine(state: tauri::State<AppEngineState>) -> serde_json::Valu
 
         match cmd.spawn() {
             Ok(child) => {
-                if let Ok(mut lock) = state.process.lock() {
-                    *lock = Some(child);
-                }
+                adopt_engine(&state, child);
                 return serde_json::json!({
                     "status": "starting",
                     "port": chosen_port,
@@ -537,6 +553,8 @@ fn start_backend_engine(state: tauri::State<AppEngineState>) -> serde_json::Valu
         cmd.env("PYTHONPATH", root);
     }
     cmd.env("SECUREPHOTOS_IPC_SECRET", &token);
+    // The engine stops by itself if this process goes away (T1).
+    cmd.env("SECUREPHOTOS_PARENT_PID", std::process::id().to_string());
     cmd.args(["-m", "uvicorn", "engine.main:app", "--port", &chosen_port.to_string()]);
     if let Some(ref file) = log_file {
         if let Ok(f1) = file.try_clone() {
@@ -554,9 +572,7 @@ fn start_backend_engine(state: tauri::State<AppEngineState>) -> serde_json::Valu
 
     match cmd.spawn() {
         Ok(child) => {
-            if let Ok(mut lock) = state.process.lock() {
-                *lock = Some(child);
-            }
+            adopt_engine(&state, child);
             serde_json::json!({
                 "status": "starting",
                 "port": chosen_port,
@@ -714,6 +730,13 @@ pub fn run() {
         process: Arc::new(Mutex::new(None)),
         last_start_error: Mutex::new(None),
         start_lock: Mutex::new(()),
+        engine_job: match job::EngineJob::new() {
+            Ok(job) => Some(job),
+            Err(err) => {
+                eprintln!("Could not create the engine job: {}", err);
+                None
+            }
+        },
     };
 
     tauri::Builder::default()

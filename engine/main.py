@@ -36,7 +36,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager to run migrations and background tasks."""
     logger.info("Initializing SecurePhotos Engine sidecar...")
     settings.ensure_directories()
-    
+
+    # T1: stop when the desktop app is gone (crash or forced close), so no engine is left
+    # holding files open on the drive. Keep a reference so the task isn't garbage-collected.
+    from engine.services import parent_watch
+    app.state.parent_watch = parent_watch.start()
+
     # Run idempotent schema migrations on the SQLite WAL engine
     try:
         await run_migrations()
