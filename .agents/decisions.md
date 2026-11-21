@@ -10,7 +10,7 @@ made is in its commit and pull request.
 - CPU only: every AI model must run well on an ordinary CPU; a graphics card is an optional speed-up (2026-11-15).
 - Everything works offline; downloads are only the update check and the old-photo models (2026-11-15).
 - The library is always the `data` folder next to the app; the app offers no way to open a library elsewhere. A backup is restored by copying its `data` folder back (2026-11-21).
-- The repository stays private until the app is stable; model downloads (the `models-v1` release) only work once it is public (2026-11-17).
+- The repository is public (2026-11-21). The old-photo models are in the `models-v1` release, which must never become "latest" (the updater reads the latest release).
 - A release (version, installer, tag) waits for the owner's final go-ahead (2026-11-20).
 - Licence: MIT, copyright Sumit Kanchan. No plan to sell; donations may come later. The installer shows a short plain page (your photos are yours, keep backups, the vault, no warranty) and the MIT text (2026-11-21).
 - GFPGAN (Sharpen blurry faces) stays: the app is free and not sold, which fits its non-commercial parts and FFHQ. If SecurePhotos is ever sold, face sharpening must be reviewed first (2026-11-21).

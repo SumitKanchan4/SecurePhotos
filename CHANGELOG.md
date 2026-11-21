@@ -4,6 +4,10 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 
 ## Unreleased
 
+Nothing yet.
+
+## [0.2.0] - 2026-11-21
+
 ### Your library on an external drive
 - Install SecurePhotos on your external drive: the installer suggests a folder on it, and asks before installing on the computer itself.
 - On any other Windows computer, open SecurePhotos from the drive. Nothing needs installing first, and SecurePhotos keeps nothing about your photos on that computer.
