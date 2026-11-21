@@ -10,7 +10,6 @@ Status: **Next** (to do now), **Owner decision**, **Release blocker**, **Later**
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| T7 | EULA vs MIT licence | Owner decision | The EULA grants a personal, non-transferable, revocable licence; README and LICENSE say MIT. Pick one. |
 | T8 | GFPGAN licence note | Owner decision | THIRD_PARTY_NOTICES still says "revisit before the app is sold or the repository is made public" (NVIDIA non-commercial terms in its dependencies). |
 | T9 | The repository must be public for the old-photo model downloads | Release blocker | The installer downloads them from the `models-v1` release; the release pipeline refuses to publish while they need a login. |
 | T10 | Owner re-check after restarting the desktop app | Next | The one-engine fix needs a fresh start of the app. Then re-check People ("Who is this?" cards stay closed) and the last round of fixes. |
