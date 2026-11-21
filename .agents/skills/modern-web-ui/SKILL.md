@@ -19,6 +19,10 @@ The full specification is [`docs/design_system.md`](../../../docs/design_system.
 - Sub-pages get a `.dash-back` pill ("← Albums").
 - Photos are always shown with `PhotoTimeline` (month sections, justified rows, scrubber, own windowing). Don't add another photo grid or a virtual-list library.
 - Dialogs use `.alb-dialog*` with `role="dialog"`, `aria-modal` and a labelled heading. Irreversible actions use `ConfirmDialog` (`role="alertdialog"`; the title asks, the message says the consequence, and the button names the action). Actions that Trash can undo for 30 days don't ask.
+- Page headers stay at the top while the page scrolls.
+- Photo and video tiles: tags sit bottom-left in translucent black with neon text (one icon per fix, then the size: 8K / 4K / 2K for photos, 4K / 2K / HD / SD for videos); a video has a round play button in the middle and its length bottom-right. A photo still being prepared shows its steps' icons taking turns in the middle and a progress ring bottom-left instead of the tags.
+- Settings rows: text on the left, choices on the right, as in Appearance.
+- Empty and loading states fill their area and sit in the middle, with an icon in a soft lime badge (the brand icon on the welcome screen), a heading, one plain line and at most one button.
 - Icon-only buttons need an `aria-label`. Every control shows the lime `:focus-visible` outline.
 
 ## 3. Wording

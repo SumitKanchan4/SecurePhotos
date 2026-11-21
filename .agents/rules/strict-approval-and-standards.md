@@ -2,7 +2,7 @@
 trigger: always_on
 ---
 
-# 🛡️ Enterprise Workflow & Approval Rules
+# Workflow and approval rules
 
 ## 0. Mandatory Branch Protection, Task-Specific Branches & Git Push Protocol
 - **Branch Protection**: **NEVER work, edit, or commit directly on `master` (or `main`).**
@@ -37,7 +37,7 @@ trigger: always_on
   - Wait for explicit user approval before executing any code changes.
 - **Autonomous Routine Execution Post-Approval (NEVER Ask Permission)**:
   - Once approved, **execute all steps end-to-end autonomously** (edits, tests, docs, commit, push) without requiring user babysitting.
-  - Do NOT pause or ask permission for standard engineering tasks: reading files, grepping, symbol discovery (`codegraph_explore`), running tests/linters, checking git status, pulling/fetching, non-destructive diagnostics, writing scratch scripts, and executing planned edits.
+  - Do NOT pause or ask permission for standard engineering tasks: reading files, grepping, running tests/linters, checking git status, pulling/fetching, non-destructive diagnostics, writing scratch scripts, and executing planned edits.
 - **Real Permissions Only**:
   - Ask questions **one at a time**, each self-contained (what it is about, why it matters, options with a recommendation first).
   - Reserve user confirmation strictly for:
@@ -57,7 +57,7 @@ trigger: always_on
 
 ## 3. Clean Architecture, Zero-Debt Policy & Design Standards
 - Keep code clean, decoupled, and modular. Do not mix presentation, business logic, and database operations in single files.
-- Adhere strictly to project skills (`modern-web-ui`, `zero-trust-crypto`, `enterprise-standards-and-docs`) and the checklists in `engineering-checklists.md`. `local-slm-engineering` and `sqlite-vector-search` describe future ideas only (not used today).
+- Adhere strictly to project skills (`modern-web-ui`, `vault-crypto`, `enterprise-standards-and-docs`) and the checklists in `engineering-checklists.md`.
 - **CRITICAL UI/UX STANDARD**: follow `docs/design_system.md` and the `modern-web-ui` skill (Mono + acid lime redesign): tokens only, lime as a fill with black text and `--accent-ink` for accent text, the `.dash-page` header (Archivo title, meta line, one lime primary button, rare actions behind "…"), `PhotoTimeline` for photos, `ConfirmDialog` for anything that can't be undone, plain wording, and both themes checked.
 
 ## 4. High Code Quality, Comments & Tests
@@ -65,25 +65,13 @@ trigger: always_on
 - Comments explaining non-obvious rationale and architectural intent.
 - Ensure all logic has corresponding automated test coverage.
 
-## 5. Mandatory Functionality & Decision Point Documentation
-- **CRITICAL**: Every newly added feature, capability, workflow, or functional decision MUST be documented in `.agents/history/features_and_functional_decisions.md`:
-  1. **Functionality Overview**: Purpose, UX behavior, and system flow.
-  2. **Functional Decision Points & Rationale**: Design choices, rejected alternatives, constraints, tradeoffs.
-  3. **Technical Touchpoints**: API endpoints, database schema/queries, and UI components.
-  4. **State & Lifecycle Impact**: Interactions with existing states, persistence, and edge cases.
+## 5. Recording decisions and feedback
+- Owner feedback and open tasks go in `.agents/plans/feedback-backlog.md` the same day; finished items are removed once merged (git keeps the history).
+- A decision the owner makes that later work must respect goes in `.agents/decisions.md` (one line, with the date).
+- How a feature works belongs in `docs/` and in the code's comments, not in a separate log.
 
-## 6. Token Efficiency & MCP Optimization (`codegraph` & `headroom`, when available)
-- These MCP tools may not be installed in every environment. When they are, use them as below; otherwise use the editor's own search and read only the line ranges you need.
-- Maximize context efficiency and reduce token overhead using MCP tools:
-  1. **`codegraph_explore` (MCP)**:
-     - Always use as the **first** discovery tool for surveying features, symbols, call paths, hierarchies, and blast radius.
-     - NEVER run multi-slice `view_file` loops across large files to find symbols. Pinpoint line ranges with `codegraph_explore` first, then read only that slice.
-     - Avoid repetitive grep-and-read loops when `codegraph_explore` can return exact symbols in a single call.
-  2. **`headroom_compress` (MCP)**:
-     - **IMMEDIATELY** compress verbose outputs exceeding ~50 lines (pytest logs, DB dumps, large JSONs) before processing.
-     - Use `headroom_retrieve` on demand for specific details rather than decompressing everything. Never accumulate repeated raw logs in context.
-  3. **Context Hygiene**:
-     - Never read whole large files when a sliced range suffices (`StartLine` and `EndLine`). Compress test logs immediately between runs.
+## 6. Reading code efficiently
+- Read only the line ranges you need; search first, then read. Keep long test output short (`-q`, `--tb=short`).
 
 ## 7. User-First UX Copywriting & Human-Centric Communication
 - **Human Tone Over Developer Jargon**:
