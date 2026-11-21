@@ -137,3 +137,39 @@ export function librarySentence(counts: MediaCounts): SentencePart[] {
   ];
   return all.filter((p) => p.value > 0);
 }
+
+/** What enhancing did to the library (T27, owner 2026-11-21), from /api/system/space-summary. */
+export interface SpaceSummary {
+  enhanced: number;
+  before_bytes: number;
+  after_bytes: number;
+  saved_bytes: number;
+  kept_8k: number;
+  enlarged_small: number;
+  waiting: number;
+}
+
+/** The Dashboard's space card in plain words; null when nothing has been enhanced or is waiting. */
+export function spaceCard(s?: SpaceSummary | null): { headline: string; detail: string | null; sorted: string | null; waiting: string | null } | null {
+  if (!s || typeof s.enhanced !== "number" || (s.enhanced === 0 && !s.waiting)) return null;
+  const photos = plural(s.enhanced, "enhanced photo");
+  let headline: string;
+  let detail: string | null = null;
+  if (s.enhanced === 0) headline = "Your photos are being made sharper";
+  else if (s.saved_bytes > 0) {
+    headline = `${formatSize(s.saved_bytes)} saved`;
+    detail = `Your ${photos} take ${formatSize(s.after_bytes)} instead of ${formatSize(s.before_bytes)}, and they are sharper.`;
+  } else {
+    headline = "Sharper photos";
+    detail = `Your ${photos} take ${formatSize(s.after_bytes)}; they were ${formatSize(s.before_bytes)}. Enlarging small photos adds detail, and some size.`;
+  }
+  const parts: string[] = [];
+  if (s.kept_8k) parts.push(`${plural(s.kept_8k, "full-size photo")} at 8K`);
+  if (s.enlarged_small) parts.push(`${plural(s.enlarged_small, "smaller photo")} enlarged to 4K`);
+  return {
+    headline,
+    detail,
+    sorted: parts.length ? parts.join(" · ") : null,
+    waiting: s.waiting ? `${plural(s.waiting, "photo")} still to enhance` : null,
+  };
+}
