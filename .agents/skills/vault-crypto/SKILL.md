@@ -1,5 +1,5 @@
 ---
-name: zero-trust-crypto
+name: vault-crypto
 description: >-
   How the SecurePhotos private vault actually encrypts: one master vault key wrapped in several slots
   (password, emergency card token, 16 card numbers), Argon2id key derivation, the SPENC03 chunked
@@ -7,11 +7,11 @@ description: >-
   lock/unlock, and honest key-in-memory handling. Use it before changing anything in the vault.
 ---
 
-# 🔐 Vault Cryptography (as built, November 2026)
+# Vault cryptography (as built)
 
 This skill describes what the code does today (`engine/services/crypto_vault.py`,
 `engine/services/vault_storage.py`, `engine/api/vault.py`). Change the code and this file together.
-Decisions and history: `.agents/history/features_and_functional_decisions.md` §103-§110, §115, §119.
+The reasons behind each choice are in the git history of the fix named in brackets (C2, H2, ...).
 
 ---
 
