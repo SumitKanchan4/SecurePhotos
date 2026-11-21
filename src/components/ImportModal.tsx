@@ -20,6 +20,8 @@ import {
   ImportResult,
   largeImportNote,
   resultMessage,
+  vaultButtonLabel,
+  vaultResultMessage,
   timeLeft,
 } from "./import/importFormat";
 
@@ -27,6 +29,9 @@ interface ImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onImportComplete?: () => void;
+  /** Owner, 2026-11-21: straight into the private vault. Each photo is encrypted as it is copied,
+   *  and "Remove the originals" starts from Settings → Vault (on by default). */
+  intoVault?: boolean;
 }
 
 interface Progress {
@@ -63,11 +68,22 @@ export function addToSelection(
   return unique.length === 1 ? selectionFromPaths(unique) : { folder: null, files: unique };
 }
 
-export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImportComplete }) => {
+export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImportComplete, intoVault = false }) => {
   const showToast = useAppStore((s) => s.showToast);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [moveOriginals, setMoveOriginals] = useState(false);
+  // Into the vault, the switch starts from Settings → Vault (on unless turned off there).
+  useEffect(() => {
+    if (!isOpen || !intoVault) return;
+    apiFetch("/api/system/settings")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const value = data?.settings?.vault_import_remove_originals;
+        if (typeof value === "boolean") setMoveOriginals(value);
+      })
+      .catch(() => {});
+  }, [isOpen, intoVault]);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [previewState, setPreviewState] = useState<"idle" | "loading" | "error">("idle");
   const [isBrowsing, setIsBrowsing] = useState(false);
@@ -87,7 +103,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
     if (!isOpen) return;
     setSelectedFiles([]);
     setSelectedFolder(null);
-    setMoveOriginals(false);
+    setMoveOriginals(intoVault); // the vault's Settings value follows (effect above)
     setPreview(null);
     setPreviewState("idle");
     setIsStopping(false);
@@ -215,7 +231,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
       .filter((p): p is string => Boolean(p));
 
   const startImport = async () => {
-    if (!hasSelection || !preview || preview.to_import === 0) return;
+    if (!hasSelection || !preview || (intoVault ? preview.to_import + preview.already_in_library : preview.to_import) === 0) return;
     setProgress({ is_active: true, total_count: preview.to_import + preview.already_in_library, completed_count: 0, started_at: null });
     ownsImport.current = true;
     try {
@@ -226,6 +242,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
           ...(selectedFolder ? { source_directory: selectedFolder } : { file_paths: selectedFiles }),
           mode: "managed",
           delete_source: moveOriginals,
+          ...(intoVault ? { into_vault: true } : {}),
         }),
       });
       if (!res.ok) {
@@ -235,7 +252,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
         return;
       }
       // This still runs after Hide: the result is shown and the library refreshed either way.
-      const message = resultMessage((await res.json()) as ImportResult);
+      const result = (await res.json()) as ImportResult;
+      const message = intoVault ? vaultResultMessage(result) : resultMessage(result);
       showToast(message.text, message.tone);
       onImportComplete?.();
       setProgress(null);
@@ -257,7 +275,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
     }
   };
 
-  const verb = moveOriginals ? "Moving" : "Copying";
+  const verb = intoVault ? "Adding" : moveOriginals ? "Moving" : "Copying";
   const eta = progress ? timeLeft(progress.completed_count, progress.total_count, progress.started_at, nowSec) : null;
   const percent = progress && progress.total_count > 0 ? Math.round((progress.completed_count / progress.total_count) * 100) : 0;
 
@@ -282,7 +300,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
       />
       <div className="import-dialog" role="dialog" aria-modal="true" aria-labelledby="import-title">
         <div className="import-head">
-          <h2 id="import-title">Bring photos in</h2>
+          <h2 id="import-title">{intoVault ? "Add to your vault" : "Bring photos in"}</h2>
           <button type="button" className="import-close" aria-label="Close" onClick={onClose}>
             <X size={16} />
           </button>
@@ -384,7 +402,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                 {/* Owner feedback 2026-11-19: say what the switch does when it's on, in plain words. */}
                 <strong>Remove the originals after importing</strong>
                 <span className="import-muted">
-                  {moveOriginals
+                  {intoVault
+                    ? moveOriginals
+                      ? "Each photo is removed from where it was once its locked copy in the vault has been checked. If a copy fails, the original is kept."
+                      : "Your photos also stay where they are now, where anyone using this computer can see them."
+                    : moveOriginals
                     ? "Each photo is removed from where it was once its copy in your library has been checked. If a copy fails, the original is kept."
                     : "Your photos stay where they are now; the library keeps its own copy."}
                 </span>
@@ -408,10 +430,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
               <button
                 type="button"
                 className="import-primary"
-                disabled={!preview || preview.to_import === 0 || previewState !== "idle"}
+                disabled={!preview || (intoVault ? preview.to_import + preview.already_in_library : preview.to_import) === 0 || previewState !== "idle"}
                 onClick={startImport}
               >
-                {hasSelection ? importButtonLabel(preview) : "Import"}
+                {intoVault ? (hasSelection ? vaultButtonLabel(preview) : "Add to vault") : hasSelection ? importButtonLabel(preview) : "Import"}
               </button>
             </div>
           </>

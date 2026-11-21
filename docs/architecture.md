@@ -183,6 +183,8 @@ sequenceDiagram
     Crypto-->>UI: Stream the decrypted bytes (no decrypted file on disk)
 ```
 
+**Adding straight to the vault.** An import with `into_vault` saves each photo as "on its way into the vault" (`is_encrypted = 2`), which no library or vault view shows and no worker touches, then encrypts it at once with the same crash-safe lock step ([vault_import.py](../engine/services/vault_import.py)). Only after that, and only if asked (Settings → Vault, on by default), is the original removed. A stop half-way is undone at the next start: the half-imported copy is removed and the original is still where it was. Every vault step re-reads the photo once it is its turn in the one-at-a-time vault queue, because the vault enhancer may have rewritten it meanwhile. Setting up a vault again is refused while one exists, since a new key would make the photos in it unreadable.
+
 #### The vault key in memory: what is and isn't protected
 
 - **Protected:** the app never writes the master vault key to disk, and the vault files are useless without it. While the vault is open, the key lives in one session buffer. When the vault locks fully (no PIN set, or the PIN locked out), the buffer is overwritten with zeros and dropped. With a PIN set, a normal lock keeps the key in memory so the PIN can reopen the vault until the app closes. When the app closes, the shell ends the engine process and Windows clears its memory before reusing it; on a clean engine shutdown the engine also overwrites the key itself first.

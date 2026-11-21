@@ -98,3 +98,20 @@ async def test_collage_from_library_photos_with_relative_paths():
         await conn.close()
     assert filepath.startswith("originals/collages/2026/05/")
     assert (settings.data_dir / filepath).is_file()
+
+
+async def test_an_empty_or_relative_path_never_means_the_engines_own_folder(tmp_path, monkeypatch):
+    """2026-11-21: an empty path imported the folder the engine runs from (the whole repository)."""
+    from engine.api.photos import _collect_import_files
+
+    (tmp_path / "secret.jpg").write_bytes(b"\xff\xd8\xff")  # A photo in the working folder.
+    monkeypatch.chdir(tmp_path)
+    for paths in ([""], ["   "], ["."], ["secret.jpg"]):
+        files, _, found_any = _collect_import_files(None, paths)
+        assert files == [] and not found_any, paths
+    for folder in ("", ".", "subfolder"):
+        files, _, found_any = _collect_import_files(folder, None)
+        assert files == [] and not found_any, folder
+    # A full path still works.
+    files, _, _ = _collect_import_files(None, [str(tmp_path / "secret.jpg")])
+    assert [f.name for f in files] == ["secret.jpg"]

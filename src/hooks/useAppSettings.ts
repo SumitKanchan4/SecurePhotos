@@ -28,6 +28,8 @@ export interface AppSettings {
   old_photos_scratches: OldPhotoRule;
   /** Off: once the improved photo is made, the original goes to Trash for 30 days. */
   old_photos_keep_original: boolean;
+  /** Owner, 2026-11-21: adding photos to the vault removes the originals unless turned off. */
+  vault_import_remove_originals: boolean;
 }
 
 export type OldPhotoRule = "ask" | "auto";
@@ -48,6 +50,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   old_photos_colour: "ask",
   old_photos_fade: "ask",
   old_photos_faces: "ask",
+  vault_import_remove_originals: true,
   old_photos_scratches: "ask",
   old_photos_keep_original: true,
 };

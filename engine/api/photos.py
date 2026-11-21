@@ -127,6 +127,9 @@ class ImportRequest(BaseModel):
     mode: Literal["managed"] = "managed"
     delete_source: bool = False
     album_id: Optional[int] = None
+    # Owner, 2026-11-21: straight into the private vault (needs the vault open). Each photo is
+    # encrypted as soon as it is copied; ``delete_source`` then removes the original.
+    into_vault: bool = False
 
 
 class ImportPreviewRequest(BaseModel):
@@ -158,6 +161,8 @@ class ImportResponse(BaseModel):
     album_linked_count: int = 0
     cancelled: bool = False
     unsupported: int = 0
+    # Into the vault: "vault_locked" when the vault locked during the import and the rest stopped.
+    stopped_reason: Optional[str] = None
 
 
 class OptimizationProgressResponse(BaseModel):
@@ -1329,6 +1334,20 @@ VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
 DOCUMENT_EXTENSIONS = {".pdf"}
 
 
+def _usable_import_path(raw: Optional[str]) -> Optional[Path]:
+    """A path the user picked, or None. Only full paths count: an empty or relative one would
+    mean "the folder the engine runs from" (2026-11-21: an empty path imported the whole working
+    folder; in the installed app that could be any folder on the computer)."""
+    text = (raw or "").strip()
+    if not text:
+        return None
+    path = Path(text)
+    if not path.is_absolute():
+        logger.warning("Ignoring an import path that isn't a full path: %r", text)
+        return None
+    return path
+
+
 def _collect_import_files(source_directory: Optional[str], file_paths: Optional[List[str]]) -> tuple[List[Path], int, bool]:
     """(supported files, number of unsupported files, whether anything was found at all).
 
@@ -1341,15 +1360,17 @@ def _collect_import_files(source_directory: Optional[str], file_paths: Optional[
     # P4 ("Add more"): file_paths may also hold folders (several places in one import); a file
     # picked twice (on its own and inside a chosen folder) is counted and imported once.
     for fp in file_paths or []:
-        path = Path(fp)
+        path = _usable_import_path(fp)
+        if path is None:
+            continue
         if path.exists() and path.is_file():
             found.append(path)
         elif path.exists() and path.is_dir():
             found.extend(child for child in path.rglob("*") if child.is_file())
         else:
             logger.warning("Specified file path could not be located on disk: %s", fp)
-    if source_directory:
-        source_dir = Path(source_directory)
+    source_dir = _usable_import_path(source_directory) if source_directory else None
+    if source_dir is not None:
         if source_dir.exists() and source_dir.is_dir():
             found.extend(path for path in source_dir.rglob("*") if path.is_file())
     seen: set = set()
@@ -1483,6 +1504,10 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
         raise HTTPException(status_code=400, detail="No valid media files or source directory provided")
     if not files_to_process:
         raise HTTPException(status_code=400, detail="No photos or videos were found there.")
+    if payload.into_vault:
+        from engine.api.vault import get_active_mvk
+
+        get_active_mvk()  # The vault must be open to add to it (refuses with 403 otherwise).
 
     conn = await get_db_connection()
     total_found = len(files_to_process)
@@ -1520,6 +1545,8 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
 
     album_linked_count = 0
     cancelled = False
+    stopped_reason: Optional[str] = None
+    added_to_vault = 0
     try:
         for idx, file_path in enumerate(files_to_process):
             if import_progress_state["cancel_requested"]:
@@ -1527,6 +1554,29 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
                 logger.info("Import stopped by the owner after %d of %d files.", idx, total_found)
                 break
             import_progress_state["current_filename"] = file_path.name
+            if payload.into_vault:
+                from engine.api.vault import peek_active_mvk
+                from engine.services import vault_import
+
+                try:
+                    outcome = await vault_import.import_one(conn, file_path, peek_active_mvk(), payload.delete_source)
+                except vault_import.VaultLockedError:
+                    cancelled, stopped_reason = True, "vault_locked"
+                    logger.info("The vault locked during an import; stopped after %d of %d files.", idx, total_found)
+                    break
+                except Exception as err:
+                    logger.error("Failed to add %s to the vault: %s", file_path.name, err, exc_info=True)
+                    outcome = vault_import.FAILED
+                if outcome == vault_import.ADDED:
+                    imported += 1
+                    added_to_vault += 1
+                elif outcome == vault_import.FAILED:
+                    failed += 1
+                else:
+                    skipped += 1
+                import_progress_state.update(imported=imported, skipped=skipped, failed=failed, completed_count=idx + 1)
+                await asyncio.sleep(0)
+                continue
             try:
                 res = await ingest_single_photo(
                     conn,
@@ -1586,7 +1636,11 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
         import_progress_state["cancel_requested"] = False
         await conn.close()
 
-    if imported > 0:
+    if added_to_vault:
+        from engine.api.vault import _start_vault_enhancement
+
+        _start_vault_enhancement()  # 8K for vault photos, while the vault is open (C7).
+    if imported > 0 and not payload.into_vault:
         # The after-import process: text, faces, the old-photo rules (Settings → Old photos),
         # then 8K, which it starts itself once a photo's earlier steps are done.
         from engine.services import after_import
@@ -1603,4 +1657,5 @@ async def _import_batch(payload: ImportRequest, background_tasks: BackgroundTask
         album_linked_count=album_linked_count,
         cancelled=cancelled,
         unsupported=unsupported,
+        stopped_reason=stopped_reason,
     )

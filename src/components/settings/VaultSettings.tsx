@@ -10,6 +10,7 @@ import { apiFetch } from "../../services/api";
 import { VaultFactoryReset } from "../vault/VaultFactoryReset";
 import { EmergencyCardReplace } from "../vault/EmergencyCardReplace";
 import { ChoicePills, SettingRow, SettingsGroup } from "./SettingsKit";
+import { ToggleSwitch } from "../ui/ToggleSwitch";
 
 interface VaultSettingsProps {
   settings: AppSettings;
@@ -63,6 +64,21 @@ export const VaultSettings: React.FC<VaultSettingsProps> = ({ settings, updateSe
             value={settings.auto_lock_duration}
             onChange={(value) => updateSetting("auto_lock_duration", value)}
             options={AUTO_LOCK_OPTIONS}
+          />
+        </SettingRow>
+
+        <SettingRow
+          title="Remove the originals when adding to the vault"
+          description={
+            settings.vault_import_remove_originals
+              ? "Photos you add to the vault are removed from where they were, once their locked copy has been checked, so no unprotected copy stays behind. You can change this for each import."
+              : "Photos you add to the vault also stay where they were, where anyone using the computer can see them. You can change this for each import."
+          }
+        >
+          <ToggleSwitch
+            checked={settings.vault_import_remove_originals ?? true}
+            onChange={(checked) => updateSetting("vault_import_remove_originals", checked)}
+            ariaLabel="Remove the originals when adding to the vault"
           />
         </SettingRow>
 

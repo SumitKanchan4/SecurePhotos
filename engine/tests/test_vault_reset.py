@@ -40,6 +40,8 @@ async def populated_vault():
     folder = settings.data_dir / "originals" / "reset_test"
     folder.mkdir(parents=True, exist_ok=True)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # A vault left by an earlier test is erased first: setup refuses to replace one (2026-11-21).
+        await client.post("/api/vault/reset", json={"confirm_phrase": "ERASE ALL DATA"})
         assert (await client.post("/api/vault/setup", json={"password": PASSWORD})).status_code == 201
         assert (await client.post("/api/vault/unlock", json={"password": PASSWORD})).status_code == 200
 

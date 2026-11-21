@@ -20,6 +20,8 @@ export interface ImportResult {
   skipped: number;
   failed: number;
   cancelled?: boolean;
+  /** Into the vault: "vault_locked" when the vault locked and the rest stopped. */
+  stopped_reason?: string | null;
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
@@ -73,6 +75,30 @@ export function timeLeft(completed: number, total: number, startedAtSec: number 
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return `about ${hours} h${rest ? ` ${rest} min` : ""} left`;
+}
+
+/** Into the vault (owner, 2026-11-21): photos already in the library are moved in too, so the
+ *  button counts them; only photos already in the vault are left out by the import itself. */
+export function vaultButtonLabel(p: ImportPreview | null): string {
+  if (!p) return "Add to vault";
+  const count = p.to_import + p.already_in_library;
+  return count === 0 ? "Nothing to add" : `Add ${plural(count, "item")} to the vault`;
+}
+
+/** The message shown when an import into the vault ends. */
+export function vaultResultMessage(r: ImportResult): { text: string; tone: "success" | "info" | "warning" } {
+  const added = plural(r.imported, "item");
+  const extras: string[] = [];
+  if (r.skipped) extras.push(`${r.skipped.toLocaleString()} already in the vault or in Trash`);
+  if (r.failed) extras.push(`${r.failed.toLocaleString()} couldn't be added`);
+  const tail = extras.length ? ` (${extras.join(", ")})` : "";
+  if (r.stopped_reason === "vault_locked")
+    return { text: `The vault locked, so adding stopped. ${added} went in safely${tail}; the rest are where they were.`, tone: "info" };
+  if (r.cancelled) return { text: `Stopped. ${added} went into the vault${tail}; the rest are where they were.`, tone: "info" };
+  if (r.imported > 0) return { text: `Added ${added} to your vault${tail}.`, tone: "success" };
+  if (r.failed > 0 && r.skipped === 0) return { text: `Couldn't add ${plural(r.failed, "item")} to the vault. Check that the files can be opened.`, tone: "warning" };
+  if (r.skipped > 0) return { text: `Everything was already in your vault${r.failed ? ` (${r.failed.toLocaleString()} couldn't be added)` : ""}.`, tone: "info" };
+  return { text: "There was nothing to add.", tone: "info" };
 }
 
 /** The message shown when an import ends (also after the dialog was hidden). */
