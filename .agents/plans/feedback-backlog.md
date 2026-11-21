@@ -6,18 +6,11 @@ decisions are in `.agents/decisions.md`.
 
 Status: **Next** (to do now), **Owner decision**, **Release blocker**, **Later**.
 
-## Vault (owner, 2026-11-21)
-
-| # | Task | Status | Notes |
-|---|------|--------|-------|
-| T16 | Vault photos can't be selected: no "move back to library", "Trash" or other actions | In review (feature/vault-selection-import) | Selection bar in the vault: Move to library, Move to Trash, Select all, Delete and Esc. |
-| T17 | No way to import straight into the vault | In review (feature/vault-selection-import) | "Add photos" in the vault; each photo encrypted as it is copied; "Remove the originals" on by default (Settings → Vault), shown on the import window. Also fixed on the way: a second vault setup replaced the key (photos unreadable), an empty import path imported the engine's folder, and a move-out skipped photos the enhancer had just rewritten. |
-
 ## Found during the release review (2026-11-20)
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| T9 | The repository must be public for the old-photo model downloads | Release blocker | The installer downloads them from the `models-v1` release; the release pipeline refuses to publish while they need a login. |
+| T18 | The in-app updater has never had an update to install | Owner decision | Releases carry only the installer: no `.sig` or `latest.json`, because the GitHub secret `TAURI_SIGNING_PRIVATE_KEY` is empty and `createUpdaterArtifacts` isn't set (same for v0.1.0). Updating by running the new installer works. Needs the private key matching the public key in `tauri.conf.json` (or a new key pair) added as a secret. |
 | T10 | Owner re-check after restarting the desktop app | Next | The one-engine fix needs a fresh start of the app. Then re-check People ("Who is this?" cards stay closed) and the last round of fixes. |
 | T11 | `data_location.txt` points the dev app at the JointTest library | Later | Remove it once joint testing is over. It is ignored by git. |
 
