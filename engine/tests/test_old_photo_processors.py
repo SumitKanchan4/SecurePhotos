@@ -152,6 +152,28 @@ def test_black_and_white_detection_includes_sepia():
     assert not op.is_black_and_white(rng.integers(0, 255, (90, 120, 3)).astype(np.uint8))
 
 
+def _from_lab(l_value, a_value, b_value, shape=(60, 120)):
+    """A flat patch of one Lab colour (L 0-100), as RGB bytes."""
+    import cv2
+
+    lab = np.zeros((*shape, 3), np.float32)
+    lab[...] = (l_value, a_value, b_value)
+    return (np.clip(cv2.cvtColor(lab, cv2.COLOR_Lab2RGB), 0, 1) * 255).round().astype(np.uint8)
+
+
+def test_a_pale_foggy_colour_photo_is_not_taken_for_black_and_white():
+    """T5: fog makes colour even and faint, like a print's tint; but its hues differ (sky, sand)."""
+    rng = np.random.default_rng(5)
+    sky = _from_lab(82, -1.0, -4.0)      # Pale blue-grey haze.
+    sand = _from_lab(78, 1.5, 4.0)       # Pale beige.
+    fog = np.concatenate([sky, sand], 0).astype(np.int16) + rng.integers(-2, 3, (120, 120, 3))
+    fog = np.clip(fog, 0, 255).astype(np.uint8)
+    assert not op.is_black_and_white(fog)
+    # A print toned the same amount, but in one hue, still counts.
+    toned = np.concatenate([_from_lab(82, 1.2, 4.0), _from_lab(60, 1.5, 4.5)], 0)
+    assert op.is_black_and_white(toned)
+
+
 def test_strength_mixes_result_and_original():
     original, result = _jpeg(np.full((40, 40, 3), 0)), _jpeg(np.full((40, 40, 3), 200))
     assert op.apply_intensity(result, original, 1.0) == result

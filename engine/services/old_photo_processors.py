@@ -43,6 +43,12 @@ SEPIA_SHARE = 0.67          # Share of coloured pixels still orange/brown that t
 # 19 test photos the spread of Lab a/b was <= 1.0 / 2.9 for every grey or sepia print and >= 4.3 / 7.0
 # for every colour photo (2026-11-16); the old "low saturation" rule missed strongly toned sepia.
 TINT_STD_A, TINT_STD_B = 2.5, 4.5
+# T5 (2026-11-21): a foggy colour photo has evenly pale colour too, so it passed the spread test and
+# got colour added. Its faint colours point in different directions (blue sky, beige sand); a
+# print's tint is one hue. Among pixels with a little colour (chroma > 3), the hue agreement
+# (1 = one hue, 0 = all directions) was 0.78-0.99 on the owner's 11 grey and sepia scans and 0.34 on
+# the fog photo. Checked only when at least 5% of the photo has colour; a plain grey print has less.
+TINT_CHROMA, TINT_MIN_SHARE, TINT_ONE_HUE = 3.0, 0.05, 0.6
 
 
 def _cv2():
@@ -64,11 +70,22 @@ def encode_jpeg(rgb: np.ndarray) -> bytes:
 
 
 def is_black_and_white(rgb: np.ndarray) -> bool:
-    """Grey or sepia-toned photo (the app offers "Add colour" for these): one uniform tint."""
+    """Grey or sepia-toned photo (the app offers "Add colour" for these): one uniform tint.
+
+    Even colour alone isn't enough: a pale, foggy colour photo is even too, but its faint
+    colours are of several hues, where a print's tint is one (T5).
+    """
     cv2 = _cv2()
     small = cv2.resize(rgb, (256, max(1, int(256 * rgb.shape[0] / rgb.shape[1]))))
     lab = cv2.cvtColor(small.astype(np.float32) / 255.0, cv2.COLOR_RGB2Lab)
-    return float(lab[..., 1].std()) < TINT_STD_A and float(lab[..., 2].std()) < TINT_STD_B
+    a, b = lab[..., 1], lab[..., 2]
+    if not (float(a.std()) < TINT_STD_A and float(b.std()) < TINT_STD_B):
+        return False
+    toned = np.hypot(a, b) > TINT_CHROMA
+    if float(toned.mean()) < TINT_MIN_SHARE:
+        return True
+    hue = np.arctan2(b[toned], a[toned])
+    return float(np.hypot(np.cos(hue).mean(), np.sin(hue).mean())) >= TINT_ONE_HUE
 
 
 # A8: drawings, documents and screenshots are mostly one plain background (paper or screen).
