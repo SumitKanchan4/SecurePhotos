@@ -74,6 +74,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await reconcile_pending_vault_ops()
     except Exception as e:
         logger.error(f"Vault recovery sweep failed; leftovers kept for next start: {e}", exc_info=True)
+    # Photos left half-way into the vault by a stop are removed; their originals are untouched.
+    try:
+        from engine.services.vault_import import undo_interrupted_imports
+        await undo_interrupted_imports()
+    except Exception as e:
+        logger.error(f"Couldn't tidy up an interrupted vault import: {e}", exc_info=True)
 
     # Automatically trigger background 4K optimization pass if any unoptimized photos exist
     if not os.environ.get("PYTEST_CURRENT_TEST"):

@@ -264,7 +264,8 @@ interface PhotoTimelineProps {
   activeVideoId?: number | null;
   /** Shown instead of the grid when there are no photos. */
   empty?: React.ReactNode;
-  /** Vault items (redesign R4): vault thumbnails, and no selection (the vault has no selection bar). */
+  /** Vault items (redesign R4): vault thumbnails. The vault's Photos tab has its own selection bar
+   *  (owner, 2026-11-21); pass ``selectable={false}`` where nothing acts on a selection. */
   vault?: boolean;
   /** Show the month/year scrubber only when there are at least this many month sections. */
   minScrubberSections?: number;
@@ -282,7 +283,7 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({
   minScrubberSections = 2,
   selectable: allowSelection = true,
 }) => {
-  const selectable = !vault && allowSelection;
+  const selectable = allowSelection;
   const { selectedPhotoIds, togglePhotoSelection, gridDensity, showToast } = useAppStore();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });

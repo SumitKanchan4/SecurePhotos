@@ -43,6 +43,9 @@ logger = logging.getLogger("securephotos.ingestion_service")
 
 # Import modes (M4). There is deliberately no in-place mode for files outside the library.
 MANAGED = "managed"        # Copy (or move) into the dated library folders.
+# is_encrypted value of a photo on its way into the vault (vault_import): shown nowhere, touched by
+# no worker, and removed at the next start if the app stopped before it was encrypted.
+PENDING_VAULT = 2
 IN_LIBRARY = "in_library"  # A file the app wrote inside the library itself (e.g. a collage).
 
 # Supported photo and video media extensions
@@ -531,6 +534,7 @@ async def ingest_single_photo(
     delete_source: bool = False,
     task_id: Optional[int] = None,
     return_is_new: bool = False,
+    into_vault: bool = False,
 ) -> Union[Optional[int], Tuple[Optional[int], bool]]:
     """Ingests a single media file into the SecurePhotos library in milliseconds.
 
@@ -544,6 +548,9 @@ async def ingest_single_photo(
         delete_source: Whether to delete the source file after SHA-256 verified move.
         task_id: Optional parent import_task ID for journaling.
         return_is_new: If True, returns a tuple (photo_id, is_new). If False, returns photo_id.
+        into_vault: The photo is on its way into the vault (``vault_import``): it is saved as
+            ``PENDING_VAULT``, so neither the library nor the vault shows it and no worker touches
+            it until it is encrypted, and where it came from on the computer isn't recorded.
 
     Returns:
         The inserted photo ID (or tuple (photo_id, is_new)), or None / (None, False) if skipped/failed.
@@ -626,7 +633,7 @@ async def ingest_single_photo(
             ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?,
-            ?, ?, ?, 0, 0,
+            ?, ?, ?, 0, ?,
             ?, ?, ?, ?, ?, ?
         );
         """,
@@ -650,12 +657,13 @@ async def ingest_single_photo(
             metadata["aperture"],
             metadata["shutter_speed"],
             metadata["focal_length"],
+            PENDING_VAULT if into_vault else 0,
             _db_path_or_none(thumb_path),
             _db_path_or_none(preview_path),
             file_hash,
             file_hash,
             1 if mode == MANAGED else 0,
-            str(source_path.resolve()),
+            None if into_vault else str(source_path.resolve()),
         ),
     )
     photo_id = cursor.lastrowid

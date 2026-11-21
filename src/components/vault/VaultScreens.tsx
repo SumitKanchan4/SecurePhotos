@@ -191,6 +191,7 @@ export const VaultAlbumPage: React.FC<VaultAlbumPageProps> = ({ album, photos, l
             photos={timeline}
             onOpen={onOpenPhoto}
             vault
+            selectable={false}
             minScrubberSections={4}
             empty={
               <div className="dash-empty">
