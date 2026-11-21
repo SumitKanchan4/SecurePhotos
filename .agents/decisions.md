@@ -12,6 +12,7 @@ made is in its commit and pull request.
 - One library open at a time. "Open a library folder" switches to another and restarts the app; there is no "connect a second library" (2026-11-17).
 - The repository stays private until the app is stable; model downloads (the `models-v1` release) only work once it is public (2026-11-17).
 - A release (version, installer, tag) waits for the owner's final go-ahead (2026-11-20).
+- Licence: MIT, copyright Sumit Kanchan. No plan to sell; donations may come later. The installer shows a short plain page (your photos are yours, keep backups, the vault, no warranty) and the MIT text (2026-11-21).
 
 ## Photos and videos
 - Imports copy into the library. "Remove the originals after importing" is off by default (2026-11-18).
