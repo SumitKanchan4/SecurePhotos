@@ -58,7 +58,12 @@ describe("quality and size", () => {
     expect(qualityChip({ ...photo, is_enhanced: false, is_optimized: false })).toBeNull();
     expect(qualityChip({ ...photo, mime_type: "video/mp4", width: 3840, height: 2160 })?.label).toBe("4K");
     expect(qualityChip({ ...photo, mime_type: "video/mp4", width: 1280, height: 720 })?.label).toBe("HD");
-    expect(qualityChip({ ...photo, mime_type: "video/mp4", width: 640, height: 360 })).toBeNull();
+    expect(qualityChip({ ...photo, mime_type: "video/mp4", width: 640, height: 360 })?.label).toBe("SD");
+    // T22: the same rule as the grid's tag, so a portrait 480×854 phone video is SD in both.
+    expect(qualityChip({ ...photo, mime_type: "video/mp4", width: 480, height: 854 })?.label).toBe("SD");
+    expect(qualityChip({ ...photo, mime_type: "video/mp4", width: 1080, height: 1920 })?.label).toBe("HD");
+    // An enhanced photo shows its real size (Auto keeps smaller photos at 4K).
+    expect(qualityChip({ ...photo, width: 3840, height: 2560 })?.label).toBe("4K");
     expect(dimensionsLine(photo)).toBe("7680 × 5760 · 8K");
     expect(dimensionsLine({ ...photo, width: undefined })).toBeNull();
   });

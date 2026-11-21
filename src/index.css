@@ -2659,8 +2659,10 @@ html, body, #root {
 .sto-action:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
 .sto-collages { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
 .sto-collage { display: flex; flex-direction: column; gap: 8px; padding: 8px; border-radius: 16px; border: 1px solid var(--glass-border); background: var(--bg-surface); }
-.sto-collage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; border-radius: 10px; overflow: hidden; }
-.sto-collage-grid > * { aspect-ratio: 1 / 1; width: 100%; object-fit: cover; display: block; background: var(--bg-surface-elevated); }
+/* T24: the preview has the collage's own rows (2 photos: one row of 2; 5: rows of 2 and 3). */
+.sto-collage-grid { display: flex; flex-direction: column; gap: 3px; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; }
+.sto-collage-row { flex: 1; min-height: 0; display: grid; gap: 3px; }
+.sto-collage-row > img { width: 100%; height: 100%; object-fit: cover; display: block; background: var(--bg-surface-elevated); }
 .sto-collage-foot { display: flex; align-items: center; gap: 8px; }
 .sto-collage-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .sto-collage-text .dash-muted { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2949,7 +2951,7 @@ html, body, #root {
 .sto-collages { grid-auto-flow: dense; }
 .sto-collage:first-child { grid-column: span 2; grid-row: span 2; }
 .sto-collage:first-child .sto-collage-grid { flex: 1; }
-.sto-collage:first-child .sto-collage-grid > * { aspect-ratio: auto; height: 100%; min-height: 120px; }
+.sto-collage:first-child .sto-collage-grid { aspect-ratio: auto; min-height: 240px; }
 @media (max-width: 720px) { .sto-collage:first-child { grid-column: auto; grid-row: auto; } }
 @media (prefers-reduced-motion: reduce) { .sto-stage-photos img.is-on { animation: none; transform: none; } .sto-stage-photos img { transition: none; } }
 

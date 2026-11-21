@@ -11,7 +11,7 @@ import type { PhotoItem, StoryModel, SuggestedCollage } from "../types";
 import type { NavTab } from "../store/useAppStore";
 import { useAppStore } from "../store/useAppStore";
 import { apiFetch, getThumbnailUrl } from "../services/api";
-import { plural, storyKind, storyMeta } from "./stories/storiesFormat";
+import { collageRows, plural, storyKind, storyMeta } from "./stories/storiesFormat";
 
 /** Collage ideas shown at first; a big library can have over a hundred. */
 const COLLAGES_FIRST = 6;
@@ -371,13 +371,19 @@ export const StoriesView: React.FC<StoriesViewProps> = ({ onPlayStory, onNavigat
           {collages === null ? null : (
             <div className="sto-collages">
               {collages.slice(0, collagesShown).map((idea) => {
-                const ids = (idea.preview_photo_ids?.length ? idea.preview_photo_ids : idea.photo_ids).slice(0, 4);
+                // The preview has the collage's own layout: one cell per photo, rows as the engine makes them.
+                const ids = idea.photo_ids.slice(0, 9);
+                let next = 0;
                 return (
                   <div key={idea.id} className="sto-collage">
                     <div className="sto-collage-grid" aria-hidden="true">
-                      {[0, 1, 2, 3].map((k) =>
-                        ids[k] ? <img key={k} src={getThumbnailUrl(ids[k])} alt="" loading="lazy" draggable={false} /> : <span key={k} />,
-                      )}
+                      {collageRows(ids.length).map((cols, r) => (
+                        <div key={r} className="sto-collage-row" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+                          {ids.slice(next, (next += cols)).map((id) => (
+                            <img key={id} src={getThumbnailUrl(id)} alt="" loading="lazy" draggable={false} />
+                          ))}
+                        </div>
+                      ))}
                     </div>
                     <div className="sto-collage-foot">
                       <span className="sto-collage-text">

@@ -249,3 +249,17 @@ async def test_album_list_gives_the_date_span_of_its_photos():
             await conn.execute(f"DELETE FROM photos WHERE id IN ({','.join('?' for _ in ids)});", ids)
             await conn.commit()
             await conn.close()
+
+
+async def test_the_collages_album_is_always_there_and_only_once():
+    """T25: shown next to Favourites and Saved stories before the first collage is saved."""
+    from engine.database import get_db_connection, run_migrations
+
+    await run_migrations()
+    await run_migrations()
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT COUNT(*) FROM albums WHERE LOWER(name) = 'collages';") as cur:
+            assert (await cur.fetchone())[0] == 1
+    finally:
+        await conn.close()

@@ -4,6 +4,7 @@
  */
 import type { PhotoItem } from "../../types";
 import { itemTitle } from "../../utils/displayName";
+import { photoSizeLabel, videoSizeLabel } from "../../utils/photoTimeline";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -72,17 +73,17 @@ export function isVideoItem(photo: Pick<PhotoItem, "mime_type">): boolean {
   return Boolean(photo.mime_type?.startsWith("video/"));
 }
 
-/** The small chip beside the title: "8K" for enhanced photos, "4K" / "HD" for videos. */
+/** The small chip beside the title, with the same rules as the grid's tag: the enhanced photo's
+ *  real size (8K / 4K / 2K), or the video's quality (4K / 2K / HD / SD). */
 export function qualityChip(photo: Pick<PhotoItem, "mime_type" | "width" | "height" | "is_enhanced" | "is_optimized">): { label: string; title: string } | null {
-  const w = photo.width ?? 0;
-  const h = photo.height ?? 0;
   if (isVideoItem(photo)) {
-    if (w >= 3840 || h >= 2160) return { label: "4K", title: photo.is_enhanced ? "Enhanced to 4K" : "4K video" };
-    if (w >= 1280 || h >= 720) return { label: "HD", title: "HD video" };
-    return null;
+    const label = videoSizeLabel(photo.width, photo.height);
+    if (!label) return null;
+    return { label, title: photo.is_enhanced && label !== "SD" ? `Enhanced to ${label}` : `${label} video` };
   }
-  if (photo.is_enhanced || photo.is_optimized) return { label: "8K", title: "Enhanced to 8K" };
-  return null;
+  if (!(photo.is_enhanced || photo.is_optimized)) return null;
+  const label = photoSizeLabel(photo.width, photo.height);
+  return label ? { label, title: `Enhanced to ${label}` } : null;
 }
 
 /** "7680 × 5760" plus the quality label, or null when the size is unknown. */
