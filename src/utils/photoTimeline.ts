@@ -322,13 +322,23 @@ export function allSelected(ids: number[], selected: Set<number>): boolean {
  * video by its size. Null when there is nothing to say.
  */
 export function qualityTag(photo: Pick<TimelinePhoto, "is_video" | "is_optimized" | "is_enhanced" | "width" | "height">): string | null {
-  if (!photo.is_video) {
-    if (!(photo.is_optimized && photo.is_enhanced)) return null;
-    const long = Math.max(photo.width || 0, photo.height || 0);
-    return long >= 7680 ? "8K" : long >= 3840 ? "4K" : long >= 2560 ? "2K" : null;
-  }
+  if (!photo.is_video) return photo.is_optimized && photo.is_enhanced ? photoSizeLabel(photo.width, photo.height) : null;
   // Every video shows its quality (owner feedback 2026-11-19: a 720p video had no tag).
-  const short = Math.min(photo.width || 0, photo.height || 0);
+  return videoSizeLabel(photo.width, photo.height);
+}
+
+/** An enhanced photo's size by its long side: "8K", "4K", "2K" or null. Shared by the grid and
+ *  the viewer so they always agree (2026-11-21: the viewer called every enhanced photo 8K). */
+export function photoSizeLabel(width?: number | null, height?: number | null): string | null {
+  const long = Math.max(width || 0, height || 0);
+  return long >= 7680 ? "8K" : long >= 3840 ? "4K" : long >= 2560 ? "2K" : null;
+}
+
+/** A video's quality by its shorter side (a portrait phone video counts the same as a landscape
+ *  one): "4K", "2K", "HD", "SD" or null. Shared by the grid and the viewer (2026-11-21: a
+ *  480×854 video said SD on its tile and HD in the viewer). */
+export function videoSizeLabel(width?: number | null, height?: number | null): string | null {
+  const short = Math.min(width || 0, height || 0);
   if (short <= 0) return null;
   if (short >= 2160) return "4K";
   if (short >= 1440) return "2K";

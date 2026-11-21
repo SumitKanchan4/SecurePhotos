@@ -501,6 +501,12 @@ WHEN NEW.trashed_at IS NOT NULL
 BEGIN
     UPDATE albums SET cover_photo_id = NULL WHERE cover_photo_id = NEW.id;
 END;
+
+-- T25 (owner, 2026-11-21): the Collages album is always there, next to Favourites and Saved
+-- stories, even before the first collage is saved (it used to appear only then).
+INSERT INTO albums (name, description)
+SELECT 'Collages', 'System collection for generated photo collages'
+WHERE NOT EXISTS (SELECT 1 FROM albums WHERE LOWER(name) = 'collages');
 """
 
 

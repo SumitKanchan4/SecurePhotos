@@ -564,8 +564,8 @@ DEFAULT_APP_SETTINGS: Dict[str, Any] = {
     "reduce_motion": False,
     "auto_lock_duration": 300,
     "quality_crf": 18,
-    "photo_resolution": "8k",        # Settings → Photo size: "2k" | "4k" | "8k" (owner, 2026-11-19).
-    "video_resolution": "hd",        # Settings → Video size: "original" | "hd" | "4k" (never above 4K).
+    "photo_resolution": "auto",      # Settings → Photo size: "auto" (default, 2026-11-21) | "2k" | "4k" | "8k".
+    "video_resolution": "auto",      # Settings → Video size: "auto" (default, = HD) | "original" | "hd" | "2k" | "4k".
     "pause_on_battery": True,
     # Owner, 2026-11-21: adding photos to the vault removes the originals by default, so no
     # unprotected copy stays behind; the import window shows it and can change it per import.
