@@ -722,37 +722,6 @@ fn get_library_location() -> LibraryLocationDto {
     }
 }
 
-#[tauri::command]
-fn reconnect_library(app: AppHandle, new_path: String) -> Result<bool, String> {
-    let target = PathBuf::from(&new_path);
-    if !target.exists() {
-        return Err(format!("The specified directory does not exist: {}", new_path));
-    }
-    let db_path = target.join("database").join("securephotos.db");
-    if !db_path.exists() {
-        return Err("No SecurePhotos database (database/securephotos.db) was found in the selected folder. Please choose a valid SecurePhotos data directory.".to_string());
-    }
-
-    let mut loc_file = PathBuf::from("data_location.txt");
-    if let Ok(curr) = std::env::current_exe() {
-        if let Some(parent) = curr.parent() {
-            loc_file = parent.join("data_location.txt");
-        }
-    }
-    if let Err(e) = std::fs::write(&loc_file, format!("path={}\n", target.to_string_lossy())) {
-        return Err(format!("Failed to record library location: {}", e));
-    }
-
-    // Kill existing engine process so restart cleanly binds to the new library
-    let state = app.state::<AppEngineState>();
-    if let Ok(mut lock) = state.process.lock() {
-        if let Some(mut child) = lock.take() {
-            let _ = child.kill();
-        }
-    }
-    app.restart();
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let engine_state = AppEngineState {
@@ -791,7 +760,6 @@ pub fn run() {
             relaunch_app,
             prepare_for_update,
             get_library_location,
-            reconnect_library,
             start_backend_engine,
             stop_backend_engine,
             select_import_folder,

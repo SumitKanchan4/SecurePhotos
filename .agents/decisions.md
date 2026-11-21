@@ -9,7 +9,7 @@ made is in its commit and pull request.
 - Every computer the drive is plugged into is listed in the library with one of three choices: always does the background work, asks each time, or only views (heavy work waits for another computer). The first time, the app asks; Settings → Storage changes it or forgets the computer (2026-11-21).
 - CPU only: every AI model must run well on an ordinary CPU; a graphics card is an optional speed-up (2026-11-15).
 - Everything works offline; downloads are only the update check and the old-photo models (2026-11-15).
-- One library open at a time. "Open a library folder" switches to another and restarts the app; there is no "connect a second library" (2026-11-17).
+- The library is always the `data` folder next to the app; the app offers no way to open a library elsewhere. A backup is restored by copying its `data` folder back (2026-11-21).
 - The repository stays private until the app is stable; model downloads (the `models-v1` release) only work once it is public (2026-11-17).
 - A release (version, installer, tag) waits for the owner's final go-ahead (2026-11-20).
 - Licence: MIT, copyright Sumit Kanchan. No plan to sell; donations may come later. The installer shows a short plain page (your photos are yours, keep backups, the vault, no warranty) and the MIT text (2026-11-21).
