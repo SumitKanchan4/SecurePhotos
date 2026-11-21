@@ -21,6 +21,7 @@ target/
 src-tauri/target/
 src-tauri/gen/
 src-tauri/binaries/*.exe
+src-tauri/binaries/securephotos-engine/
 bin/*.exe
 build/
 

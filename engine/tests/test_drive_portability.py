@@ -125,3 +125,22 @@ async def test_database_relative_path_migration(tmp_path: Path):
         assert rows[0]["filepath"] == "originals/2026/01/photo1.jpg"
         assert rows[1]["filepath"] == "originals/2026/02/photo2.jpg"
         assert rows[2]["filepath"] == "originals/2026/03/photo3.jpg"
+
+
+def test_installed_engine_finds_the_app_folder_from_its_own_engine_folder(monkeypatch, tmp_path):
+    """T2: the installer puts the engine in <app>/engine/; the library and bin/ stay at <app>/."""
+    import sys
+
+    from engine.config import installed_app_dir
+    from engine.services.video_runtime import get_app_root
+
+    app = tmp_path / "SecurePhotos"
+    (app / "engine").mkdir(parents=True)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(app / "engine" / "securephotos-engine.exe"))
+    assert installed_app_dir() == app.resolve()
+    assert get_app_root() == app.resolve()
+
+    # An engine placed next to the app (older layout) still uses that folder.
+    monkeypatch.setattr(sys, "executable", str(app / "securephotos-engine.exe"))
+    assert installed_app_dir() == app.resolve()

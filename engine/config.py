@@ -18,6 +18,17 @@ logger = logging.getLogger("securephotos.config")
 MISSING_MEDIA_NAME = "<missing>"
 
 
+
+# The installed engine runs from its own folder inside the app's folder (T2): the installer puts
+# it there unpacked, so it never unpacks itself into the computer's temp folder.
+ENGINE_FOLDER_NAMES = ("engine", "binaries")
+
+
+def installed_app_dir() -> Path:
+    """The installed app's folder: the engine's own folder's parent, else the engine's folder."""
+    exe_dir = Path(sys.executable).resolve().parent
+    return exe_dir.parent if exe_dir.name.lower() in ENGINE_FOLDER_NAMES else exe_dir
+
 def resolve_default_data_dir() -> Path:
     """Resolves the active storage directory for database, cache, and models.
 
@@ -38,7 +49,7 @@ def resolve_default_data_dir() -> Path:
 
     # Determine executable/project base directory
     if getattr(sys, "frozen", False):
-        base_dir = Path(sys.executable).resolve().parent
+        base_dir = installed_app_dir()
     else:
         base_dir = Path(__file__).resolve().parent.parent
 

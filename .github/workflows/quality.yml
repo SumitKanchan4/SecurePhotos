@@ -49,8 +49,9 @@ jobs:
           echo "placeholder" > data/models/placeholder.txt
           # The installer bundles build/models (filled by scripts/fetch_models.py for releases).
           echo "placeholder" > build/models/placeholder.txt
-          # cargo check only needs the sidecar file to exist, not the real PyInstaller build.
-          touch src-tauri/binaries/securephotos-engine-x86_64-pc-windows-msvc.exe
+          # cargo check only needs the engine folder to exist, not the real PyInstaller build.
+          mkdir -p src-tauri/binaries/securephotos-engine
+          touch src-tauri/binaries/securephotos-engine/securephotos-engine.exe
 
       - name: Install Python dependencies (pinned)
         run: python -m pip install -r engine/requirements-dev.txt
@@ -98,4 +99,4 @@ jobs:
         run: cargo check --manifest-path src-tauri/Cargo.toml
 
       - name: Rust tests (engine access token, engine stops with the app)
-        run: cargo test --manifest-path src-tauri/Cargo.toml --test token_rng --test engine_job
+        run: cargo test --manifest-path src-tauri/Cargo.toml --test token_rng --test engine_job --test library_dir
