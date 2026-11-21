@@ -123,3 +123,16 @@ export function filmstripRange(index: number, length: number, count = 9): [numbe
   const start = Math.max(0, Math.min(index - Math.floor(size / 2), length - size));
   return [start, start + size - 1];
 }
+
+/** T29 (owner, 2026-11-21): the sizes a video can be made, above its current one (shorter side). */
+export const VIDEO_TARGETS: { target: number; label: string; name: string }[] = [
+  { target: 1080, label: "Full HD (1080p)", name: "Full HD" },
+  { target: 1440, label: "2K (1440p)", name: "2K" },
+  { target: 2160, label: "4K (2160p)", name: "4K" },
+];
+
+export function videoImproveOptions(width?: number | null, height?: number | null): typeof VIDEO_TARGETS {
+  const short = Math.min(width || 0, height || 0);
+  if (short <= 0) return [];
+  return VIDEO_TARGETS.filter((t) => t.target > short);
+}
