@@ -104,10 +104,12 @@ export function storageLine(photo: Pick<PhotoItem, "file_size" | "original_file_
 }
 
 /** Largest sharp print at 300 dpi, in cm: "Sharp prints up to 65 × 49 cm". */
+/** The print-ready copy is always made at 8K (T28): "Print copy at 8K: sharp up to 65 × 43 cm". */
 export function printLine(photo: Pick<PhotoItem, "width" | "height">): string | null {
   if (!photo.width || !photo.height) return null;
-  const cm = (px: number) => Math.round((px / 300) * 2.54);
-  return `Sharp prints up to ${cm(photo.width)} × ${cm(photo.height)} cm`;
+  const scale = 7680 / Math.max(photo.width, photo.height);
+  const cm = (px: number) => Math.round(((px * scale) / 300) * 2.54);
+  return `Print copy at 8K: sharp up to ${cm(photo.width)} × ${cm(photo.height)} cm`;
 }
 
 export function coordinatesLine(lat: number, lon: number): string {
