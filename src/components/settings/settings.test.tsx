@@ -231,7 +231,14 @@ describe("Photos & AI and Storage", () => {
               { key: "app", bytes: 512 * 1024 ** 2 },
             ],
           },
-          drive_storage: { drive_letter: "D:", volume_name: "Photos", total_bytes: 1000 * 1024 ** 3, free_bytes: 600 * 1024 ** 3 },
+          drive_storage: {
+            drive_letter: "D:",
+            volume_name: "Photos",
+            is_internal: false,
+            total_bytes: 1000 * 1024 ** 3,
+            free_bytes: 600 * 1024 ** 3,
+            app_consumed_bytes: 5 * 1024 ** 3,
+          },
         },
       },
     });
@@ -243,8 +250,14 @@ describe("Photos & AI and Storage", () => {
     expect(usage.textContent).toContain("Photos60%3.0 GB");
     expect(usage.textContent).toContain("Videos30%1.5 GB");
     expect(usage.textContent).toContain("App data · database and AI models10%512 MB");
-    expect(screen.getByText("Free on Photos")).toBeInTheDocument();
-    expect(screen.getByText("600.0 GB")).toBeInTheDocument();
+    // Owner, 2026-11-21: the drive card shows SecurePhotos, other files and free space.
+    expect(screen.getByRole("heading", { name: "Photos (D:)" })).toBeInTheDocument();
+    expect(screen.getByText("External drive")).toBeInTheDocument();
+    const drive = screen.getByRole("list", { name: "How the drive is used" });
+    expect(drive.textContent).toBe("SecurePhotos<1%5.0 GBOther files40%395.0 GBFree60%600.0 GB");
+    // Restoring a backup is copying a folder, not a button.
+    expect(screen.queryByRole("button", { name: /library folder/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/To restore a backup, copy its/)).toBeInTheDocument();
   });
 
   it("falls back to the window program's answer when the engine can't be asked", async () => {
