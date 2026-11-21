@@ -1,6 +1,6 @@
 # SecurePhotos design system
 
-The look and behaviour of the SecurePhotos app, as built in the 2026 redesign (Mono + acid lime). Use it when changing a screen or adding one. The source of truth is the code: tokens live at the top of [`src/index.css`](../src/index.css), and every screen has its own class prefix there. The reasons behind each decision are recorded in `.agents/history/features_and_functional_decisions.md`.
+The look and behaviour of the SecurePhotos app, as built in the 2026 redesign (Mono + acid lime). Use it when changing a screen or adding one. The source of truth is the code: tokens live at the top of [`src/index.css`](../src/index.css), and every screen has its own class prefix there. The owner's standing design decisions are listed in `.agents/decisions.md`.
 
 ---
 

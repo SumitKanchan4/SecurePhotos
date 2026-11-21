@@ -1,4 +1,4 @@
-"""The ordered after-import process (plan: .agents/plans/after-import-plan.md), step P1.
+"""The ordered after-import process, step P1.
 
 Every library photo goes through the same steps, in this order, and each step is recorded on
 the photo itself, so nothing is missed and a restart resumes where it stopped:

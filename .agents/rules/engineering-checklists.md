@@ -2,10 +2,10 @@
 trigger: always_on
 ---
 
-# ✅ Engineering Checklists (learned from the November 2026 remediation)
+# Engineering checklists
 
 Short, checkable rules. Each one exists because breaking it caused a real bug in this
-codebase (backlog item in brackets; details in `.agents/history/features_and_functional_decisions.md`).
+codebase (the old backlog item in brackets; details in the git history of the fix).
 Check the relevant list before committing.
 
 ## 1. Data safety (user photos are irreplaceable)
@@ -24,6 +24,10 @@ Check the relevant list before committing.
 ## 3. Responsiveness and concurrency
 - [ ] Anything that touches whole files or images (encrypt, decrypt, copy, hash, PIL, ffmpeg/ffprobe, ONNX, Argon2) runs via `asyncio.to_thread` inside `async` code. (H7)
 - [ ] Vault file work goes through `work_queues.vault_files()`, imports through `work_queues.imports()`. A repeated request must find the work done and do nothing. (H7)
+- [ ] Heavy work (AI models, 8K, video) waits for the one CPU slot in `cpu_budget`; quick steps first, what the user asked for first.
+- [ ] Only one engine runs per library. Work that two scans could do at once (saving a photo's faces) is one write transaction started with `BEGIN IMMEDIATE`, so it can't be saved twice.
+- [ ] Ids shown in the UI stay the same across a rerun (a group's id is its oldest face, not its position).
+- [ ] A one-time repair at start-up records a marker in `app_settings` and never runs again; it only fixes, never deletes user photos.
 
 ## 4. Security
 - [ ] Security code refuses rather than downgrades: no weaker fallback for randomness, keys or checks. (M5)
@@ -46,6 +50,7 @@ Check the relevant list before committing.
 - [ ] Every fix has a test that **fails on the old code** (run it against the old code, or put the bug back temporarily, then restore).
 - [ ] A test that only passes by timing is not a test: make it deterministic. (H7)
 - [ ] UI-visible changes are checked with Playwright against a **throwaway library** (`SECUREPHOTOS_DATA_DIR` + separate `USERPROFILE`), never the user's real `data/` folder or browser.
+- [ ] Scripts that import engine code set `SECUREPHOTOS_DATA_DIR` before the first engine import, or they work on the folder in `data_location.txt`. The owner's dev engine reloads on every edit, so engine changes (and start-up repairs) run live on that library.
 - [ ] Stop every server you started and confirm by process (command line + start time), not only by port: a stopped `npx vite` task can leave its `node` process running.
 - [ ] `ruff check .`, the full pytest suite, `npm test` (Vitest), `npx tsc --noEmit` and (for Rust) `cargo check` pass locally; the GitHub quality check passes on the PR.
 - [ ] Frontend logic changes (API layer, store, components) come with a Vitest test next to the file (`*.test.ts[x]`).
@@ -53,4 +58,4 @@ Check the relevant list before committing.
 ## 8. Working with the owner
 - [ ] Before starting a task: what it is about, impact, current implementation, proposed solution.
 - [ ] Ask **one question at a time**, each self-contained, with options and a recommendation.
-- [ ] Plain language in UI copy and in messages to the owner (rule §7 of `strict-approval-and-standards.md`).
+- [ ] Plain language in UI copy and in messages to the owner (§7 of `strict-approval-and-standards.md`): no em dashes, no marketing words.
