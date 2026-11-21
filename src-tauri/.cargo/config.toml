@@ -1,0 +1,4 @@
+# The app carries the Microsoft Visual C++ runtime inside its own program, so it starts on a
+# computer that has never had it installed (T2: the app runs from the drive on any PC).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
