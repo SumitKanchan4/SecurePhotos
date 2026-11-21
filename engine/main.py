@@ -117,6 +117,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from engine.services.face_scan_worker import remove_duplicate_faces
 
         asyncio.create_task(remove_duplicate_faces())
+        # One-off (2026-11-21, T30): videos are checked for faces on frames through them, not only
+        # on their preview; videos without a named face are checked again once.
+        from engine.services.face_scan_worker import rescan_videos_for_faces
+
+        asyncio.create_task(rescan_videos_for_faces())
         # Thumbnails/previews nothing uses any more (left by rewritten photos; 2026-11-19).
         from engine.services.storage_cleanup import sweep_unused_files
 
