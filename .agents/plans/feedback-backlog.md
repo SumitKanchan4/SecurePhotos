@@ -18,7 +18,6 @@ Status: **Next** (to do now), **Owner decision**, **Release blocker**, **Later**
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| T12 | Engine auto-reload hangs in development | Later | Seen once with `tauri dev`: uvicorn logged "Reloading..." and the old engine kept answering. Not reproduced since. Likely a background task blocking shutdown; cancel them on shutdown. |
 | T13 | Windows Hello quick unlock | Later | Owner: not now. Optional, per PC, on top of the master password. |
 | T14 | "Redo improvement" on a photo that already has an improved copy | Later | Only if wanted. |
 | T15 | CI allows npm advisory GHSA-fc5q-39xc-vjpf (picomatch) | Until 2026-12-31 | `scripts/ci/npm-audit-check.mjs`; remove the allowance once picomatch ships a fix. CI fails after the date. |
