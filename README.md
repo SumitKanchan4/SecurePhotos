@@ -24,7 +24,7 @@ The screenshots use free sample photos, none of them personal; see [the credits]
 ## What it does
 
 ### Your library, on your drive
-Everything SecurePhotos keeps lives in one library folder: your photos, the vault, thumbnails and the app's own data. You can put that folder on an external drive, plug the drive into another computer and carry on where you left off.
+SecurePhotos is made to live on an external drive. Install it there, and the app and everything it keeps sit together on the drive: your photos, the vault, thumbnails and the app's own data. Plug the drive into another Windows computer, open SecurePhotos from the drive and carry on where you left off. Nothing needs to be installed on that computer first.
 
 ### Bringing photos in
 Choose files or a folder, or drop them on the window. SecurePhotos copies them into your library and leaves your originals where they are. If you prefer, it can remove each original once its copy has been checked. Photos you already have are skipped.
@@ -61,9 +61,10 @@ The Dashboard shows what's in your library and how much space it uses. It also p
 
 ## Getting started
 
-1. Run the installer, `SecurePhotos_<version>_x64-setup.exe`. It needs an internet connection once, to download the old-photo models (about 2.7 GB).
-2. Click **Import** and choose your photos, or drop a folder on the window.
-3. Browse your photos, name the faces in **People**, and move anything private into the **Private Vault**.
+1. Plug in your external drive, then run the installer, `SecurePhotos_<version>_x64-setup.exe`. It suggests a folder on the drive; keep it, or pick another. You can install on the computer itself instead, but then your library stays on that computer. The installer needs an internet connection once, to download the old-photo models (about 2.7 GB).
+2. On any other computer, open `SecurePhotos.exe` from the folder on your drive.
+3. Click **Import** and choose your photos, or drop a folder on the window.
+4. Browse your photos, name the faces in **People**, and move anything private into the **Private Vault**.
 
 SecurePhotos runs on 64-bit Windows 10 and 11. It works on an ordinary computer; a graphics card is not needed.
 

@@ -113,7 +113,7 @@ jobs:
         run: cargo check --manifest-path src-tauri/Cargo.toml
 
       - name: Rust tests (engine access token, engine stops with the app)
-        run: cargo test --manifest-path src-tauri/Cargo.toml --test token_rng --test engine_job
+        run: cargo test --manifest-path src-tauri/Cargo.toml --test token_rng --test engine_job --test library_dir
 
   # Job 2: build the installer. A test build is attached to the run; a public release is also
   # tagged and published, with notes taken from CHANGELOG.md.

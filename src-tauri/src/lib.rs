@@ -1,11 +1,12 @@
 use std::net::{TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 mod job;
+mod library;
 mod token;
 use token::generate_secure_token;
 use tauri::{
@@ -127,6 +128,39 @@ fn resolve_custom_data_dir() -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// The library folder the engine uses; the window's browser profile is kept inside it (T2).
+fn library_dir() -> PathBuf {
+    // Development builds follow the engine's own order; an installed app uses its `data` folder.
+    #[cfg(debug_assertions)]
+    let (env_dir, root) = (std::env::var_os("SECUREPHOTOS_DATA_DIR").map(PathBuf::from), find_project_root());
+    #[cfg(not(debug_assertions))]
+    let (env_dir, root): (Option<PathBuf>, Option<PathBuf>) = (None, None);
+    let custom = resolve_custom_data_dir();
+    library::choose_library_dir(env_dir.as_deref(), custom.as_deref(), root.as_deref(), app_dir().as_deref())
+}
+
+/// The folder the app runs from.
+fn app_dir() -> Option<PathBuf> {
+    std::env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_path_buf))
+}
+
+/// Opens the main window with its browser profile inside the library, so nothing about the
+/// library is left on a computer the drive was plugged into (T2). If that folder can't be made
+/// (a read-only drive), the window still opens with Windows' usual profile.
+fn open_main_window(app: &tauri::App) -> tauri::Result<()> {
+    let Some(config) = app.config().app.windows.iter().find(|w| w.label == "main").cloned() else {
+        return Ok(());
+    };
+    let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?;
+    let profile = library::webview_profile_dir(&library_dir());
+    match std::fs::create_dir_all(&profile) {
+        Ok(()) => builder = builder.data_directory(profile),
+        Err(err) => eprintln!("Browser profile stays in the usual place ({}): {}", profile.display(), err),
+    }
+    builder.build()?;
+    Ok(())
 }
 
 fn get_or_prepare_log_file() -> Option<std::fs::File> {
@@ -742,7 +776,16 @@ pub fn run() {
     tauri::Builder::default()
         .manage(engine_state)
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin({
+            // An update installs into the folder the app runs from, so on any computer it
+            // replaces the copy on the drive instead of adding one to that computer (T2).
+            let updater = tauri_plugin_updater::Builder::new();
+            match app_dir() {
+                Some(dir) => updater.installer_arg(library::update_install_dir_arg(&dir)),
+                None => updater,
+            }
+            .build()
+        })
         .invoke_handler(tauri::generate_handler![
             get_engine_status,
             get_engine_config,
@@ -759,6 +802,8 @@ pub fn run() {
             get_system_drives
         ])
         .setup(|app| {
+            open_main_window(app)?;
+
             // Auto-launch backend engine silently in the background
             let handle = app.handle().clone();
             std::thread::spawn(move || {

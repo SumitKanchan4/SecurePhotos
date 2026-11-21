@@ -16,9 +16,12 @@ says so and names the task in `.agents/plans/feedback-backlog.md`; don't describ
 - The app writes user data only inside the library: photos, the database, thumbnails, previews,
   face pictures, models, the vault and temporary files. Never `%APPDATA%`, `%LOCALAPPDATA%`,
   the user's home folder or the registry.
-- **Not built yet (T2):** the installer installs for the current user and suggests a folder on
-  C:, and the WebView2 profile goes to `%LOCALAPPDATA%\com.securephotos.app`. Both should be
-  on the drive.
+- The installer suggests `<drive>:\SecurePhotos` when a removable drive is plugged in and asks
+  once before installing on the computer's own drive. The window's browser profile is kept in
+  `data\webview` (`src-tauri/src/library.rs`). Updates install into the folder the app runs
+  from, so they replace the copy on the drive on any computer.
+- On the computer where the installer ran, Windows keeps a Start-menu entry, a desktop shortcut
+  and the uninstall entry; they hold nothing about the library.
 - Settings are stored in the database (`app_settings`), so they travel with the drive.
 
 ## 2. Any PC, any drive letter
@@ -26,7 +29,8 @@ says so and names the task in `.agents/plans/feedback-backlog.md`; don't describ
   read with `media_paths.resolve_stored_path`. Never store a drive letter.
 - Nothing has to be installed on the PC first: the engine is one program (PyInstaller), FFmpeg
   and FFprobe are in `bin/`, the small models in `data/models/`, and `WebView2Loader.dll` is
-  next to the app. WebView2 itself comes with Windows 10 and 11.
+  next to the app. The Visual C++ runtime is linked into the shell and carried by the engine.
+  WebView2 itself comes with Windows 10 and 11.
 - **Not built yet (T3):** on a PC the library hasn't seen, ask once whether to do background
   work there: make it the main computer, just this time, or only view (heavy work waits for the
   main computer). Known PCs are remembered in the library, never on the PC.

@@ -90,6 +90,13 @@ cargo check --manifest-path src-tauri/Cargo.toml    # desktop shell
 
 The installer is a Windows NSIS setup that contains the app, the engine as one program, and the smaller AI models. The old-photo models (about 2.7 GB) are too big to include: the installer downloads them, and if that fails the app offers the download before the first feature that needs them.
 
+The app is meant to be installed on an external drive, with the library in `data\` beside it:
+
+- **The installer** ([nsis-hooks.nsh](../src-tauri/nsis-hooks.nsh)) suggests `<drive>:\SecurePhotos` when a removable drive is plugged in, and asks once before installing on the computer's own drive. Updates and passive installs are never asked.
+- **The window's browser profile** (WebView2's storage and cache) is kept in `data\webview`, not in the user's AppData folder ([library.rs](../src-tauri/src/library.rs)).
+- **Updates** install into the folder the app runs from (`/D=` passed to the installer by the updater), so an update on any computer replaces the copy on the drive.
+- **No runtime to install.** The shell is built with the Visual C++ runtime linked in (`src-tauri/.cargo/config.toml`), and the engine program carries its own copy, so the app starts on a computer that never had it.
+
 1. **Fetch and check the bundled models:**
    ```powershell
    python scripts/fetch_models.py build/models
