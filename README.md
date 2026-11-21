@@ -37,7 +37,7 @@ After an import, each new photo is prepared in the background. You can use your 
 2. Faces are found, so People fills in.
 3. Old prints are checked for missing colour, fading and scratches.
 4. Duplicates are looked for.
-5. The photo is enhanced to the size you chose (2K, 4K or 8K).
+5. The photo is made sharper and saved in a lighter format. With **Auto**, the default, full-size photos are kept at 8K and smaller ones (like WhatsApp photos) at 4K; you can also choose 2K, 4K or 8K.
 
 A small ring on each photo shows its progress. Videos are prepared after the photos.
 

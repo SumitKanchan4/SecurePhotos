@@ -20,7 +20,8 @@ made is in its commit and pull request.
 - Improvements are always new copies linked to the original; the original is kept while "Keep original" is on. One tile per original and its copies; deleting the tile trashes them all (2026-11-18).
 - Trash keeps items for 30 days, then deletes them for good; the Windows Recycle Bin is not used (2026-11-10).
 - After an import: the quick steps (text, faces, old-print check, duplicates) for every new photo first, then 8K one photo at a time, least work first; videos after the photos (2026-11-19).
-- Photo size: 2K / 4K / 8K, default 8K. Video size: as recorded / HD / 2K / 4K, default HD. Videos never go above 4K (2026-11-19).
+- Photo size: Auto (default) / 2K / 4K / 8K; Auto gives photos of 6 MP and up 8K and smaller ones 4K. Video size: Auto (default, = HD) / as recorded / HD / 2K / 4K; videos are resized, not AI-enlarged, and never go above 4K (2026-11-21).
+- Library enhancement is a resize plus sharpen on a CPU; the 8K print-ready copy uses Real-ESRGAN. Graphics card support (and AI enhancement for the library) is a later phase (2026-11-21).
 - Photos still being prepared show their steps' icons taking turns and a ring bottom-left; tags show once done (2026-11-19).
 
 ## People
