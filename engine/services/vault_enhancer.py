@@ -48,12 +48,15 @@ async def _wait_for_power() -> bool:
     """Waits while the battery guard applies. Returns False if the vault locked meanwhile."""
     from engine.api import photos as photos_api
 
+    from engine.services import computers
+
     while True:
         settings = await photos_api._load_enhancement_settings()
-        if not photos_api.battery_guard_applies(settings):
+        reason = computers.hold_reason() or ("on_battery" if photos_api.battery_guard_applies(settings) else None)
+        if reason is None:
             vault_enhancement_state["paused_reason"] = None
             return True
-        vault_enhancement_state["paused_reason"] = "on_battery"
+        vault_enhancement_state["paused_reason"] = reason
         if _key() is None:
             return False
         await asyncio.sleep(BATTERY_RECHECK_SECONDS)

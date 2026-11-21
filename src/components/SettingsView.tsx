@@ -10,6 +10,7 @@ import { AppearanceSettings } from "./settings/AppearanceSettings";
 import { PhotosAISettings } from "./settings/PhotosAISettings";
 import { VaultSettings } from "./settings/VaultSettings";
 import { StorageSettings } from "./settings/StorageSettings";
+import { ComputersSettings } from "./settings/ComputersSettings";
 import { AboutSettings } from "./settings/AboutSettings";
 import { MusicSettings } from "./settings/MusicSettings";
 
@@ -59,7 +60,12 @@ export const SettingsView: React.FC<{ initialSection?: SettingsSection }> = ({ i
           {section === "photos" && <PhotosAISettings settings={settings} updateSetting={updateSetting} />}
           {section === "music" && <MusicSettings settings={settings} updateSetting={updateSetting} />}
           {section === "vault" && <VaultSettings settings={settings} updateSetting={updateSetting} />}
-          {section === "storage" && <StorageSettings />}
+          {section === "storage" && (
+            <>
+              <StorageSettings />
+              <ComputersSettings />
+            </>
+          )}
           {section === "about" && <AboutSettings />}
         </div>
       </div>

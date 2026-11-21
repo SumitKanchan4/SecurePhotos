@@ -287,14 +287,18 @@ async def _wait_while_on_battery() -> None:
 
     Settings are re-read on every check, so turning the guard off resumes at once.
     """
+    from engine.services import computers
+
     while True:
         app_settings = await _load_enhancement_settings()
-        if not battery_guard_applies(app_settings):
+        # T3: a computer set to "Only views" leaves enhancing to the others.
+        reason = computers.hold_reason() or ("on_battery" if battery_guard_applies(app_settings) else None)
+        if reason is None:
             break
-        if optimization_state["paused_reason"] != "on_battery":
-            logger.info("Photo enhancement paused: running on low battery.")
-        optimization_state["paused_reason"] = "on_battery"
-        await asyncio.sleep(BATTERY_RECHECK_SECONDS)
+        if optimization_state["paused_reason"] != reason:
+            logger.info("Photo enhancement paused: %s.", reason)
+        optimization_state["paused_reason"] = reason
+        await asyncio.sleep(BATTERY_RECHECK_SECONDS if reason == "on_battery" else 2)
     if optimization_state["paused_reason"]:
         logger.info("Photo enhancement resumed.")
     optimization_state["paused_reason"] = None
