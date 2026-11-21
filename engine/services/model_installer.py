@@ -8,13 +8,17 @@ The installer runs ``securephotos-engine.exe --fetch-models`` after it has copie
   continues from where it stopped next time);
 - if that fails (offline, not published yet), the app asks later; the install still succeeds.
 
-Each line printed goes into the installer's details list; the last lines are a short
-summary that the installer also shows in a message box. The exit code is always 0 so the
-install never fails because of a download.
+Progress (T19, owner 2026-11-21) goes to ``install_progress.txt`` in the models folder: line 1
+the overall percentage, line 2 a plain line such as "Add colour (1 of 5): 450 of 980 MB". The
+installer reads it while the download runs and moves its own progress bar. At the end the short
+summary goes to ``install_status.txt``; the installer shows it in its window (T21), and the file
+appearing tells it the download is over. The exit code is always 0 so the install never fails
+because of a download.
 """
 
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
@@ -31,6 +35,12 @@ MODEL_NAMES: Dict[str, str] = {
 
 READY, UP_TO_DATE, FAILED = "ready", "already up to date", "couldn't download (the app will ask later)"
 STATUS_FILE = "install_status.txt"
+PROGRESS_FILE = "install_progress.txt"
+
+
+def progress_line(name: str, number: int, count: int, done: int, total: int) -> str:
+    """"Add colour (1 of 5): 450 of 980 MB" for the installer's status line."""
+    return f"{name} ({number} of {count}): {done / 1e6:,.0f} of {total / 1e6:,.0f} MB"
 
 
 def fetch_models(
@@ -38,27 +48,38 @@ def fetch_models(
     say: Callable[[str], None] = print,
     cancel: Optional[threading.Event] = None,
     also_check: Optional[List[Path]] = None,
+    report: Optional[Callable[[int, str], None]] = None,
 ) -> Dict[str, str]:
     """Makes sure every old-photo model is in ``dest_dir`` (or already verified in one of
-    ``also_check``, e.g. a library kept on another drive). Returns {key: status}."""
+    ``also_check``, e.g. a library kept on another drive). Returns {key: status}.
+
+    ``report(percent, line)`` gets the overall progress (all models' bytes) as it goes.
+    """
     results: Dict[str, str] = {}
     keys = list(ai_models.ON_DEMAND_MODELS)
+    all_bytes = sum(int(ai_models.ON_DEMAND_MODELS[k]["size"]) for k in keys) or 1
+    finished_bytes = 0
     for number, key in enumerate(keys, start=1):
         name = MODEL_NAMES.get(key, key)
         spec = ai_models.ON_DEMAND_MODELS[key]
         if any(ai_models.is_model_ready(key, folder) for folder in [dest_dir, *(also_check or [])]):
             results[key] = UP_TO_DATE
             say(f"{name}: {UP_TO_DATE}")
+            finished_bytes += int(spec["size"])
+            if report:
+                report(int(finished_bytes * 100 / all_bytes), f"{name} ({number} of {len(keys)}): {UP_TO_DATE}")
             continue
         size_gb = int(spec["size"]) / 1e9
         say(f"Downloading {name} ({number} of {len(keys)}, {size_gb:.1f} GB)...")
         last = [-1]
 
-        def progress(done: int, total: int, _name: str = name) -> None:
+        def progress(done: int, total: int, _name: str = name, _number: int = number, _before: int = finished_bytes) -> None:
             step = int(done * 10 / total) * 10 if total else 0
             if step != last[0] and step < 100:
                 last[0] = step
                 say(f"  {_name}: {step}%")
+            if report:
+                report(int((_before + done) * 100 / all_bytes), progress_line(_name, _number, len(keys), done, total or int(spec["size"])))
 
         try:
             ai_models.fetch_on_demand(key, dest_dir, progress, cancel)
@@ -68,6 +89,9 @@ def fetch_models(
             results[key] = FAILED
             say(f"{name}: {FAILED}")
             say(f"  ({type(err).__name__}: {str(err)[:160]})")
+        finished_bytes += int(spec["size"])
+    if report:
+        report(100, "Old-photo models: done")
     return results
 
 
@@ -91,12 +115,27 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(line, flush=True)
 
     say("Getting the old-photo models (about 2.7 GB, once).")
+    last_write = [0.0]
+
+    def report(percent: int, line: str) -> None:
+        # At most a few times a second; the installer checks about twice a second.
+        now = time.monotonic()
+        if percent < 100 and now - last_write[0] < 0.3:
+            return
+        last_write[0] = now
+        try:
+            dest.mkdir(parents=True, exist_ok=True)
+            text = f"{max(0, min(100, percent))}\r\n{line}\r\n"
+            (dest / PROGRESS_FILE).write_bytes(text.encode("utf-8"))
+        except OSError:
+            pass
+
     try:
         library = [ai_models.get_models_dir()]  # Honours data_location.txt next to the app.
     except Exception:
         library = []
     try:
-        results = fetch_models(dest, say, also_check=library)
+        results = fetch_models(dest, say, also_check=library, report=report)
     except Exception as err:  # Never fail the install.
         say(f"Model check stopped: {type(err).__name__}")
         results = {k: FAILED for k in ai_models.ON_DEMAND_MODELS}
