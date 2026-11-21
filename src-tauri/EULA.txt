@@ -1,33 +1,39 @@
-END USER LICENSE AGREEMENT (EULA) FOR SECUREPHOTOS
-Last Updated: November 2026
+SecurePhotos: before you install
 
-PLEASE READ THIS END USER LICENSE AGREEMENT ("AGREEMENT") CAREFULLY BEFORE INSTALLING OR USING SECUREPHOTOS ("SOFTWARE"). BY CLICKING "I AGREE", DOWNLOADING, INSTALLING, OR USING THE SOFTWARE, YOU AGREE TO BE BOUND BY THE TERMS AND CONDITIONS OF THIS AGREEMENT. IF YOU DO NOT AGREE, DO NOT INSTALL OR USE THE SOFTWARE.
+SecurePhotos is free software under the MIT License, which you'll find at the end of this page. Here is what it means for you, in plain words.
 
-1. GRANT OF LICENSE
-Subject to the terms of this Agreement, the developers ("Licensor") grant you a personal, non-exclusive, non-transferable, revocable license to install and use SecurePhotos solely for your personal or internal media management and digital vault purposes.
+YOUR PHOTOS ARE YOURS
+Everything you add to SecurePhotos stays yours. The app keeps your photos, videos and documents on your own drive and never uploads them anywhere. Nobody else gets any rights to them.
 
-2. OWNERSHIP & USER CONTENT RIGHTS
-(a) Software Intellectual Property: SecurePhotos, including its software code, architecture, design tokens, visual assets, and encryption, is protected by copyright and intellectual property laws.
-(b) User Media Ownership: You retain full and exclusive ownership, copyright, and all intellectual property rights over all photos, videos, documents, and data imported into, managed by, or stored in SecurePhotos. Licensor claims ZERO ownership, title, copyright, license, or control over any user media.
+KEEP YOUR OWN BACKUPS
+SecurePhotos takes care not to lose anything: it copies your photos when you import them, keeps the original when it improves a photo (unless you choose otherwise), and holds anything you delete in Trash for 30 days. Still, any drive can fail. Keep a copy of your original photos and videos on a separate drive.
 
-3. ENCRYPTION & DATA RECOVERY RESPONSIBILITY
-SecurePhotos encrypts the contents of its Private Vault on your device with authenticated encryption (AES-256-GCM), using a key derived from your master password with Argon2id. You acknowledge and agree that:
-(a) Licensor does not hold, manage, or store your passwords, PINs, master encryption keys, or Emergency Cards.
-(b) IF YOU FORGET YOUR MASTER PASSWORD AND LOSE YOUR EMERGENCY CARD, YOUR ENCRYPTED DATA CANNOT BE RECOVERED. LICENSOR CANNOT RESET, RECOVER, OR DECRYPT YOUR ENCRYPTED MEDIA UNDER ANY CIRCUMSTANCES.
-(c) You bear sole responsibility for keeping your master password, your Emergency Card, and backups of your original files safe.
+YOUR PRIVATE VAULT
+Only you know your vault password. If you forget it, the Emergency Card you save during setup is the only way back in. Without the password or the card, nobody can open the vault, including the author of SecurePhotos.
 
-4. DISCLAIMER OF WARRANTIES ("AS IS")
-THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITH ALL FAULTS AND WITHOUT WARRANTY OF ANY KIND. TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, LICENSOR EXPRESSLY DISCLAIMS ALL WARRANTIES, WHETHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. LICENSOR DOES NOT WARRANT THAT THE OPERATION OF THE SOFTWARE WILL BE UNINTERRUPTED, ERROR-FREE, SECURE, OR COMPATIBLE WITH ALL HARDWARE OR EXTERNAL STORAGE MEDIA.
+NO WARRANTY
+SecurePhotos is given as it is, free of charge and without any warranty, as the licence below explains.
 
-5. LIMITATION OF LIABILITY & ZERO LIABILITY FOR DATA LOSS OR QUALITY ALTERATION
-TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL THE AUTHORS, DEVELOPERS, CONTRIBUTORS, OR COPYRIGHT HOLDERS OF SECUREPHOTOS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, PUNITIVE, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, LOSS OF ORIGINAL MEDIA FILES, IMAGE OR VIDEO CORRUPTION, REDUCTION OR ALTERATION IN VISUAL QUALITY, RESOLUTION LOSS, UNINTENDED COMPRESSION ARTIFACTS, ACCIDENTAL DELETIONS OR PURGES, LOSS OF RECOVERY KEYS, MEDIA INTEGRITY LOSS, HARDWARE FAILURE, SYSTEM CRASHES, EXTERNAL DISK FAILURE, UNAUTHORIZED DATA ACCESS, OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE INSTALLATION, USE, OR INABILITY TO USE THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+--------------------------------------------------------------------------------
 
-6. USER BACKUP OBLIGATION & EXCLUSIVE RISK
-You explicitly acknowledge that digital media organization, video optimization, compression, super-resolution enhancement, disk-space cleanup, and on-disk cryptographic manipulation involve inherent technical risks. You agree that it is your sole and exclusive duty and obligation to maintain independent, regular, and verified backups of all original photos and critical files on separate storage media before performing ingestion, batch operations, compression, or vault migrations. Licensor bears zero responsibility for unbacked-up data.
+MIT License
 
-7. TERMINATION & UNINSTALLATION
-This Agreement remains effective until terminated. You may terminate it at any time by uninstalling the Software. Upon uninstallation, your photo library and encrypted vault data remain preserved on your storage media. If you wish to restore encrypted media to unencrypted files, you must decrypt your vault within the Software prior to uninstallation.
+Copyright (c) 2026 Sumit Kanchan
 
-8. GOVERNING LAW
-This Agreement shall be governed by and construed in accordance with the applicable laws of the jurisdiction in which the software is utilized, without giving effect to any principles of conflicts of law.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
