@@ -426,6 +426,19 @@ class SpaceSummary(BaseModel):
     waiting: int               # Photos still to enhance.
 
 
+@router.get("/highlights", status_code=status.HTTP_200_OK)
+async def get_highlights() -> Dict[str, Any]:
+    """The Dashboard tiles (T32): On this day, Just added, Brought back, People, Your year and
+    Trash. Read-only; vault photos are never included."""
+    from engine.services.highlights import highlights
+
+    conn = await get_db_connection()
+    try:
+        return await highlights(conn)
+    finally:
+        await conn.close()
+
+
 @router.get("/space-summary", response_model=SpaceSummary, status_code=status.HTTP_200_OK)
 async def get_space_summary() -> SpaceSummary:
     """Honest totals for the enhanced library photos (vault and Trash left out).

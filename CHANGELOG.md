@@ -4,9 +4,14 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 
 ## Unreleased
 
+### A new Dashboard
+- The Dashboard is about your library, not settings: **On this day** shows photos from this week in an earlier year and plays them as a story, **Just added** shows your last import, **Brought back** compares an old photo before and after, **People** shows the people you photograph most and the faces still waiting for a name, and **Your year** shows your photos month by month (click a month to open it). Before there is anything to show, Brought back, People and Your year say what they will show and how to start.
+- **Worth doing** always shows the same four cards, Duplicates, Big videos, What to keep and Empty Trash, each with the space it frees, or "All good" when there is nothing to do.
+- Storage is one line with a link to Settings, and warns when the drive is almost full. What enhancing saved is in a pill beside the title.
+
 ### Sharper, lighter photos
 - New **Auto** photo size, now the default: full-size photos from your phone or camera are kept at 8K, smaller ones like WhatsApp photos at 4K, so they stay light. Videos get **Auto** too: they stay as recorded, and old, small clips are brought up to HD.
-- The Dashboard shows what enhancing did: the space saved (when there is a saving), and how many photos were kept at 8K or enlarged to 4K.
+- The Dashboard shows what enhancing did: the space saved (when there is a saving), and how many photos were kept at 8K or enlarged to 4K (press the pill beside the title).
 - What to keep, Duplicates and Big videos say how much space they free, in a pill beside the title; What to keep also shows each pair's sizes.
 - The print-ready copy is made at 8K with an AI model for crisp edges on large prints, about a minute per photo.
 

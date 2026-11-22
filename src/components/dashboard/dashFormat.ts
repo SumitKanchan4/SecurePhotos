@@ -1,7 +1,7 @@
 /**
  * Dashboard, Duplicates and Big videos helpers (redesign R7c). Pure functions, unit-tested.
  */
-import type { AppStorageStats, DashboardOverview, DuplicateGroupItem, MediaCounts, StorageCategoryKey } from "../../types";
+import type { AppStorageStats, DriveStorageStats, DuplicateGroupItem, MediaCounts, StorageCategoryKey } from "../../types";
 import type { NavTab } from "../../store/useAppStore";
 import { formatSize } from "../import/importFormat";
 
@@ -9,28 +9,6 @@ export { formatSize };
 
 export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n.toLocaleString()} ${n === 1 ? one : many}`;
-}
-
-export interface StorageSegment {
-  key: "library" | "other";
-  label: string;
-  bytes: number;
-  percent: number;
-}
-
-/** Drive bar: what SecurePhotos uses and other files on the drive (free is what's left). */
-export function storageSegments(overview: DashboardOverview): StorageSegment[] {
-  const drive = overview.drive_storage;
-  const total = drive?.total_bytes || 0;
-  if (total <= 0) return [];
-  const library = overview.app_storage?.total_bytes || 0;
-  const other = Math.max(0, total - drive.free_bytes - library);
-  const pct = (b: number) => Math.min(100, Math.max(0, (b / total) * 100));
-  return [
-    // A small library on a big drive would be invisible; keep it at least a sliver wide.
-    { key: "library", label: "SecurePhotos", bytes: library, percent: library > 0 ? Math.max(pct(library), 0.8) : 0 },
-    { key: "other", label: "Other files", bytes: other, percent: pct(other) },
-  ];
 }
 
 const CATEGORY_TEXT: Record<StorageCategoryKey, { label: string; note?: string }> = {
@@ -178,4 +156,143 @@ export function spaceCard(s?: SpaceSummary | null): { headline: string; detail: 
  *  1.2 GB", or null when there is nothing to free. */
 export function freesLabel(bytes: number): string | null {
   return bytes > 0 ? `Frees about ${formatSize(bytes)}` : null;
+}
+
+// ── Dashboard tiles (T32, owner-approved mock-up 2026-11-22) ─────────────────────────────
+
+/** /api/system/highlights: what the Dashboard tiles show. */
+export interface Highlights {
+  on_this_day: { year: number; years_ago: number; count: number; photo_ids: number[]; story_id: number | null } | null;
+  just_added: { photos: number; videos: number; preparing: number; photo_ids: number[] } | null;
+  /** ``before_id`` is null once no original is left (the improved photo shows alone). */
+  brought_back: { before_id: number | null; after_id: number; kinds: string[]; total: number } | null;
+  people: { top: { id: number; name: string; close: boolean; photo_count: number; face_id: number | null }[]; to_name: number };
+  year: number;
+  months: number[];
+  trash: { count: number; bytes: number };
+}
+
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** "Good evening · Sunday 22 November". */
+export function greeting(now: Date): string {
+  const h = now.getHours();
+  const part = h < 5 ? "Good evening" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+  return `${part} · ${DAY_NAMES[now.getDay()]} ${now.getDate()} ${MONTH_NAMES[now.getMonth()]}`;
+}
+
+/** The one storage line, and whether it should warn (under 10% of the drive free). */
+export function storageLine(appBytes: number, drive?: DriveStorageStats | null): { text: string; low: boolean; usedPercent: number } | null {
+  if (!drive || drive.total_bytes <= 0) return null;
+  const letter = drive.drive_letter ? drive.drive_letter.replace(/\\$/, "") : "";
+  const where = drive.volume_name ? `${drive.volume_name}${letter ? ` (${letter})` : ""}` : letter || "this drive";
+  const low = drive.free_bytes / drive.total_bytes < 0.1;
+  const free = `${formatSize(drive.free_bytes)} free on ${where}`;
+  return {
+    text: low ? `Running low: ${free} · SecurePhotos uses ${formatSize(appBytes)}` : `SecurePhotos uses ${formatSize(appBytes)} · ${free}`,
+    low,
+    usedPercent: Math.min(100, Math.max(0, 100 - (drive.free_bytes / drive.total_bytes) * 100)),
+  };
+}
+
+/** The pill next to the title: "18.0 GB saved by enhancing" (null when there is nothing to say). */
+export function savedPill(s?: SpaceSummary | null): string | null {
+  const card = spaceCard(s);
+  if (!card) return null;
+  return s && s.saved_bytes > 0 && s.enhanced > 0 ? `${formatSize(s.saved_bytes)} saved by enhancing` : card.headline;
+}
+
+/** On this day: "This week, 3 years ago" and "14 photos from November 2023". */
+export function onThisDayText(m: NonNullable<Highlights["on_this_day"]>, now: Date): { title: string; line: string } {
+  const ago = m.years_ago === 1 ? "1 year ago" : `${m.years_ago} years ago`;
+  return { title: `This week, ${ago}`, line: `${plural(m.count, "photo")} from ${MONTH_NAMES[now.getMonth()]} ${m.year}` };
+}
+
+/** Just added: "48 photos and 2 videos" and "12 still being prepared". */
+export function justAddedText(j: NonNullable<Highlights["just_added"]>): { title: string; preparing: string | null } {
+  const parts = [j.photos ? plural(j.photos, "photo") : "", j.videos ? plural(j.videos, "video") : ""].filter(Boolean);
+  return {
+    title: parts.join(" and ") || "Nothing new",
+    preparing: j.preparing > 0 ? `${j.preparing.toLocaleString()} still being prepared` : null,
+  };
+}
+
+const KIND_TEXT: Record<string, string> = {
+  colour: "Colour added",
+  fade: "Faded colours brought back",
+  scratches: "Scratches removed",
+  faces: "Faces made clearer",
+};
+
+/** Brought back: what the app did, "Faded colours brought back · Colour added". */
+export function broughtBackText(kinds: string[]): string {
+  const known = kinds.filter((k) => k in KIND_TEXT).map((k) => KIND_TEXT[k]);
+  return known.length ? known.join(" · ") : "Brought back";
+}
+
+export interface MonthBar {
+  key: string;
+  letter: string;
+  name: string;
+  count: number;
+  /** Height, 0–100 (at least a sliver for a month with photos). */
+  height: number;
+  current: boolean;
+  busiest: boolean;
+}
+
+/** Your year: one bar per month, the current month and the busiest one marked. */
+export function monthBars(year: number, counts: number[], now: Date): { bars: MonthBar[]; total: number; busiest: string | null } {
+  const max = Math.max(0, ...counts);
+  const total = counts.reduce((a, b) => a + b, 0);
+  const busiestIndex = max > 0 ? counts.indexOf(max) : -1;
+  const bars = MONTH_NAMES.map((name, i) => {
+    const count = counts[i] ?? 0;
+    return {
+      key: `${year}-${String(i + 1).padStart(2, "0")}`,
+      letter: name[0],
+      name,
+      count,
+      height: count > 0 && max > 0 ? Math.max(6, Math.round((count / max) * 100)) : 0,
+      current: now.getFullYear() === year && now.getMonth() === i,
+      busiest: i === busiestIndex,
+    };
+  });
+  return { bars, total, busiest: busiestIndex >= 0 ? `Busiest: ${MONTH_NAMES[busiestIndex]}, ${plural(max, "photo")}` : null };
+}
+
+export interface WorthJob {
+  key: "duplicates" | "videos" | "keep" | "trash";
+  title: string;
+  line: string;
+  /** What it frees; 0 when there is nothing to do. */
+  bytes: number;
+  /** "free": something to do; "good": nothing to do; "checking": not known yet; "off": can't run here. */
+  state: "free" | "good" | "checking" | "off";
+}
+
+type JobCount = { count: number; bytes: number } | null | undefined;
+
+/** Worth doing (owner, 2026-11-22): the same four cards in the same place every time, each saying
+ *  what it frees or that all is good. ``undefined`` means still checking. */
+export function worthDoing(input: { duplicates?: JobCount; videos?: JobCount | "off"; keep?: JobCount; trash?: JobCount }): WorthJob[] {
+  const card = (
+    key: WorthJob["key"],
+    title: string,
+    value: JobCount | "off",
+    busy: (n: number) => string,
+    good: string,
+  ): WorthJob => {
+    if (value === "off") return { key, title, line: "Video tools aren't available on this computer", bytes: 0, state: "off" };
+    if (value === undefined) return { key, title, line: "Checking…", bytes: 0, state: "checking" };
+    if (value && value.count > 0 && value.bytes > 0) return { key, title, line: busy(value.count), bytes: value.bytes, state: "free" };
+    return { key, title, line: good, bytes: 0, state: "good" };
+  };
+  return [
+    card("duplicates", "Duplicates", input.duplicates, (n) => `${plural(n, "group")} of copies and bursts`, "No copies found"),
+    card("videos", "Big videos", input.videos, (n) => `${plural(n, "video")} can be made smaller`, "Your videos are a good size"),
+    card("keep", "What to keep", input.keep, (n) => `${plural(n, "improved photo")} to choose`, "Nothing waiting for a choice"),
+    card("trash", "Empty Trash", input.trash, (n) => `${plural(n, "item")} waiting to be deleted`, "Trash is empty"),
+  ];
 }

@@ -218,6 +218,19 @@ sequenceDiagram
 - A photo and its improved copies are deleted and restored together.
 - Rows are deleted before files, so a crash can leave a stray file but never a row pointing at a missing one.
 
+### 3.8 The Dashboard
+
+The Dashboard reads, it never changes anything. Besides the counts (`GET /api/system/dashboard`) and the jobs' own summaries, one call, `GET /api/system/highlights` (`engine/services/highlights.py`), gives every tile what it shows:
+
+- **On this day:** this week (3 days either side of today) in the earlier year with the most photos, using the same photo rules as the "On this day" stories, and that story's id when it exists.
+- **Just added:** photos and videos added in the last 24 hours (improved copies are not imports), and how many are still being prepared.
+- **Brought back:** the newest old photo the app improved whose original still exists, as the "before" (the original may be in Trash for 30 days after "Keep improved"). Once no original is left, the newest improved photo comes alone (`before_id` null): Trash deleting an original clears `derived_from_id`, and the copy keeps `ai_kind`.
+- **People:** the 6 people with most photos, close ones first, and how many groups of faces wait for a name.
+- **Your year:** tiles per month as the Photos grid shows them, so each bar's number matches the month it opens.
+- **Trash:** how many items and their size, for "Empty Trash" under Worth doing.
+
+Vault photos are never included. Storage detail lives in Settings › Storage; the Dashboard keeps one line.
+
 ## 4. The database
 
 The schema and its migrations are in [engine/database.py](../engine/database.py), the single source of truth. The main tables:
