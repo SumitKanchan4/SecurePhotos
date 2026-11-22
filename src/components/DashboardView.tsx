@@ -1,37 +1,26 @@
 /**
- * Dashboard (redesign R7c; owner feedback round 2 #4 "looks like a settings page" and round 1 #19
- * "storage more interactive"). The library opens as one sentence in big type over a strip of its
- * newest photos, every number a way in. Storage is one map: the drive, then what SecurePhotos
- * uses, linked bar and rows that open their place. Jobs worth doing lead with the space they
- * free. Background enhancement shows its progress with Pause / Resume. Duplicates, What to keep
- * and Big videos open as their own pages with a way back.
+ * Dashboard (T32, owner-approved mock-up 2026-11-22; before that R7c and owner feedback round 2
+ * #4 "looks like a settings page"). The library opens as one sentence in big type over a strip
+ * of its newest photos, every number a way in, with one quiet storage line (the detail is in
+ * Settings › Storage). Below it, tiles about the library itself: On this day, Just added, Brought
+ * back, People and Your year, each left out when it has nothing to show. Worth doing lists the
+ * jobs that free space, biggest first. Duplicates, What to keep and Big videos open as their own
+ * pages with a way back.
  */
 import React, { useCallback, useEffect, useState } from "react";
-import { Copy, Film, RefreshCw, Sparkles } from "lucide-react";
-import type { DashboardOverview, DuplicateSummaryResponse, PhotoItem, StorageCategoryKey, VideoSummary } from "../types";
+import { ChevronRight, HardDrive, RefreshCw, Sparkles } from "lucide-react";
+import type { DashboardOverview, DuplicateSummaryResponse, PhotoItem, VideoSummary } from "../types";
 import type { NavTab } from "../store/useAppStore";
 import { apiFetch, getThumbnailUrl } from "../services/api";
 import { useAppStore } from "../store/useAppStore";
 import { DuplicatesView } from "./DuplicatesView";
 import { WhatToKeepView } from "./WhatToKeepView";
 import { VideoOptimizerView } from "./VideoOptimizerView";
-import { formatSize, librarySentence, oldOriginalsNote, plural, spaceCard, storageSegments } from "./dashboard/dashFormat";
-import type { SpaceSummary } from "./dashboard/dashFormat";
-import { StorageBreakdown } from "./dashboard/StorageBreakdown";
-import type { OldOriginalsCleanup } from "./dashboard/dashFormat";
+import { greeting, librarySentence, oldOriginalsNote, savedPill, spaceCard, storageLine, worthDoing } from "./dashboard/dashFormat";
+import type { Highlights, OldOriginalsCleanup, SpaceSummary, WorthJob } from "./dashboard/dashFormat";
+import { BroughtBackTile, JustAddedTile, OnThisDayTile, PeopleTile, WorthDoing, YearTile } from "./dashboard/DashTiles";
 
 export type DashboardPage = "overview" | "duplicates" | "videos" | "keep";
-
-/** Where each kind of stored content lives in the app (Storage rows open it). */
-const STORAGE_PLACES: Partial<Record<StorageCategoryKey, NavTab>> = {
-  photos: "photos",
-  videos: "photos",
-  documents: "documents",
-  vault: "vault",
-  collages: "albums",
-  trash: "trash",
-};
-const OPENABLE_STORAGE: StorageCategoryKey[] = ["photos", "videos", "documents", "vault", "collages", "trash", "music"];
 
 interface DashboardViewProps {
   onNavigate: (tab: NavTab) => void;
@@ -45,20 +34,40 @@ interface DashboardViewProps {
   onLibraryChanged?: () => void;
   /** Improved photos waiting for "what to keep". */
   choicesTotal?: number;
+  /** On this day › Play as a story. */
+  onPlayStory?: (storyId: number) => void;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhotoClick, initialPage = "overview", backTo, onOpenPhoto, onLibraryChanged, choicesTotal = 0 }) => {
+interface KeepSummary {
+  total: number;
+  originals_bytes: number;
+}
+
+export const DashboardView: React.FC<DashboardViewProps> = ({
+  onNavigate,
+  onPhotoClick,
+  initialPage = "overview",
+  backTo,
+  onOpenPhoto,
+  onLibraryChanged,
+  choicesTotal = 0,
+  onPlayStory,
+}) => {
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [dupes, setDupes] = useState<DuplicateSummaryResponse | null>(null);
   const [videos, setVideos] = useState<VideoSummary | null>(null);
   const [spaceSummary, setSpaceSummary] = useState<SpaceSummary | null>(null);
+  const [highlights, setHighlights] = useState<Highlights | null>(null);
+  const [keep, setKeep] = useState<KeepSummary | null>(null);
   const [page, setPage] = useState<DashboardPage>(initialPage);
   useEffect(() => setPage(initialPage), [initialPage]);
   const back = backTo && page === initialPage && page !== "overview" ? backTo : { label: "Dashboard", onBack: () => setPage("overview") };
   const [refreshing, setRefreshing] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [cleanup, setCleanup] = useState<OldOriginalsCleanup | null>(null);
   const [ribbon, setRibbon] = useState<number[]>([]);
+  const [showSaved, setShowSaved] = useState(false);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -70,13 +79,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
         return null;
       }
     };
-    const [o, d, v, e, c, recent] = await Promise.all([
+    const [o, d, v, e, c, recent, h, k] = await Promise.all([
       json<DashboardOverview>("/api/system/dashboard"),
       json<DuplicateSummaryResponse>("/api/duplicates/summary"),
       json<VideoSummary>("/api/videos/summary"),
       json<SpaceSummary>("/api/system/space-summary"),
       json<OldOriginalsCleanup>("/api/videos/old-originals"),
       json<PhotoItem[]>("/api/photos?limit=14"),
+      json<Highlights>("/api/system/highlights"),
+      json<KeepSummary>("/api/restore/choices?limit=1"),
     ]);
     setRibbon(Array.isArray(recent) ? recent.filter((p) => !p.mime_type?.startsWith("video/")).map((p) => p.id).slice(0, 10) : []);
     setOverview(o);
@@ -84,15 +95,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
     setVideos(v);
     setSpaceSummary(e);
     setCleanup(c);
+    setHighlights(h && Array.isArray(h.months) && h.people ? h : null);
+    setKeep(k && typeof k.total === "number" ? k : null);
     setFailed(!o);
+    setLoaded(true);
     setRefreshing(false);
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
-
-
 
   const dismissCleanup = async () => {
     setCleanup(null);
@@ -130,31 +142,49 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
     return <VideoOptimizerView onBack={() => setPage("overview")} onPhotoClick={onPhotoClick} onRefreshTelemetry={load} />;
   }
 
+  const store = useAppStore.getState;
   const counts = overview?.media_counts;
   const parts = counts ? librarySentence(counts) : [];
-  const segments = overview ? storageSegments(overview) : [];
-  const drive = overview?.drive_storage;
+  const storage = storageLine(overview?.app_storage?.total_bytes || 0, overview?.drive_storage);
   const space = spaceCard(spaceSummary);
-  const openStorage = (key: StorageCategoryKey) => {
-    if (key === "music") useAppStore.getState().openSettings("music");
-    else onNavigate(STORAGE_PLACES[key] ?? "photos");
-  };
+  const pill = savedPill(spaceSummary);
+  const now = new Date();
+  const jobs = worthDoing({
+    duplicates: dupes ? { groups: dupes.total_groups, bytes: dupes.reclaimable_bytes } : null,
+    keep: { count: keep?.total ?? choicesTotal, bytes: keep?.originals_bytes ?? 0 },
+    videos: videos?.runtime_available ? { count: videos.compressible_count, bytes: videos.projected_reclaimable_bytes } : null,
+    trash: highlights?.trash ?? null,
+  });
+  const openJob = (key: WorthJob["key"]) => (key === "trash" ? onNavigate("trash") : setPage(key));
 
   return (
     <div className="dash-page">
       <div className="dash-header">
         <h1 className="dash-title">Dashboard</h1>
-        {drive && (
-          <span className="dash-subtitle">
-            Library on {drive.volume_name || "this drive"}
-            {drive.drive_letter ? ` (${drive.drive_letter.replace(/\\$/, "")})` : ""}
-          </span>
-        )}
+        <span className="dash-subtitle">{greeting(now)}</span>
         <div style={{ flex: 1 }} />
+        {pill && (
+          <button type="button" className="dash-saved-pill" aria-expanded={showSaved} onClick={() => setShowSaved((v) => !v)}>
+            <Sparkles size={14} aria-hidden="true" />
+            {pill}
+          </button>
+        )}
         <button type="button" className="dash-icon-btn" aria-label="Refresh" title="Refresh" onClick={load} disabled={refreshing}>
           <RefreshCw size={16} className={refreshing ? "spin" : ""} />
         </button>
       </div>
+
+      {/* T27 (owner, 2026-11-21): what enhancing did, in plain words, one press away. */}
+      {showSaved && space && (
+        <div className="dash-note dash-note-row" role="status">
+          <span>{[space.detail, space.sorted && `${space.sorted}.`, space.waiting && `${space.waiting}.`].filter(Boolean).join(" ")}</span>
+          {space.waiting && (
+            <button type="button" className="dash-btn dash-btn-small" onClick={() => store().setActiveTab("activity")}>
+              See Activity
+            </button>
+          )}
+        </div>
+      )}
 
       {oldOriginalsNote(cleanup) && (
         <div className="dash-note dash-note-row" role="status">
@@ -169,13 +199,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
 
       {counts && (
         <section className="dash-hero" aria-label="Your library">
-          {ribbon.length > 0 && (
-            <div className="dash-ribbon" aria-hidden="true">
-              {ribbon.map((id) => (
-                <img key={id} src={getThumbnailUrl(id)} alt="" loading="lazy" draggable={false} />
-              ))}
-            </div>
-          )}
           <p className="dash-sentence">
             {parts.map((part, i) => (
               <React.Fragment key={part.key}>
@@ -191,126 +214,56 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onPhot
             ))}
             {parts.length ? null : "Nothing here yet. Import photos to start your library."}
           </p>
-        </section>
-      )}
-
-      <div className="dash-grid">
-        {drive && drive.total_bytes > 0 && (
-          <section className="dash-card dash-space" aria-labelledby="dash-storage">
-            <div className="dash-card-head">
-              <h2 id="dash-storage">Space</h2>
-              <span className="dash-muted">
-                SecurePhotos uses {formatSize(overview?.app_storage?.total_bytes || 0)} · {formatSize(drive.free_bytes)} free of{" "}
-                {formatSize(drive.total_bytes)}
-              </span>
-            </div>
-            <div
-              className="dash-bar"
-              role="img"
-              aria-label={segments.map((seg) => `${seg.label} ${formatSize(seg.bytes)}`).join(", ") + `, free ${formatSize(drive.free_bytes)}`}
-            >
-              {segments.map((seg) => (
-                <span key={seg.key} className={`dash-bar-${seg.key}`} style={{ width: `${seg.percent}%` }} />
+          {ribbon.length > 0 && (
+            <div className="dash-ribbon" aria-hidden="true">
+              {ribbon.map((id) => (
+                <img key={id} src={getThumbnailUrl(id)} alt="" loading="lazy" draggable={false} />
               ))}
             </div>
-            <div className="dash-legend">
-              {segments.map((seg) => (
-                <span key={seg.key}>
-                  <span className={`dash-swatch dash-bar-${seg.key}`} aria-hidden="true" />
-                  {seg.label} {formatSize(seg.bytes)}
-                </span>
-              ))}
-              <span>
-                <span className="dash-swatch dash-bar-free" aria-hidden="true" />
-                Free {formatSize(drive.free_bytes)}
-              </span>
-            </div>
-            <h3 className="dash-usage-title">What SecurePhotos uses</h3>
-            <StorageBreakdown stats={overview?.app_storage} onOpen={openStorage} openable={OPENABLE_STORAGE} />
-          </section>
-        )}
-
-        <section className="dash-jobs" aria-labelledby="dash-worth">
-          <h2 id="dash-worth" className="dash-section-title">
-            Worth doing
-          </h2>
-          <article className="dash-job" aria-labelledby="dash-dupes">
-            <Copy size={18} className="dash-job-icon" aria-hidden="true" />
-            <div className="dash-job-text">
-              <h3 id="dash-dupes">Duplicates</h3>
-              <p className="dash-muted">
-                {!dupes
-                  ? "Checking for copies…"
-                  : dupes.total_groups > 0
-                  ? `${plural(dupes.total_groups, "group")} of copies and bursts. About ${formatSize(dupes.reclaimable_bytes)} can be freed.`
-                  : "No duplicates found."}
-              </p>
-            </div>
-            {dupes && dupes.total_groups > 0 && <span className="dash-job-gain">{formatSize(dupes.reclaimable_bytes)}</span>}
-            <button
-              type="button"
-              className={dupes && dupes.total_groups > 0 ? "dash-btn dash-btn-primary" : "dash-btn"}
-              onClick={() => setPage("duplicates")}
-            >
-              {dupes && dupes.total_groups > 0 ? "Review duplicates" : "Look for duplicates"}
-            </button>
-          </article>
-
-          {choicesTotal > 0 && (
-            <article className="dash-job" aria-labelledby="dash-keep">
-              <Sparkles size={18} className="dash-job-icon" aria-hidden="true" />
-              <div className="dash-job-text">
-                <h3 id="dash-keep">What to keep</h3>
-                <p className="dash-muted">{plural(choicesTotal, "photo")} improved automatically. Keep the improved one, the original, or both.</p>
-              </div>
-              <span className="dash-job-gain">{choicesTotal.toLocaleString()}</span>
-              <button type="button" className="dash-btn dash-btn-primary" onClick={() => setPage("keep")}>
-                Choose
-              </button>
-            </article>
           )}
-
-          <article className="dash-job" aria-labelledby="dash-videos">
-            <Film size={18} className="dash-job-icon" aria-hidden="true" />
-            <div className="dash-job-text">
-              <h3 id="dash-videos">Big videos</h3>
-              <p className="dash-muted">
-                {!videos
-                  ? "Checking your videos…"
-                  : !videos.runtime_available
-                  ? "Video tools aren't available on this computer."
-                  : videos.compressible_count > 0
-                  ? `${plural(videos.compressible_count, "video")} can be made smaller without visible change. About ${formatSize(videos.projected_reclaimable_bytes)} to save.`
-                  : "Your videos are already a good size."}
-              </p>
-            </div>
-            {videos && videos.runtime_available && videos.compressible_count > 0 && (
-              <span className="dash-job-gain">{formatSize(videos.projected_reclaimable_bytes)}</span>
-            )}
-            <button type="button" className="dash-btn" onClick={() => setPage("videos")} disabled={videos ? !videos.runtime_available : false}>
-              Review videos
-            </button>
-          </article>
-        </section>
-      </div>
-
-      {/* T27 (owner, 2026-11-21): what enhancing did to the library, in plain words. */}
-      {space && (
-        <section className="dash-card dash-space" aria-labelledby="dash-space">
-          <div className="dash-card-head">
-            <h2 id="dash-space">{space.headline}</h2>
-            <div style={{ flex: 1 }} />
-            {space.waiting && (
-              <button type="button" className="dash-btn dash-btn-small" onClick={() => useAppStore.getState().setActiveTab("activity")}>
-                See Activity
+          {storage && (
+            <p className={`dash-storage-line${storage.low ? " is-low" : ""}`}>
+              <HardDrive size={16} aria-hidden="true" />
+              <span>{storage.text}</span>
+              <span className="dash-storage-meter" aria-hidden="true">
+                <span style={{ width: `${storage.usedPercent}%` }} />
+              </span>
+              <button type="button" className="dash-link" onClick={() => store().openSettings("storage")}>
+                Storage <ChevronRight size={14} aria-hidden="true" />
               </button>
-            )}
-          </div>
-          {space.detail && <p className="dash-space-detail">{space.detail}</p>}
-          {space.sorted && <p className="dash-muted">{space.sorted}</p>}
-          {space.waiting && <p className="dash-muted">{space.waiting}</p>}
+            </p>
+          )}
         </section>
       )}
+
+      {highlights && (
+        <section className="dash-tiles" aria-label="At a glance">
+          {highlights.on_this_day && (
+            <OnThisDayTile memory={highlights.on_this_day} now={now} onPlay={onPlayStory} onOpenPhoto={onOpenPhoto} />
+          )}
+          {highlights.just_added && (
+            <JustAddedTile
+              added={highlights.just_added}
+              onOpenPhotos={() => onNavigate("photos")}
+              onOpenActivity={() => store().setActiveTab("activity")}
+            />
+          )}
+          {highlights.brought_back && <BroughtBackTile back={highlights.brought_back} onOpenPhoto={onOpenPhoto} />}
+          {(highlights.people.top.length > 0 || highlights.people.to_name > 0) && (
+            <PeopleTile
+              people={highlights.people}
+              total={counts?.people ?? highlights.people.top.length}
+              onOpenPerson={(id) => store().openPerson(id)}
+              onOpenPeople={() => onNavigate("people")}
+            />
+          )}
+          {highlights.months.some((n) => n > 0) && (
+            <YearTile year={highlights.year} months={highlights.months} now={now} onOpenMonth={(key) => store().openMonth(key)} />
+          )}
+        </section>
+      )}
+
+      <WorthDoing jobs={jobs} checking={!loaded} onOpen={openJob} />
     </div>
   );
 };

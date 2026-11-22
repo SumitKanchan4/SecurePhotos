@@ -6,6 +6,12 @@ decisions are in `.agents/decisions.md`.
 
 Status: **Next** (to do now), **Owner decision**, **Release blocker**, **Later**.
 
+## Now
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| T32 | Dashboard redesign | Next | Owner, 2026-11-22: "seems more like the settings page". Mock-up approved; branch `feat/dashboard-redesign`. |
+
 ## Next phase (owner, 2026-11-21)
 
 | # | Task | Status | Notes |
