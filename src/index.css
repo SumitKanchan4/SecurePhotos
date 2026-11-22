@@ -3088,7 +3088,9 @@ html, body, #root {
 
 /* Worth doing */
 .dash-worth { display: flex; flex-direction: column; gap: 12px; }
-.dash-jobs { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.dash-jobs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 1180px) { .dash-jobs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .dash-jobs { grid-template-columns: minmax(0, 1fr); } }
 .dash-job {
   display: flex; flex-direction: column; gap: 8px; padding: 18px; border-radius: 18px; text-align: left;
   border: 1px solid var(--glass-border); background: var(--bg-surface); color: var(--text-primary); font: inherit; cursor: pointer;
@@ -3103,7 +3105,11 @@ html, body, #root {
 .dash-job-title { font-size: 15px; font-weight: 800; }
 .dash-job-chev { color: var(--text-secondary); }
 .dash-job-gain { font-family: var(--font-display); font-size: 24px; font-weight: 900; letter-spacing: -0.02em; }
-.dash-worth-more { display: flex; gap: 12px; flex-wrap: wrap; }
+.dash-job:disabled { cursor: default; opacity: 0.6; }
+.dash-job.is-good .dash-job-icon, .dash-job.is-off .dash-job-icon, .dash-job.is-checking .dash-job-icon { background: var(--glass-pill-bg); color: var(--text-secondary); }
+.dash-job-gain.is-good { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); }
+.dash-job-gain.is-good svg { color: var(--accent-ink); }
+.dash-job-gain.is-quiet { color: var(--text-secondary); }
 
 /* The storage map: bar parts and rows light each other up. */
 .dash-map { display: flex; flex-direction: column; gap: 12px; }
