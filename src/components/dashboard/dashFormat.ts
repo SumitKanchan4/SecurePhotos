@@ -164,7 +164,8 @@ export function freesLabel(bytes: number): string | null {
 export interface Highlights {
   on_this_day: { year: number; years_ago: number; count: number; photo_ids: number[]; story_id: number | null } | null;
   just_added: { photos: number; videos: number; preparing: number; photo_ids: number[] } | null;
-  brought_back: { before_id: number; after_id: number; kinds: string[]; total: number } | null;
+  /** ``before_id`` is null once no original is left (the improved photo shows alone). */
+  brought_back: { before_id: number | null; after_id: number; kinds: string[]; total: number } | null;
   people: { top: { id: number; name: string; close: boolean; photo_count: number; face_id: number | null }[]; to_name: number };
   year: number;
   months: number[];

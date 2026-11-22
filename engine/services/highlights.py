@@ -99,22 +99,31 @@ async def just_added(conn: aiosqlite.Connection) -> Optional[Dict[str, Any]]:
 
 
 async def brought_back(conn: aiosqlite.Connection) -> Optional[Dict[str, Any]]:
-    """The newest old photo the app brought back, with its original, or None."""
+    """The old photo the app brought back most recently, or None when there is none.
+
+    Owner, 2026-11-22: the newest one whose original still exists (in the library, or in Trash
+    for 30 days after "Keep improved") comes with ``before_id`` for the before/after slider.
+    Once no original is left, the newest improved photo comes alone (``before_id`` None): Trash
+    deleting an original clears ``derived_from_id`` but the copy keeps its ``ai_kind``.
+    """
+    shown = f"v.ai_kind IS NOT NULL AND {_library('v')} AND {stack_top('v')} AND v.thumbnail_path IS NOT NULL"
     async with conn.execute(
         f"""
         SELECT v.id AS after_id, v.ai_kind, o.id AS before_id FROM photos v
         JOIN photos o ON o.id = v.derived_from_id
-        WHERE v.ai_kind IS NOT NULL AND {_library('v')} AND COALESCE(o.is_encrypted, 0) = 0
-          AND {stack_top('v')} AND v.thumbnail_path IS NOT NULL AND o.thumbnail_path IS NOT NULL
+        WHERE {shown} AND COALESCE(o.is_encrypted, 0) = 0 AND o.thumbnail_path IS NOT NULL
         ORDER BY v.created_at DESC, v.id DESC LIMIT 1;
         """
     ) as cur:
         row = await cur.fetchone()
     if not row:
+        async with conn.execute(
+            f"SELECT v.id AS after_id, v.ai_kind, NULL AS before_id FROM photos v WHERE {shown} ORDER BY v.created_at DESC, v.id DESC LIMIT 1;"
+        ) as cur:
+            row = await cur.fetchone()
+    if not row:
         return None
-    async with conn.execute(
-        f"SELECT COUNT(*) FROM photos v WHERE v.ai_kind IS NOT NULL AND v.derived_from_id IS NOT NULL AND {_library('v')} AND {stack_top('v')};"
-    ) as cur:
+    async with conn.execute(f"SELECT COUNT(*) FROM photos v WHERE {shown};") as cur:
         total = (await cur.fetchone())[0]
     return {
         "before_id": row["before_id"],

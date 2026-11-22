@@ -88,6 +88,22 @@ async def test_brought_back_pairs_the_newest_restored_photo_with_its_original(co
     assert got == {"before_id": replaced, "after_id": newest, "kinds": ["fade", "colour"], "total": 2}
 
 
+async def test_brought_back_shows_the_improved_photo_alone_once_no_original_is_left(conn):
+    # Trash deleted the original for good: the link is cleared, what was done is kept.
+    await add(conn, ai_kind="colour", created_at="2026-11-01 00:00:00")
+    newest = await add(conn, ai_kind="scratches", created_at="2026-11-02 00:00:00")
+    got = await hl.brought_back(conn)
+    assert got == {"before_id": None, "after_id": newest, "kinds": ["scratches"], "total": 2}
+
+
+async def test_brought_back_prefers_a_pair_with_its_original(conn):
+    old = await add(conn)
+    paired = await add(conn, derived_from_id=old, ai_kind="fade", created_at="2026-11-01 00:00:00")
+    await add(conn, ai_kind="colour", created_at="2026-11-05 00:00:00")  # newer, original gone
+    got = await hl.brought_back(conn)
+    assert got["before_id"] == old and got["after_id"] == paired and got["total"] == 2
+
+
 async def test_brought_back_is_none_without_restored_photos(conn):
     await add(conn)
     assert await hl.brought_back(conn) is None

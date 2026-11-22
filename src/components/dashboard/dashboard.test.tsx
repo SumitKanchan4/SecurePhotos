@@ -182,9 +182,19 @@ describe("DashboardView", () => {
       "GET /api/videos/summary": { runtime_available: true, total_videos: 1, total_video_bytes: 1, compressible_count: 0, enhanceable_count: 0, already_optimized_count: 0, projected_reclaimable_bytes: 0 },
       "GET /api/system/highlights": { on_this_day: null, just_added: null, brought_back: null, people: { top: [], to_name: 0 }, year: 2026, months: Array(12).fill(0), trash: { count: 0, bytes: 0 } },
     });
-    render(<DashboardView onNavigate={vi.fn()} />);
+    const onImport = vi.fn();
+    render(<DashboardView onNavigate={vi.fn()} onImport={onImport} />);
     expect(await screen.findByText("All good, nothing to free right now")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /On this day|Just added|Brought back|People|Your 2026/ })).not.toBeInTheDocument();
+    // Before the first old photo is brought back, the tile invites you to add one (owner, 2026-11-22).
+    expect(screen.getByRole("heading", { name: "Bring back old photos" })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Add photos" })[0]);
+    expect(onImport).toHaveBeenCalled();
+    expect(screen.queryByRole("heading", { name: /On this day|Just added|Brought back/ })).not.toBeInTheDocument();
+    // People and Your year invite you to start (owner, 2026-11-22).
+    expect(screen.getByText(/Name someone once and all their photos come together here/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open People" }));
+    expect(screen.getByText("No photos from 2026 yet. Add this year's photos and see your year here, month by month.")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Add photos" })).toHaveLength(2);
     // The four cards stay, saying all is good, and still open their page to look again.
     const worth = screen.getByRole("region", { name: "Worth doing" });
     expect(within(worth).getAllByText("All good")).toHaveLength(4);
@@ -192,6 +202,23 @@ describe("DashboardView", () => {
     expect(within(worth).getByText("Trash is empty")).toBeInTheDocument();
     fireEvent.click(within(worth).getByRole("button", { name: /Duplicates/ }));
     expect(await screen.findByRole("heading", { level: 1, name: "Duplicates" })).toBeInTheDocument();
+  });
+});
+
+describe("Brought back without an original", () => {
+  it("shows the improved photo alone once Trash has deleted its original", async () => {
+    mockEngine({
+      "GET /api/system/dashboard": OVERVIEW,
+      "GET /api/system/highlights": { on_this_day: null, just_added: null, brought_back: { before_id: null, after_id: 12, kinds: ["colour"], total: 15 }, people: { top: [], to_name: 0 }, year: 2026, months: Array(12).fill(0), trash: { count: 0, bytes: 0 } },
+    });
+    const onOpenPhoto = vi.fn();
+    render(<DashboardView onNavigate={vi.fn()} onOpenPhoto={onOpenPhoto} />);
+    expect(await screen.findByRole("heading", { name: "Brought back" })).toBeInTheDocument();
+    expect(screen.getByText("15 old photos")).toBeInTheDocument();
+    expect(screen.getByText("Colour added")).toBeInTheDocument();
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open this photo" }));
+    expect(onOpenPhoto).toHaveBeenCalledWith(12);
   });
 });
 
