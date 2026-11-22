@@ -22,7 +22,34 @@ export interface ResultFace {
   /** False when the identity check left it as it was (it no longer looked like the same person). */
   sharpened: boolean;
 }
-export type KeepChoice = "keep_both" | "replace" | "discard";
+/** ``use_new``: Try again only (T14): the new result replaces the copy it was a retry of. */
+export type KeepChoice = "keep_both" | "replace" | "discard" | "use_new";
+
+/** T14: what Try again would redo for an improved copy (from the photo's options). */
+export interface TryAgainInfo {
+  kinds: ImproveKind[];
+  /** The colour style used last time (null when no colour was added). */
+  style: "natural" | "vivid" | null;
+}
+
+/** The one job that redoes ``kinds`` (as the engine picks it): colour, else faded colours, else faces. */
+export function tryAgainKind(kinds: ImproveKind[]): ImproveKind {
+  return kinds.includes("colour") ? "colour" : kinds.includes("fade") ? "fade" : kinds.includes("faces") ? "faces" : "scratches";
+}
+
+/** The "…" menu's line for Try again. */
+export function tryAgainHint(kinds: ImproveKind[]): string {
+  const end = "from the original, with other settings. You choose which one to keep.";
+  if (kinds.length === 1) return `${IMPROVE_LABELS[kinds[0]].action} again ${end}`;
+  return `Make it again (${kinds.map((k) => IMPROVE_LABELS[k].action.toLowerCase()).join(", ")}) ${end}`;
+}
+
+/** After "Use the new one": the earlier copy comes back and the new one goes to Trash. Returns the earlier copy's id. */
+export async function undoTryAgain(newPhotoId: number, oldPhotoId: number): Promise<number | null> {
+  const res = await apiFetch("/api/restore/try-again/undo", jsonPost({ new_photo_id: newPhotoId, old_photo_id: oldPhotoId })).catch(() => null);
+  if (!res?.ok) return null;
+  return (await res.json()).photo_id ?? null;
+}
 
 export interface RestoreJob {
   id: number;
@@ -63,6 +90,8 @@ export interface ModelPrompt {
   kind: ImproveKind;
   /** What starts once it's downloaded (e.g. "Also sharpen faces" runs Fix faded colours again). */
   action: ImproveKind;
+  /** T14: the download was for Try again, which starts once it's here. */
+  redo?: boolean;
   style: "natural" | "vivid";
   bytes: number;
   phase: "ask" | "downloading" | "failed";
@@ -80,7 +109,9 @@ const POLL_MS = 1000;
 
 export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
   const photoId = photo?.id;
-  const [options, setOptions] = useState<{ colour: boolean; fade: boolean; faces?: boolean; scratches?: boolean } | null>(null);
+  const [options, setOptions] = useState<{ colour: boolean; fade: boolean; faces?: boolean; scratches?: boolean; again?: TryAgainInfo | null } | null>(null);
+  // T14: the photo (an improved copy) the result waiting for a decision is a retry of.
+  const [redoOf, setRedoOf] = useState<number | null>(null);
   const [showMarks, setShowMarks] = useState(true);
   const [touchUpOpen, setTouchUpOpen] = useState(false);
   const [facesOff, setFacesOff] = useState<number[]>([]);
@@ -117,6 +148,7 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
     setVersions([]);
     setIntensity(1);
     setStyle("natural");
+    setRedoOf(null);
     if (!isOpen || !photoId || !isEligible) return;
     let cancelled = false;
     // One request per photo: which actions fit, its Original / Improved family, and a job
@@ -174,8 +206,13 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
         setModelPrompt({ kind, action: kind, style: nextStyle, bytes, phase: "ask" });
         return;
       }
+      if (redoOf !== null) {
+        // Leaving Try again for another improvement: its results aren't needed any more.
+        dropParked();
+        setRedoOf(null);
+      }
       // Colour: the style's result is kept while on the photo (T23); switching back shows it again.
-      if (kind === "colour" && job?.status === "review" && job.kind === "colour") {
+      if (redoOf === null && kind === "colour" && job?.status === "review" && job.kind === "colour") {
         parked.current.set(style, job);
         const ready = parked.current.get(nextStyle);
         if (ready) {
@@ -190,7 +227,7 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
       setBusy(true);
       try {
         // Anything else replaces the result waiting for a decision.
-        if (job?.status === "review" && !(kind === "colour" && job.kind === "colour")) {
+        if (job?.status === "review" && (redoOf !== null || !(kind === "colour" && job.kind === "colour"))) {
           await apiFetch(`/api/restore/jobs/${job.id}/keep`, jsonPost({ choice: "discard" }));
         }
         const res = await apiFetch("/api/restore/jobs", jsonPost({ photo_ids: [photoId], kind, params: kind === "colour" ? { style: nextStyle } : {} }));
@@ -209,7 +246,58 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
         setBusy(false);
       }
     },
-    [photoId, job, downloads, style],
+    [photoId, job, downloads, style, redoOf, dropParked],
+  );
+
+  /** T14 Try again: the improvement made again from the original, by default with the colour
+   *  style not used last time. The result is compared with the copy on screen. */
+  const tryAgain = useCallback(
+    async (nextStyle?: "natural" | "vivid", modelsJustArrived = false) => {
+      const again = options?.again;
+      if (!photoId || !again) return;
+      const kind = tryAgainKind(again.kinds);
+      const wanted = nextStyle ?? (again.style === "vivid" ? "natural" : "vivid");
+      const bytes = downloads[kind];
+      if (bytes && !modelsJustArrived) {
+        setModelPrompt({ kind, action: kind, style: wanted, bytes, phase: "ask", redo: true });
+        return;
+      }
+      // Switching style shows a result made earlier at once (as for Add colour, T23).
+      if (redoOf !== null && kind === "colour" && job?.status === "review") {
+        parked.current.set(style, job);
+        const ready = parked.current.get(wanted);
+        if (ready) {
+          parked.current.delete(wanted);
+          setStyle(wanted);
+          setIntensity(1);
+          setJob(ready);
+          setResultVersion((v) => v + 1);
+          return;
+        }
+      }
+      setBusy(true);
+      try {
+        if (job?.status === "review" && !(redoOf !== null && kind === "colour")) {
+          await apiFetch(`/api/restore/jobs/${job.id}/keep`, jsonPost({ choice: "discard" }));
+        }
+        const res = await apiFetch(`/api/restore/photos/${photoId}/try-again`, jsonPost(kind === "colour" ? { style: wanted } : {}));
+        if (res.status === 409) {
+          setJob(null);
+          setModelPrompt({ kind, action: kind, style: wanted, bytes: 0, phase: "ask", redo: true });
+          return;
+        }
+        if (!res.ok) throw new Error(await res.text());
+        const { job_id } = await res.json();
+        setRedoOf(photoId);
+        setStyle(wanted);
+        setIntensity(1);
+        setFacesOff([]);
+        setJob({ id: job_id, photo_id: photoId, kind, status: "queued", progress: 0, error: null, result_photo_id: null });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [photoId, options, downloads, redoOf, job, style],
   );
 
   const cancel = useCallback(async () => {
@@ -246,8 +334,10 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
   /** Asks the model popup for ``kind``'s model; ``action`` runs once it's here (default: the same).
    *  "Also sharpen faces" asks for the face model and then runs Fix faded colours again. */
   const askForModels = useCallback((kind: ImproveKind, action: ImproveKind = kind) => {
-    setModelPrompt({ kind, action, style: style, bytes: downloads[kind] ?? 0, phase: "ask" });
-  }, [downloads, style]);
+    // A Try again that needs a download goes on as Try again once it's here (T14).
+    const redo = redoOf !== null && action === kind;
+    setModelPrompt({ kind, action, style: style, bytes: downloads[kind] ?? 0, phase: "ask", redo });
+  }, [downloads, style, redoOf]);
 
   /** The popup's Download: fetches only what the action needs, then starts it. */
   const downloadModels = useCallback(async () => {
@@ -274,7 +364,8 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
         // Still in the popup: go straight on with what the user asked for.
         const stillWaiting = promptRef.current?.phase === "downloading";
         setModelPrompt(null);
-        if (stillWaiting) void startRef.current(prompt.action, prompt.style, true);
+        if (stillWaiting && prompt.redo) void tryAgainRef.current(prompt.style, true);
+        else if (stillWaiting) void startRef.current(prompt.action, prompt.style, true);
       } else {
         setModelPrompt((current) => (current ? { ...current, phase: data.result === "cancelled" ? "ask" : "failed" } : current));
       }
@@ -284,6 +375,8 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
   // The download's last tick uses the latest start() and popup (no stale closures).
   const startRef = useRef(start);
   startRef.current = start;
+  const tryAgainRef = useRef(tryAgain);
+  tryAgainRef.current = tryAgain;
   const promptRef = useRef(modelPrompt);
   promptRef.current = modelPrompt;
 
@@ -395,6 +488,9 @@ export function useOldPhoto(photo: PhotoItem | undefined, isOpen: boolean) {
     needsModels,
     panelOpen: Boolean(job && job.status !== "done" && job.status !== "discarded" && job.status !== "cancelled"),
     start,
+    tryAgain,
+    /** T14: the improved copy the result is a retry of (null for an ordinary result). */
+    redoOf: job && (job.status === "review" || job.status === "queued" || job.status === "working") ? redoOf : null,
     cancel,
     keep,
     downloadModels,

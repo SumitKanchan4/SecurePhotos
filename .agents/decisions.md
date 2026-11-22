@@ -19,6 +19,7 @@ made is in its commit and pull request.
 ## Photos and videos
 - Imports copy into the library. "Remove the originals after importing" is off by default (2026-11-18).
 - Improvements are always new copies linked to the original; the original is kept while "Keep original" is on. One tile per original and its copies; deleting the tile trashes them all (2026-11-18).
+- Try again (approved mock-up, 2026-11-22): redoes all of a copy's fixes from the original in one job; the person compares with the current copy and chooses "Use the new one" (the current copy goes to Trash, its favourite, caption, albums and faces carry over; Undo swaps back) or "Keep the current one". Never kept automatically; the remembered keep choice doesn't apply.
 - Trash keeps items for 30 days, then deletes them for good; the Windows Recycle Bin is not used (2026-11-10).
 - After an import: the quick steps (text, faces, old-print check, duplicates) for every new photo first, then 8K one photo at a time, least work first; videos after the photos (2026-11-19).
 - Photo size: Auto (default) / 2K / 4K / 8K; Auto gives photos of 6 MP and up 8K and smaller ones 4K. Video size: Auto (default, = HD) / as recorded / HD / 2K / 4K; videos are resized, not AI-enlarged, and never go above 4K (2026-11-21).

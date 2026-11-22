@@ -136,6 +136,7 @@ flowchart LR
 - **How it enlarges:** a high-quality resize (Lanczos) and a fine-edge sharpen, not an AI model; on a CPU that takes seconds per photo. The 8K print-ready copy is the exception: it is made on request with Real-ESRGAN (about 40 s on a CPU) for crisper edges on large prints, falling back to the resize if the model can't be used. Using Real-ESRGAN for the library itself needs a graphics card (planned).
 - This step uses Lanczos resizing and sharpening, not an AI model.
 - **Old photos** are fixed before enhancement, at the scan's own size, by AI models (DDColor for colour, GFPGAN for faces, a scratch detector with LaMa for scratches). The improved photo is saved as a copy linked to its original (`derived_from_id`); both are then enhanced, so they compare like for like. The grid shows one tile per pair.
+- **Try again** (`engine/services/try_again.py`) remakes an improved copy from its original, with other settings: one ordinary job on the original that redoes every fix the copy had (colour and faded-colour fixes take "also sharpen faces" and "also repair scratches"), marked `redo_of` in its params. It is never kept automatically. "Use the new one" (`use_new`) creates the new copy with the old copy's details (`create_version(details_from=…)`) and trashes the old copy; Undo swaps them back. The original is only read, also when it is in Trash after "Replace".
 - **Videos** follow Settings, Video size: as recorded, HD (old low-quality clips enlarged to 1080p), 2K or 4K, measured on the shorter side. Nothing goes above 4K.
 
 ### 3.5 Search

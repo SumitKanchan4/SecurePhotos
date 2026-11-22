@@ -9,6 +9,7 @@
  */
 import React, { useState, useEffect, useRef } from "react";
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
   Heart,
@@ -40,7 +41,11 @@ import {
 } from "./viewer/viewerFormat";
 import { ViewerDetails } from "./viewer/ViewerDetails";
 import { useVolumeBooster } from "./viewer/useVolumeBooster";
-import { useOldPhoto } from "./viewer/useOldPhoto";
+import { undoTryAgain, useOldPhoto } from "./viewer/useOldPhoto";
+import { tryAgainLabels } from "./viewer/viewerFormat";
+
+/** How long the "Using the new one" message with Undo stays (T14). */
+const SWAP_NOTICE_MS = 10000;
 import { BeforeAfter, ChoiceBar, ImproveMenu, ModelDialog, OldPhotoPanel, VersionSwitch } from "./viewer/OldPhotoPanel";
 import { VideoImproveMenu } from "./viewer/VideoImproveMenu";
 import { VIDEO_TARGETS } from "./viewer/viewerFormat";
@@ -307,6 +312,28 @@ export const Lightbox: React.FC<LightboxProps> = ({
   // H10: old-photo improvements for the open photo (nothing shows until the user asks).
   const old = useOldPhoto(currentPhoto, isOpen);
   const marks = useMarks(old.maskUrl);
+  // T14: after "Use the new one", a message with Undo (for a little while, or until closed).
+  const [swap, setSwap] = useState<{ newId: number; oldId: number } | null>(null);
+  useEffect(() => {
+    if (!swap) return;
+    const timer = setTimeout(() => setSwap(null), SWAP_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [swap]);
+  useEffect(() => {
+    if (!isOpen) setSwap(null);
+  }, [isOpen]);
+  const undoSwap = async () => {
+    if (!swap) return;
+    const { newId, oldId } = swap;
+    setSwap(null);
+    const back = await undoTryAgain(newId, oldId);
+    if (back === null) {
+      showToast("Couldn't undo. The earlier one is in Trash, where you can restore it.", "warning");
+      return;
+    }
+    onShowVersion?.(back);
+    onLibraryChanged?.();
+  };
 
   if (!isOpen || !currentPhoto) return null;
 
@@ -1279,6 +1306,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
               facesOff={old.facesOff}
               onToggleFace={old.toggleFace}
               marks={old.showMarks ? marks : null}
+              labels={old.redoOf !== null ? tryAgainLabels(old.options?.again?.style ?? null, old.job?.kind === "colour" ? old.style : null) : undefined}
             />
           )}
         </div>
@@ -1310,14 +1338,30 @@ export const Lightbox: React.FC<LightboxProps> = ({
         )}
       </div>
 
+      {swap && (
+        <div className="viewer-swap" role="status">
+          <Check size={18} strokeWidth={2.6} aria-hidden="true" />
+          <span>Using the new one. The earlier one is in Trash for 30 days.</span>
+          <button type="button" onClick={() => void undoSwap()}>
+            Undo
+          </button>
+        </div>
+      )}
+
       {old.panelOpen && (
         <OldPhotoPanel
           old={old}
           onError={(message) => showToast(message, "warning")}
-          onKept={(choice) => {
+          onKept={(choice, newId) => {
             if (choice === "discard") return;
             onLibraryChanged?.();
-            if (choice === "replace") {
+            if (choice === "use_new") {
+              // T14: the new copy takes the current one's place; Undo swaps them back.
+              if (newId !== null) {
+                setSwap({ newId, oldId: currentPhoto.id });
+                onShowVersion?.(newId);
+              }
+            } else if (choice === "replace") {
               showToast("Replaced. The original is in Trash for 30 days.", "success");
               onClose();
             } else {

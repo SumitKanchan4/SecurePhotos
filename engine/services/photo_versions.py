@@ -309,11 +309,14 @@ async def create_version(
     kind: str,
     params: Optional[Dict[str, Any]] = None,
     key: Optional[bytes] = None,
+    details_from: Optional[int] = None,
 ) -> int:
     """Adds the improved photo next to ``source_id`` and returns its id.
 
     The link points at the first original (improving an improved photo links to the same
     original), and the kinds add up ('colour' then 'faces' -> 'colour,faces').
+    ``details_from`` (T14, Try again): take the details (favourite, caption, albums, folders,
+    named faces, vault details) from that photo, the copy being replaced, instead of the source.
 
     Raises:
         VersionError: Source missing or in a locked vault, or the file failed its checks.
@@ -326,6 +329,11 @@ async def create_version(
         raise VersionError("vault_locked")
     root_id = src["derived_from_id"] or src["id"]
     kinds = merged_kinds(src["ai_kind"], kind)
+    details = src
+    if details_from is not None:
+        details = await _row(conn, details_from)
+        if details is None or bool(details["is_encrypted"]) != encrypted:
+            raise VersionError("The photo to take the details from no longer exists.")
 
     source_bytes = await asyncio.to_thread(read_photo_bytes, src["filepath"], encrypted, key)
     avif, width, height = await asyncio.to_thread(encode_version, result, source_bytes, kinds, await _avif_quality())
@@ -338,7 +346,7 @@ async def create_version(
 
         phash = await asyncio.to_thread(compute_image_dhash, dest)
 
-    copied = {c: src[c] for c in COPIED_COLUMNS}
+    copied = {c: details[c] for c in COPIED_COLUMNS}
     columns = (
         "filename", "filepath", "file_size", "original_file_size", "mime_type", "width", "height",
         "original_width", "original_height", "thumbnail_path", "file_hash", "original_file_hash", "phash",
@@ -363,21 +371,21 @@ async def create_version(
         await conn.execute(
             "INSERT OR IGNORE INTO photo_album (photo_id, album_id, added_at) "
             "SELECT ?, album_id, added_at FROM photo_album WHERE photo_id = ?;",  # Same date: sits beside the original.
-            (new_id, source_id),
+            (new_id, details["id"]),
         )
         await conn.execute(
             "INSERT OR IGNORE INTO photo_document_folder (photo_id, folder_id) SELECT ?, folder_id FROM photo_document_folder WHERE photo_id = ?;",
-            (new_id, source_id),
+            (new_id, details["id"]),
         )
-        if encrypted and src["vault_meta_enc"]:
+        if encrypted and details["vault_meta_enc"]:
             from engine.services.crypto_vault import decrypt_photo_metadata, encrypt_photo_metadata
 
-            details = decrypt_photo_metadata(src["vault_meta_enc"], key, source_id)  # Sealed per photo id.
+            sealed = decrypt_photo_metadata(details["vault_meta_enc"], key, details["id"])  # Sealed per photo id.
             await conn.execute(
                 "UPDATE photos SET vault_meta_enc = ? WHERE id = ?;",
-                (encrypt_photo_metadata(details, key, new_id), new_id),
+                (encrypt_photo_metadata(sealed, key, new_id), new_id),
             )
-        crops = [] if encrypted else await _copy_faces(conn, source_id, new_id)
+        crops = [] if encrypted else await _copy_faces(conn, details["id"], new_id)
         await conn.commit()
     except BaseException:
         await conn.rollback()

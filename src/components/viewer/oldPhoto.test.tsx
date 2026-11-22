@@ -412,6 +412,72 @@ describe("Old photos in the viewer", () => {
   });
 });
 
+describe("Try again on an improved photo (T14)", () => {
+  const copyState = { options: { colour: false, fade: false, faces: false, scratches: false, again: { kinds: ["colour"], style: "natural" } }, members: [], job: null };
+  const retryJob = { ...reviewJob, id: 7, photo_id: 30 };
+
+  function engine(extra: Record<string, Route> = {}) {
+    return mockEngine({
+      ...extra,
+      "/api/restore/photos/1/state": () => copyState,
+      "/api/restore/photos/1/try-again": () => ({ job_id: 7, kind: "colour", kinds: ["colour"] }),
+      "/api/restore/jobs/7/keep": (_u, init) => (JSON.parse(String(init?.body)).choice === "use_new" ? { photo_id: 9, replaced_id: 1 } : { photo_id: null }),
+      "/api/restore/jobs/7/result": () => ({}),
+      "/api/restore/try-again/undo": () => ({ photo_id: 1 }),
+      "/api/system/settings": () => ({ settings: { old_photos_keep_choice: "replace" } }),
+      "/api/restore/jobs": () => ({ working: [], waiting: [], review: [retryJob], finished_today: [], download: null }),
+    });
+  }
+
+  async function startRetry() {
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    const item = screen.getByRole("menuitem", { name: /Try again/ });
+    expect(item).toHaveTextContent("Add colour again from the original, with other settings. You choose which one to keep.");
+    fireEvent.click(item);
+    return screen.findByRole("complementary", { name: "Try again: Add colour" }, { timeout: 3000 });
+  }
+
+  it("is the first item in the … menu and starts with the other colour style", async () => {
+    const calls = engine();
+    renderViewer();
+    const panel = await startRetry();
+    expect(calls.find((c) => c.url === "/api/restore/photos/1/try-again")?.body).toEqual({ style: "vivid" });
+    // Compared with the copy you have now; the remembered "Replace" never applies.
+    expect(await screen.findByText("Current · Natural", {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.getByText("New · Vivid")).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Vivid" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(panel).getByText(/the current one goes to Trash, where you can restore it for 30 days/)).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: /Replace the photo|Keep this/ })).not.toBeInTheDocument();
+  });
+
+  it("Use the new one shows it, and Undo brings the earlier one back", async () => {
+    const calls = engine();
+    const onShowVersion = vi.fn();
+    const handlers = renderViewer(undefined, { onShowVersion });
+    const panel = await startRetry();
+    fireEvent.click(await within(panel).findByRole("button", { name: "Use the new one" }, { timeout: 4000 }));
+    await waitFor(() => expect(onShowVersion).toHaveBeenCalledWith(9));
+    expect(calls.find((c) => c.url === "/api/restore/jobs/7/keep")?.body).toMatchObject({ choice: "use_new" });
+    expect(handlers.onLibraryChanged).toHaveBeenCalled();
+    const notice = await screen.findByRole("status");
+    expect(notice).toHaveTextContent("Using the new one. The earlier one is in Trash for 30 days.");
+    fireEvent.click(within(notice).getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(onShowVersion).toHaveBeenLastCalledWith(1));
+    expect(calls.find((c) => c.url === "/api/restore/try-again/undo")?.body).toEqual({ new_photo_id: 9, old_photo_id: 1 });
+  });
+
+  it("Keep the current one changes nothing", async () => {
+    const calls = engine();
+    const onShowVersion = vi.fn();
+    renderViewer(undefined, { onShowVersion });
+    const panel = await startRetry();
+    fireEvent.click(await within(panel).findByRole("button", { name: "Keep the current one" }, { timeout: 4000 }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/api/restore/jobs/7/keep")?.body).toMatchObject({ choice: "discard" }));
+    expect(onShowVersion).not.toHaveBeenCalled();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+});
+
 describe("Old photos: keyboard", () => {
   it("Escape in the keep dialog closes only the dialog; arrows on the strength slider don't switch photos", async () => {
     mockEngine({

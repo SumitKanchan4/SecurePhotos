@@ -16,6 +16,7 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 - The print-ready copy is made at 8K with an AI model for crisp edges on large prints, about a minute per photo.
 
 ### Photos, videos and people
+- **Try again** on an improved old photo: make it again from the original with other settings, such as the other colour style, and compare it with the one you have. Use the new one, or keep the current one; Undo is there if you change your mind. The earlier one waits in Trash for 30 days.
 - Faces are found in videos on several moments through each video, not only on its first picture; each person is kept once.
 - Make a video Full HD, 2K or 4K from the viewer's menu, even after it was processed.
 - When adding colour, switching between Natural and Vivid shows the earlier result straight away instead of colouring again.
