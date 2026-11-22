@@ -90,7 +90,7 @@ async def pending_choices(conn: aiosqlite.Connection, limit: int = 200) -> List[
     """
     async with conn.execute(
         """
-        SELECT c.id, c.derived_from_id, c.ai_kind FROM photos c
+        SELECT c.id, c.derived_from_id, c.ai_kind, COALESCE(c.file_size, 0), COALESCE(o.file_size, 0) FROM photos c
         JOIN photos o ON o.id = c.derived_from_id
         WHERE c.choice_pending = 1 AND c.trashed_at IS NULL AND o.trashed_at IS NULL
           AND COALESCE(c.is_encrypted, 0) = 0
@@ -98,7 +98,26 @@ async def pending_choices(conn: aiosqlite.Connection, limit: int = 200) -> List[
         """,
         (limit,),
     ) as cur:
-        return [{"photo_id": r[0], "original_id": r[1], "ai_kind": r[2]} for r in await cur.fetchall()]
+        # Sizes (owner, 2026-11-21): the page says how much space each choice frees.
+        return [
+            {"photo_id": r[0], "original_id": r[1], "ai_kind": r[2], "improved_size": r[3], "original_size": r[4]}
+            for r in await cur.fetchall()
+        ]
+
+
+async def pending_choice_sizes(conn: aiosqlite.Connection) -> Dict[str, int]:
+    """Total sizes of every pair waiting for a choice: what "keep improved" frees (the originals)
+    and what "keep original" frees (the improved copies)."""
+    async with conn.execute(
+        """
+        SELECT COALESCE(SUM(o.file_size), 0), COALESCE(SUM(c.file_size), 0)
+        FROM photos c JOIN photos o ON o.id = c.derived_from_id
+        WHERE c.choice_pending = 1 AND c.trashed_at IS NULL AND o.trashed_at IS NULL
+          AND COALESCE(c.is_encrypted, 0) = 0;
+        """
+    ) as cur:
+        row = await cur.fetchone()
+    return {"originals_bytes": int(row[0] or 0), "improved_bytes": int(row[1] or 0)}
 
 
 async def count_pending_choices(conn: aiosqlite.Connection) -> int:

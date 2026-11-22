@@ -7,6 +7,7 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 ### Sharper, lighter photos
 - New **Auto** photo size, now the default: full-size photos from your phone or camera are kept at 8K, smaller ones like WhatsApp photos at 4K, so they stay light. Videos get **Auto** too: they stay as recorded, and old, small clips are brought up to HD.
 - The Dashboard shows what enhancing did: the space saved (when there is a saving), and how many photos were kept at 8K or enlarged to 4K.
+- What to keep, Duplicates and Big videos say how much space they free, in a pill beside the title; What to keep also shows each pair's sizes.
 - The print-ready copy is made at 8K with an AI model for crisp edges on large prints, about a minute per photo.
 
 ### Photos, videos and people
