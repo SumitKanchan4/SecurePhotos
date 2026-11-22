@@ -265,3 +265,10 @@ describe("Settings → Music (round 2, #6)", () => {
     expect(await screen.findByText("No songs yet")).toBeInTheDocument();
   });
 });
+
+describe("collage preview rows (T24)", () => {
+  it("fills every cell, as the engine lays the collage out", async () => {
+    const { collageRows } = await import("./storiesFormat");
+    expect([2, 3, 4, 5, 6, 7, 8, 9].map(collageRows)).toEqual([[2], [3], [2, 2], [2, 3], [3, 3], [2, 2, 3], [2, 3, 3], [3, 3, 3]]);
+  });
+});

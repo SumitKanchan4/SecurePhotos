@@ -490,3 +490,18 @@ async def test_collage_suggestions_api_and_save_endpoint():
 
 
 
+
+
+def test_every_collage_cell_holds_a_photo():
+    """T24: a collage never has an empty cell, whatever the number of photos (2 to 9)."""
+    from engine.services.collage_service import collage_rows
+
+    assert [collage_rows(n) for n in range(2, 10)] == [[2], [3], [2, 2], [2, 3], [3, 3], [2, 2, 3], [2, 3, 3], [3, 3, 3]]
+    for n in range(2, 10):
+        boxes = compute_mosaic_boxes(n, 3840, 2160)
+        assert len(boxes) == n
+        # Each row reaches (nearly) the right edge: nothing left empty beside the photos.
+        rights = {}
+        for left, top, right, bottom in boxes:
+            rights[top] = max(rights.get(top, 0), right)
+        assert all(3840 - 24 - r < 10 for r in rights.values()), (n, rights)

@@ -307,3 +307,36 @@ async def test_an_original_and_its_improved_copies_count_once():
             await conn.close()
     assert after["images"] - before["images"] == 2  # the old print (shown as its newest copy) and the plain photo
     assert after["total_media"] - before["total_media"] == 2
+
+
+@pytest.mark.asyncio
+async def test_space_summary_counts_every_enhanced_photo_honestly():
+    """T27: the card shows real space saved (or none), and how Auto sorted the photos."""
+    await run_migrations()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        before = (await client.get("/api/system/space-summary")).json()
+        conn = await get_db_connection()
+        try:
+            rows = [
+                # A phone original kept at 8K: 3.4 MB -> 1.3 MB.
+                ("t27_phone.avif", 7680, 5119, 3500, 2333, 1_300_000, 3_400_000, 1),
+                # A WhatsApp photo enlarged to 4K: 0.2 MB -> 0.5 MB.
+                ("t27_wa.avif", 3840, 2880, 1600, 1200, 500_000, 200_000, 1),
+                # Not enhanced yet.
+                ("t27_new.jpg", 4000, 3000, 4000, 3000, 3_000_000, 3_000_000, 0),
+            ]
+            for name, w, h, ow, oh, size, osize, done in rows:
+                await conn.execute(
+                    "INSERT INTO photos (filename, filepath, file_size, original_file_size, mime_type, width, height, "
+                    "original_width, original_height, is_enhanced, is_optimized) VALUES (?, ?, ?, ?, 'image/avif', ?, ?, ?, ?, ?, ?);",
+                    (name, f"originals/{name}", size, osize, w, h, ow, oh, done, done),
+                )
+            await conn.commit()
+            after = (await client.get("/api/system/space-summary")).json()
+        finally:
+            await conn.execute("DELETE FROM photos WHERE filename LIKE 't27_%';")
+            await conn.commit()
+            await conn.close()
+    diff = {k: after[k] - before[k] for k in ("enhanced", "before_bytes", "after_bytes", "kept_8k", "enlarged_small", "waiting")}
+    assert diff == {"enhanced": 2, "before_bytes": 3_600_000, "after_bytes": 1_800_000, "kept_8k": 1, "enlarged_small": 1, "waiting": 1}

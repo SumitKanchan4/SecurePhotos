@@ -233,7 +233,8 @@ async def list_choices(limit: int = 500) -> Dict[str, Any]:
     async with db_connection() as conn:
         items = await photo_versions.pending_choices(conn, limit)
         total = await photo_versions.count_pending_choices(conn) if len(items) >= limit else len(items)
-    return {"items": items, "total": total}
+        sizes = await photo_versions.pending_choice_sizes(conn)
+    return {"items": items, "total": total, **sizes}
 
 
 @router.post("/choices")

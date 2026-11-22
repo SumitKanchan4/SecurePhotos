@@ -69,56 +69,31 @@ def determine_collage_taken_at(
 
 
 
+def collage_rows(count: int) -> List[int]:
+    """How many photos go in each row, top to bottom: every cell is used (T24, owner 2026-11-21:
+    a 2-photo collage showed 4 cells). 2 -> [2], 4 -> [2, 2], 5 -> [2, 3], 7 -> [2, 2, 3]."""
+    if count <= 3:
+        return [count]
+    rows = 2 if count <= 6 else 3
+    base, extra = divmod(count, rows)
+    # Rows with an extra photo go at the bottom, so the top row has the biggest photos.
+    return [base] * (rows - extra) + [base + 1] * extra
+
+
 def compute_mosaic_boxes(count: int, width: int, height: int, gap: int = 24, margin: int = 24) -> List[Tuple[int, int, int, int]]:
-    """Calculates bounding boxes (left, top, right, bottom) for a balanced mosaic grid."""
+    """Bounding boxes (left, top, right, bottom): rows of equal height, each row split evenly
+    between its photos, so no cell is ever empty."""
     usable_w = width - (2 * margin)
     usable_h = height - (2 * margin)
-    boxes = []
-
-    if count == 2:
-        col_w = (usable_w - gap) // 2
-        boxes.append((margin, margin, margin + col_w, margin + usable_h))
-        boxes.append((margin + col_w + gap, margin, margin + 2 * col_w + gap, margin + usable_h))
-
-    elif count == 3:
-        col_w = (usable_w - (2 * gap)) // 3
-        for i in range(3):
-            left = margin + i * (col_w + gap)
-            boxes.append((left, margin, left + col_w, margin + usable_h))
-
-    elif count == 4:
-        col_w = (usable_w - gap) // 2
-        row_h = (usable_h - gap) // 2
-        for r in range(2):
-            for c in range(2):
-                left = margin + c * (col_w + gap)
-                top = margin + r * (row_h + gap)
-                boxes.append((left, top, left + col_w, top + row_h))
-
-    elif count in (5, 6):
-        cols = 3
-        rows = 2
+    rows = collage_rows(count)
+    row_h = (usable_h - (len(rows) - 1) * gap) // len(rows)
+    boxes: List[Tuple[int, int, int, int]] = []
+    for r, cols in enumerate(rows):
+        top = margin + r * (row_h + gap)
         col_w = (usable_w - (cols - 1) * gap) // cols
-        row_h = (usable_h - (rows - 1) * gap) // rows
-        for i in range(count):
-            r = i // cols
-            c = i % cols
+        for c in range(cols):
             left = margin + c * (col_w + gap)
-            top = margin + r * (row_h + gap)
             boxes.append((left, top, left + col_w, top + row_h))
-
-    else:  # 7 to 9
-        cols = 3
-        rows = 3
-        col_w = (usable_w - (cols - 1) * gap) // cols
-        row_h = (usable_h - (rows - 1) * gap) // rows
-        for i in range(count):
-            r = i // cols
-            c = i % cols
-            left = margin + c * (col_w + gap)
-            top = margin + r * (row_h + gap)
-            boxes.append((left, top, left + col_w, top + row_h))
-
     return boxes
 
 

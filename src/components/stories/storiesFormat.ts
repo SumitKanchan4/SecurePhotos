@@ -69,3 +69,13 @@ const STORY_KINDS: Record<string, string> = {
 export function storyKind(storyType: string | null | undefined): string {
   return STORY_KINDS[storyType ?? ""] ?? "Story";
 }
+
+/** Photos per row of a collage, top to bottom, as the engine lays it out (collage_rows): every
+ *  cell holds a photo (T24: a 2-photo idea showed four cells). */
+export function collageRows(count: number): number[] {
+  if (count <= 3) return [Math.max(count, 0)];
+  const rows = count <= 6 ? 2 : 3;
+  const base = Math.floor(count / rows);
+  const extra = count % rows;
+  return [...Array(rows - extra).fill(base), ...Array(extra).fill(base + 1)];
+}

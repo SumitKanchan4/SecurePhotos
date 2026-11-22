@@ -31,15 +31,27 @@ from engine.services.super_resolution_service import enhance_pixels
 
 logger = logging.getLogger("securephotos.enhancement")
 
-TARGET_LONG_EDGE = 7680  # 8K, the default photo size.
+TARGET_LONG_EDGE = 7680  # 8K
 # Settings → Photo size (owner, 2026-11-19): the long edge each choice brings photos to.
 PHOTO_SIZES = {"2k": 2560, "4k": 3840, "8k": 7680}
-DEFAULT_PHOTO_SIZE = "8k"
+# Auto (owner, 2026-11-21; the default): decided per photo from its own pixel count when it is
+# enhanced. Full-size photos (6 MP and up: phone and camera originals, scans) get 8K and stay
+# lighter than the original JPEG; smaller ones (WhatsApp, screenshots) get 4K, so they aren't
+# blown up to many times their size (measured 2026-11-21: small photos grew 4-8x at 8K).
+AUTO = 0
+AUTO_FULL_SIZE_PIXELS = 6_000_000
+DEFAULT_PHOTO_SIZE = "auto"
 
 
 def photo_size_to_long_edge(value) -> int:
-    """The long edge for a stored ``photo_resolution`` setting (unknown values: 8K)."""
-    return PHOTO_SIZES.get(str(value or "").lower(), PHOTO_SIZES[DEFAULT_PHOTO_SIZE])
+    """The long edge for a stored ``photo_resolution`` setting; ``AUTO`` for "auto" and unknown
+    values (the renderer then decides per photo, :func:`auto_long_edge`)."""
+    return PHOTO_SIZES.get(str(value or "").lower(), AUTO)
+
+
+def auto_long_edge(width: int, height: int) -> int:
+    """Auto's choice for one photo: 8K for full-size photos, 4K for smaller ones."""
+    return PHOTO_SIZES["8k"] if width * height >= AUTO_FULL_SIZE_PIXELS else PHOTO_SIZES["4k"]
 EXIF_ORIENTATION_TAG = 0x0112
 
 QUALITY_SLIDER_MIN, QUALITY_SLIDER_MAX = 12, 28
@@ -88,7 +100,7 @@ def _has_alpha(img: Image.Image) -> bool:
     return img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
 
 
-def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int, target_long_edge: int = TARGET_LONG_EDGE) -> Tuple[bytes, int, int]:
+def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int, target_long_edge: int = AUTO) -> Tuple[bytes, int, int]:
     """Enhances an image entirely in memory and returns it encoded as AVIF.
 
     The camera details (EXIF: date, GPS, camera) and colour profile are kept.
@@ -99,7 +111,7 @@ def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int, target_l
     Args:
         source: Image file path, or the image file's bytes (e.g. a decrypted vault photo).
         avif_quality: AVIF quality from :func:`slider_to_avif_quality`.
-        target_long_edge: Photo size from :func:`photo_size_to_long_edge`.
+        target_long_edge: Photo size from :func:`photo_size_to_long_edge` (``AUTO``: by the photo's own size).
 
     Returns:
         (AVIF bytes, width, height).
@@ -117,6 +129,8 @@ def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int, target_l
     if EXIF_ORIENTATION_TAG in exif:
         exif[EXIF_ORIENTATION_TAG] = 1
 
+    if target_long_edge == AUTO:
+        target_long_edge = auto_long_edge(*upright.size)
     enhanced = enhance_pixels(upright, target_long_edge)
 
     save_kwargs = {"quality": avif_quality}
@@ -138,7 +152,7 @@ def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int, target_l
     return data, enhanced.size[0], enhanced.size[1]
 
 
-def enhance_to_avif(source: Path, avif_quality: int, target_long_edge: int = TARGET_LONG_EDGE) -> EnhancedPhoto:
+def enhance_to_avif(source: Path, avif_quality: int, target_long_edge: int = AUTO) -> EnhancedPhoto:
     """Enhances one library photo and writes it as AVIF next to the source.
 
     See :func:`render_enhanced_avif` for what is kept and changed. The file is

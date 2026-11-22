@@ -304,6 +304,10 @@ def test_installer_skips_verified_models_downloads_the_rest_and_never_fails(tmp_
     assert "Sharpen faces: couldn't download (the app will ask later)" in status
     assert "The app will offer the download" in status
     assert any(line.startswith("  Add colour: ") and line.endswith("%") for line in lines)  # Progress lines.
+    # T19: the installer's progress file ends at 100% with a plain line; it was updated while downloading.
+    progress = (dest / model_installer.PROGRESS_FILE).read_bytes().decode("utf-8")
+    assert progress == "100\r\nOld-photo models: done\r\n"
+    assert model_installer.progress_line("Add colour", 1, 5, 450_000_000, 980_000_000) == "Add colour (1 of 5): 450 of 980 MB"
     assert ai_models.is_model_ready("ddcolor_large", dest) and not ai_models.is_model_ready("gfpgan", dest)
 
 
@@ -340,8 +344,12 @@ def test_the_engine_launcher_runs_the_model_download_without_starting_the_server
     launcher = (_P(__file__).resolve().parents[2] / "run_engine.py").read_text(encoding="utf-8")
     assert launcher.index("--fetch-models") < launcher.index("from engine.main import")
     hooks = (_P(__file__).resolve().parents[2] / "src-tauri" / "nsis-hooks.nsh").read_text(encoding="utf-8")
-    assert '"$INSTDIR\\engine\\securephotos-engine.exe" --fetch-models "$INSTDIR\\data\\models"' in hooks
-    assert "$PassiveMode <> 1" in hooks  # No message box during silent updates.
+    # T19: started hidden without waiting; the installer follows the progress file.
+    assert 'ExecShell "open" "$INSTDIR\\engine\\securephotos-engine.exe" ' + "'--fetch-models " in hooks
+    assert "install_progress.txt" in hooks and "SW_HIDE" in hooks
+    # T21: the results are lines in the setup window, never a separate message box.
+    assert 'MessageBox MB_ICONINFORMATION|MB_OK "Old-photo models' not in hooks
+    assert "SetDetailsView show" in hooks
 
 
 def test_only_one_big_model_is_in_memory_at_a_time(monkeypatch):

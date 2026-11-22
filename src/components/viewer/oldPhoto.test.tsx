@@ -100,6 +100,27 @@ describe("Old photos in the viewer", () => {
     expect(screen.getByRole("button", { name: "Keep this…" })).toBeInTheDocument();
   });
 
+  it("keeps both colour styles while on the photo: switching back is instant (T23)", async () => {
+    let nextId = 6;
+    const calls = mockEngine({
+      "/api/restore/photos/1/state": () => ({ options: { colour: true, fade: false }, members: [], job: reviewJob }),
+      "/api/restore/jobs/": () => ({}),
+      "/api/restore/jobs": (_u, init) =>
+        init?.method === "POST" ? { job_ids: [nextId++] } : { working: [], waiting: [], review: [{ ...reviewJob, id: 6 }], finished_today: [], download: null },
+    });
+    renderViewer();
+    const vivid = await screen.findByRole("button", { name: "Vivid" });
+    fireEvent.click(vivid);
+    // Vivid is made once; Natural's result (job 5) is kept, not discarded.
+    await waitFor(() => expect(calls.filter((c) => c.url === "/api/restore/jobs" && c.body)).toHaveLength(1));
+    expect(calls.some((c) => c.url === "/api/restore/jobs/5/keep")).toBe(false);
+    // Back to Natural: no new job, the kept result shows again.
+    fireEvent.click(await screen.findByRole("button", { name: "Natural" }, { timeout: 4000 }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(calls.filter((c) => c.url === "/api/restore/jobs" && c.body)).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Natural" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("asks Keep both / Replace after the result, and sends the choice with the strength", async () => {
     const calls = mockEngine({
       "/api/restore/photos/1/state": () => ({ options: { colour: true, fade: false }, members: [], job: reviewJob }),

@@ -118,7 +118,7 @@ describe("DashboardView", () => {
       "GET /api/duplicates/summary": { total_groups: 34, total_duplicate_photos: 80, reclaimable_bytes: 1.2 * GB },
       "GET /api/videos/summary": { runtime_available: true, total_videos: 342, total_video_bytes: 1, compressible_count: 12, enhanceable_count: 0, already_optimized_count: 0, projected_reclaimable_bytes: 3.4 * GB },
       "GET /api/duplicates/groups": [GROUP],
-      "GET /api/system/optimization-status": { service_status: "processing", images_total: 1218, images_optimized: 1204, images_pending: 14, videos_total: 0, videos_optimized: 0, videos_pending: 0, overall_progress_percent: 98, active_item_progress: 0, reclaimed_bytes: 18 * GB },
+      "GET /api/system/space-summary": { enhanced: 1204, before_bytes: 30 * GB, after_bytes: 12 * GB, saved_bytes: 18 * GB, kept_8k: 1000, enlarged_small: 204, waiting: 14 },
     });
     const onNavigate = vi.fn();
     render(<DashboardView onNavigate={onNavigate} />);
@@ -132,7 +132,11 @@ describe("DashboardView", () => {
     ]);
     expect(screen.getByText("34 groups of copies and bursts. About 1.2 GB can be freed.")).toBeInTheDocument();
     expect(screen.getByText("12 videos can be made smaller without visible change. About 3.4 GB to save.")).toBeInTheDocument();
-    expect(screen.getByText("1,204 of 1,218 photos enhanced · 18.0 GB saved so far")).toBeInTheDocument();
+    // T27: the space card says what enhancing did, in plain words.
+    expect(screen.getByRole("heading", { name: "18.0 GB saved" })).toBeInTheDocument();
+    expect(screen.getByText("Your 1,204 enhanced photos take 12.0 GB instead of 30.0 GB, and they are sharper.")).toBeInTheDocument();
+    expect(screen.getByText("1,000 full-size photos at 8K · 204 smaller photos enlarged to 4K")).toBeInTheDocument();
+    expect(screen.getByText("14 photos still to enhance")).toBeInTheDocument();
 
     // The library as one sentence, every number a way in (round 2, #4).
     const hero = screen.getByRole("region", { name: "Your library" });
@@ -143,15 +147,15 @@ describe("DashboardView", () => {
     fireEvent.click(within(usage).getByRole("button", { name: "Private Vault, 6.0 GB: open" }));
     expect(onNavigate).toHaveBeenCalledWith("vault");
     expect(within(usage).queryByRole("button", { name: /App data/ })).not.toBeInTheDocument();
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Pause" }));
-    });
-    expect(calls.some((c) => c.url.endsWith("/api/system/optimization/pause") && c.init?.method === "POST")).toBe(true);
+    // Enhancing is paused from Activity; the space card links there while photos wait (T27).
+    expect(screen.getByRole("button", { name: "See Activity" })).toBeInTheDocument();
 
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Review duplicates" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Duplicates" })).toBeInTheDocument();
-    expect(await screen.findByText("1 group · about 16 MB can be freed")).toBeInTheDocument();
+    expect(await screen.findByText("1 group")).toBeInTheDocument();
+    // The space pill beside the title (owner, 2026-11-21).
+    expect(screen.getByText("Frees about 16 MB")).toBeInTheDocument();
   });
 });
 
@@ -188,7 +192,9 @@ describe("DuplicatesView", () => {
       "POST /api/duplicates/resolve": { status: "resolved", trashed_count: 1, reclaimed_bytes: 8 * MB },
     });
     render(<DuplicatesView onBack={vi.fn()} />);
-    expect(await screen.findByText("1 group · about 16 MB can be freed")).toBeInTheDocument();
+    expect(await screen.findByText("1 group")).toBeInTheDocument();
+    // The space pill beside the title (owner, 2026-11-21).
+    expect(screen.getByText("Frees about 16 MB")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Keep Photo 1" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByText("Keep · best pick")).toBeInTheDocument();
     expect(screen.getAllByText("Goes to Trash")).toHaveLength(2);
@@ -196,7 +202,7 @@ describe("DuplicatesView", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Keep Photo 1" }));
     expect(screen.getByRole("checkbox", { name: "Keep Photo 1" })).toHaveAttribute("aria-checked", "true"); // at least one is kept
     fireEvent.click(screen.getByRole("checkbox", { name: "Keep Photo 2" }));
-    expect(screen.getByText("1 group · about 8.0 MB can be freed")).toBeInTheDocument();
+    expect(screen.getByText("Frees about 8.0 MB")).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Remove 1 copy" }));
@@ -281,5 +287,23 @@ describe("VideoOptimizerView", () => {
       "Enhanced the video to HD. The original is in Trash for 30 days.",
       "success",
     );
+  });
+});
+
+describe("space card (T27)", () => {
+  it("says what enhancing did, honestly", async () => {
+    const { spaceCard } = await import("./dashFormat");
+    const base = { enhanced: 64, before_bytes: 27.6e6, after_bytes: 4.5e6, saved_bytes: 23.1e6, kept_8k: 8, enlarged_small: 56, waiting: 0 };
+    const saved = spaceCard(base)!;
+    expect(saved.headline).toMatch(/saved$/);
+    expect(saved.detail).toMatch(/^Your 64 enhanced photos take .* instead of .*, and they are sharper\.$/);
+    expect(saved.sorted).toBe("8 full-size photos at 8K · 56 smaller photos enlarged to 4K");
+    expect(saved.waiting).toBeNull();
+    // Grown, not saved: no "saved" claim.
+    const grown = spaceCard({ ...base, before_bytes: 79e6, after_bytes: 135e6, saved_bytes: 0, waiting: 3 })!;
+    expect(grown.headline).toBe("Sharper photos");
+    expect(grown.detail).toMatch(/Enlarging small photos adds detail, and some size\.$/);
+    expect(grown.waiting).toBe("3 photos still to enhance");
+    expect(spaceCard({ ...base, enhanced: 0, waiting: 0 })).toBeNull();
   });
 });

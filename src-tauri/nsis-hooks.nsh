@@ -7,12 +7,15 @@
 ; - Choosing a folder on this computer's own drive asks once whether that's intended.
 ; Updates (/UPDATE) and passive or silent installs are never asked anything.
 
+!include "TextFunc.nsh"
+
 !define MUI_CUSTOMFUNCTION_GUIINIT SpSuggestDrive
 ; Check the folder only when Next is pressed, so the question isn't asked on every keystroke.
 !define MUI_DIRECTORYPAGE_VERIFYONLEAVE
 
 Var SpDriveFound
 Var SpThisComputerOk
+Var SpLastAsked
 
 Function SpIsUpdateOrQuiet
   ; Leaves 1 on the stack for an update, a passive or a silent install, else 0.
@@ -76,7 +79,18 @@ Function .onVerifyInstDir
   StrCpy $1 $WINDIR 2
   ${If} $0 == $1
   ${AndIf} $SpThisComputerOk != $INSTDIR
+    ; T20 (owner, 2026-11-21): NSIS checks the folder several times for one press of Next, so the
+    ; question came back 4-5 times after No. Ask once; checks within 2 s of the answer just wait.
+    System::Call 'kernel32::GetTickCount() i .r2'
+    ${If} $SpLastAsked != ""
+      IntOp $3 $2 - $SpLastAsked
+      ${If} $3 < 2000
+        Abort
+      ${EndIf}
+    ${EndIf}
     MessageBox MB_ICONQUESTION|MB_YESNO "SecurePhotos will be installed on this computer, and your photos and videos will be kept here too.$\r$\n$\r$\nThat means they won't come with you when you use another computer.$\r$\n$\r$\nTo carry your library with you, choose No, plug in your external drive and pick it instead.$\r$\n$\r$\nInstall on this computer?" IDYES sp_this_computer_ok
+    System::Call 'kernel32::GetTickCount() i .r2'
+    StrCpy $SpLastAsked $2
     Abort
     sp_this_computer_ok:
     StrCpy $SpThisComputerOk $INSTDIR
@@ -108,27 +122,65 @@ FunctionEnd
   ; H10 / A2c: download the old-photo models (about 2.7 GB, once). Each model is checked by
   ; SHA-256; one already in place is skipped, so upgrades are quick. A failed download never
   ; fails the install: the app asks later, before the first feature that needs that model.
-  ; Progress and per-model status go into the details list.
+  ;
+  ; T19 (owner, 2026-11-21): the engine runs hidden and the installer doesn't wait on it; it reads
+  ; the engine's progress file twice a second and moves its own progress bar, with a line such as
+  ; "Add colour (1 of 5): 450 of 980 MB". The status file appearing means the download is over.
+  ; T21: the results are lines in this window (details shown), not a separate message box.
+  Delete "$INSTDIR\data\models\install_status.txt"
+  Delete "$INSTDIR\data\models\install_progress.txt"
   SetDetailsPrint both
   DetailPrint "Getting the old-photo models (about 2.7 GB, once). This can take a while..."
-  nsExec::ExecToLog '"$INSTDIR\engine\securephotos-engine.exe" --fetch-models "$INSTDIR\data\models"'
-  Pop $0
-  ; Show the per-model status, except in silent / passive installs (updates).
-  ${IfNot} ${Silent}
-  ${AndIf} $PassiveMode <> 1
-    ${If} ${FileExists} "$INSTDIR\data\models\install_status.txt"
-      StrCpy $1 ""
-      FileOpen $2 "$INSTDIR\data\models\install_status.txt" r
-      sp_status_loop:
-        FileRead $2 $3
-        StrCmp $3 "" sp_status_done
-        StrCpy $1 "$1$3"
-        Goto sp_status_loop
-      sp_status_done:
-      FileClose $2
-      MessageBox MB_ICONINFORMATION|MB_OK "Old-photo models:$\r$\n$\r$\n$1"
-    ${EndIf}
+  SetDetailsPrint textonly
+  ExecShell "open" "$INSTDIR\engine\securephotos-engine.exe" '--fetch-models "$INSTDIR\data\models"' SW_HIDE
+  FindWindow $R0 "#32770" "" $HWNDPARENT
+  GetDlgItem $R1 $R0 1004
+  SendMessage $R1 0x406 0 100 ; PBM_SETRANGE32: 0-100 for the download
+  SendMessage $R1 0x402 0 0   ; PBM_SETPOS
+  StrCpy $R2 ""
+  StrCpy $R3 0
+  sp_poll:
+    IfFileExists "$INSTDIR\data\models\install_status.txt" sp_poll_done
+    Sleep 500
+    ClearErrors
+    FileOpen $R4 "$INSTDIR\data\models\install_progress.txt" r
+    IfErrors sp_no_news
+    FileRead $R4 $R5
+    FileRead $R4 $R6
+    FileClose $R4
+    ${TrimNewLines} $R5 $R5
+    ${TrimNewLines} $R6 $R6
+    StrCmp "$R5|$R6" $R2 sp_no_news
+    StrCpy $R2 "$R5|$R6"
+    StrCpy $R3 0
+    SendMessage $R1 0x402 $R5 0
+    DetailPrint "$R6"
+    Goto sp_poll
+    sp_no_news:
+    IntOp $R3 $R3 + 1
+    ; No news for 5 minutes: the download has stopped. The app offers it later.
+    IntCmp $R3 600 sp_poll_done sp_poll sp_poll_done
+  sp_poll_done:
+  SendMessage $R1 0x402 100 0
+  SetDetailsPrint both
+  Delete "$INSTDIR\data\models\install_progress.txt"
+  ${If} ${FileExists} "$INSTDIR\data\models\install_status.txt"
+    DetailPrint ""
+    DetailPrint "Old-photo models:"
+    FileOpen $2 "$INSTDIR\data\models\install_status.txt" r
+    sp_status_loop:
+      ClearErrors
+      FileRead $2 $3
+      IfErrors sp_status_done
+      ${TrimNewLines} $3 $3
+      DetailPrint "  $3"
+      Goto sp_status_loop
+    sp_status_done:
+    FileClose $2
+  ${Else}
+    DetailPrint "The old-photo models will be offered in the app when you first need them."
   ${EndIf}
+  SetDetailsView show
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL

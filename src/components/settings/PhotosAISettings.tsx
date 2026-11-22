@@ -24,12 +24,15 @@ export const QUALITY_OPTIONS: { value: number; label: string; description: strin
 /** Owner, 2026-11-19: the size photos are enhanced to, next to Photo quality. Videos have their
  *  own size (never above 4K; owner decision the same day). */
 export const SIZE_OPTIONS: { value: PhotoSize; label: string; description: string }[] = [
+  // Owner, 2026-11-21: Auto, the default, decides per photo.
+  { value: "auto", label: "Auto", description: "Full-size photos from your phone or camera are kept at 8K; smaller ones, like WhatsApp photos, at 4K. Sharp and light." },
   { value: "2k", label: "2K", description: "2560 px on the long side. The smallest files; fine for screens and sharing." },
   { value: "4k", label: "4K", description: "3840 px on the long side. Sharp on big screens; about a third of the space of 8K." },
   { value: "8k", label: "8K", description: "7680 px on the long side. The most room to zoom and print; the biggest files." },
 ];
 
 export const VIDEO_SIZE_OPTIONS: { value: VideoSize; label: string; description: string }[] = [
+  { value: "auto", label: "Auto", description: "Videos from your phone or camera stay as they are; old, small clips are brought up to HD." },
   { value: "original", label: "As recorded", description: "Videos keep the size they were recorded at." },
   { value: "hd", label: "HD", description: "Old, low-quality clips are enlarged to HD (1080p)." },
   { value: "2k", label: "2K", description: "Every video below 2K (1440p) is enlarged to 2K: slower without a graphics card, and bigger files." },
@@ -98,22 +101,22 @@ export const PhotosAISettings: React.FC<PhotosAISettingsProps> = ({ settings, up
         </SettingRow>
         <SettingRow
           title="Photo size"
-          description={`${(SIZE_OPTIONS.find((o) => o.value === settings.photo_resolution) ?? SIZE_OPTIONS[2]).description} ${settings.photo_resolution === "8k" || !settings.photo_resolution ? "" : "Larger photos are reduced, and the larger version isn't kept. "}For new imports.`}
+          description={`${(SIZE_OPTIONS.find((o) => o.value === settings.photo_resolution) ?? SIZE_OPTIONS[0]).description} ${settings.photo_resolution === "2k" || settings.photo_resolution === "4k" ? "Larger photos are reduced, and the larger version isn't kept. " : ""}For new imports.`}
         >
           <ChoicePills
             label="Photo size"
-            value={settings.photo_resolution ?? "8k"}
+            value={settings.photo_resolution ?? "auto"}
             onChange={(value) => updateSetting("photo_resolution", value)}
             options={SIZE_OPTIONS}
           />
         </SettingRow>
         <SettingRow
           title="Video size"
-          description={`${(VIDEO_SIZE_OPTIONS.find((o) => o.value === settings.video_resolution) ?? VIDEO_SIZE_OPTIONS[1]).description} For new imports; never above 4K.`}
+          description={`${(VIDEO_SIZE_OPTIONS.find((o) => o.value === settings.video_resolution) ?? VIDEO_SIZE_OPTIONS[0]).description} For new imports; never above 4K.`}
         >
           <ChoicePills
             label="Video size"
-            value={settings.video_resolution ?? "hd"}
+            value={settings.video_resolution ?? "auto"}
             onChange={(value) => updateSetting("video_resolution", value)}
             options={VIDEO_SIZE_OPTIONS}
           />

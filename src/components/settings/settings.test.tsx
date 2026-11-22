@@ -168,12 +168,14 @@ describe("Photos & AI and Storage", () => {
     expect(updateSetting).toHaveBeenCalledWith("quality_crf", 24);
     // Photo size and Video size, separate, as pills like the rest (2026-11-19).
     const size = screen.getByRole("radiogroup", { name: "Photo size" });
-    expect(within(size).getByRole("radio", { name: "8K" })).toHaveAttribute("aria-checked", "true");
+    // T26 (owner, 2026-11-21): Auto first, and the default.
+    expect(within(size).getAllByRole("radio").map((r) => r.textContent)).toEqual(["Auto", "2K", "4K", "8K"]);
+    expect(within(size).getByRole("radio", { name: "Auto" })).toHaveAttribute("aria-checked", "true");
     fireEvent.click(within(size).getByRole("radio", { name: "4K" }));
     expect(updateSetting).toHaveBeenCalledWith("photo_resolution", "4k");
     const video = screen.getByRole("radiogroup", { name: "Video size" });
-    expect(within(video).getAllByRole("radio").map((r) => r.textContent)).toEqual(["As recorded", "HD", "2K", "4K"]);
-    expect(within(video).getByRole("radio", { name: "HD" })).toHaveAttribute("aria-checked", "true");
+    expect(within(video).getAllByRole("radio").map((r) => r.textContent)).toEqual(["Auto", "As recorded", "HD", "2K", "4K"]);
+    expect(within(video).getByRole("radio", { name: "Auto" })).toHaveAttribute("aria-checked", "true");
     fireEvent.click(within(video).getByRole("radio", { name: "4K" }));
     expect(updateSetting).toHaveBeenCalledWith("video_resolution", "4k");
     // Every row as in Appearance: text left, choices right (owner feedback 2026-11-19).

@@ -10,6 +10,7 @@ import { useAppStore } from "../store/useAppStore";
 import { apiFetch, getThumbnailUrl } from "../services/api";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { formatSize, groupTitle, plural, reclaimableBytes, resolveLabel } from "./dashboard/dashFormat";
+import { FreesPill } from "./dashboard/FreesPill";
 import { itemTitle } from "../utils/displayName";
 
 interface DuplicatesViewProps {
@@ -139,8 +140,8 @@ export const DuplicatesView: React.FC<DuplicatesViewProps> = ({ onBack, backLabe
         <h1 className="dash-title">Duplicates</h1>
         <span className="dash-subtitle">
           {plural(groups.length, "group")}
-          {groups.length ? ` · about ${formatSize(freeable)} can be freed` : ""}
         </span>
+        <FreesPill bytes={groups.length ? freeable : 0} viaTrash />
         <div style={{ flex: 1 }} />
         <button type="button" className="dash-icon-btn" aria-label="Look again" title="Look for duplicates again" onClick={lookAgain} disabled={isScanning}>
           <RefreshCw size={16} className={isScanning ? "spin" : ""} />

@@ -12,6 +12,7 @@ import { useAppStore } from "../store/useAppStore";
 import { apiFetch, getThumbnailUrl } from "../services/api";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { formatDuration, formatSize, plural } from "./dashboard/dashFormat";
+import { FreesPill } from "./dashboard/FreesPill";
 import { humanName } from "../utils/displayName";
 
 interface VideoOptimizerViewProps {
@@ -209,9 +210,10 @@ export const VideoOptimizerView: React.FC<VideoOptimizerViewProps> = ({ onBack, 
           {batch && progress
             ? `Making videos smaller · ${progress.completed_count} of ${progress.total_count} done`
             : smaller.length
-            ? `${plural(smaller.length, "video")} can be made smaller · about ${formatSize(totalSaving)} to save`
+            ? `${plural(smaller.length, "video")} can be made smaller`
             : "Nothing to make smaller"}
         </span>
+        {!batch && <FreesPill bytes={smaller.length ? totalSaving : 0} />}
         <div style={{ flex: 1 }} />
         {smaller.length > 0 && (
           <button type="button" className="dash-btn dash-btn-primary" disabled={batch || working.size > 0} onClick={() => setConfirmAll(true)}>

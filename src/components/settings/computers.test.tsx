@@ -9,12 +9,20 @@ import type { ComputersResponse } from "../../services/computers";
 type Call = { key: string; body?: unknown };
 let calls: Call[];
 
+function yesterdayUtc(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  d.setHours(12, 0, 0, 0);
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
 function listing(overrides: Partial<ComputersResponse["this_computer"]> = {}): ComputersResponse {
   return {
     this_computer: { id: "b", name: "FRIEND-LAPTOP", choice: null, does_work_now: false, needs_answer: false, ...overrides },
     computers: [
       { id: "b", name: "FRIEND-LAPTOP", choice: "view", first_seen: null, last_seen: "2026-11-21 08:00:00", is_this: true },
-      { id: "a", name: "HOME-PC", choice: "always", first_seen: null, last_seen: "2026-11-20 08:00:00", is_this: false },
+      // Yesterday, from today's date (a fixed date stopped being "yesterday" the next day).
+      { id: "a", name: "HOME-PC", choice: "always", first_seen: null, last_seen: yesterdayUtc(), is_this: false },
     ],
   };
 }
