@@ -4,7 +4,7 @@
  * the words come from dashFormat.
  */
 import React, { useState } from "react";
-import { Check, ChevronRight, ChevronsLeftRight, Copy, Film, Play, Sparkles, Trash2, UserRound } from "lucide-react";
+import { CalendarDays, Check, ChevronRight, ChevronsLeftRight, Copy, Film, ImagePlus, Play, Sparkles, Trash2, UserRound, Users } from "lucide-react";
 import { getApiUrl, getThumbnailUrl } from "../../services/api";
 import {
   broughtBackText,
@@ -96,43 +96,88 @@ export const JustAddedTile: React.FC<{
   );
 };
 
+/** A tile with nothing to show yet invites you to start (owner, 2026-11-22): what it will show,
+ *  and one button to get there. */
+const InviteTile: React.FC<{ id: string; title: string; icon: React.ReactNode; text: string; action?: { label: string; onClick: () => void } }> = ({
+  id,
+  title,
+  icon,
+  text,
+  action,
+}) => (
+  <article className="dash-tile dash-card" aria-labelledby={id}>
+    <div className="dash-tile-head">
+      <h2 id={id}>{title}</h2>
+    </div>
+    <div className="dash-invite" aria-hidden="true">
+      {icon}
+    </div>
+    <p className="dash-invite-text">{text}</p>
+    {action && (
+      <button type="button" className="dash-btn dash-btn-primary dash-invite-btn" onClick={action.onClick}>
+        {action.label}
+      </button>
+    )}
+  </article>
+);
+
+/** Brought back (owner, 2026-11-22): before/after while an original exists, the improved photo
+ *  alone once no original is left, and an invitation before the first one. */
 export const BroughtBackTile: React.FC<{
-  back: NonNullable<Highlights["brought_back"]>;
+  back: Highlights["brought_back"];
   onOpenPhoto?: (photoId: number) => void;
-}> = ({ back, onOpenPhoto }) => {
+  onImport?: () => void;
+}> = ({ back, onOpenPhoto, onImport }) => {
   const [split, setSplit] = useState(52);
+  if (!back) {
+    return (
+      <InviteTile
+        id="dash-back-title"
+        title="Bring back old photos"
+        icon={<ImagePlus size={30} />}
+        text="Old prints? Add a scan or a photo of one. SecurePhotos brings back faded colours, adds colour to black and white, and removes scratches."
+        action={onImport ? { label: "Add photos", onClick: onImport } : undefined}
+      />
+    );
+  }
   return (
     <article className="dash-tile dash-card" aria-labelledby="dash-back-title">
       <div className="dash-tile-head">
         <h2 id="dash-back-title">Brought back</h2>
         {back.total > 1 && <span className="dash-muted">{plural(back.total, "old photo")}</span>}
       </div>
-      <div className="dash-compare">
-        <Thumb id={back.before_id} className="dash-compare-img" />
-        <img
-          className="dash-compare-img"
-          src={getThumbnailUrl(back.after_id)}
-          alt=""
-          draggable={false}
-          style={{ clipPath: `inset(0 0 0 ${split}%)` }}
-        />
-        <span className="dash-compare-line" style={{ left: `${split}%` }} aria-hidden="true">
-          <span className="dash-compare-knob">
-            <ChevronsLeftRight size={16} />
+      {back.before_id != null ? (
+        <div className="dash-compare">
+          <Thumb id={back.before_id} className="dash-compare-img" />
+          <img
+            className="dash-compare-img"
+            src={getThumbnailUrl(back.after_id)}
+            alt=""
+            draggable={false}
+            style={{ clipPath: `inset(0 0 0 ${split}%)` }}
+          />
+          <span className="dash-compare-line" style={{ left: `${split}%` }} aria-hidden="true">
+            <span className="dash-compare-knob">
+              <ChevronsLeftRight size={16} />
+            </span>
           </span>
-        </span>
-        <span className="dash-compare-tag is-before" aria-hidden="true">Before</span>
-        <span className="dash-compare-tag is-after" aria-hidden="true">After</span>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={split}
-          onChange={(e) => setSplit(Number(e.target.value))}
-          className="dash-compare-range"
-          aria-label="Compare before and after"
-        />
-      </div>
+          <span className="dash-compare-tag is-before" aria-hidden="true">Before</span>
+          <span className="dash-compare-tag is-after" aria-hidden="true">After</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={split}
+            onChange={(e) => setSplit(Number(e.target.value))}
+            className="dash-compare-range"
+            aria-label="Compare before and after"
+          />
+        </div>
+      ) : (
+        <button type="button" className="dash-compare dash-compare-alone" onClick={() => onOpenPhoto?.(back.after_id)} aria-label="Open this photo">
+          <Thumb id={back.after_id} className="dash-compare-img" />
+        </button>
+      )}
       <div className="dash-tile-foot">
         <span className="dash-muted">{broughtBackText(back.kinds)}</span>
         <span className="dash-spacer" />
@@ -149,47 +194,73 @@ export const PeopleTile: React.FC<{
   total: number;
   onOpenPerson: (id: number) => void;
   onOpenPeople: () => void;
-}> = ({ people, total, onOpenPerson, onOpenPeople }) => (
-  <article className="dash-tile dash-card" aria-labelledby="dash-people-title">
-    <div className="dash-tile-head">
-      <h2 id="dash-people-title">People</h2>
-      <span className="dash-spacer" />
-      <button type="button" className="dash-link" onClick={onOpenPeople}>
-        {total > people.top.length ? `All ${total.toLocaleString()}` : "People"} <ChevronRight size={14} aria-hidden="true" />
-      </button>
-    </div>
-    {people.top.length > 0 && (
-      <ul className="dash-people">
-        {people.top.map((p) => (
-          <li key={p.id}>
-            <button type="button" className={`dash-person${p.close ? " is-close" : ""}`} onClick={() => onOpenPerson(p.id)}>
-              {p.face_id ? (
-                <img src={getApiUrl(`/api/people/faces/${p.face_id}/crop`)} alt="" loading="lazy" draggable={false} />
-              ) : (
-                <span className="dash-person-blank" aria-hidden="true">
-                  {p.name.slice(0, 1).toUpperCase()}
-                </span>
-              )}
-              <span className="dash-person-name">{p.name}</span>
-              <span className="dash-muted">{plural(p.photo_count, "photo")}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    )}
-    {people.to_name > 0 && (
-      <button type="button" className="dash-callout" onClick={onOpenPeople}>
-        <UserRound size={16} aria-hidden="true" />
-        {people.to_name === 1 ? "1 new face waiting for a name" : `${people.to_name.toLocaleString()} new faces waiting for a name`}
+}> = ({ people, total, onOpenPerson, onOpenPeople }) =>
+  people.top.length === 0 && people.to_name === 0 ? (
+    <InviteTile
+      id="dash-people-title"
+      title="People"
+      icon={<Users size={30} />}
+      text="SecurePhotos finds the faces in your photos, on this computer only. Name someone once and all their photos come together here."
+      action={{ label: "Open People", onClick: onOpenPeople }}
+    />
+  ) : (
+    <article className="dash-tile dash-card" aria-labelledby="dash-people-title">
+      <div className="dash-tile-head">
+        <h2 id="dash-people-title">People</h2>
         <span className="dash-spacer" />
-        <ChevronRight size={14} aria-hidden="true" />
-      </button>
-    )}
-  </article>
-);
+        <button type="button" className="dash-link" onClick={onOpenPeople}>
+          {total > people.top.length ? `All ${total.toLocaleString()}` : "People"} <ChevronRight size={14} aria-hidden="true" />
+        </button>
+      </div>
+      {people.top.length > 0 && (
+        <ul className="dash-people">
+          {people.top.map((p) => (
+            <li key={p.id}>
+              <button type="button" className={`dash-person${p.close ? " is-close" : ""}`} onClick={() => onOpenPerson(p.id)}>
+                {p.face_id ? (
+                  <img src={getApiUrl(`/api/people/faces/${p.face_id}/crop`)} alt="" loading="lazy" draggable={false} />
+                ) : (
+                  <span className="dash-person-blank" aria-hidden="true">
+                    {p.name.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                <span className="dash-person-name">{p.name}</span>
+                <span className="dash-muted">{plural(p.photo_count, "photo")}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {people.to_name > 0 && (
+        <button type="button" className="dash-callout" onClick={onOpenPeople}>
+          <UserRound size={16} aria-hidden="true" />
+          {people.to_name === 1 ? "1 new face waiting for a name" : `${people.to_name.toLocaleString()} new faces waiting for a name`}
+          <span className="dash-spacer" />
+          <ChevronRight size={14} aria-hidden="true" />
+        </button>
+      )}
+    </article>
+  );
 
-export const YearTile: React.FC<{ year: number; months: number[]; now: Date; onOpenMonth: (key: string) => void }> = ({ year, months, now, onOpenMonth }) => {
+export const YearTile: React.FC<{ year: number; months: number[]; now: Date; onOpenMonth: (key: string) => void; onImport?: () => void }> = ({
+  year,
+  months,
+  now,
+  onOpenMonth,
+  onImport,
+}) => {
   const { bars, total, busiest } = monthBars(year, months, now);
+  if (total === 0) {
+    return (
+      <InviteTile
+        id="dash-year-title"
+        title={`Your ${year}`}
+        icon={<CalendarDays size={30} />}
+        text={`No photos from ${year} yet. Add this year's photos and see your year here, month by month.`}
+        action={onImport ? { label: "Add photos", onClick: onImport } : undefined}
+      />
+    );
+  }
   return (
     <article className="dash-tile dash-card" aria-labelledby="dash-year-title">
       <div className="dash-tile-head">

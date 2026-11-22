@@ -611,6 +611,7 @@ export const App: React.FC = () => {
               }}
               choicesTotal={activity.choicesTotal}
               onPlayStory={(id) => setActiveStoryId(id)}
+              onImport={() => setIsImportModalOpen(true)}
             />
           ) : activeTab === "vault" ? (
             /* Dedicated Zero-Trust Private Vault Gallery */

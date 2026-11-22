@@ -36,6 +36,8 @@ interface DashboardViewProps {
   choicesTotal?: number;
   /** On this day › Play as a story. */
   onPlayStory?: (storyId: number) => void;
+  /** Brought back, before the first one: Add photos. */
+  onImport?: () => void;
 }
 
 interface KeepSummary {
@@ -52,6 +54,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onLibraryChanged,
   choicesTotal = 0,
   onPlayStory,
+  onImport,
 }) => {
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [dupes, setDupes] = useState<DuplicateSummaryResponse | null>(null);
@@ -248,18 +251,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               onOpenActivity={() => store().setActiveTab("activity")}
             />
           )}
-          {highlights.brought_back && <BroughtBackTile back={highlights.brought_back} onOpenPhoto={onOpenPhoto} />}
-          {(highlights.people.top.length > 0 || highlights.people.to_name > 0) && (
-            <PeopleTile
-              people={highlights.people}
-              total={counts?.people ?? highlights.people.top.length}
-              onOpenPerson={(id) => store().openPerson(id)}
-              onOpenPeople={() => onNavigate("people")}
-            />
-          )}
-          {highlights.months.some((n) => n > 0) && (
-            <YearTile year={highlights.year} months={highlights.months} now={now} onOpenMonth={(key) => store().openMonth(key)} />
-          )}
+          <BroughtBackTile back={highlights.brought_back} onOpenPhoto={onOpenPhoto} onImport={onImport} />
+          <PeopleTile
+            people={highlights.people}
+            total={counts?.people ?? highlights.people.top.length}
+            onOpenPerson={(id) => store().openPerson(id)}
+            onOpenPeople={() => onNavigate("people")}
+          />
+          <YearTile year={highlights.year} months={highlights.months} now={now} onOpenMonth={(key) => store().openMonth(key)} onImport={onImport} />
         </section>
       )}
 
