@@ -5,7 +5,7 @@ import type { DuplicateGroupItem, PhotoItem } from "../../types";
 import { DashboardView } from "../DashboardView";
 import { DuplicatesView } from "../DuplicatesView";
 import { VideoOptimizerView } from "../VideoOptimizerView";
-import { formatDuration, oldOriginalsNote, reclaimableBytes, resolveLabel, storageRows, storageSegments } from "./dashFormat";
+import { formatDuration, oldOriginalsNote, reclaimableBytes, resolveLabel, storageRows } from "./dashFormat";
 
 const GB = 1024 ** 3;
 const MB = 1024 ** 2;
@@ -64,11 +64,6 @@ afterEach(() => {
 });
 
 describe("dashboard helpers", () => {
-  it("splits the drive into SecurePhotos and other files", () => {
-    const segs = storageSegments(OVERVIEW as never);
-    expect(segs.map((s) => [s.key, Math.round(s.percent)])).toEqual([["library", 45], ["other", 14]]);
-  });
-
   it("lists what SecurePhotos uses, biggest first, without empty kinds", () => {
     const rows = storageRows({
       categories: [
@@ -112,50 +107,118 @@ describe("old video originals note", () => {
 });
 
 describe("DashboardView", () => {
-  it("shows the library, storage and the two jobs worth doing", async () => {
+  const HIGHLIGHTS = {
+    on_this_day: { year: 2023, years_ago: 3, count: 14, photo_ids: [5, 6, 7], story_id: 42 },
+    just_added: { photos: 48, videos: 2, preparing: 12, photo_ids: [8, 9, 10] },
+    brought_back: { before_id: 11, after_id: 12, kinds: ["fade", "colour"], total: 3 },
+    people: { top: [{ id: 1, name: "Asha", close: true, photo_count: 412, face_id: 99 }, { id: 2, name: "Ravi", close: false, photo_count: 388, face_id: null }], to_name: 5 },
+    year: 2026,
+    months: [40, 55, 72, 61, 90, 120, 160, 212, 98, 76, 50, 0],
+    trash: { count: 39, bytes: 39 * MB },
+  };
+
+  it("shows the library, the tiles and the jobs worth doing (T32)", async () => {
     mockEngine({
       "GET /api/system/dashboard": OVERVIEW,
       "GET /api/duplicates/summary": { total_groups: 34, total_duplicate_photos: 80, reclaimable_bytes: 1.2 * GB },
       "GET /api/videos/summary": { runtime_available: true, total_videos: 342, total_video_bytes: 1, compressible_count: 12, enhanceable_count: 0, already_optimized_count: 0, projected_reclaimable_bytes: 3.4 * GB },
       "GET /api/duplicates/groups": [GROUP],
       "GET /api/system/space-summary": { enhanced: 1204, before_bytes: 30 * GB, after_bytes: 12 * GB, saved_bytes: 18 * GB, kept_8k: 1000, enlarged_small: 204, waiting: 14 },
+      "GET /api/system/highlights": HIGHLIGHTS,
+      "GET /api/restore/choices": { items: [], total: 21, originals_bytes: 340 * MB, improved_bytes: 1 },
     });
     const onNavigate = vi.fn();
-    render(<DashboardView onNavigate={onNavigate} />);
-    expect(await screen.findByText("Library on Photos (D:)")).toBeInTheDocument();
-    expect(screen.getByText(/SecurePhotos uses 447\.0 GB · 412\.0 GB free of 1000\.0 GB/)).toBeInTheDocument();
-    const usage = screen.getByRole("list", { name: "What SecurePhotos uses" });
-    expect(Array.from(usage.querySelectorAll(".dash-usage-label")).map((el) => el.textContent)).toEqual([
-      "Photos",
-      "App data · database and AI models",
-      "Private Vault · encrypted",
-    ]);
-    expect(screen.getByText("34 groups of copies and bursts. About 1.2 GB can be freed.")).toBeInTheDocument();
-    expect(screen.getByText("12 videos can be made smaller without visible change. About 3.4 GB to save.")).toBeInTheDocument();
-    // T27: the space card says what enhancing did, in plain words.
-    expect(screen.getByRole("heading", { name: "18.0 GB saved" })).toBeInTheDocument();
-    expect(screen.getByText("Your 1,204 enhanced photos take 12.0 GB instead of 30.0 GB, and they are sharper.")).toBeInTheDocument();
-    expect(screen.getByText("1,000 full-size photos at 8K · 204 smaller photos enlarged to 4K")).toBeInTheDocument();
-    expect(screen.getByText("14 photos still to enhance")).toBeInTheDocument();
+    const onPlayStory = vi.fn();
+    render(<DashboardView onNavigate={onNavigate} onPlayStory={onPlayStory} />);
 
     // The library as one sentence, every number a way in (round 2, #4).
-    const hero = screen.getByRole("region", { name: "Your library" });
+    const hero = await screen.findByRole("region", { name: "Your library" });
     expect(hero).toHaveTextContent("12,480 photos, 342 videos, 24 people, 12 albums and 214 documents.");
     fireEvent.click(within(hero).getByRole("button", { name: "12,480 photos" }));
     expect(onNavigate).toHaveBeenCalledWith("photos");
-    // Storage rows open their place (round 1, #19); app data has none.
-    fireEvent.click(within(usage).getByRole("button", { name: "Private Vault, 6.0 GB: open" }));
-    expect(onNavigate).toHaveBeenCalledWith("vault");
-    expect(within(usage).queryByRole("button", { name: /App data/ })).not.toBeInTheDocument();
-    // Enhancing is paused from Activity; the space card links there while photos wait (T27).
-    expect(screen.getByRole("button", { name: "See Activity" })).toBeInTheDocument();
+    // One storage line; the detail is in Settings.
+    expect(within(hero).getByText("SecurePhotos uses 447.0 GB · 412.0 GB free on Photos (D:)")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "What SecurePhotos uses" })).not.toBeInTheDocument();
+    fireEvent.click(within(hero).getByRole("button", { name: "Storage" }));
+    expect(useAppStore.getState().settingsSection).toBe("storage");
 
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Review duplicates" }));
+    // T27: what enhancing did is one press away.
+    fireEvent.click(screen.getByRole("button", { name: "18.0 GB saved by enhancing" }));
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Your 1,204 enhanced photos take 12.0 GB instead of 30.0 GB, and they are sharper. 1,000 full-size photos at 8K · 204 smaller photos enlarged to 4K. 14 photos still to enhance.",
+    );
+
+    const tiles = screen.getByRole("region", { name: "At a glance" });
+    expect(within(tiles).getByRole("heading", { name: "This week, 3 years ago" })).toBeInTheDocument();
+    fireEvent.click(within(tiles).getByRole("button", { name: "Play as a story" }));
+    expect(onPlayStory).toHaveBeenCalledWith(42);
+    expect(within(tiles).getByText("48 photos and 2 videos")).toBeInTheDocument();
+    expect(within(tiles).getByText("12 still being prepared")).toBeInTheDocument();
+    expect(within(tiles).getByText("Faded colours brought back · Colour added")).toBeInTheDocument();
+    expect(within(tiles).getByRole("slider", { name: "Compare before and after" })).toBeInTheDocument();
+    expect(within(tiles).getByText("5 new faces waiting for a name")).toBeInTheDocument();
+    fireEvent.click(within(tiles).getByRole("button", { name: /Asha/ }));
+    expect(useAppStore.getState().pendingOpen).toEqual({ kind: "person", id: 1 });
+    fireEvent.click(within(tiles).getByRole("button", { name: "August: 212 photos" }));
+    expect(useAppStore.getState().pendingMonth).toBe("2026-08");
+    expect(within(tiles).getByRole("button", { name: "December: 0 photos" })).toBeDisabled();
+
+    // Worth doing: the same four cards in the same order, each with what it frees.
+    const worth = screen.getByRole("region", { name: "Worth doing" });
+    expect(within(worth).getByText("About 5.0 GB to free")).toBeInTheDocument();
+    const titles = Array.from(worth.querySelectorAll(".dash-job-title")).map((el) => el.textContent);
+    expect(titles).toEqual(["Duplicates", "Big videos", "What to keep", "Empty Trash"]);
+    fireEvent.click(within(worth).getByRole("button", { name: /Empty Trash/ }));
+    expect(onNavigate).toHaveBeenCalledWith("trash");
+    fireEvent.click(within(worth).getByRole("button", { name: /Duplicates/ }));
     expect(await screen.findByRole("heading", { level: 1, name: "Duplicates" })).toBeInTheDocument();
     expect(await screen.findByText("1 group")).toBeInTheDocument();
-    // The space pill beside the title (owner, 2026-11-21).
-    expect(screen.getByText("Frees about 16 MB")).toBeInTheDocument();
+  });
+
+  it("leaves out tiles with nothing to show and says when all is good", async () => {
+    mockEngine({
+      "GET /api/system/dashboard": OVERVIEW,
+      "GET /api/duplicates/summary": { total_groups: 0, total_duplicate_photos: 0, reclaimable_bytes: 0 },
+      "GET /api/videos/summary": { runtime_available: true, total_videos: 1, total_video_bytes: 1, compressible_count: 0, enhanceable_count: 0, already_optimized_count: 0, projected_reclaimable_bytes: 0 },
+      "GET /api/system/highlights": { on_this_day: null, just_added: null, brought_back: null, people: { top: [], to_name: 0 }, year: 2026, months: Array(12).fill(0), trash: { count: 0, bytes: 0 } },
+    });
+    const onImport = vi.fn();
+    render(<DashboardView onNavigate={vi.fn()} onImport={onImport} />);
+    expect(await screen.findByText("All good, nothing to free right now")).toBeInTheDocument();
+    // Before the first old photo is brought back, the tile invites you to add one (owner, 2026-11-22).
+    expect(screen.getByRole("heading", { name: "Bring back old photos" })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Add photos" })[0]);
+    expect(onImport).toHaveBeenCalled();
+    expect(screen.queryByRole("heading", { name: /On this day|Just added|Brought back/ })).not.toBeInTheDocument();
+    // People and Your year invite you to start (owner, 2026-11-22).
+    expect(screen.getByText(/Name someone once and all their photos come together here/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open People" }));
+    expect(screen.getByText("No photos from 2026 yet. Add this year's photos and see your year here, month by month.")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Add photos" })).toHaveLength(2);
+    // The four cards stay, saying all is good, and still open their page to look again.
+    const worth = screen.getByRole("region", { name: "Worth doing" });
+    expect(within(worth).getAllByText("All good")).toHaveLength(4);
+    expect(within(worth).getByText("No copies found")).toBeInTheDocument();
+    expect(within(worth).getByText("Trash is empty")).toBeInTheDocument();
+    fireEvent.click(within(worth).getByRole("button", { name: /Duplicates/ }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Duplicates" })).toBeInTheDocument();
+  });
+});
+
+describe("Brought back without an original", () => {
+  it("shows the improved photo alone once Trash has deleted its original", async () => {
+    mockEngine({
+      "GET /api/system/dashboard": OVERVIEW,
+      "GET /api/system/highlights": { on_this_day: null, just_added: null, brought_back: { before_id: null, after_id: 12, kinds: ["colour"], total: 15 }, people: { top: [], to_name: 0 }, year: 2026, months: Array(12).fill(0), trash: { count: 0, bytes: 0 } },
+    });
+    const onOpenPhoto = vi.fn();
+    render(<DashboardView onNavigate={vi.fn()} onOpenPhoto={onOpenPhoto} />);
+    expect(await screen.findByRole("heading", { name: "Brought back" })).toBeInTheDocument();
+    expect(screen.getByText("15 old photos")).toBeInTheDocument();
+    expect(screen.getByText("Colour added")).toBeInTheDocument();
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open this photo" }));
+    expect(onOpenPhoto).toHaveBeenCalledWith(12);
   });
 });
 
@@ -305,5 +368,48 @@ describe("space card (T27)", () => {
     expect(grown.detail).toMatch(/Enlarging small photos adds detail, and some size\.$/);
     expect(grown.waiting).toBe("3 photos still to enhance");
     expect(spaceCard({ ...base, enhanced: 0, waiting: 0 })).toBeNull();
+  });
+});
+
+describe("dashboard tile words (T32)", () => {
+  it("greets by time of day and says the date", async () => {
+    const { greeting } = await import("./dashFormat");
+    expect(greeting(new Date(2026, 10, 22, 9, 0))).toBe("Good morning · Sunday 22 November");
+    expect(greeting(new Date(2026, 10, 22, 14, 0))).toBe("Good afternoon · Sunday 22 November");
+    expect(greeting(new Date(2026, 10, 22, 21, 0))).toBe("Good evening · Sunday 22 November");
+  });
+
+  it("keeps storage to one line and warns under 10% free", async () => {
+    const { storageLine } = await import("./dashFormat");
+    const drive = { ...OVERVIEW.drive_storage, drive_letter: "C:\\", volume_name: "Windows", total_bytes: 100 * GB, free_bytes: 8 * GB };
+    const low = storageLine(3 * GB, drive)!;
+    expect(low.low).toBe(true);
+    expect(low.text).toBe("Running low: 8.0 GB free on Windows (C:) · SecurePhotos uses 3.0 GB");
+    expect(Math.round(low.usedPercent)).toBe(92);
+    expect(storageLine(1, { ...drive, total_bytes: 0 })).toBeNull();
+    expect(storageLine(1, { ...drive, volume_name: "" })!.text).toBe("Running low: 8.0 GB free on C: · SecurePhotos uses 1 KB");
+  });
+
+  it("words the tiles", async () => {
+    const { onThisDayText, justAddedText, broughtBackText, monthBars, worthDoing, savedPill } = await import("./dashFormat");
+    expect(onThisDayText({ year: 2025, years_ago: 1, count: 1, photo_ids: [1], story_id: null }, new Date(2026, 10, 22))).toEqual({
+      title: "This week, 1 year ago",
+      line: "1 photo from November 2025",
+    });
+    expect(justAddedText({ photos: 0, videos: 1, preparing: 0, photo_ids: [] })).toEqual({ title: "1 video", preparing: null });
+    expect(broughtBackText(["scratches", "unknown"])).toBe("Scratches removed");
+    expect(broughtBackText([])).toBe("Brought back");
+    const { bars, total, busiest } = monthBars(2026, [0, 10, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0], new Date(2026, 1, 3));
+    expect(total).toBe(15);
+    expect(busiest).toBe("Busiest: February, 10 photos");
+    expect(bars[1]).toMatchObject({ key: "2026-02", height: 100, current: true, busiest: true });
+    expect(bars[2].height).toBe(50);
+    expect(bars[0].height).toBe(0);
+    expect(monthBars(2026, Array(12).fill(0), new Date()).busiest).toBeNull();
+    const cards = worthDoing({ duplicates: { count: 3, bytes: 0 }, videos: "off", keep: null, trash: { count: 2, bytes: 5 } });
+    expect(cards.map((j) => [j.key, j.state])).toEqual([["duplicates", "good"], ["videos", "off"], ["keep", "good"], ["trash", "free"]]);
+    expect(worthDoing({}).every((j) => j.state === "checking")).toBe(true);
+    expect(savedPill({ enhanced: 4, before_bytes: 10, after_bytes: 20, saved_bytes: 0, kept_8k: 0, enlarged_small: 4, waiting: 0 })).toBe("Sharper photos");
+    expect(savedPill(null)).toBeNull();
   });
 });

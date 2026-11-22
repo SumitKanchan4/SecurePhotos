@@ -81,6 +81,8 @@ export const App: React.FC = () => {
   const [isCollageModalOpen, setIsCollageModalOpen] = useState(false);
   const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
   const [activeStoryId, setActiveStoryId] = useState<number | null>(null);
+  const pendingMonth = useAppStore((st) => st.pendingMonth);
+  const clearPendingMonth = useAppStore((st) => st.clearPendingMonth);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxPhotos, setLightboxPhotos] = useState<PhotoItem[] | null>(null);
   // Set while the viewer shows a window of the Photos timeline: index of the window's first photo.
@@ -608,6 +610,8 @@ export const App: React.FC = () => {
                 loadPhotos();
               }}
               choicesTotal={activity.choicesTotal}
+              onPlayStory={(id) => setActiveStoryId(id)}
+              onImport={() => setIsImportModalOpen(true)}
             />
           ) : activeTab === "vault" ? (
             /* Dedicated Zero-Trust Private Vault Gallery */
@@ -837,6 +841,8 @@ export const App: React.FC = () => {
                   onOpen={(idx) => openPhotoViewer(displayedPhotos, idx)}
                   onToggleFavorite={handleToggleFavorite}
                   activeVideoId={videoProgress?.is_active ? videoProgress.active_video_id : null}
+                  jumpToMonth={pendingMonth}
+                  onJumped={clearPendingMonth}
                   empty={
                     <EmptyLibraryState
                       onSelectFolder={() => setIsImportModalOpen(true)}
