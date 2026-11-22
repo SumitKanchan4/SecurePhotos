@@ -142,7 +142,8 @@ async def people(conn: aiosqlite.Connection) -> Dict[str, Any]:
         SELECT p.id, p.name, p.is_close_one, COUNT(DISTINCT ph.id) AS photo_count,
                (SELECT f2.id FROM faces f2 JOIN photos ph ON ph.id = f2.photo_id
                 WHERE f2.person_id = p.id AND {shown}
-                ORDER BY (f2.id = p.cover_face_id) DESC, f2.is_anchor_medoid DESC, f2.quality_score DESC LIMIT 1) AS face_id
+                -- The cover is looked up by the face's own person: older SQLite can't sort by the outer row.
+                ORDER BY (f2.id = (SELECT pc.cover_face_id FROM persons pc WHERE pc.id = f2.person_id)) DESC, f2.is_anchor_medoid DESC, f2.quality_score DESC LIMIT 1) AS face_id
         FROM persons p
         JOIN faces f ON f.person_id = p.id
         JOIN photos ph ON ph.id = f.photo_id AND {shown}
