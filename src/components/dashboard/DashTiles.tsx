@@ -4,7 +4,7 @@
  * the words come from dashFormat.
  */
 import React, { useState } from "react";
-import { ChevronRight, ChevronsLeftRight, Copy, Film, Play, Sparkles, Trash2, UserRound } from "lucide-react";
+import { Check, ChevronRight, ChevronsLeftRight, Copy, Film, Play, Sparkles, Trash2, UserRound } from "lucide-react";
 import { getApiUrl, getThumbnailUrl } from "../../services/api";
 import {
   broughtBackText,
@@ -228,52 +228,54 @@ const JOB_ICON: Record<WorthJob["key"], React.ReactNode> = {
   trash: <Trash2 size={18} />,
 };
 
-/** The pages that can always be opened, even with nothing to free (they look again). */
-const ALWAYS: { key: "duplicates" | "videos"; label: string }[] = [
-  { key: "duplicates", label: "Look for duplicates" },
-  { key: "videos", label: "Review videos" },
-];
-
-export const WorthDoing: React.FC<{ jobs: WorthJob[]; checking: boolean; onOpen: (key: WorthJob["key"]) => void }> = ({ jobs, checking, onOpen }) => {
+export const WorthDoing: React.FC<{ jobs: WorthJob[]; onOpen: (key: WorthJob["key"]) => void }> = ({ jobs, onOpen }) => {
   const total = jobs.reduce((sum, j) => sum + j.bytes, 0);
-  const extras = ALWAYS.filter((x) => !jobs.some((j) => j.key === x.key));
+  const known = jobs.every((j) => j.state !== "checking");
   return (
     <section className="dash-worth" aria-labelledby="dash-worth">
       <div className="dash-tile-head">
         <h2 id="dash-worth" className="dash-section-title">
           Worth doing
         </h2>
-        {total > 0 && <span className="dash-muted">About {formatSize(total)} to free</span>}
+        {total > 0 ? (
+          <span className="dash-muted">About {formatSize(total)} to free</span>
+        ) : (
+          known && <span className="dash-muted">All good, nothing to free right now</span>
+        )}
       </div>
-      {jobs.length ? (
-        <div className="dash-jobs">
-          {jobs.map((j) => (
-            <button key={j.key} type="button" className="dash-job" onClick={() => onOpen(j.key)}>
-              <span className="dash-job-top">
-                <span className="dash-job-icon" aria-hidden="true">
-                  {JOB_ICON[j.key]}
-                </span>
-                <span className="dash-job-title">{j.title}</span>
-                <span className="dash-spacer" />
-                <ChevronRight size={16} className="dash-job-chev" aria-hidden="true" />
+      <div className="dash-jobs">
+        {jobs.map((j) => (
+          <button
+            key={j.key}
+            type="button"
+            className={`dash-job is-${j.state}`}
+            onClick={() => onOpen(j.key)}
+            disabled={j.state === "off"}
+          >
+            <span className="dash-job-top">
+              <span className="dash-job-icon" aria-hidden="true">
+                {JOB_ICON[j.key]}
               </span>
-              <span className="dash-muted">{j.line}</span>
+              <span className="dash-job-title">{j.title}</span>
+              <span className="dash-spacer" />
+              <ChevronRight size={16} className="dash-job-chev" aria-hidden="true" />
+            </span>
+            <span className="dash-muted">{j.line}</span>
+            {j.state === "free" ? (
               <span className="dash-job-gain">{formatSize(j.bytes)}</span>
-            </button>
-          ))}
-        </div>
-      ) : (
-        <p className="dash-note">{checking ? "Checking what can be tidied…" : "All tidy. Nothing to free right now."}</p>
-      )}
-      {!checking && extras.length > 0 && (
-        <div className="dash-worth-more">
-          {extras.map((x) => (
-            <button key={x.key} type="button" className="dash-link" onClick={() => onOpen(x.key)}>
-              {x.label} <ChevronRight size={14} aria-hidden="true" />
-            </button>
-          ))}
-        </div>
-      )}
+            ) : j.state === "good" ? (
+              <span className="dash-job-gain is-good">
+                <Check size={22} strokeWidth={3} aria-hidden="true" />
+                All good
+              </span>
+            ) : (
+              <span className="dash-job-gain is-quiet" aria-hidden="true">
+                –
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
     </section>
   );
 };

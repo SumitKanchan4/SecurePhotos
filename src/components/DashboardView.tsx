@@ -150,10 +150,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const pill = savedPill(spaceSummary);
   const now = new Date();
   const jobs = worthDoing({
-    duplicates: dupes ? { groups: dupes.total_groups, bytes: dupes.reclaimable_bytes } : null,
-    keep: { count: keep?.total ?? choicesTotal, bytes: keep?.originals_bytes ?? 0 },
-    videos: videos?.runtime_available ? { count: videos.compressible_count, bytes: videos.projected_reclaimable_bytes } : null,
-    trash: highlights?.trash ?? null,
+    duplicates: loaded ? (dupes ? { count: dupes.total_groups, bytes: dupes.reclaimable_bytes } : null) : undefined,
+    videos: loaded ? (videos && !videos.runtime_available ? "off" : videos ? { count: videos.compressible_count, bytes: videos.projected_reclaimable_bytes } : null) : undefined,
+    keep: loaded ? { count: keep?.total ?? choicesTotal, bytes: keep?.originals_bytes ?? 0 } : undefined,
+    trash: loaded ? highlights?.trash ?? null : undefined,
   });
   const openJob = (key: WorthJob["key"]) => (key === "trash" ? onNavigate("trash") : setPage(key));
 
@@ -263,7 +263,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </section>
       )}
 
-      <WorthDoing jobs={jobs} checking={!loaded} onOpen={openJob} />
+      <WorthDoing jobs={jobs} onOpen={openJob} />
     </div>
   );
 };

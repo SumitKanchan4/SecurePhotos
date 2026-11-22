@@ -262,27 +262,36 @@ export function monthBars(year: number, counts: number[], now: Date): { bars: Mo
 }
 
 export interface WorthJob {
-  key: "duplicates" | "keep" | "videos" | "trash";
+  key: "duplicates" | "videos" | "keep" | "trash";
   title: string;
   line: string;
+  /** What it frees; 0 when there is nothing to do. */
   bytes: number;
+  /** "free": something to do; "good": nothing to do; "checking": not known yet; "off": can't run here. */
+  state: "free" | "good" | "checking" | "off";
 }
 
-/** Worth doing: only jobs that free something, biggest first. */
-export function worthDoing(input: {
-  duplicates?: { groups: number; bytes: number } | null;
-  keep?: { count: number; bytes: number } | null;
-  videos?: { count: number; bytes: number } | null;
-  trash?: { count: number; bytes: number } | null;
-}): WorthJob[] {
-  const jobs: WorthJob[] = [];
-  const d = input.duplicates;
-  if (d && d.groups > 0 && d.bytes > 0) jobs.push({ key: "duplicates", title: "Duplicates", line: `${plural(d.groups, "group")} of copies and bursts`, bytes: d.bytes });
-  const k = input.keep;
-  if (k && k.count > 0 && k.bytes > 0) jobs.push({ key: "keep", title: "What to keep", line: `${plural(k.count, "improved photo")} to choose`, bytes: k.bytes });
-  const v = input.videos;
-  if (v && v.count > 0 && v.bytes > 0) jobs.push({ key: "videos", title: "Big videos", line: `${plural(v.count, "video")} can be made smaller`, bytes: v.bytes });
-  const t = input.trash;
-  if (t && t.count > 0 && t.bytes > 0) jobs.push({ key: "trash", title: "Empty Trash", line: `${plural(t.count, "item")} waiting to be deleted`, bytes: t.bytes });
-  return jobs.sort((a, b) => b.bytes - a.bytes);
+type JobCount = { count: number; bytes: number } | null | undefined;
+
+/** Worth doing (owner, 2026-11-22): the same four cards in the same place every time, each saying
+ *  what it frees or that all is good. ``undefined`` means still checking. */
+export function worthDoing(input: { duplicates?: JobCount; videos?: JobCount | "off"; keep?: JobCount; trash?: JobCount }): WorthJob[] {
+  const card = (
+    key: WorthJob["key"],
+    title: string,
+    value: JobCount | "off",
+    busy: (n: number) => string,
+    good: string,
+  ): WorthJob => {
+    if (value === "off") return { key, title, line: "Video tools aren't available on this computer", bytes: 0, state: "off" };
+    if (value === undefined) return { key, title, line: "Checking…", bytes: 0, state: "checking" };
+    if (value && value.count > 0 && value.bytes > 0) return { key, title, line: busy(value.count), bytes: value.bytes, state: "free" };
+    return { key, title, line: good, bytes: 0, state: "good" };
+  };
+  return [
+    card("duplicates", "Duplicates", input.duplicates, (n) => `${plural(n, "group")} of copies and bursts`, "No copies found"),
+    card("videos", "Big videos", input.videos, (n) => `${plural(n, "video")} can be made smaller`, "Your videos are a good size"),
+    card("keep", "What to keep", input.keep, (n) => `${plural(n, "improved photo")} to choose`, "Nothing waiting for a choice"),
+    card("trash", "Empty Trash", input.trash, (n) => `${plural(n, "item")} waiting to be deleted`, "Trash is empty"),
+  ];
 }

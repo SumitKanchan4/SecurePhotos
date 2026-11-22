@@ -163,11 +163,11 @@ describe("DashboardView", () => {
     expect(useAppStore.getState().pendingMonth).toBe("2026-08");
     expect(within(tiles).getByRole("button", { name: "December: 0 photos" })).toBeDisabled();
 
-    // Worth doing: biggest first, each with what it frees.
+    // Worth doing: the same four cards in the same order, each with what it frees.
     const worth = screen.getByRole("region", { name: "Worth doing" });
     expect(within(worth).getByText("About 5.0 GB to free")).toBeInTheDocument();
     const titles = Array.from(worth.querySelectorAll(".dash-job-title")).map((el) => el.textContent);
-    expect(titles).toEqual(["Big videos", "Duplicates", "What to keep", "Empty Trash"]);
+    expect(titles).toEqual(["Duplicates", "Big videos", "What to keep", "Empty Trash"]);
     fireEvent.click(within(worth).getByRole("button", { name: /Empty Trash/ }));
     expect(onNavigate).toHaveBeenCalledWith("trash");
     fireEvent.click(within(worth).getByRole("button", { name: /Duplicates/ }));
@@ -175,7 +175,7 @@ describe("DashboardView", () => {
     expect(await screen.findByText("1 group")).toBeInTheDocument();
   });
 
-  it("leaves out tiles with nothing to show and says when all is tidy", async () => {
+  it("leaves out tiles with nothing to show and says when all is good", async () => {
     mockEngine({
       "GET /api/system/dashboard": OVERVIEW,
       "GET /api/duplicates/summary": { total_groups: 0, total_duplicate_photos: 0, reclaimable_bytes: 0 },
@@ -183,11 +183,15 @@ describe("DashboardView", () => {
       "GET /api/system/highlights": { on_this_day: null, just_added: null, brought_back: null, people: { top: [], to_name: 0 }, year: 2026, months: Array(12).fill(0), trash: { count: 0, bytes: 0 } },
     });
     render(<DashboardView onNavigate={vi.fn()} />);
-    expect(await screen.findByText("All tidy. Nothing to free right now.")).toBeInTheDocument();
+    expect(await screen.findByText("All good, nothing to free right now")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /On this day|Just added|Brought back|People|Your 2026/ })).not.toBeInTheDocument();
-    // The pages still open, to look again.
-    expect(screen.getByRole("button", { name: "Look for duplicates" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Review videos" })).toBeInTheDocument();
+    // The four cards stay, saying all is good, and still open their page to look again.
+    const worth = screen.getByRole("region", { name: "Worth doing" });
+    expect(within(worth).getAllByText("All good")).toHaveLength(4);
+    expect(within(worth).getByText("No copies found")).toBeInTheDocument();
+    expect(within(worth).getByText("Trash is empty")).toBeInTheDocument();
+    fireEvent.click(within(worth).getByRole("button", { name: /Duplicates/ }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Duplicates" })).toBeInTheDocument();
   });
 });
 
@@ -375,7 +379,9 @@ describe("dashboard tile words (T32)", () => {
     expect(bars[2].height).toBe(50);
     expect(bars[0].height).toBe(0);
     expect(monthBars(2026, Array(12).fill(0), new Date()).busiest).toBeNull();
-    expect(worthDoing({ duplicates: { groups: 3, bytes: 0 }, trash: { count: 2, bytes: 5 } }).map((j) => j.key)).toEqual(["trash"]);
+    const cards = worthDoing({ duplicates: { count: 3, bytes: 0 }, videos: "off", keep: null, trash: { count: 2, bytes: 5 } });
+    expect(cards.map((j) => [j.key, j.state])).toEqual([["duplicates", "good"], ["videos", "off"], ["keep", "good"], ["trash", "free"]]);
+    expect(worthDoing({}).every((j) => j.state === "checking")).toBe(true);
     expect(savedPill({ enhanced: 4, before_bytes: 10, after_bytes: 20, saved_bytes: 0, kept_8k: 0, enlarged_small: 4, waiting: 0 })).toBe("Sharper photos");
     expect(savedPill(null)).toBeNull();
   });
