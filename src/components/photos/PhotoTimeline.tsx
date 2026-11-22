@@ -271,6 +271,9 @@ interface PhotoTimelineProps {
   minScrubberSections?: number;
   /** False where nothing acts on a selection (Search page, R9c): clicks always open. */
   selectable?: boolean;
+  /** Scroll to this month ("2026-08") once it is laid out, then call ``onJumped`` (T32). */
+  jumpToMonth?: string | null;
+  onJumped?: () => void;
 }
 
 export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({
@@ -282,6 +285,8 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({
   vault = false,
   minScrubberSections = 2,
   selectable: allowSelection = true,
+  jumpToMonth,
+  onJumped,
 }) => {
   const selectable = allowSelection;
   const { selectedPhotoIds, togglePhotoSelection, gridDensity, showToast } = useAppStore();
@@ -369,6 +374,13 @@ export const PhotoTimeline: React.FC<PhotoTimelineProps> = ({
     const el = scrollRef.current;
     if (el) el.scrollTop = (layout.sectionTops.get(key) ?? 0) + PAD_TOP;
   };
+  // Asked from elsewhere (Dashboard › Your year): wait until the grid has its size and the month.
+  useEffect(() => {
+    if (!jumpToMonth || size.width === 0 || !layout.sectionTops.has(jumpToMonth)) return;
+    const el = scrollRef.current;
+    if (el) el.scrollTop = (layout.sectionTops.get(jumpToMonth) ?? 0) + PAD_TOP;
+    onJumped?.();
+  }, [jumpToMonth, layout, size.width, onJumped]);
   useEffect(() => {
     const stop = () => (dragging.current = false);
     window.addEventListener("pointerup", stop);

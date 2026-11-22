@@ -27,6 +27,8 @@ interface AppState {
   /** Bumped by openSearch so the Search page focuses its field again. */
   searchFocusKey: number;
   pendingOpen: PendingOpen;
+  /** A month ("2026-08") Photos should scroll to once it shows (Dashboard › Your year, T32). */
+  pendingMonth: string | null;
   /** A Settings section another screen asked to open (e.g. "music"). */
   settingsSection: string | null;
   selectedPhotoIds: Set<number>;
@@ -59,6 +61,8 @@ interface AppState {
   openPerson: (id: number) => void;
   openAlbum: (id: number) => void;
   clearPendingOpen: () => void;
+  openMonth: (key: string) => void;
+  clearPendingMonth: () => void;
   openSettings: (section: string) => void;
   clearSettingsSection: () => void;
   togglePhotoSelection: (id: number) => void;
@@ -125,6 +129,7 @@ export const useAppStore = create<AppState>((set) => ({
   searchQuery: "",
   searchFocusKey: 0,
   pendingOpen: null,
+  pendingMonth: null,
   settingsSection: null,
   selectedPhotoIds: new Set<number>(),
   activeVolume: null,
@@ -174,6 +179,8 @@ export const useAppStore = create<AppState>((set) => ({
   openPerson: (id) => set({ activeTab: "people", pendingOpen: { kind: "person", id } }),
   openAlbum: (id) => set({ activeTab: "albums", pendingOpen: { kind: "album", id } }),
   clearPendingOpen: () => set({ pendingOpen: null }),
+  openMonth: (key) => set({ activeTab: "photos", pendingMonth: key }),
+  clearPendingMonth: () => set({ pendingMonth: null }),
   openSettings: (section) => set({ activeTab: "settings", settingsSection: section }),
   clearSettingsSection: () => set({ settingsSection: null }),
 

@@ -143,6 +143,14 @@ describe("PhotoTimeline", () => {
     expect(screen.getByRole("img", { name: "Video, being prepared" })).toBeInTheDocument();
   });
 
+  it("opens at the month another screen asked for, once (Dashboard › Your year, T32)", () => {
+    const onJumped = vi.fn();
+    render(<PhotoTimeline photos={makeLibrary(3000)} onOpen={vi.fn()} jumpToMonth="2025-06" onJumped={onJumped} />);
+    const scroller = screen.getByTestId("photo-timeline");
+    expect(scroller.scrollTop).toBeGreaterThan(1000);
+    expect(onJumped).toHaveBeenCalledTimes(1);
+  });
+
   it("jumps by month or year from the scrubber and marks where you are", async () => {
     render(<PhotoTimeline photos={makeLibrary(3000)} onOpen={vi.fn()} />);
     const scrubber = screen.getByRole("navigation", { name: "Jump to date" });

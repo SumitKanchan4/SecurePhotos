@@ -35,6 +35,7 @@ made is in its commit and pull request.
 - Photos can be added straight to the vault. "Remove the originals" is on by default for the vault (Settings → Vault), shown and changeable on each import (2026-11-21).
 
 ## Look and words
+- Dashboard (approved mock-up, 2026-11-22): the library sentence and newest photos, one storage line (detail stays in Settings › Storage), then tiles On this day, Just added, Brought back, People, Your year, and Worth doing with the space each job frees. A tile with nothing to show is left out.
 - Mono + acid lime design (`docs/design_system.md`). Background work is reached from the rail's ring and the header pill, not a rail item (2026-11-16).
 - Plain, human words on screen and in documents; no technical terms, no marketing words, no em dashes (2026-11-20).
 - The public roadmap was removed (2026-11-20).
