@@ -5,13 +5,9 @@
 // Usage: node scripts/ci/npm-audit-check.mjs
 import { execSync } from "node:child_process";
 
-const ALLOWED = {
-  // picomatch <= 4.0.7: ReDoS through crafted extglob patterns. No fixed version exists yet
-  // (4.0.7 is the latest, 2026-11-17). Only the build/test tools use it (Vite, Vitest), with
-  // patterns from our own config; nothing ships in the app (runtime audit: 0 issues).
-  // Owner approved allowing it temporarily (2026-11-17). Remove once picomatch ships a fix.
-  "GHSA-fc5q-39xc-vjpf": { until: "2026-12-31", note: "picomatch ReDoS, dev tooling only, no fix released" },
-};
+// Each entry: "GHSA-…": { until: "YYYY-MM-DD", note: "why it is safe for now" }.
+// The picomatch entry (GHSA-fc5q-39xc-vjpf) was removed on 2026-11-22: GitHub withdrew that advisory.
+const ALLOWED = {};
 
 const FAIL_ON = new Set(["high", "critical"]);
 
