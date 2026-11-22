@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Sparkles, Download, X, AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { Update } from "@tauri-apps/plugin-updater";
+import { RELEASES_URL, updateErrorText } from "../utils/updateText";
 
 interface UpdateModalProps {
   update: Update;
@@ -30,18 +31,14 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ update, isOpen, onClos
     setErrorMessage(null);
     setDownloadStatusText("Initializing verified update package...");
 
+    let engineStopped = false;
     try {
       let downloadedBytes = 0;
       let totalBytes = 0;
 
-      // Gracefully terminate the background engine process to release file locks on Windows
-      try {
-        await invoke("prepare_for_update");
-      } catch (prepErr) {
-        console.warn("Notice during engine pre-update shutdown:", prepErr);
-      }
-
-      await update.downloadAndInstall((event) => {
+      // T18: download first; the updater checks the signature here. The photo engine keeps
+      // running until the update is known to be good.
+      await update.download((event) => {
         switch (event.event) {
           case "Started":
             totalBytes = event.data.contentLength ?? 0;
@@ -64,6 +61,15 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ update, isOpen, onClos
         }
       });
 
+      // Only now stop the engine, so Windows lets the installer replace its files.
+      try {
+        await invoke("prepare_for_update");
+        engineStopped = true;
+      } catch (prepErr) {
+        console.warn("Notice during engine pre-update shutdown:", prepErr);
+      }
+      await update.install();
+
       setIsCompleted(true);
       setDownloadStatusText("Update installed successfully! Restarting SecurePhotos...");
 
@@ -80,7 +86,10 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ update, isOpen, onClos
     } catch (err: any) {
       console.error("Update installation error:", err);
       setIsDownloading(false);
-      setErrorMessage(err?.message || "An error occurred while downloading or installing the update.");
+      setDownloadProgress(null);
+      setErrorMessage(updateErrorText(err));
+      // The update didn't install: start the photo engine again so the app keeps working.
+      if (engineStopped) invoke("start_backend_engine").catch(() => {});
     }
   };
 
@@ -238,8 +247,17 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ update, isOpen, onClos
                 marginBottom: "20px",
               }}
             >
-              <AlertCircle size={16} />
-              <span>{errorMessage}</span>
+              <AlertCircle size={16} style={{ flexShrink: 0 }} />
+              <span>
+                {errorMessage}{" "}
+                <button
+                  type="button"
+                  onClick={() => invoke("plugin:shell|open", { path: RELEASES_URL }).catch(() => {})}
+                  style={{ padding: 0, border: "none", background: "none", color: "inherit", font: "inherit", fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}
+                >
+                  Download the installer
+                </button>
+              </span>
             </div>
           )}
 

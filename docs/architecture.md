@@ -231,6 +231,25 @@ The Dashboard reads, it never changes anything. Besides the counts (`GET /api/sy
 
 Vault photos are never included. Storage detail lives in Settings › Storage; the Dashboard keeps one line.
 
+### 3.9 Updates
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CI as Release build
+    participant GH as GitHub release
+    participant App as SecurePhotos
+    CI->>CI: tauri build signs the installer (.exe.sig) with TAURI_SIGNING_PRIVATE_KEY
+    CI->>CI: scripts/ci/updater_manifest.py writes latest.json (stops if unsigned)
+    CI->>GH: installer, .sig, latest.json
+    App->>GH: releases/latest/download/latest.json
+    App->>GH: download the installer, check its signature with the public key in tauri.conf.json
+    App->>App: stop the engine, run the installer, restart
+```
+
+- The engine is stopped only after the download has been checked; if installing fails, it is started again.
+- An update that can't be checked is not installed; the app says so in plain words and links to the installer.
+
 ## 4. The database
 
 The schema and its migrations are in [engine/database.py](../engine/database.py), the single source of truth. The main tables:

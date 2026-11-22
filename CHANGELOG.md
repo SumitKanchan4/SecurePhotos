@@ -23,7 +23,9 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 - The Collages album is always there, next to Favourites and Saved stories.
 - A video's quality tag (SD, HD, 2K, 4K) is the same on its tile and in the viewer.
 
-### Installing
+### Installing and updating
+- **Coming from 0.2.0? Run this installer once.** From this version on, SecurePhotos updates itself: it finds a new version on its own, or from Settings, under About.
+- If an update can't be installed, SecurePhotos says why in plain words, with a link to download the installer, and keeps working.
 - The installer shows the progress of the old-photo model download, and their results in its own window.
 - Choosing to install on the computer itself asks only once.
 
