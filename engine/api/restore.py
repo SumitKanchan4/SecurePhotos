@@ -148,13 +148,17 @@ async def photo_options(photo_id: int) -> Dict[str, Any]:
     """Which improvements fit this photo: "Add colour" for grey photos, "Fix faded colours" otherwise,
     "Sharpen faces" when it has faces (found on the 1024 px thumbnail), and "Remove scratches
     and spots" for scans of prints (no camera exposure data) and black-and-white photos.
-    None for an original that already has an improved copy (A8): improve the copy instead."""
+    None for an original that already has an improved copy (A8): improve the copy instead.
+    ``again`` (T14): for an improved copy whose original still exists, what Try again redoes
+    (``kinds``) and the colour style used last time (``style``); otherwise null."""
     from engine.database import db_connection
-    from engine.services import photo_versions
+    from engine.services import photo_versions, try_again
     from engine.services.face_sharpen import count_faces
     from engine.services.old_photo_processors import decode_rgb, is_black_and_white
 
     async with db_connection() as conn:
+        found = await try_again.plan(conn, photo_id)
+        again = {"kinds": found["kinds"], "style": found["style"]} if found else None
         async with conn.execute(
             "SELECT thumbnail_path, filepath, is_encrypted, mime_type, ai_kind, iso, aperture, shutter_speed,"
             " EXISTS (SELECT 1 FROM photos c WHERE c.derived_from_id = photos.id AND c.trashed_at IS NULL)"
@@ -165,7 +169,7 @@ async def photo_options(photo_id: int) -> Dict[str, Any]:
     if row is None or (row[3] or "").startswith("video/"):
         raise HTTPException(status_code=404, detail="Not a photo.")
     if row[8]:  # A8: already improved; the improved photo is where to go on (no second copy).
-        return {"colour": False, "fade": False, "faces": False, "scratches": False}
+        return {"colour": False, "fade": False, "faces": False, "scratches": False, "again": again}
     key = restore_queue._vault_key() if row[2] else None
     if row[2] and key is None:
         raise HTTPException(status_code=409, detail="vault_locked")
@@ -188,7 +192,45 @@ async def photo_options(photo_id: int) -> Dict[str, Any]:
         "fade": not grey and not done & {"fade", "colour"},
         "faces": has_faces,
         "scratches": "scratches" not in done and (grey or (row[5] is None and row[6] is None and row[7] is None)),
+        "again": again,
     }
+
+
+class TryAgainRequest(BaseModel):
+    style: Optional[str] = None  # "natural" | "vivid"; default: the one not used last time.
+
+
+@router.post("/photos/{photo_id}/try-again")
+async def try_again_photo(photo_id: int, payload: TryAgainRequest) -> Dict[str, Any]:
+    """T14: makes the improvement of this improved copy again, from the original. The result
+    waits for "Use the new one" (``POST /jobs/{id}/keep`` with ``use_new``) or discard."""
+    from engine.database import db_connection
+    from engine.services import try_again
+
+    async with db_connection() as conn:
+        found = await try_again.plan(conn, photo_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail="Try again isn't available for this photo.")
+    if await asyncio.to_thread(restore_queue.missing_for, found["kind"]):
+        raise HTTPException(status_code=409, detail="models_missing")
+    job_id = await try_again.enqueue(photo_id, payload.style)
+    return {"job_id": job_id, "kind": found["kind"], "kinds": found["kinds"]}
+
+
+class UndoTryAgainRequest(BaseModel):
+    new_photo_id: int
+    old_photo_id: int
+
+
+@router.post("/try-again/undo")
+async def undo_try_again(payload: UndoTryAgainRequest) -> Dict[str, Any]:
+    """T14: after "Use the new one", brings the earlier copy back and moves the new one to Trash."""
+    from engine.services import try_again
+
+    try:
+        return await try_again.undo(payload.new_photo_id, payload.old_photo_id)
+    except ValueError as err:
+        raise HTTPException(status_code=404, detail=str(err))
 
 
 @router.get("/photos/{photo_id}/versions")

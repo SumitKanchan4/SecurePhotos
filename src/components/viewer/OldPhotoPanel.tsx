@@ -10,11 +10,13 @@
  *   (progress, cancel, keep browsing) and then starts. "Not now" keeps only that action locked.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { Brush, Download, Eraser, Loader2, Lock, MoreHorizontal, Palette, ScanFace, SunMedium, X } from "lucide-react";
+import { Brush, Download, Eraser, Loader2, Lock, MoreHorizontal, Palette, RotateCcw, ScanFace, SunMedium, X } from "lucide-react";
 import { LimeMarks } from "./TouchUp";
 import { apiFetch } from "../../services/api";
 import {
   IMPROVE_LABELS,
+  tryAgainHint,
+  tryAgainKind,
   type ImproveKind,
   type KeepChoice,
   type ModelPrompt,
@@ -33,7 +35,8 @@ export const ImproveMenu: React.FC<{ old: OldPhotoState }> = ({ old }) => {
     old.options?.faces && { kind: "faces" as const, icon: <ScanFace size={15} />, hint: "Clearer faces in blurry or old photos" },
     old.options?.scratches && { kind: "scratches" as const, icon: <Eraser size={15} />, hint: "Creases, scratches and dust on old prints" },
   ].filter(Boolean) as { kind: ImproveKind; icon: React.ReactNode; hint: string }[];
-  if (!items.length) return null;
+  const again = old.options?.again ?? null;
+  if (!items.length && !again) return null;
   return (
     <div className="viewer-menu-anchor">
       <button
@@ -51,6 +54,24 @@ export const ImproveMenu: React.FC<{ old: OldPhotoState }> = ({ old }) => {
         <>
           <div className="viewer-menu-backdrop" onClick={() => setOpen(false)} />
           <div className="viewer-menu" role="menu" aria-label="More">
+            {again && (
+              <button
+                type="button"
+                role="menuitem"
+                className={`viewer-menu-again${old.downloads[tryAgainKind(again.kinds)] ? " is-locked" : ""}`}
+                disabled={old.busy || old.panelOpen}
+                onClick={() => {
+                  setOpen(false);
+                  void old.tryAgain();
+                }}
+              >
+                <RotateCcw size={15} />
+                <span>
+                  <strong>Try again…</strong>
+                  <small>{tryAgainHint(again.kinds)}</small>
+                </span>
+              </button>
+            )}
             {items.map((item) => {
               const bytes = old.downloads[item.kind];
               return (
@@ -149,7 +170,9 @@ export const BeforeAfter: React.FC<{
   onToggleFace?: (index: number) => void;
   /** Remove scratches and spots: what was repaired, shown in lime. */
   marks?: HTMLCanvasElement | null;
-}> = ({ before, after, intensity, faces = [], facesOff = [], onToggleFace, marks = null }) => {
+  /** T14 Try again compares the copy you have with the new one: "Current · Natural" / "New · Vivid". */
+  labels?: { before: string; after: string };
+}> = ({ before, after, intensity, faces = [], facesOff = [], onToggleFace, marks = null, labels }) => {
   const [split, setSplit] = useState(50);
   const boxRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
@@ -179,8 +202,8 @@ export const BeforeAfter: React.FC<{
           style={{ opacity: intensity, clipPath: `inset(0 0 0 ${split}%)` }}
         />
         {marks && <LimeMarks marks={marks} />}
-        <span className="ba-tag ba-tag-before">Before</span>
-        <span className="ba-tag ba-tag-after">AI · After</span>
+        <span className="ba-tag ba-tag-before">{labels?.before ?? "Before"}</span>
+        <span className="ba-tag ba-tag-after">{labels?.after ?? "AI · After"}</span>
         {faces.map((face, i) => {
           const [x, y, w, h] = face.box;
           const on = face.sharpened && !facesOff.includes(i);
@@ -237,6 +260,10 @@ export const OldPhotoPanel: React.FC<{
   }, [job?.id]);
   if (!job) return null;
   const label = IMPROVE_LABELS[job.kind];
+  // T14: a retry of the copy on screen is used or not; the remembered choice never applies.
+  const redo = old.redoOf !== null;
+  const title = redo ? `Try again: ${label.action}` : label.action;
+  const pickStyle = (s: "natural" | "vivid") => void (redo ? old.tryAgain(s) : old.start("colour", s));
 
   const decide = async (choice: KeepChoice, remember = false) => {
     try {
@@ -249,9 +276,9 @@ export const OldPhotoPanel: React.FC<{
   };
 
   return (
-    <aside className="op-panel" aria-label={label.action}>
+    <aside className="op-panel" aria-label={title}>
       <div className="op-head">
-        <strong>{label.action}</strong>
+        <strong>{title}</strong>
         <button type="button" className="op-close" aria-label="Close" onClick={() => (job.status === "review" ? void decide("discard") : void old.cancel())}>
           <X size={15} />
         </button>
@@ -284,17 +311,20 @@ export const OldPhotoPanel: React.FC<{
 
       {job.status === "review" && (
         <>
+          {redo && <p className="op-text">Made again from the original. Drag across the photo to compare it with the one you have now.</p>}
           {job.kind === "colour" && (
             <div className="op-section">
               <span className="op-label">Colour</span>
               <div className="viewer-segment op-segment" role="group" aria-label="Colour style">
                 {(["natural", "vivid"] as const).map((s) => (
-                  <button key={s} type="button" aria-pressed={old.style === s} className={old.style === s ? "is-on" : ""} disabled={old.busy || old.style === s} onClick={() => void old.start("colour", s)}>
+                  <button key={s} type="button" aria-pressed={old.style === s} className={old.style === s ? "is-on" : ""} disabled={old.busy || old.style === s} onClick={() => pickStyle(s)}>
                     {s === "natural" ? "Natural" : "Vivid"}
                   </button>
                 ))}
               </div>
-              <p className="op-hint">Vivid gives richer colour to faded group photos; it can get a few colours wrong.</p>
+              <p className="op-hint">
+                {redo ? "Starts with the style you didn't use last time. " : ""}Vivid gives richer colour to faded group photos; it can get a few colours wrong.
+              </p>
             </div>
           )}
           <FacesSection old={old} />
@@ -303,18 +333,32 @@ export const OldPhotoPanel: React.FC<{
             <label className="op-label" htmlFor="op-strength">Strength</label>
             <input id="op-strength" type="range" min={0} max={100} value={Math.round(old.intensity * 100)} onChange={(e) => old.setIntensity(Number(e.target.value) / 100)} className="op-range" />
           </div>
-          <div className="op-foot">
-            <p className="op-hint">Made by AI on this computer. Copies you export are labelled as AI-edited.</p>
-            <button
-              type="button"
-              className="op-btn op-btn-primary"
-              disabled={old.busy}
-              onClick={() => (remembered === "ask" ? setAsking(true) : void decide(remembered))}
-            >
-              {old.busy && <Loader2 size={13} className="spin" />}
-              {remembered === "replace" ? "Replace the photo" : remembered === "keep_both" ? "Keep both" : "Keep this…"}
-            </button>
-          </div>
+          {redo ? (
+            <div className="op-foot">
+              <p className="op-note">If you use the new one, the current one goes to Trash, where you can restore it for 30 days. The original isn't touched.</p>
+              <button type="button" className="op-btn op-btn-primary" disabled={old.busy} onClick={() => void decide("use_new")}>
+                {old.busy && <Loader2 size={13} className="spin" />}
+                Use the new one
+              </button>
+              <button type="button" className="op-btn" disabled={old.busy} onClick={() => void decide("discard")}>
+                Keep the current one
+              </button>
+              <p className="op-hint">Made by AI on this computer. Copies you export are labelled as AI-edited.</p>
+            </div>
+          ) : (
+            <div className="op-foot">
+              <p className="op-hint">Made by AI on this computer. Copies you export are labelled as AI-edited.</p>
+              <button
+                type="button"
+                className="op-btn op-btn-primary"
+                disabled={old.busy}
+                onClick={() => (remembered === "ask" ? setAsking(true) : void decide(remembered))}
+              >
+                {old.busy && <Loader2 size={13} className="spin" />}
+                {remembered === "replace" ? "Replace the photo" : remembered === "keep_both" ? "Keep both" : "Keep this…"}
+              </button>
+            </div>
+          )}
         </>
       )}
 

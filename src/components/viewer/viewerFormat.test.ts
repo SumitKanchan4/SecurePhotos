@@ -100,3 +100,17 @@ describe("improve video options (T29)", () => {
     expect(videoImproveOptions(undefined, undefined)).toEqual([]);
   });
 });
+
+describe("Try again words (T14)", () => {
+  it("labels the compare and the menu line", async () => {
+    const { tryAgainLabels } = await import("./viewerFormat");
+    const { tryAgainHint, tryAgainKind } = await import("./useOldPhoto");
+    expect(tryAgainLabels("natural", "vivid")).toEqual({ before: "Current · Natural", after: "New · Vivid" });
+    expect(tryAgainLabels(null, null)).toEqual({ before: "Current", after: "New" });
+    expect(tryAgainHint(["fade", "faces"])).toBe(
+      "Make it again (fix faded colours, sharpen faces) from the original, with other settings. You choose which one to keep.",
+    );
+    expect(tryAgainKind(["scratches", "faces"])).toBe("faces");
+    expect(tryAgainKind(["fade", "colour"])).toBe("colour");
+  });
+});

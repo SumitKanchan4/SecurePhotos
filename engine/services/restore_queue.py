@@ -644,7 +644,7 @@ def _kick_enhancement() -> None:
         asyncio.get_running_loop().create_task(photos_api.run_background_optimization())
 
 
-KEEP_CHOICES = ("keep_both", "replace", "discard")
+KEEP_CHOICES = ("keep_both", "replace", "discard", "use_new")  # use_new: Try again only (T14).
 
 
 async def _old_photo_settings() -> Dict[str, Any]:
@@ -686,9 +686,11 @@ async def keep_result(
     ``remember`` stores the choice as the "When I keep a result" setting (not for discard).
     ``intensity`` (0-1) is the viewer's strength slider: below 1 the result is mixed with the original.
     ``faces_off``: faces (by index) the user switched off; they are kept as they were.
+    A Try again job (T14, ``redo_of`` in its params) takes ``use_new`` or ``discard`` only:
+    ``use_new`` replaces the copy it was a retry of (see :mod:`engine.services.try_again`).
 
     Returns:
-        ``{"photo_id": new photo id or None}``.
+        ``{"photo_id": new photo id or None}``, plus ``replaced_id`` after ``use_new``.
 
     Raises:
         ValueError: Unknown choice, or the job isn't waiting for a decision.
@@ -706,7 +708,11 @@ async def keep_result(
             job = await cur.fetchone()
         if job is None or job["status"] != "review":
             raise ValueError("This result is no longer waiting for a decision.")
+        redo = "redo_of" in json.loads(job["params"] or "{}")
+        if redo != (choice == "use_new") and choice != "discard":
+            raise ValueError("Try again results are used or discarded." if redo else "Unknown choice 'use_new'")
         new_id = None
+        replaced_id = None
         if choice != "discard":
             key = _vault_key() if job["is_encrypted"] else None
             if job["is_encrypted"] and key is None:
@@ -724,9 +730,15 @@ async def keep_result(
 
             info = result_info(job["id"], job["result_info"], bool(job["is_encrypted"]))
             kind = kinds_kept(job["kind"], info, [int(i) for i in faces_off])
-            new_id = await photo_versions.create_version(
-                conn, job["photo_id"], staged, kind, json.loads(job["params"] or "{}"), key
-            )
+            if redo:
+                from engine.services import try_again
+
+                swapped = await try_again.use_new(conn, job, staged, kind, key)
+                new_id, replaced_id = swapped["photo_id"], swapped["replaced_id"]
+            else:
+                new_id = await photo_versions.create_version(
+                    conn, job["photo_id"], staged, kind, json.loads(job["params"] or "{}"), key
+                )
             del staged, key
             if choice == "replace":
                 await photo_versions.trash_photo(conn, job["photo_id"])
@@ -738,11 +750,11 @@ async def keep_result(
             conn, job_id, status="discarded" if choice == "discard" else "done",
             result_path=None, result_info=None, result_photo_id=new_id,
         )
-    if remember and choice != "discard":
+    if remember and choice not in ("discard", "use_new"):
         from engine.api.system import SettingsUpdatePayload, update_app_settings
 
         await update_app_settings(SettingsUpdatePayload(settings={"old_photos_keep_choice": choice}))
-    return {"photo_id": new_id}
+    return {"photo_id": new_id} if replaced_id is None else {"photo_id": new_id, "replaced_id": replaced_id}
 
 
 async def worker_loop() -> None:

@@ -136,3 +136,9 @@ export function videoImproveOptions(width?: number | null, height?: number | nul
   if (short <= 0) return [];
   return VIDEO_TARGETS.filter((t) => t.target > short);
 }
+
+/** T14 Try again: the compare labels, "Current · Natural" and "New · Vivid" (no style when no colour was added). */
+export function tryAgainLabels(current: "natural" | "vivid" | null, next: "natural" | "vivid" | null): { before: string; after: string } {
+  const name = (s: "natural" | "vivid" | null) => (s === "vivid" ? " · Vivid" : s === "natural" ? " · Natural" : "");
+  return { before: `Current${name(current)}`, after: `New${name(next)}` };
+}
