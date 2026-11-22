@@ -216,6 +216,24 @@ async def scan_photo_faces(conn, row, thumbnails_dir: Path) -> int:
 
     inserted = 0
     try:
+        # T30 (owner, 2026-11-21): a video is checked on frames spread through it, not only on its
+        # preview, and each different face is kept once. The preview is the fallback.
+        if is_video and photo_path.exists():
+            from engine.services.video_faces import faces_in_video
+            from engine.services.video_service import extract_video_metadata
+
+            def _video_faces():
+                duration = float(extract_video_metadata(str(photo_path)).get("duration") or 0)
+                return faces_in_video(photo_path, duration, detect_and_embed_faces)
+
+            video_faces = await asyncio.to_thread(_video_faces)
+            if video_faces:
+                inserted, deleted_ids = await save_scanned_faces(conn, photo_id, video_faces, thumbnails_dir)
+                await conn.execute("UPDATE photos SET faces_scanned = 1 WHERE id = ?;", (photo_id,))
+                await conn.commit()
+                for old_id in deleted_ids:
+                    (thumbnails_dir / f"{old_id}.webp").unlink(missing_ok=True)
+                return inserted
         if scan_path is not None:
             # Run CPU/DirectML heavy detection in thread pool to keep asyncio loop responsive
             def _process(p_path: Path):
@@ -537,3 +555,36 @@ async def remove_duplicate_faces() -> int:
         return len(gone)
     finally:
         await conn.close()
+
+
+VIDEO_FACES_RESCAN_KEY = "rescan_video_faces_done"
+
+
+async def rescan_videos_for_faces() -> int:
+    """Once per library (T30): videos checked on their preview only are checked again on frames
+    through the video. Videos with a named face are left alone, so no name is ever touched.
+    Returns how many videos were queued (the after-import process picks them up)."""
+    from engine.database import get_db_connection
+
+    conn = await get_db_connection()
+    try:
+        async with conn.execute("SELECT 1 FROM app_settings WHERE key = ?;", (VIDEO_FACES_RESCAN_KEY,)) as cur:
+            if await cur.fetchone():
+                return 0
+        cur = await conn.execute(
+            """UPDATE photos SET faces_scanned = 0
+               WHERE COALESCE(mime_type, '') LIKE 'video/%' AND COALESCE(is_encrypted, 0) = 0 AND trashed_at IS NULL
+                 AND faces_scanned = 1
+                 AND id NOT IN (SELECT photo_id FROM faces WHERE person_id IS NOT NULL);"""
+        )
+        queued = cur.rowcount or 0
+        await conn.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, '1');", (VIDEO_FACES_RESCAN_KEY,))
+        await conn.commit()
+    finally:
+        await conn.close()
+    if queued:
+        logger.info("Checking %d video(s) again for faces, on frames through each video.", queued)
+        from engine.services import after_import
+
+        after_import.wake()
+    return queued

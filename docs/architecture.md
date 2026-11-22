@@ -132,7 +132,8 @@ flowchart LR
 ```
 
 - Each photo is enhanced once, and the AVIF replaces the imported file. Camera details, the date and the place are kept.
-- **Photo size** (Settings) sets the long side: 2K is 2560 px, 4K is 3840 px and 8K is 7680 px. Smaller photos are enlarged to it and larger ones reduced. **Photo quality** (Best, Balanced, Smaller) sets the AVIF quality.
+- **Photo size** (Settings) sets the long side: 2K is 2560 px, 4K is 3840 px and 8K is 7680 px. Smaller photos are enlarged to it and larger ones reduced. **Auto**, the default, decides per photo when it is enhanced: 6 MP and up (phone and camera originals, scans) get 8K, smaller ones get 4K (`auto_long_edge` in `enhancement_service.py`). **Photo quality** (Best, Balanced, Smaller) sets the AVIF quality.
+- **How it enlarges:** a high-quality resize (Lanczos) and a fine-edge sharpen, not an AI model; on a CPU that takes seconds per photo. The 8K print-ready copy is the exception: it is made on request with Real-ESRGAN (about 40 s on a CPU) for crisper edges on large prints, falling back to the resize if the model can't be used. Using Real-ESRGAN for the library itself needs a graphics card (planned).
 - This step uses Lanczos resizing and sharpening, not an AI model.
 - **Old photos** are fixed before enhancement, at the scan's own size, by AI models (DDColor for colour, GFPGAN for faces, a scratch detector with LaMa for scratches). The improved photo is saved as a copy linked to its original (`derived_from_id`); both are then enhanced, so they compare like for like. The grid shows one tile per pair.
 - **Videos** follow Settings, Video size: as recorded, HD (old low-quality clips enlarged to 1080p), 2K or 4K, measured on the shorter side. Nothing goes above 4K.

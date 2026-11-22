@@ -159,13 +159,18 @@ async def test_download_studio_print_300dpi():
                 assert res.headers["content-type"] == "image/jpeg"
                 assert res.headers.get("x-print-dpi") == "300"
                 assert "attachment" in res.headers["content-disposition"]
-                assert "_studio_300dpi.jpg" in res.headers["content-disposition"]
+                assert "_print_8k_300dpi.jpg" in res.headers["content-disposition"]
 
-                # Verify PIL decodes and reads embedded (300, 300) DPI
+                # Verify PIL decodes and reads embedded (300, 300) DPI, at 8K (T28).
                 import io
                 with Image.open(io.BytesIO(res.content)) as img:
                     assert img.format == "JPEG"
                     assert img.info.get("dpi") == (300, 300)
+                    assert max(img.size) == 7680
+                # The temporary print file stayed in the library and is gone afterwards.
+                from engine.config import settings as _settings
+
+                assert not list((_settings.data_dir / "tmp").glob(f"securephotos_print_{photo_id}_*.jpg"))
         finally:
             conn = await get_db_connection()
             try:
@@ -175,3 +180,27 @@ async def test_download_studio_print_300dpi():
                 await conn.close()
 
 
+@pytest.mark.asyncio
+async def test_print_copy_is_made_with_real_esrgan_when_it_can_be(monkeypatch):
+    """T28 (owner, 2026-11-21): the 8K print copy uses Real-ESRGAN; the library's own enhancement
+    doesn't change. Without the model it falls back to the standard resize."""
+    from engine.api import photos as photos_api
+    from engine.services import neural_sr_service
+
+    used = []
+
+    def fake_neural(img, **_):
+        used.append(img.size)
+        return img.resize((img.width * 4, img.height * 4))
+
+    monkeypatch.setattr(neural_sr_service, "neural_upscale", fake_neural)
+    small = Image.new("RGB", (1600, 1200), (120, 80, 40))
+    out = photos_api._print_upscale(small)
+    assert used == [(1600, 1200)] and max(out.size) == 7680
+
+    def broken(img, **_):
+        raise RuntimeError("model missing")
+
+    monkeypatch.setattr(neural_sr_service, "neural_upscale", broken)
+    out = photos_api._print_upscale(small)
+    assert max(out.size) == 7680  # still made, with the standard resize

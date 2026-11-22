@@ -10,7 +10,8 @@ import { useAppStore } from "../store/useAppStore";
 import { apiFetch, getThumbnailUrl } from "../services/api";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { improvedLabel } from "./activity/activityFormat";
-import { plural } from "./dashboard/dashFormat";
+import { formatSize, plural } from "./dashboard/dashFormat";
+import { FreesPill } from "./dashboard/FreesPill";
 
 export type KeepChoice = "keep_improved" | "keep_both" | "keep_original";
 
@@ -18,6 +19,9 @@ export interface PendingPair {
   photo_id: number;
   original_id: number;
   ai_kind: string | null;
+  /** Sizes (owner, 2026-11-21): what each choice frees. */
+  improved_size?: number;
+  original_size?: number;
 }
 
 interface WhatToKeepViewProps {
@@ -41,6 +45,8 @@ export const WhatToKeepView: React.FC<WhatToKeepViewProps> = ({ onBack, backLabe
   const [isLoading, setIsLoading] = useState(true);
   const [busy, setBusy] = useState<number | "all" | null>(null);
   const [confirmAll, setConfirmAll] = useState(false);
+  // What "Keep improved for all" frees: every waiting pair's original (all pairs, not only this page).
+  const [originalsBytes, setOriginalsBytes] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -49,6 +55,7 @@ export const WhatToKeepView: React.FC<WhatToKeepViewProps> = ({ onBack, backLabe
         const data = await res.json();
         setPairs(Array.isArray(data?.items) ? data.items : []);
         setTotal(Number(data?.total) || 0);
+        setOriginalsBytes(Number(data?.originals_bytes) || 0);
       }
     } catch {
       /* Shown as empty; the pill tries again. */
@@ -93,6 +100,7 @@ export const WhatToKeepView: React.FC<WhatToKeepViewProps> = ({ onBack, backLabe
       <div className="dash-header">
         <h1 className="dash-title">What to keep</h1>
         <span className="dash-subtitle">{total ? plural(total, "improved photo") : "Nothing to choose"}</span>
+        <FreesPill bytes={pairs.length ? originalsBytes : 0} viaTrash />
         <div style={{ flex: 1 }} />
         {pairs.length > 0 && (
           <>
@@ -132,6 +140,11 @@ export const WhatToKeepView: React.FC<WhatToKeepViewProps> = ({ onBack, backLabe
                 </button>
               </div>
               <p className="keep-what">{improvedLabel(pair.ai_kind)}</p>
+              {pair.original_size !== undefined && pair.improved_size !== undefined && (
+                <p className="keep-sizes">
+                  Original {formatSize(pair.original_size)} · Improved {formatSize(pair.improved_size)}
+                </p>
+              )}
               <div className="keep-actions" role="group" aria-label="Keep">
                 <button type="button" className="dash-btn dash-btn-small dash-btn-primary" disabled={busy !== null} onClick={() => void choose([pair.photo_id], "keep_improved", pair.photo_id)}>
                   {busy === pair.photo_id && <Loader2 size={13} className="spin" />}
@@ -152,7 +165,7 @@ export const WhatToKeepView: React.FC<WhatToKeepViewProps> = ({ onBack, backLabe
       {confirmAll && (
         <ConfirmDialog
           title={`Keep the improved ${pairs.length === 1 ? "photo" : `${pairs.length} photos`}?`}
-          message={`The ${pairs.length === 1 ? "original goes" : "originals go"} to Trash, where you can restore ${pairs.length === 1 ? "it" : "them"} for 30 days.`}
+          message={`The ${pairs.length === 1 ? "original goes" : "originals go"} to Trash, where you can restore ${pairs.length === 1 ? "it" : "them"} for 30 days. Emptying Trash frees about ${formatSize(originalsBytes)}.`}
           confirmLabel="Keep improved"
           busy={busy === "all"}
           onConfirm={() => void choose(pairs.map((p) => p.photo_id), "keep_improved", "all")}

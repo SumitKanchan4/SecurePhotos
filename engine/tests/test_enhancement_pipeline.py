@@ -64,14 +64,23 @@ def test_avif_keeps_camera_details_and_is_upright(work_dir):
         assert r > 200 and b < 100
 
 
-def test_small_photo_is_enlarged_to_8k(work_dir):
-    src = work_dir / "small.jpg"
-    _jpeg_with_exif(src, (1600, 1200))
-    result = enhance_to_avif(src, 80)
-    assert (result.width, result.height) == (7680, 5760)
+def test_auto_gives_full_size_photos_8k_and_smaller_ones_4k(work_dir):
+    """T26 (owner, 2026-11-21): Auto, the default. A WhatsApp-sized photo (1600x1200, 1.9 MP) gets
+    4K, not 8K; a phone original (4000x3000, 12 MP) and a scan (3500x2333, 8.2 MP) get 8K."""
+    from engine.services.enhancement_service import photo_size_to_long_edge
+
+    for name, size, expected in (
+        ("whatsapp", (1600, 1200), (3840, 2880)),
+        ("phone", (4000, 3000), (7680, 5760)),
+        ("scan", (3500, 2333), (7680, 5119)),
+    ):
+        src = work_dir / f"auto_{name}.jpg"
+        _jpeg_with_exif(src, size)
+        result = enhance_to_avif(src, 80, photo_size_to_long_edge("auto"))
+        assert (result.width, result.height) == expected, name
 
 
-@pytest.mark.parametrize("size,expected", [("2k", (2560, 1920)), ("4k", (3840, 2880)), ("8k", (7680, 5760)), ("nonsense", (7680, 5760))])
+@pytest.mark.parametrize("size,expected", [("2k", (2560, 1920)), ("4k", (3840, 2880)), ("8k", (7680, 5760)), ("auto", (7680, 5760)), ("nonsense", (7680, 5760))])
 def test_photo_size_setting_is_the_size_photos_get(work_dir, size, expected):
     """Owner, 2026-11-19: Settings → Photo size (2K, 4K, 8K). A phone-sized photo (4000 px) is
     enlarged to 8K (before, 3840 px and up were only sharpened) or reduced to 2K / 4K."""
@@ -188,7 +197,7 @@ async def test_optimizer_replaces_photo_with_avif(work_dir, monkeypatch):
         assert row["filepath"] == "originals/c1_tests/trip.avif"
         assert row["filename"] == "trip.avif" and row["mime_type"] == "image/avif"
         assert row["is_optimized"] == 1 and row["is_enhanced"] == 1
-        assert (row["width"], row["height"]) == (7680, 5760)
+        assert (row["width"], row["height"]) == (3840, 2880)  # 1200x900 is small: Auto gives it 4K (T26)
         assert row["original_file_hash"] == "baseline-hash"  # Kept for duplicate detection.
         assert row["file_hash"] != "abc123"
         assert not src.exists() and (work_dir / "trip.avif").exists()

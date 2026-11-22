@@ -357,7 +357,9 @@ def analyze_video_candidate(photo_record: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-VIDEO_SIZES = ("original", "hd", "2k", "4k")  # Settings → Video size (owner, 2026-11-19); never above 4K.
+VIDEO_SIZES = ("auto", "original", "hd", "2k", "4k")  # Settings → Video size (owner, 2026-11-19); never above 4K.
+# "auto" (the default, 2026-11-21) is "hd": videos are resized, not AI-enlarged, on a CPU, so going
+# above HD only makes files bigger. HD-or-better videos stay as recorded; small clips go to 1080p.
 # The short side each enlarging choice brings a smaller video to.
 VIDEO_SIZE_TARGETS = {"2k": 1440, "4k": 2160}
 
@@ -429,7 +431,7 @@ def classify_video_for_ingestion(meta: Dict[str, Any], video_size: str = "hd") -
             "action": "enhance",
             "is_already_optimized": False,
             "target_height": 1080,
-            "reason": f"Vintage {min_dim}p video. Scheduled for AI upscaling to 1080p HD.",
+            "reason": f"Small {min_dim}p video. Scheduled for enlarging to 1080p HD.",
         }
 
     # 4. Heavy legacy video (> 35MB with legacy H.264 / MPEG-4 / ProRes)

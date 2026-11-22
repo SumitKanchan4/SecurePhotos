@@ -4,6 +4,7 @@
  */
 import type { PhotoItem } from "../../types";
 import { itemTitle } from "../../utils/displayName";
+import { photoSizeLabel, videoSizeLabel } from "../../utils/photoTimeline";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -72,17 +73,17 @@ export function isVideoItem(photo: Pick<PhotoItem, "mime_type">): boolean {
   return Boolean(photo.mime_type?.startsWith("video/"));
 }
 
-/** The small chip beside the title: "8K" for enhanced photos, "4K" / "HD" for videos. */
+/** The small chip beside the title, with the same rules as the grid's tag: the enhanced photo's
+ *  real size (8K / 4K / 2K), or the video's quality (4K / 2K / HD / SD). */
 export function qualityChip(photo: Pick<PhotoItem, "mime_type" | "width" | "height" | "is_enhanced" | "is_optimized">): { label: string; title: string } | null {
-  const w = photo.width ?? 0;
-  const h = photo.height ?? 0;
   if (isVideoItem(photo)) {
-    if (w >= 3840 || h >= 2160) return { label: "4K", title: photo.is_enhanced ? "Enhanced to 4K" : "4K video" };
-    if (w >= 1280 || h >= 720) return { label: "HD", title: "HD video" };
-    return null;
+    const label = videoSizeLabel(photo.width, photo.height);
+    if (!label) return null;
+    return { label, title: photo.is_enhanced && label !== "SD" ? `Enhanced to ${label}` : `${label} video` };
   }
-  if (photo.is_enhanced || photo.is_optimized) return { label: "8K", title: "Enhanced to 8K" };
-  return null;
+  if (!(photo.is_enhanced || photo.is_optimized)) return null;
+  const label = photoSizeLabel(photo.width, photo.height);
+  return label ? { label, title: `Enhanced to ${label}` } : null;
 }
 
 /** "7680 × 5760" plus the quality label, or null when the size is unknown. */
@@ -103,10 +104,12 @@ export function storageLine(photo: Pick<PhotoItem, "file_size" | "original_file_
 }
 
 /** Largest sharp print at 300 dpi, in cm: "Sharp prints up to 65 × 49 cm". */
+/** The print-ready copy is always made at 8K (T28): "Print copy at 8K: sharp up to 65 × 43 cm". */
 export function printLine(photo: Pick<PhotoItem, "width" | "height">): string | null {
   if (!photo.width || !photo.height) return null;
-  const cm = (px: number) => Math.round((px / 300) * 2.54);
-  return `Sharp prints up to ${cm(photo.width)} × ${cm(photo.height)} cm`;
+  const scale = 7680 / Math.max(photo.width, photo.height);
+  const cm = (px: number) => Math.round(((px * scale) / 300) * 2.54);
+  return `Print copy at 8K: sharp up to ${cm(photo.width)} × ${cm(photo.height)} cm`;
 }
 
 export function coordinatesLine(lat: number, lon: number): string {
@@ -119,4 +122,17 @@ export function filmstripRange(index: number, length: number, count = 9): [numbe
   const size = Math.min(count, length);
   const start = Math.max(0, Math.min(index - Math.floor(size / 2), length - size));
   return [start, start + size - 1];
+}
+
+/** T29 (owner, 2026-11-21): the sizes a video can be made, above its current one (shorter side). */
+export const VIDEO_TARGETS: { target: number; label: string; name: string }[] = [
+  { target: 1080, label: "Full HD (1080p)", name: "Full HD" },
+  { target: 1440, label: "2K (1440p)", name: "2K" },
+  { target: 2160, label: "4K (2160p)", name: "4K" },
+];
+
+export function videoImproveOptions(width?: number | null, height?: number | null): typeof VIDEO_TARGETS {
+  const short = Math.min(width || 0, height || 0);
+  if (short <= 0) return [];
+  return VIDEO_TARGETS.filter((t) => t.target > short);
 }

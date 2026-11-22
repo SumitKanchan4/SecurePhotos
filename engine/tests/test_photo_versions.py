@@ -299,12 +299,19 @@ async def test_automatic_copies_wait_for_a_choice_manual_ones_do_not(lib):
     assert await _pending(conn) == [auto_copy]
     assert manual not in await _pending(conn)
     report = await restore_queue.list_jobs()
-    assert report["choices_total"] == 1 and report["choices"][0] == {"photo_id": auto_copy, "original_id": second, "ai_kind": "colour"}
+    assert report["choices_total"] == 1
+    assert {k: report["choices"][0][k] for k in ("photo_id", "original_id", "ai_kind")} == {"photo_id": auto_copy, "original_id": second, "ai_kind": "colour"}
     members = (await photo_versions.versions_of(conn, auto_copy))["members"]
     assert [m["choice_pending"] for m in members] == [False, True]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         page = (await client.get("/api/restore/choices")).json()
-    assert page == {"items": [{"photo_id": auto_copy, "original_id": second, "ai_kind": "colour"}], "total": 1}
+    # Sizes too (owner, 2026-11-21): the page says how much space each choice frees.
+    sizes = {r["id"]: r["file_size"] for r in [await _photo(conn, auto_copy), await _photo(conn, second)]}
+    assert page == {
+        "items": [{"photo_id": auto_copy, "original_id": second, "ai_kind": "colour",
+                   "improved_size": sizes[auto_copy], "original_size": sizes[second]}],
+        "total": 1, "originals_bytes": sizes[second], "improved_bytes": sizes[auto_copy],
+    }
 
 
 @pytest.mark.parametrize(

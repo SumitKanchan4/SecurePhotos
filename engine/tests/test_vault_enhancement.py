@@ -77,7 +77,8 @@ async def test_vault_photo_is_enhanced_and_stays_encrypted(locked_photo):
 
     row = await _row(conn, env["photo_id"])
     assert row["filepath"].endswith("secret.avif.enc") and row["filename"] == "secret.avif"
-    assert row["mime_type"] == "image/avif" and (row["width"], row["height"]) == (7680, 5760)
+    # 1200x900 is small: Auto gives it 4K in the vault as in the library (T26).
+    assert row["mime_type"] == "image/avif" and (row["width"], row["height"]) == (3840, 2880)
     assert row["is_optimized"] == 1 and row["is_enhanced"] == 1 and row["original_file_hash"] == "orig"
     assert not (env["folder"] / "secret.jpg.enc").exists()  # Old encrypted copy removed.
     with Image.open(io.BytesIO(decrypt_file_to_bytes(env["folder"] / "secret.avif.enc", mvk))) as img:
