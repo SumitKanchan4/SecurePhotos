@@ -41,4 +41,4 @@ made is in its commit and pull request.
 - The public roadmap was removed (2026-11-20).
 
 ## Housekeeping
-- CI allows npm advisory GHSA-fc5q-39xc-vjpf (picomatch, dev tooling only) until 2026-12-31 (2026-11-17).
+- No npm advisory exceptions in CI. The picomatch one (GHSA-fc5q-39xc-vjpf) was removed after GitHub withdrew the advisory (2026-11-22).
