@@ -16,7 +16,7 @@ Status: **Next** (to do now), **Owner decision**, **Release blocker**, **Later**
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| T18 | The in-app updater has never had an update to install | Owner decision | Releases carry only the installer: no `.sig` or `latest.json`, because the GitHub secret `TAURI_SIGNING_PRIVATE_KEY` is empty and `createUpdaterArtifacts` isn't set (same for v0.1.0). Updating by running the new installer works. Needs the private key matching the public key in `tauri.conf.json` (or a new key pair) added as a secret. |
+| T18 | The in-app updater has never had an update to install | In progress | Owner chose a new key (2026-11-22): owner creates it and adds the two secrets; branch `feat/updater-signing` adds `createUpdaterArtifacts`, writes `latest.json` in the release build and stops an unsigned release. Waiting for the new public key. |
 | T10 | Owner re-check after restarting the desktop app | Next | The one-engine fix needs a fresh start of the app. Then re-check People ("Who is this?" cards stay closed) and the last round of fixes. |
 | T11 | `data_location.txt` points the dev app at the JointTest library | Later | Remove it once joint testing is over. It is ignored by git. |
 
