@@ -3176,3 +3176,12 @@ button.dash-usage-open { cursor: pointer; }
 /* T27: the Dashboard's space card. */
 .dash-space h2 { font-family: var(--font-display); font-size: 22px; font-weight: 900; letter-spacing: -0.02em; }
 .dash-space-detail { margin: 6px 0 4px; font-size: 14px; color: var(--text-primary); line-height: 1.5; }
+
+/* The space pill on What to keep, Duplicates and Big videos (owner, 2026-11-21). */
+.dash-frees {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: var(--radius-full);
+  font-size: 13px; font-weight: 800; color: var(--accent-ink); background: color-mix(in srgb, var(--accent-ink) 14%, transparent);
+  white-space: nowrap;
+}
+.dash-frees-note { font-weight: 600; opacity: 0.8; }
+.keep-sizes { margin: 2px 0 0; font-size: 12px; color: var(--text-secondary); }

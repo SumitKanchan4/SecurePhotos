@@ -5,8 +5,8 @@ import { useAppStore } from "../store/useAppStore";
 import { WhatToKeepView } from "./WhatToKeepView";
 
 const ITEMS = [
-  { photo_id: 70, original_id: 7, ai_kind: "colour,faces" },
-  { photo_id: 80, original_id: 8, ai_kind: "fade" },
+  { photo_id: 70, original_id: 7, ai_kind: "colour,faces", original_size: 3_000_000, improved_size: 1_200_000 },
+  { photo_id: 80, original_id: 8, ai_kind: "fade", original_size: 2_000_000, improved_size: 900_000 },
 ];
 
 function mockEngine() {
@@ -20,7 +20,8 @@ function mockEngine() {
         return new Response(JSON.stringify({ applied: body.photo_ids.length }), { status: 200 });
       }
       const left = ITEMS.filter((i) => !posts.some((p) => (p as { photo_ids: number[] }).photo_ids.includes(i.photo_id)));
-      return new Response(JSON.stringify({ items: left, total: left.length }), { status: 200 });
+      const originals = left.reduce((n, i) => n + i.original_size, 0);
+      return new Response(JSON.stringify({ items: left, total: left.length, originals_bytes: originals, improved_bytes: 0 }), { status: 200 });
     }),
   );
   return posts;
@@ -30,6 +31,14 @@ beforeEach(() => useAppStore.setState({ apiBaseUrl: "http://127.0.0.1:50123", ap
 afterEach(() => vi.unstubAllGlobals());
 
 describe("What to keep", () => {
+  it("says how much space keeping the improved photos frees, and each pair's sizes (owner, 2026-11-21)", async () => {
+    mockEngine();
+    render(<WhatToKeepView onBack={vi.fn()} onOpenPhoto={vi.fn()} />);
+    expect(await screen.findByText("Frees about 4.8 MB")).toBeInTheDocument();
+    expect(screen.getByText("after emptying Trash", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("Original 2.9 MB · Improved 1.1 MB")).toBeInTheDocument();
+  });
+
   it("shows each pair side by side with three plain choices", async () => {
     const posts = mockEngine();
     const onChanged = vi.fn();

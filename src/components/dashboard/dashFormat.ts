@@ -173,3 +173,9 @@ export function spaceCard(s?: SpaceSummary | null): { headline: string; detail: 
     waiting: s.waiting ? `${plural(s.waiting, "photo")} still to enhance` : null,
   };
 }
+
+/** The space pill on What to keep, Duplicates and Big videos (owner, 2026-11-21): "Frees about
+ *  1.2 GB", or null when there is nothing to free. */
+export function freesLabel(bytes: number): string | null {
+  return bytes > 0 ? `Frees about ${formatSize(bytes)}` : null;
+}

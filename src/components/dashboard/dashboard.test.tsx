@@ -153,7 +153,9 @@ describe("DashboardView", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Review duplicates" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Duplicates" })).toBeInTheDocument();
-    expect(await screen.findByText("1 group · about 16 MB can be freed")).toBeInTheDocument();
+    expect(await screen.findByText("1 group")).toBeInTheDocument();
+    // The space pill beside the title (owner, 2026-11-21).
+    expect(screen.getByText("Frees about 16 MB")).toBeInTheDocument();
   });
 });
 
@@ -190,7 +192,9 @@ describe("DuplicatesView", () => {
       "POST /api/duplicates/resolve": { status: "resolved", trashed_count: 1, reclaimed_bytes: 8 * MB },
     });
     render(<DuplicatesView onBack={vi.fn()} />);
-    expect(await screen.findByText("1 group · about 16 MB can be freed")).toBeInTheDocument();
+    expect(await screen.findByText("1 group")).toBeInTheDocument();
+    // The space pill beside the title (owner, 2026-11-21).
+    expect(screen.getByText("Frees about 16 MB")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Keep Photo 1" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByText("Keep · best pick")).toBeInTheDocument();
     expect(screen.getAllByText("Goes to Trash")).toHaveLength(2);
@@ -198,7 +202,7 @@ describe("DuplicatesView", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Keep Photo 1" }));
     expect(screen.getByRole("checkbox", { name: "Keep Photo 1" })).toHaveAttribute("aria-checked", "true"); // at least one is kept
     fireEvent.click(screen.getByRole("checkbox", { name: "Keep Photo 2" }));
-    expect(screen.getByText("1 group · about 8.0 MB can be freed")).toBeInTheDocument();
+    expect(screen.getByText("Frees about 8.0 MB")).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Remove 1 copy" }));
