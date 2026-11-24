@@ -4,6 +4,9 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 
 ## Unreleased
 
+### Installing and updating
+- The update window shows what's new as headings and lists, with the SecurePhotos logo and the new version number.
+
 ## [0.3.1] - 2026-11-24
 
 ### Stories
