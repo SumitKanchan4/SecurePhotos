@@ -36,5 +36,10 @@ def test_no_notes_stops_the_release():
         release_notes.section("# Changelog\n", "0.2.0")
 
 
-def test_the_real_changelog_has_notes_for_the_next_release():
-    assert release_notes.section((ROOT / "CHANGELOG.md").read_text(encoding="utf-8"), "9.9.9")
+def test_the_real_changelog_has_notes_for_the_version_in_the_repo():
+    """The version in package.json has its own notes. Right after a release the Unreleased
+    section is empty, which is fine: the release step itself stops when there are no notes."""
+    import json
+
+    version = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
+    assert release_notes.section((ROOT / "CHANGELOG.md").read_text(encoding="utf-8"), version)
