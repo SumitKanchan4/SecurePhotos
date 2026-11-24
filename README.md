@@ -53,7 +53,7 @@ Name a face once and SecurePhotos finds that person across your library. You can
 Receipts, tickets, IDs and other paperwork are separated from your memories, and the words printed on them can be searched.
 
 ### Stories and albums
-SecurePhotos suggests stories from your trips, the people you love, this week in past years and old photos it has restored. Save the ones you like. Music for stories is in Settings, under Music. You can also make albums of your own and save suggested collages.
+SecurePhotos suggests stories from your trips, the people you love, this week in past years and old photos it has restored. Save the ones you like. Three songs come with the app, so every story has music; add your own in Settings, under Music, and they are used first. You can also make albums of your own and save suggested collages.
 
 ### Private Vault
 Keep sensitive photos and documents behind a password. Add them straight to the vault with **Add photos**, or move them in from your library. By default the originals are removed from where they were once their locked copy is checked, so no unprotected copy stays behind; you can change that in Settings. Select photos in the vault to move them back to your library or to Trash. Vault files are encrypted, and they are only decrypted in memory while you look at them. A 4-digit PIN reopens the vault quickly while the app stays open. If you forget your password, the Emergency Card you saved during setup is the only way back in.
@@ -107,5 +107,7 @@ SecurePhotos replaces each imported photo with its enhanced version, and the vau
 ## Licence
 
 SecurePhotos is free software under the [MIT License](LICENSE). You keep full ownership of every photo, video and document you add to it.
+
+The songs that come with the app (Between the Frames, Sunday on the Veranda, Where We Once Stood) are by Sumit Kanchan and are shared under the same licence.
 
 The app is provided as it is, without any warranty. Its authors are not responsible for lost or damaged photos, videos or files, loss of quality from enhancement or compression, failing drives, or vault contents that can't be opened because a password or Emergency Card was lost. Keep your own backups.
