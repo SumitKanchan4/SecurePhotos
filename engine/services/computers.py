@@ -85,8 +85,11 @@ async def register_this_computer(detected: Optional[Dict[str, str]] = None) -> N
     me = detected or detect_this_computer()
     _this.update(id=me["id"], name=me["name"], choice=None, session=None)
     async with db_connection() as conn:
-        async with conn.execute("SELECT choice FROM computers WHERE id = ?;", (me["id"],)) as cur:
+        async with conn.execute("SELECT choice, hardware, use_graphics FROM computers WHERE id = ?;", (me["id"],)) as cur:
             row = await cur.fetchone()
+        from engine.services import ai_device
+
+        ai_device.load(row[1] if row else None, row[2] if row else None)
         if row is not None:
             _this["choice"] = row[0] if row[0] in CHOICES else ASK
             await conn.execute("UPDATE computers SET name = ?, last_seen = ? WHERE id = ?;", (me["name"], _now(), me["id"]))
@@ -155,11 +158,40 @@ async def set_choice(computer_id: str, choice: str) -> bool:
             )
         await conn.commit()
     if is_this:
+        await save_hardware()  # A test run before the question was answered.
         if choice == ASK:
             # From Settings: this session keeps doing what it did; the question comes next start.
             _this["session"] = may_do_background_work()
         _this["choice"] = choice
     return True
+
+
+async def save_hardware() -> None:
+    """T31: keeps this computer's graphics card result with it (after a test or a fallback)."""
+    from engine.services import ai_device
+
+    if _this["id"] in (None, "unknown"):
+        return
+    with ai_device._lock:
+        if not ai_device._state["dirty"]:
+            return
+        data = ai_device.saved_form()
+        ai_device._state["dirty"] = False
+    async with db_connection() as conn:
+        cur = await conn.execute("UPDATE computers SET hardware = ? WHERE id = ?;", (data, _this["id"]))
+        if cur.rowcount == 0:  # Not on the list yet (the question isn't answered): kept for when it is.
+            ai_device._state["dirty"] = True
+        await conn.commit()
+
+
+async def set_graphics(on: bool) -> None:
+    """T31: the person's switch, "Use the graphics card on this computer"."""
+    from engine.services import ai_device
+
+    ai_device.set_enabled(on)
+    async with db_connection() as conn:
+        await conn.execute("UPDATE computers SET use_graphics = ? WHERE id = ?;", (1 if on else 0, _this["id"]))
+        await conn.commit()
 
 
 async def forget(computer_id: str) -> bool:
@@ -177,11 +209,16 @@ async def list_computers() -> Dict[str, Any]:
     """This computer and every computer the library knows, most recently used first."""
     async with db_connection() as conn:
         async with conn.execute(
-            "SELECT id, name, choice, first_seen, last_seen FROM computers ORDER BY last_seen DESC, name;"
+            "SELECT id, name, choice, first_seen, last_seen, hardware, use_graphics FROM computers ORDER BY last_seen DESC, name;"
         ) as cur:
             rows = await cur.fetchall()
+    from engine.services import ai_device
+
     computers: List[Dict[str, Any]] = [
-        {"id": r[0], "name": r[1], "choice": r[2], "first_seen": r[3], "last_seen": r[4], "is_this": r[0] == _this["id"]}
+        {
+            "id": r[0], "name": r[1], "choice": r[2], "first_seen": r[3], "last_seen": r[4], "is_this": r[0] == _this["id"],
+            "graphics": ai_device.saved_summary(r[5], r[6]),
+        }
         for r in rows
     ]
     return {

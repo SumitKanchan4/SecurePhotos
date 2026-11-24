@@ -582,7 +582,7 @@ async def process_next_job() -> bool:
             params = json.loads(job["params"] or "{}")
             if params.get("mask_in"):  # Touch up: the user's painted marks.
                 params["_mask"] = await asyncio.to_thread(_read_mask, params["mask_in"], key)
-            result = await asyncio.to_thread(processor.run, image, params, progress, cancelled)
+            result = await _run_on_best_device(processor, image, params, progress, cancelled)
             del image
             if cancelled():
                 raise JobCancelled()
@@ -632,6 +632,34 @@ async def process_next_job() -> bool:
         # The photo (and a kept copy) can go on to 8K now (after-import order: fix, then 8K).
         _kick_enhancement()
         return True
+
+
+async def _run_on_best_device(processor: Processor, image: bytes, params: Dict[str, Any], progress: ProgressFn, cancelled: CancelledFn) -> Any:
+    """T31: runs the job's models on the graphics card where that is faster on this computer.
+
+    A known computer whose card hasn't been tested is tested first (the slot is already held).
+    If the card fails mid-job, the models it used go back to the processor for good on this
+    computer (until its driver changes) and the job is done again on the processor.
+    """
+    from engine.services import ai_device, computers
+
+    if ai_device.needs_test() and computers._this["id"] not in (None, "unknown"):
+        from engine.services import hardware_check
+
+        await hardware_check.run(hold_slot=False)
+    ai_device.start_job()
+    try:
+        return await asyncio.to_thread(processor.run, image, params, progress, cancelled)
+    except Exception as err:
+        on_card = ai_device.used_gpu()
+        if not on_card or cancelled():
+            raise
+        logger.warning("The graphics card stopped (%s); finishing on the processor: %s", ", ".join(on_card), str(err)[:200])
+        ai_device.mark_cpu(on_card, "stopped working on the graphics card")
+        onnx_sessions.release()
+        await computers.save_hardware()
+        ai_device.start_job()
+        return await asyncio.to_thread(processor.run, image, params, progress, cancelled)
 
 
 def _kick_enhancement() -> None:

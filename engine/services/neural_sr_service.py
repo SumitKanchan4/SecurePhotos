@@ -54,14 +54,10 @@ def get_inference_session():
         import onnxruntime as ort
 
         model_path = ensure_model_downloaded()
-        providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
-        available = ort.get_available_providers()
-        active_providers = [p for p in providers if p in available]
-        if not active_providers:
-            active_providers = ["CPUExecutionProvider"]
+        # T31: the graphics card only where the test found it faster on this computer.
+        from engine.services import ai_device
 
-        logger.info(f"Initializing Real-ESRGAN ONNX session with providers: {active_providers}")
-        _session = ort.InferenceSession(str(model_path), providers=active_providers)
+        _session = ai_device.open_session(model_path, "realesr", ort.SessionOptions)
 
     return _session
 
