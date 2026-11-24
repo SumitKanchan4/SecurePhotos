@@ -16,7 +16,8 @@ Status: **Next** (to do now), **Owner decision**, **Release blocker**, **Later**
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| T33 | First real in-app update | After the next two releases (owner, 2026-11-22) | T18 signs updates with the new key (test build v0.2.1 verified: signature, tampering refused, latest.json). People on 0.2.0 install the next release by hand. When the release after that is out, update from inside the app on the owner's PC and check it before announcing. |
+| T33 | First real in-app update | After the next release (owner, 2026-11-24) | v0.3.0 is the first signed release (2026-11-22): installer, `.sig` and `latest.json` published. The owner installs 0.3.0 by hand; when the next release is out, update from inside the app on the owner's PC and check it before announcing. |
+| T34 | Uninstaller: one clear screen | Next (owner, 2026-11-24) | Tauri's "Delete the application data" checkbox only removes empty AppData folders but worries people. Remove it and the separate popup; the uninstall screen itself says the photos, videos, albums and Private Vault stay in the library folder, vault photos stay locked and open again with the same password when SecurePhotos is installed into the same folder (the key is in the library), and how to move them out first. |
 | T10 | Owner re-check after restarting the desktop app | Next | The one-engine fix needs a fresh start of the app. Then re-check People ("Who is this?" cards stay closed) and the last round of fixes. |
 | T11 | `data_location.txt` points the dev app at the JointTest library | Later | Remove it once joint testing is over. It is ignored by git. |
 
