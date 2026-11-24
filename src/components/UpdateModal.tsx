@@ -1,8 +1,10 @@
 import React, { useState } from "react";
-import { Sparkles, Download, X, AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
+import { Download, X, AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { Update } from "@tauri-apps/plugin-updater";
 import { RELEASES_URL, updateErrorText } from "../utils/updateText";
+import { ReleaseNotes } from "../utils/releaseNotes";
+import appIcon from "../assets/brand/app-icon.svg";
 
 interface UpdateModalProps {
   update: Update;
@@ -131,26 +133,14 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ update, isOpen, onClos
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div
-              style={{
-                width: "36px",
-                height: "36px",
-                borderRadius: "10px",
-                backgroundColor: "color-mix(in srgb, var(--accent-ink) 15%, transparent)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "var(--accent-primary, var(--accent-ink))",
-              }}
-            >
-              <Sparkles size={20} />
-            </div>
+            {/* The app's own logo, as in the side bar (owner, 2026-11-24). */}
+            <img src={appIcon} alt="" width={40} height={40} style={{ display: "block", borderRadius: "10px" }} draggable={false} />
             <div>
-              <h3 style={{ fontSize: "16px", fontWeight: 600, color: "var(--text-primary, #f8fafc)", margin: 0 }}>
-                New Version Available
+              <h3 style={{ fontSize: "16px", fontWeight: 700, color: "var(--text-primary, #f8fafc)", margin: 0 }}>
+                A new version of SecurePhotos
               </h3>
               <p style={{ fontSize: "12px", color: "var(--text-secondary, #94a3b8)", margin: 0 }}>
-                Version v{update.version} is ready to install
+                SecurePhotos {update.version.replace(/^v/i, "")} is ready to install
               </p>
             </div>
           </div>
@@ -180,21 +170,18 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ update, isOpen, onClos
                 borderRadius: "var(--radius-md, 8px)",
                 padding: "14px",
                 marginBottom: "20px",
-                maxHeight: "160px",
+                maxHeight: "220px",
                 overflowY: "auto",
                 fontSize: "13px",
                 color: "var(--text-secondary, #94a3b8)",
                 lineHeight: "1.5",
               }}
             >
-              <p style={{ fontWeight: 600, color: "var(--text-primary, #f8fafc)", marginBottom: "6px" }}>
-                What's New:
-              </p>
-              <div style={{ whiteSpace: "pre-wrap" }}>{update.body}</div>
+              <ReleaseNotes markdown={update.body} />
             </div>
           ) : (
             <p style={{ fontSize: "13px", color: "var(--text-secondary, #94a3b8)", marginBottom: "20px" }}>
-              A new release of SecurePhotos with stability improvements, security updates, and performance optimizations is available.
+              This version has fixes and improvements.
             </p>
           )}
 
