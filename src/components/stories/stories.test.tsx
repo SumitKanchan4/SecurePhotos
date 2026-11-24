@@ -266,6 +266,18 @@ describe("Settings → Music (round 2, #6)", () => {
   });
 });
 
+describe("Settings → Music: songs that come with SecurePhotos", () => {
+  it("marks them Included; their mood can change but they can't be removed", async () => {
+    const included = { ...TRACK, id: "included-where-we-once-stood", title: "Where We Once Stood", artist: "Sumit Kanchan", included: true };
+    mockEngine({ "GET /api/stories/music": [TRACK, included] });
+    render(<MusicLibrary />);
+    expect(await screen.findByText("Included")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Mood for Where We Once Stood" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove Where We Once Stood" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove Sunny Days" })).toBeInTheDocument();
+  });
+});
+
 describe("collage preview rows (T24)", () => {
   it("fills every cell, as the engine lays the collage out", async () => {
     const { collageRows } = await import("./storiesFormat");

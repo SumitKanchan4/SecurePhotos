@@ -24,6 +24,20 @@ logger = logging.getLogger("securephotos.music_service")
 # Audio formats supported by native browser HTML5 audio element
 SUPPORTED_AUDIO_EXTENSIONS = {".mp3", ".m4a", ".aac", ".wav", ".flac", ".ogg"}
 
+# Songs that come with SecurePhotos (owner, 2026-11-24), so a story always has real music
+# instead of the player's made-up chords. Made by the owner, shipped under the app's licence.
+# They live in the engine package (the engine build collects its files), are never deleted,
+# and are used when none of the person's own songs fits a story. Their ids are fixed, so a
+# mood chosen for one survives the install moving to another drive letter.
+INCLUDED_MUSIC_DIR = Path(__file__).resolve().parents[1] / "assets" / "music"
+INCLUDED_ARTIST = "Sumit Kanchan"
+INCLUDED_TRACKS = {
+    # file stem: (title, mood the app's detection hears, beats per minute)
+    "between_the_frames": ("Between the Frames", "acoustic", 136.0),
+    "sunday_on_the_veranda": ("Sunday on the Veranda", "acoustic", 123.0),
+    "where_we_once_stood": ("Where We Once Stood", "acoustic", 161.5),
+}
+
 # Genuine Genre mappings for embedded ID3 container classification
 GENRE_MOOD_MAP = {
     "acoustic": [
@@ -61,6 +75,7 @@ class MusicTrack(BaseModel):
     file_size_formatted: str
     file_size_bytes: int
     stream_url: str
+    included: bool = False          # Comes with SecurePhotos: can't be removed.
 
 
 def format_duration(seconds: float) -> str:
@@ -362,16 +377,63 @@ def scan_music_library() -> List[MusicTrack]:
                     )
                 )
 
-    if manifest_dirty:
+    included, included_dirty = _included_tracks(manifest)
+    tracks.extend(included)
+    if manifest_dirty or included_dirty:
         save_manifest(manifest)
 
     _MUSIC_CACHE = tracks
     return tracks
 
 
+def _included_tracks(manifest: Dict[str, Any]) -> Tuple[List[MusicTrack], bool]:
+    """The songs that come with SecurePhotos; the length is measured once and kept in the manifest."""
+    found: List[MusicTrack] = []
+    dirty = False
+    for stem, (title, heard, bpm) in INCLUDED_TRACKS.items():
+        f_path = INCLUDED_MUSIC_DIR / f"{stem}.mp3"
+        if not f_path.is_file():
+            continue
+        track_id = f"included-{stem.replace('_', '-')}"
+        size = f_path.stat().st_size
+        entry = manifest.get(track_id, {})
+        duration = entry.get("duration") if entry.get("file_size") == size else None
+        if duration is None:
+            duration = float(probe_audio_file(f_path).get("duration") or 0.0)
+            manifest[track_id] = {**entry, "duration": duration, "file_size": size}
+            dirty = True
+        mood = manifest[track_id].get("mood", "auto")
+        found.append(
+            MusicTrack(
+                id=track_id,
+                filename=f_path.name,
+                filepath=str(f_path),
+                title=title,
+                artist=INCLUDED_ARTIST,
+                mood=mood,
+                detected_mood=heard,
+                bpm=bpm,
+                auto_tagged=mood == "auto",
+                duration_seconds=duration,
+                duration_formatted=format_duration(duration),
+                file_size_formatted=format_size(size),
+                file_size_bytes=size,
+                stream_url=f"/api/stories/music/{track_id}/stream",
+                included=True,
+            )
+        )
+    return found, dirty
+
+
 def get_track_for_mood(mood: str) -> Optional[MusicTrack]:
-    """Finds an available user soundtrack matching the given mood."""
+    """A song for a story's mood: the person's own songs first, then the included ones."""
     all_tracks = scan_music_library()
+    own = [t for t in all_tracks if not t.included]
+    return _pick_for_mood(own, mood) or _pick_for_mood([t for t in all_tracks if t.included], mood)
+
+
+def _pick_for_mood(all_tracks: List[MusicTrack], mood: str) -> Optional[MusicTrack]:
+    """The mood's songs, else ones on Auto, else any."""
     # 1. Exact match on explicit mood or on auto with matching detected_mood
     matching = [
         t for t in all_tracks
@@ -415,9 +477,9 @@ def update_track_mood(track_id: str, new_mood: str) -> bool:
 
 
 def delete_track(track_id: str) -> bool:
-    """Deletes an audio track from disk and removes its manifest entry."""
+    """Deletes an audio track from disk and removes its manifest entry (never an included song)."""
     track = get_track_by_id(track_id)
-    if not track:
+    if not track or track.included:
         return False
 
     try:
