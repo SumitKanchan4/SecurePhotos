@@ -1,7 +1,7 @@
 /**
  * T31: getting to know a computer (new-computer step 2) and the graphics card in Settings.
  */
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../store/useAppStore";
 import { NewComputerDialog } from "../NewComputerDialog";
@@ -163,6 +163,8 @@ describe("Settings: this computer's graphics card", () => {
     expect(calls).toContain("PUT /api/computers/this/graphics");
     expect(screen.getByRole("switch", { name: "Use the graphics card on this computer" })).toHaveAttribute("aria-checked", "false");
     fireEvent.click(screen.getByRole("button", { name: "Test again" }));
-    expect(await screen.findByText("Getting to know this computer")).toBeInTheDocument();
+    // Loading, then running: both show this heading, as different elements; wait for it, don't hold one.
+    await waitFor(() => expect(screen.getByText("Getting to know this computer")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Trying sharpening faces on the graphics card…")).toBeInTheDocument());
   });
 });
