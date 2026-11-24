@@ -176,7 +176,10 @@ export const MusicLibrary: React.FC = () => {
                 {playing === track.id ? <Pause size={15} /> : <Play size={15} />}
               </button>
               <span className="sto-track-text">
-                <span className="alb-cover-name">{track.title}</span>
+                <span className="alb-cover-name">
+                  {track.title}
+                  {track.included && <span className="music-included">Included</span>}
+                </span>
                 <span className="dash-muted">{[track.artist, track.duration_formatted, moodLabel(track)].filter(Boolean).join(" · ")}</span>
               </span>
               <select className="vid-select" aria-label={`Mood for ${track.title}`} value={track.mood} onChange={(e) => setMood(track, e.target.value)}>
@@ -186,9 +189,13 @@ export const MusicLibrary: React.FC = () => {
                   </option>
                 ))}
               </select>
-              <button type="button" className="dash-icon-btn" aria-label={`Remove ${track.title}`} onClick={() => setRemoving(track)}>
-                <Trash2 size={15} />
-              </button>
+              {track.included ? (
+                <span className="music-included-gap" title="Comes with SecurePhotos" aria-hidden="true" />
+              ) : (
+                <button type="button" className="dash-icon-btn" aria-label={`Remove ${track.title}`} onClick={() => setRemoving(track)}>
+                  <Trash2 size={15} />
+                </button>
+              )}
             </div>
           ))
         )}

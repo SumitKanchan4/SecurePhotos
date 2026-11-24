@@ -351,6 +351,9 @@ async def update_track(
 @router.delete("/music/{track_id}", status_code=status.HTTP_200_OK)
 async def delete_music_track(track_id: str):
     """Deletes an audio soundtrack from the music library and manifest."""
+    track = get_track_by_id(track_id)
+    if track is not None and track.included:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Songs that come with SecurePhotos can't be removed.")
     success = delete_track(track_id)
     if not success:
         raise HTTPException(

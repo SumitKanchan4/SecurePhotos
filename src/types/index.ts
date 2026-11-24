@@ -332,6 +332,8 @@ export interface MusicTrackItem {
   file_size_bytes: number;
   file_size_formatted: string;
   stream_url: string;
+  /** Comes with SecurePhotos (owner, 2026-11-24): can't be removed. */
+  included?: boolean;
 }
 
 

@@ -16,6 +16,7 @@ made is in its commit and pull request.
 - A release (version, installer, tag) waits for the owner's final go-ahead (2026-11-20).
 - Licence: MIT, copyright Sumit Kanchan. No plan to sell; donations may come later. The installer shows a short plain page (your photos are yours, keep backups, the vault, no warranty) and the MIT text (2026-11-21).
 - GFPGAN (Sharpen blurry faces) stays: the app is free and not sold, which fits its non-commercial parts and FFHQ. If SecurePhotos is ever sold, face sharpening must be reviewed first (2026-11-21).
+- Three songs by the owner ship with the app under its MIT licence (owner made them with an AI tool and holds the rights, 2026-11-24): `engine/assets/music/`, credited in the README. Own songs are used first; included songs can't be removed (2026-11-24).
 
 ## Photos and videos
 - Imports copy into the library. "Remove the originals after importing" is off by default (2026-11-18).
