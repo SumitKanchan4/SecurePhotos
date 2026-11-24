@@ -6,7 +6,8 @@
 import React, { useEffect, useState } from "react";
 import { Laptop, Loader2 } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
-import { answerForThisComputer, fetchComputers, type ComputerAnswer } from "../services/computers";
+import { answerForThisComputer, fetchComputers, fetchHardware, type ComputerAnswer } from "../services/computers";
+import { HardwareCheck } from "./HardwareCheck";
 
 export const NewComputerDialog: React.FC = () => {
   const isEngineReady = useAppStore((s) => s.isEngineReady);
@@ -14,6 +15,9 @@ export const NewComputerDialog: React.FC = () => {
   const [name, setName] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<ComputerAnswer | null>(null);
+  // T31: after "Yes" or "Just this time", step 2 gets to know the computer (its graphics card).
+  const [checking, setChecking] = useState(false);
+  const [isNew, setIsNew] = useState(false);
 
   useEffect(() => {
     if (!isEngineReady) return;
@@ -21,6 +25,7 @@ export const NewComputerDialog: React.FC = () => {
       .then((data) => {
         if (data.this_computer.needs_answer) {
           setName(data.this_computer.name);
+          setIsNew(data.this_computer.choice === null);
           setOpen(true);
         }
       })
@@ -33,14 +38,31 @@ export const NewComputerDialog: React.FC = () => {
     setBusy(answer);
     try {
       await answerForThisComputer(answer);
-      setOpen(false);
-      if (answer === "view") showToast("Only viewing on this computer. You can change this in Settings → Storage.", "info");
+      if (answer === "view") {
+        setOpen(false);
+        showToast("Only viewing on this computer. You can change this in Settings → Storage.", "info");
+        return;
+      }
+      // Step 2 only when there is something new: a card not measured yet, or a new computer.
+      const hw = await fetchHardware().catch(() => null);
+      if (hw?.test && ((hw.gpu && hw.needs_test) || (!hw.gpu && isNew))) setChecking(true);
+      else setOpen(false);
     } catch {
       showToast("Your answer couldn't be saved. Please try again.", "warning");
     } finally {
       setBusy(null);
     }
   };
+
+  if (checking) {
+    return (
+      <div className="alb-dialog-backdrop">
+        <div className="alb-dialog newpc-dialog hw-dialog" role="dialog" aria-modal="true" aria-labelledby="hw-title">
+          <HardwareCheck step="Step 2 of 2" onClose={() => setOpen(false)} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="alb-dialog-backdrop">

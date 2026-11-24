@@ -6,16 +6,90 @@
  * outline; the others can be forgotten.
  */
 import React, { useEffect, useState } from "react";
-import { Eye, Laptop, MessageCircleQuestion, X, Zap } from "lucide-react";
+import { Cpu, Eye, Laptop, MessageCircleQuestion, X, Zap } from "lucide-react";
 import { useAppStore } from "../../store/useAppStore";
 import {
   fetchComputers,
+  fetchHardware,
   forgetComputer,
   setComputerChoice,
+  setUseGraphics,
   type ComputerChoice,
   type ComputersResponse,
+  type Hardware,
 } from "../../services/computers";
 import { CHOICE_OPTIONS, choiceMeaning, lastUsedLine } from "./computersFormat";
+import { jobRow, otherComputerGraphics } from "./hardwareFormat";
+import { HardwareCheck } from "../HardwareCheck";
+import { ToggleSwitch } from "../ui/ToggleSwitch";
+
+/** T31: this computer's graphics card: what runs where, the switch, and Test again. */
+const GraphicsCard: React.FC = () => {
+  const showToast = useAppStore((s) => s.showToast);
+  const [hw, setHw] = useState<Hardware | null>(null);
+  const [testing, setTesting] = useState(false);
+  const load = () =>
+    fetchHardware()
+      .then((got) => got?.test && setHw(got))
+      .catch(() => undefined);
+  useEffect(() => {
+    void load();
+  }, []);
+  if (!hw) return null;
+  if (testing) {
+    return (
+      <div className="pc-gpu is-testing">
+        <HardwareCheck
+          force
+          onClose={() => {
+            setTesting(false);
+            void load();
+          }}
+        />
+      </div>
+    );
+  }
+  const toggle = () =>
+    setUseGraphics(!hw.use_graphics)
+      .then(setHw)
+      .catch(() => showToast("That didn't work. Please try again.", "warning"));
+  return (
+    <div className="pc-gpu">
+      <div className="pc-gpu-head">
+        <Cpu size={16} aria-hidden="true" />
+        <span className="pc-gpu-name">{hw.gpu ? `Graphics card: ${hw.gpu.name}` : "No graphics card SecurePhotos can use"}</span>
+        {hw.gpu && (
+          <ToggleSwitch checked={hw.use_graphics} onChange={() => toggle()} ariaLabel="Use the graphics card on this computer" />
+        )}
+      </div>
+      {hw.gpu && hw.jobs.length > 0 && (
+        <ul className="pc-gpu-jobs" aria-label="What runs where">
+          {hw.jobs.map((job) => {
+            const row = jobRow(job);
+            return (
+              <li key={job.job}>
+                <span>{row.label}</span>
+                <span className="pc-meta">{row.note ? `${row.where} · ${row.note}` : row.where}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p className="pc-meta">
+        {!hw.gpu
+          ? "Photos are improved on the processor. That works well; old-photo fixes just take a little longer."
+          : hw.needs_test
+          ? "Not tested yet. It is tested before the next old-photo fix, or now."
+          : "Tested on this computer. A new graphics driver is tested again by itself."}
+      </p>
+      {hw.gpu && (
+        <button type="button" className="dash-btn dash-btn-small" onClick={() => setTesting(true)}>
+          {hw.needs_test ? "Test now" : "Test again"}
+        </button>
+      )}
+    </div>
+  );
+};
 
 const CHOICE_ICONS: Record<ComputerChoice, React.ReactNode> = {
   always: <Zap size={14} aria-hidden="true" />,
@@ -57,6 +131,7 @@ export const ComputersSettings: React.FC = () => {
                   </p>
                   <p className="pc-meta">{lastUsedLine(computer.last_seen, computer.is_this)}</p>
                   <p className="pc-meaning">{choiceMeaning(computer.choice)}</p>
+                  {!computer.is_this && computer.graphics && <p className="pc-meta">Graphics card: {otherComputerGraphics(computer.graphics)}</p>}
                 </div>
                 {!computer.is_this && (
                   <button
@@ -85,6 +160,7 @@ export const ComputersSettings: React.FC = () => {
                   </button>
                 ))}
               </div>
+              {computer.is_this && <GraphicsCard />}
             </li>
           ))}
         </ul>

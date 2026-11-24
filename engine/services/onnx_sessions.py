@@ -34,14 +34,22 @@ def cpu_threads() -> int:
     return max(1, min(4, (os.cpu_count() or 2) // 2))
 
 
-def _open(path) -> "object":
+def cpu_options() -> "object":
+    """Processor settings from the A0 benchmark (also used by the graphics card test)."""
     import onnxruntime as ort
 
     options = ort.SessionOptions()
     options.intra_op_num_threads = cpu_threads()
     options.inter_op_num_threads = 1
     options.add_session_config_entry("session.intra_op.allow_spinning", "0")
-    return ort.InferenceSession(str(path), options, providers=["CPUExecutionProvider"])
+    return options
+
+
+def _open(path, key: str) -> "object":
+    """T31: on the graphics card where it is faster on this computer, else on the processor."""
+    from engine.services import ai_device
+
+    return ai_device.open_session(path, key, cpu_options)
 
 
 @contextmanager
@@ -59,8 +67,12 @@ def use_model(key: str) -> Iterator["object"]:
             _drop()
             path = ai_models.model_path(key)
             logger.info("Loading %s", path.name)
-            _current_session = _open(path)
+            _current_session = _open(path, key)
             _current_key = key
+        else:
+            from engine.services import ai_device
+
+            ai_device.note_used(key)
         yield _current_session
 
 

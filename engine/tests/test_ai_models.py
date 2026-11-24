@@ -357,7 +357,7 @@ def test_only_one_big_model_is_in_memory_at_a_time(monkeypatch):
 
     opened = []
     monkeypatch.setattr(onnx_sessions.ai_models, "model_path", lambda key: Path(f"{key}.onnx"))
-    monkeypatch.setattr(onnx_sessions, "_open", lambda path: opened.append(path.name) or object())
+    monkeypatch.setattr(onnx_sessions, "_open", lambda path, key: opened.append(path.name) or object())
     onnx_sessions.release()
     with onnx_sessions.use_model("ddcolor_large") as first:
         pass

@@ -1,5 +1,6 @@
 """The computers that do the background work (T3): the start-up question and Settings → Storage."""
 
+import asyncio
 from typing import Any, Dict, Literal
 
 from fastapi import APIRouter, HTTPException
@@ -29,6 +30,47 @@ async def answer_question(body: Answer) -> Dict[str, Any]:
     """The answer to "Do background work on this computer?"."""
     await computers.answer(body.answer)
     return await computers.list_computers()
+
+
+class Graphics(BaseModel):
+    on: bool
+
+
+@router.get("/this/hardware")
+async def this_hardware() -> Dict[str, Any]:
+    """T31: memory, processor, graphics card, what runs where, and the test's progress."""
+    from engine.services import ai_device
+
+    summary = await asyncio.to_thread(ai_device.summary)
+    return {**summary, "test": ai_device.test_status()}
+
+
+@router.post("/this/hardware/test")
+async def test_hardware() -> Dict[str, Any]:
+    """T31: starts the graphics card test (the new-computer dialog, or Settings' Test again)."""
+    from engine.services import hardware_check
+
+    hardware_check.start()
+    return await this_hardware()
+
+
+@router.post("/this/hardware/test/cancel")
+async def cancel_hardware_test() -> Dict[str, Any]:
+    """T31: Skip for now. Photos are improved on the processor until it is tested."""
+    from engine.services import ai_device
+
+    ai_device.cancel_test()
+    return await this_hardware()
+
+
+@router.put("/this/graphics")
+async def set_graphics(body: Graphics) -> Dict[str, Any]:
+    """T31: Settings' switch, "Use the graphics card on this computer"."""
+    from engine.services import hardware_check
+
+    await computers.set_graphics(body.on)
+    hardware_check._forget_open_sessions()
+    return await this_hardware()
 
 
 @router.put("/{computer_id}")
