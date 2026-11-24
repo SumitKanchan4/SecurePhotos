@@ -4,6 +4,8 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 
 ## Unreleased
 
+## [0.3.0] - 2026-11-22
+
 ### A new Dashboard
 - The Dashboard is about your library, not settings: **On this day** shows photos from this week in an earlier year and plays them as a story, **Just added** shows your last import, **Brought back** compares an old photo before and after, **People** shows the people you photograph most and the faces still waiting for a name, and **Your year** shows your photos month by month (click a month to open it). Before there is anything to show, Brought back, People and Your year say what they will show and how to start.
 - **Worth doing** always shows the same four cards, Duplicates, Big videos, What to keep and Empty Trash, each with the space it frees, or "All good" when there is nothing to do.
