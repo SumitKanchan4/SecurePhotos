@@ -13,6 +13,8 @@ export interface AppSettings {
   quality_crf: number;
   /** Settings → Photo size (owner, 2026-11-19): the size photos are enhanced to. */
   photo_resolution: PhotoSize;
+  /** T31b: enlarge small photos with AI on computers with a fast graphics card (off by default). */
+  photo_enlarge_ai?: boolean;
   /** Settings → Video size: never above 4K (owner, 2026-11-19). */
   video_resolution: VideoSize;
   pause_on_battery: boolean;

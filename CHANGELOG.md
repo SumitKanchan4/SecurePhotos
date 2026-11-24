@@ -4,6 +4,9 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 
 ## Unreleased
 
+### Photos
+- New setting, off by default: **Enlarge small photos with AI**. On computers whose graphics card is fast enough, small photos such as WhatsApp pictures are enlarged with AI instead of the usual resize. Settings, under Photos.
+
 ### Faster on computers with a graphics card
 - SecurePhotos can use the computer's graphics card for its AI work: sharpening faces, 8K print copies, finding scratches and more. It works with NVIDIA, AMD and Intel graphics, with nothing to install.
 - The first time a computer improves photos, SecurePhotos gets to know it in about half a minute and uses the graphics card only where it is faster. Settings, under Computers, shows what runs where, can turn the card off and can test again.

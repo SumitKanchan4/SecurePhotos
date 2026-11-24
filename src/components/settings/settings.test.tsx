@@ -173,6 +173,11 @@ describe("Photos & AI and Storage", () => {
     expect(within(size).getByRole("radio", { name: "Auto" })).toHaveAttribute("aria-checked", "true");
     fireEvent.click(within(size).getByRole("radio", { name: "4K" }));
     expect(updateSetting).toHaveBeenCalledWith("photo_resolution", "4k");
+    // T31b: AI enlarging is off until the owner has compared it.
+    const ai = screen.getByRole("switch", { name: "Enlarge small photos with AI" });
+    expect(ai).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(ai);
+    expect(updateSetting).toHaveBeenCalledWith("photo_enlarge_ai", true);
     const video = screen.getByRole("radiogroup", { name: "Video size" });
     expect(within(video).getAllByRole("radio").map((r) => r.textContent)).toEqual(["Auto", "As recorded", "HD", "2K", "4K"]);
     expect(within(video).getByRole("radio", { name: "Auto" })).toHaveAttribute("aria-checked", "true");

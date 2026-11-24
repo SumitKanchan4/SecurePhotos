@@ -111,6 +111,16 @@ export const PhotosAISettings: React.FC<PhotosAISettingsProps> = ({ settings, up
           />
         </SettingRow>
         <SettingRow
+          title="Enlarge small photos with AI"
+          description="On computers whose graphics card is fast enough (see Settings, under Computers), small photos such as WhatsApp pictures are enlarged with AI for crisper detail. Other computers keep the usual resize. For new imports."
+        >
+          <ToggleSwitch
+            checked={Boolean(settings.photo_enlarge_ai)}
+            onChange={(checked) => updateSetting("photo_enlarge_ai", checked)}
+            ariaLabel="Enlarge small photos with AI"
+          />
+        </SettingRow>
+        <SettingRow
           title="Video size"
           description={`${(VIDEO_SIZE_OPTIONS.find((o) => o.value === settings.video_resolution) ?? VIDEO_SIZE_OPTIONS[0]).description} For new imports; never above 4K.`}
         >

@@ -635,6 +635,7 @@ DEFAULT_APP_SETTINGS: Dict[str, Any] = {
     "quality_crf": 18,
     "photo_resolution": "auto",      # Settings → Photo size: "auto" (default, 2026-11-21) | "2k" | "4k" | "8k".
     "video_resolution": "auto",      # Settings → Video size: "auto" (default, = HD) | "original" | "hd" | "2k" | "4k".
+    "photo_enlarge_ai": False,       # T31b: enlarge small photos with AI on computers with a fast graphics card (off until compared).
     "pause_on_battery": True,
     # Owner, 2026-11-21: adding photos to the vault removes the originals by default, so no
     # unprotected copy stays behind; the import window shows it and can change it per import.
