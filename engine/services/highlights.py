@@ -20,7 +20,6 @@ from engine.services.stories_service import story_photo
 # On this day uses the same week as the "On this day" stories: 3 days either side of today.
 ON_THIS_DAY_SPAN_DAYS = 3
 ON_THIS_DAY_PHOTOS = 3
-JUST_ADDED_HOURS = 24
 JUST_ADDED_PHOTOS = 3
 TOP_PEOPLE = 6
 # Faces too blurry to offer for naming (the same bar as People › "Name these").
@@ -75,17 +74,19 @@ async def on_this_day(conn: aiosqlite.Connection, now: datetime.datetime) -> Opt
 
 
 async def just_added(conn: aiosqlite.Connection) -> Optional[Dict[str, Any]]:
-    """What came in during the last day (improved copies are not imports), or None."""
-    since = f"-{JUST_ADDED_HOURS} hours"
+    """What came in today, since local midnight (improved copies are not imports), or None.
+
+    Owner, 2026-11-22/24: shown as one line under the newest photos ("48 photos added today ·
+    12 still being prepared"), so "today" must mean the person's today. ``created_at`` is UTC.
+    """
     async with conn.execute(
         f"""
         SELECT p.id, {IS_VIDEO.format(a='p')} AS is_video, CASE WHEN {PREPARING} THEN 1 ELSE 0 END AS preparing
         FROM photos p
         WHERE {_library('p')} AND p.derived_from_id IS NULL AND COALESCE(p.is_document, 0) = 0
-          AND p.created_at >= datetime('now', ?)
+          AND p.created_at >= datetime('now', 'localtime', 'start of day', 'utc')
         ORDER BY p.created_at DESC, p.id DESC;
-        """,
-        (since,),
+        """
     ) as cur:
         rows = await cur.fetchall()
     if not rows:
