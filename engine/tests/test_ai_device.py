@@ -196,3 +196,35 @@ async def test_api_hardware_and_switch(monkeypatch):
         assert got["gpu"]["name"] == "AMD Radeon 860M" and got["needs_test"] is True and got["test"]["state"] == "idle"
         got = (await client.put("/api/computers/this/graphics", json={"on": False})).json()
         assert got["use_graphics"] is False and saved == [False]
+
+
+def test_a_model_added_after_the_test_is_measured_on_first_use(monkeypatch):
+    import onnxruntime
+
+    monkeypatch.setattr(onnxruntime, "InferenceSession", lambda *a, **k: "cpu-session")
+    monkeypatch.setattr(ai_device, "_open_on_gpu", lambda path: "gpu-session")
+    measured = []
+    monkeypatch.setattr(ai_device, "measure", lambda key, path, cpu: measured.append(key) or {"device": "gpu", "speedup": 3.0, "why": None})
+    ai_device._state.update(plan=plan(gfpgan="gpu"), tested_for=f"{CARD['name']}|{CARD['driver']}")
+    assert ai_device.open_session("ddcolor_artistic.onnx", "ddcolor_artistic", lambda: None) == "gpu-session"
+    assert measured == ["ddcolor_artistic"]
+    assert ai_device._state["plan"]["ddcolor_large"]["device"] == "gpu"  # Same network: decided together.
+    ai_device.open_session("ddcolor_large.onnx", "ddcolor_large", lambda: None)
+    assert measured == ["ddcolor_artistic"]  # Once.
+    # Before the computer's own test, nothing is measured on the side.
+    ai_device._state.update(plan={}, tested_for=None)
+    assert ai_device.open_session("gfpgan.onnx", "gfpgan", lambda: None) == "cpu-session"
+    assert measured == ["ddcolor_artistic"]
+
+
+def test_the_test_finds_bundled_models_without_downloading(monkeypatch, tmp_path):
+    from engine.services import ai_models, hardware_check
+
+    spec = ai_models.MODELS["realesr"]
+    (tmp_path / spec["file"]).write_bytes(b"x")
+    monkeypatch.setattr(ai_models, "get_models_dir", lambda: tmp_path / "library")
+    monkeypatch.setattr(ai_models, "get_bundled_models_dir", lambda: tmp_path)
+    monkeypatch.setattr(ai_models, "_is_verified", lambda path, s: path.is_file())
+    monkeypatch.setattr(ai_models, "download_verified", lambda *a, **k: pytest.fail("the test must never download"))
+    assert hardware_check._model_file("realesr") == str(tmp_path / spec["file"])
+    assert hardware_check._model_file("yunet") is None  # Not here: measured when first used.

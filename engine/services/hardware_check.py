@@ -19,13 +19,20 @@ _task: Optional[asyncio.Task] = None
 
 
 def _model_file(key: str) -> Optional[str]:
-    """The model's file if it is on this computer (models not downloaded are tested later)."""
-    try:
-        if key in ("yunet", "sface"):
-            from engine.services.face_recognition_service import ensure_face_models
+    """The model's file if it is on this computer. Never downloads: models not here yet are
+    measured the first time they are needed.
 
-            yunet, sface = ensure_face_models()
-            return str(yunet if key == "yunet" else sface)
+    The small models (face finding, the 8K print) ship with the app (``ai_models.MODELS``); the
+    old-photo models are downloaded (``ON_DEMAND_MODELS``). Owner's laptop test, 2026-11-24: the
+    8K print model was missed because only the downloaded ones were looked for.
+    """
+    try:
+        if key in ai_models.MODELS:
+            spec = ai_models.MODELS[key]
+            for folder in (ai_models.get_models_dir(), ai_models.get_bundled_models_dir()):
+                if ai_models._is_verified(folder / spec["file"], spec):
+                    return str(folder / spec["file"])
+            return None
         return str(ai_models.model_path(key))
     except Exception:
         return None
