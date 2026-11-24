@@ -1,5 +1,5 @@
 ; SecurePhotos NSIS installer hooks
-; Suggests the external drive, keeps the library on uninstall, and fetches the old-photo models.
+; Suggests the external drive, says on the uninstall screen that the library stays, and fetches the old-photo models.
 
 ;
 ; T2: SecurePhotos lives on an external drive, with the library beside it.
@@ -12,6 +12,14 @@
 !define MUI_CUSTOMFUNCTION_GUIINIT SpSuggestDrive
 ; Check the folder only when Next is pressed, so the question isn't asked on every keystroke.
 !define MUI_DIRECTORYPAGE_VERIFYONLEAVE
+
+; T34 (owner, 2026-11-24): the uninstall screen itself says what stays, in place of Tauri's
+; "Delete the application data" checkbox (removed in nsis/installer.nsi) and of a second popup
+; after Uninstall. The vault key is in the library, so the same password opens the vault again
+; when SecurePhotos is installed into the same folder.
+; SP_UNINSTALL_NOTE goes inside a single-quoted System::Call: no apostrophes or double quotes.
+!define MUI_UNCONFIRMPAGE_TEXT_TOP "Removing SecurePhotos takes away the app only. Your photos, videos, albums and Private Vault stay where they are."
+!define SP_UNINSTALL_NOTE "Your library stays in:$\r$\n$INSTDIR\data$\r$\n$\r$\nPrivate Vault photos stay locked. To see them again, install SecurePhotos into this same folder and unlock it with your vault password.$\r$\n$\r$\nIf you would rather have them as ordinary photos, choose Cancel, open SecurePhotos and move them out of the vault first."
 
 Var SpDriveFound
 Var SpThisComputerOk
@@ -181,19 +189,6 @@ FunctionEnd
     DetailPrint "The old-photo models will be offered in the app when you first need them."
   ${EndIf}
   SetDetailsView show
-!macroend
-
-!macro NSIS_HOOK_PREUNINSTALL
-  MessageBox MB_ICONINFORMATION|MB_OKCANCEL \
-    "Removing SecurePhotos takes away the app only.$\r$\n$\r$\n\
-Your photos, videos, albums and Private Vault stay where they are, in:$\r$\n\
-$INSTDIR\data$\r$\n$\r$\n\
-Photos in your Private Vault stay locked. If you'd like them back as ordinary photos, choose Cancel, \
-open SecurePhotos and move them out of the vault first.$\r$\n$\r$\n\
-Choose OK to remove the app." \
-    IDOK proceed_uninstall
-  Abort
-  proceed_uninstall:
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
