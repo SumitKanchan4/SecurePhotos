@@ -91,18 +91,20 @@ def get_inference_sessions():
         import onnxruntime as ort
 
         yunet_path, sface_path = ensure_face_models()
-        sess_options = ort.SessionOptions()
-        cpu_count = os.cpu_count() or 4
-        sess_options.intra_op_num_threads = min(4, max(1, cpu_count // 2))
-        sess_options.inter_op_num_threads = 1
-        sess_options.log_severity_level = 3
-        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        def cpu_options():
+            sess_options = ort.SessionOptions()
+            cpu_count = os.cpu_count() or 4
+            sess_options.intra_op_num_threads = min(4, max(1, cpu_count // 2))
+            sess_options.inter_op_num_threads = 1
+            sess_options.log_severity_level = 3
+            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            return sess_options
 
-        available = ort.get_available_providers()
-        providers = [p for p in ("DmlExecutionProvider", "CPUExecutionProvider") if p in available] or ["CPUExecutionProvider"]
-        logger.info("Initializing face models with providers: %s", providers)
-        _yunet_session = ort.InferenceSession(str(yunet_path), sess_options=sess_options, providers=providers)
-        _sface_session = ort.InferenceSession(str(sface_path), sess_options=sess_options, providers=providers)
+        # T31: the graphics card only where the test found it faster on this computer.
+        from engine.services import ai_device
+
+        _yunet_session = ai_device.open_session(yunet_path, "yunet", cpu_options)
+        _sface_session = ai_device.open_session(sface_path, "sface", cpu_options)
     return _yunet_session, _sface_session
 
 

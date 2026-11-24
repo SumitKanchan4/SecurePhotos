@@ -53,7 +53,7 @@ fastapi==0.141.1
 flatbuffers==25.12.19
     # via
     #   -c engine/requirements.txt
-    #   onnxruntime
+    #   onnxruntime-windowsml
 h11==0.16.0
     # via
     #   -c engine/requirements.txt
@@ -74,9 +74,9 @@ numpy==2.5.2
     # via
     #   -c engine/requirements.txt
     #   -r engine/requirements.in
-    #   onnxruntime
+    #   onnxruntime-windowsml
     #   opencv-python-headless
-onnxruntime==1.29.0
+onnxruntime-windowsml==1.30.1.202610302006
     # via
     #   -c engine/requirements.txt
     #   -r engine/requirements.in
@@ -87,7 +87,7 @@ opencv-python-headless==5.0.0.93
 packaging==26.3
     # via
     #   -c engine/requirements.txt
-    #   onnxruntime
+    #   onnxruntime-windowsml
     #   pyinstaller
     #   pyinstaller-hooks-contrib
     #   pytest
@@ -106,7 +106,7 @@ pluggy==1.6.0
 protobuf==7.36.1
     # via
     #   -c engine/requirements.txt
-    #   onnxruntime
+    #   onnxruntime-windowsml
 psutil==7.2.2
     # via
     #   -c engine/requirements.txt
