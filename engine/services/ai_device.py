@@ -297,6 +297,17 @@ def open_session(path, key: str, cpu_options: Callable[[], Any]):
     processor. A model that can't open on the card goes to the processor from now on."""
     import onnxruntime as ort
 
+    if _should_measure(key):
+        # A model that wasn't here at the test (downloaded later): measured now, once.
+        decided = measure(key, str(path), cpu_options)
+        base = SAME_AS.get(key, key)
+        with _lock:
+            _state["plan"][base] = decided
+            for other, same in SAME_AS.items():
+                if same == base:
+                    _state["plan"][other] = dict(decided)
+            _state["dirty"] = True
+        logger.info("%s measured on first use: %s", key, decided)
     if device_for(key) == GPU:
         try:
             session = _open_on_gpu(str(path))
@@ -308,6 +319,19 @@ def open_session(path, key: str, cpu_options: Callable[[], Any]):
             logger.warning("%s couldn't open on the graphics card (%s); using the processor.", key, str(err)[:200])
             mark_cpu([key], "couldn't run on the graphics card")
     return ort.InferenceSession(str(path), cpu_options(), providers=["CPUExecutionProvider"])
+
+
+def _should_measure(key: str) -> bool:
+    """A model not measured yet on a computer whose card was tested."""
+    with _lock:
+        base = SAME_AS.get(key, key)
+        return (
+            _state["enabled"]
+            and base in TEST_SIZE
+            and base not in _state["plan"]
+            and _state["tested_for"] is not None
+            and _state["tested_for"] == _gpu_signature()
+        )
 
 
 def note_used(key: str) -> None:

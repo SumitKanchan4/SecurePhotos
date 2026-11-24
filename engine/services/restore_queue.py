@@ -649,7 +649,9 @@ async def _run_on_best_device(processor: Processor, image: bytes, params: Dict[s
         await hardware_check.run(hold_slot=False)
     ai_device.start_job()
     try:
-        return await asyncio.to_thread(processor.run, image, params, progress, cancelled)
+        result = await asyncio.to_thread(processor.run, image, params, progress, cancelled)
+        await computers.save_hardware()  # A model measured on first use is kept.
+        return result
     except Exception as err:
         on_card = ai_device.used_gpu()
         if not on_card or cancelled():

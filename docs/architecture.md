@@ -257,7 +257,7 @@ The engine ships `onnxruntime-windowsml`: the processor path plus DirectML, whic
 
 - Windows is asked for its **high-performance** card (DXGI), so a separate card is picked over built-in graphics. No card, a software adapter, Remote Desktop or an old driver: the processor.
 - A **speed test** (`run_test`, about 30 s) times each downloaded model on the processor and on the card; the card is kept only where it is at least 1.3× faster. The result is saved with the computer (`computers.hardware`), with the card's name and driver; a new card or driver is tested again.
-- When: step 2 of the new-computer question ("Getting to know this computer"), Settings' Test again, or before the first old-photo fix on a known computer (`restore_queue._run_on_best_device`).
+- When: step 2 of the new-computer question ("Getting to know this computer"), Settings' Test again, or before the first old-photo fix on a known computer (`restore_queue._run_on_best_device`). A model that wasn't on the computer at the test (downloaded later) is measured the first time it opens. The test looks for the bundled models (face finding, the 8K print) and the downloaded ones, and never downloads anything.
 - **Fallbacks:** a model that can't open on the card, or a job that fails on it, goes back to the processor for that model on that computer (`mark_cpu`), and the job is done again on the processor.
 - The person can turn the card off per computer (`computers.use_graphics`).
 
