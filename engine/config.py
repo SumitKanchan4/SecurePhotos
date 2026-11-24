@@ -95,7 +95,7 @@ class AppConfig(BaseSettings):
     )
 
     app_name: str = "SecurePhotos Engine"
-    app_version: str = "0.3.0"
+    app_version: str = "0.3.1"
     data_dir: Path = Field(
         default_factory=resolve_default_data_dir,
         description="Path to active data and database directory",

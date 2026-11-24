@@ -4,6 +4,8 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 
 ## Unreleased
 
+## [0.3.1] - 2026-11-24
+
 ### Stories
 - Three songs now come with SecurePhotos, so every story has real music: Between the Frames, Sunday on the Veranda and Where We Once Stood. They show as Included in Settings, under Music; you can pick their mood, and your own songs are still used first.
 
