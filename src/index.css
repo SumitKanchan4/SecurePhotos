@@ -3329,3 +3329,36 @@ button.dash-usage-open { cursor: pointer; }
 .update-notes ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 .update-notes p { margin: 0; }
 .update-notes strong { color: var(--text-primary); font-weight: 700; }
+
+/* T31: getting to know a computer (new-computer step 2, Settings' Test again). */
+.hw-dialog { width: min(480px, calc(100vw - 32px)); }
+.hw-check { display: flex; flex-direction: column; gap: 10px; padding: 26px 26px 22px; text-align: left; }
+.hw-step { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary); }
+.hw-title { margin: 0; font-family: var(--font-display); font-size: 22px; font-weight: 900; letter-spacing: -0.02em; color: var(--text-primary); }
+.hw-text { margin: 0; font-size: 14px; line-height: 1.55; color: var(--text-secondary); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.hw-done-icon { width: 44px; height: 44px; border-radius: 14px; background: var(--accent-fill); color: var(--on-accent); display: flex; align-items: center; justify-content: center; }
+.hw-checks { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.hw-checks li { display: flex; align-items: flex-start; gap: 12px; }
+.hw-tick { width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--accent-fill) 16%, transparent); color: var(--accent-ink); }
+.hw-spinner { width: 26px; height: 26px; flex-shrink: 0; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--glass-pill-bg); border-top-color: var(--accent-fill); animation: spinAnimation 1s linear infinite; }
+.hw-item { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--text-secondary); }
+.hw-item strong { font-size: 14px; color: var(--text-primary); }
+.hw-bar { display: block; height: 6px; margin-top: 6px; border-radius: var(--radius-full); background: var(--glass-pill-bg); overflow: hidden; }
+.hw-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--accent-fill); transition: width 0.3s ease; }
+.hw-table { list-style: none; margin: 6px 0 0; padding: 4px 14px; border-radius: 14px; background: var(--bg-app); border: 1px solid var(--glass-border); }
+.hw-table li { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--glass-border); font-size: 13px; }
+.hw-table li:last-child { border-bottom: none; }
+.hw-job { flex: 1; font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.hw-where { color: var(--text-secondary); text-align: right; }
+.hw-note { min-width: 70px; text-align: right; color: var(--text-secondary); font-size: 12px; }
+.hw-note.is-fast { color: var(--accent-ink); font-weight: 800; font-size: 13px; }
+.hw-foot { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.hw-hint { flex: 1; font-size: 12px; line-height: 1.45; color: var(--text-secondary); }
+.hw-spacer { flex: 1; }
+@media (prefers-reduced-motion: reduce) { .hw-spinner { animation: none; } .hw-bar > span { transition: none; } }
+.pc-gpu { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--glass-border); display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.pc-gpu.is-testing .hw-check { padding: 0; }
+.pc-gpu-head { display: flex; align-items: center; gap: 8px; width: 100%; color: var(--text-primary); }
+.pc-gpu-name { flex: 1; font-size: 13px; font-weight: 700; }
+.pc-gpu-jobs { list-style: none; margin: 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 4px; }
+.pc-gpu-jobs li { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--text-primary); }

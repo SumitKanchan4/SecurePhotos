@@ -186,7 +186,9 @@ CREATE TABLE IF NOT EXISTS computers (
     name TEXT NOT NULL,
     choice TEXT NOT NULL DEFAULT 'ask',
     first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
-    last_seen DATETIME DEFAULT CURRENT_TIMESTAMP
+    last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+    hardware TEXT,                    -- T31: graphics card test result (JSON, ai_device.saved_form)
+    use_graphics INTEGER NOT NULL DEFAULT 1  -- T31: the person's switch for this computer
 );
 
 -- ── 8. Creative Assets Table (Collages & Wallpapers) ─────────────────────────
@@ -790,6 +792,14 @@ async def run_migrations(db_path: Optional[Path] = None) -> None:
         # C4: a vault photo's document text and GPS, encrypted with the vault key.
         if "vault_meta_enc" not in existing_photo_cols:
             await conn.execute("ALTER TABLE photos ADD COLUMN vault_meta_enc TEXT;")
+
+        # T31: each computer keeps its graphics card test result and the person's switch.
+        async with conn.execute("PRAGMA table_info(computers);") as cursor:
+            computer_cols = {row["name"] for row in await cursor.fetchall()}
+        if "hardware" not in computer_cols:
+            await conn.execute("ALTER TABLE computers ADD COLUMN hardware TEXT;")
+        if "use_graphics" not in computer_cols:
+            await conn.execute("ALTER TABLE computers ADD COLUMN use_graphics INTEGER NOT NULL DEFAULT 1;")
 
         # C4: face crops (and other files) to delete once a lock has committed.
         async with conn.execute("PRAGMA table_info(vault_pending_ops);") as cursor:

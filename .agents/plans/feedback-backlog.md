@@ -10,7 +10,7 @@ Status: **Next** (to do now), **Owner decision**, **Release blocker**, **Later**
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| T31 | Graphics card support | Next phase | The engine ships CPU-only ONNX Runtime, so DirectML is never used. Plan: onnxruntime-directml, per-computer speed test (GPU vs CPU) with CPU fallback, shown in Settings; then AI video enhancement on capable GPUs. Needs a PC with a graphics card to test. |
+| T31b | Graphics card part 2: AI enlarging for the library and video | Next phase | Part 1 (graphics card for the existing AI steps, per-computer speed test, Settings) is done. Real-ESRGAN measured 3.7× faster on a built-in Radeon: AI enhancement of the whole library and AI video enhancement on computers whose card is fast enough. |
 
 ## Found during the release review (2026-11-20)
 
