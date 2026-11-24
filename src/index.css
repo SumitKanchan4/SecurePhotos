@@ -3321,3 +3321,11 @@ button.dash-usage-open { cursor: pointer; }
 }
 .dash-frees-note { font-weight: 600; opacity: 0.8; }
 .keep-sizes { margin: 2px 0 0; font-size: 12px; color: var(--text-secondary); }
+
+/* Release notes in the update window (owner, 2026-11-24): headings, lists and bold, no Markdown signs. */
+.update-notes { display: flex; flex-direction: column; gap: 6px; }
+.update-notes h4 { margin: 8px 0 0; font-size: 13px; font-weight: 800; color: var(--text-primary); }
+.update-notes h4:first-child { margin-top: 0; }
+.update-notes ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.update-notes p { margin: 0; }
+.update-notes strong { color: var(--text-primary); font-weight: 700; }
