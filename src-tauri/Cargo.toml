@@ -1,6 +1,6 @@
 [package]
 name = "securephotos"
-version = "0.2.0"
+version = "0.3.0"
 description = "A private photo library and vault that lives on your own drive"
 authors = ["Sumit Kanchan"]
 license = "MIT"
