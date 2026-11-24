@@ -227,7 +227,7 @@ fn get_engine_status() -> serde_json::Value {
     serde_json::json!({
         "status": "active",
         "container": "tauri_2.0",
-        "version": "0.3.1"
+        "version": "0.3.2"
     })
 }
 

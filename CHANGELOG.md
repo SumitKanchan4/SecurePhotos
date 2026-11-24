@@ -4,6 +4,8 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 
 ## Unreleased
 
+## [0.3.2] - 2026-11-24
+
 ### Faster on computers with a graphics card
 - SecurePhotos can use the computer's graphics card for its AI work: sharpening faces, 8K print copies, finding scratches and more. It works with NVIDIA, AMD and Intel graphics, with nothing to install.
 - The first time a computer improves photos, SecurePhotos gets to know it in about half a minute and uses the graphics card only where it is faster. Settings, under Computers, shows what runs where, can turn the card off and can test again.
