@@ -8,6 +8,9 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 - What you added today is one line under your newest photos, with how many are still being prepared, instead of a card that repeated the same photos.
 - The tiles share each row, so the Dashboard has no empty gaps.
 
+### Installing and updating
+- Removing SecurePhotos explains on its one screen what stays: your photos, videos, albums and Private Vault stay in the library folder, and vault photos open again with your vault password when SecurePhotos is installed into the same folder. The "Delete the application data" box and the second popup are gone.
+
 ## [0.3.0] - 2026-11-22
 
 ### A new Dashboard
