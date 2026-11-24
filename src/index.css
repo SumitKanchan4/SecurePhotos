@@ -3001,7 +3001,7 @@ html, body, #root {
 }
 .dash-link:hover { color: var(--accent-ink); }
 .dash-link:focus-visible, .dash-saved-pill:focus-visible, .dash-job:focus-visible, .dash-person:focus-visible,
-.dash-month:focus-visible, .dash-callout:focus-visible, .dash-added-grid:focus-visible, .dash-memory-photo:focus-visible {
+.dash-month:focus-visible, .dash-callout:focus-visible, .dash-memory-photo:focus-visible {
   outline: 2px solid var(--accent-fill); outline-offset: 2px;
 }
 .dash-saved-pill {
@@ -3016,10 +3016,12 @@ html, body, #root {
 .dash-storage-line.is-low { color: var(--accent-danger); font-weight: 700; }
 .dash-storage-line.is-low .dash-storage-meter > span { background: var(--accent-danger); opacity: 1; }
 
-.dash-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-@media (max-width: 1180px) { .dash-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 760px) { .dash-tiles { grid-template-columns: minmax(0, 1fr); } }
-.dash-tile { min-width: 0; border-radius: 20px; }
+/* Tiles wrap three to a row (two, then one, on narrower windows); a row that isn't full is
+   shared by its tiles, so the Dashboard never shows empty holes (owner, 2026-11-24). */
+.dash-tiles { display: flex; flex-wrap: wrap; gap: 16px; }
+.dash-tile { min-width: 0; border-radius: 20px; flex: 1 1 calc((100% - 32px) / 3); }
+@media (max-width: 1180px) { .dash-tile { flex-basis: calc((100% - 16px) / 2); } }
+@media (max-width: 760px) { .dash-tile { flex-basis: 100%; } }
 .dash-tile.dash-card { padding: 18px; gap: 12px; }
 .dash-tile-head { display: flex; align-items: baseline; gap: 10px; }
 .dash-tile-head h2 { margin: 0; font-size: 16px; font-weight: 800; color: var(--text-primary); }
@@ -3029,10 +3031,10 @@ html, body, #root {
 
 /* On this day: the largest tile, photos edge to edge with the words over them. */
 .dash-memory {
-  grid-column: span 2; position: relative; min-height: 320px; overflow: hidden; background: var(--bg-surface-elevated);
+  flex: 2 1 calc((100% - 32px) * 2 / 3 + 16px); position: relative; min-height: 320px; overflow: hidden; background: var(--bg-surface-elevated);
   display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: 1fr 1fr; gap: 4px;
 }
-@media (max-width: 760px) { .dash-memory { grid-column: auto; } }
+@media (max-width: 1180px) { .dash-memory { flex-basis: 100%; } }
 .dash-memory.is-single { grid-template-columns: 1fr; }
 .dash-memory-photo { padding: 0; border: none; background: none; cursor: zoom-in; min-height: 0; overflow: hidden; }
 .dash-memory-photo img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.25s ease; }
@@ -3048,15 +3050,6 @@ html, body, #root {
 .dash-memory-text p:last-child { margin: 4px 0 0; font-size: 14px; color: #e5e5e5; }
 .dash-memory-caption .dash-kicker { color: #c6ff00; }
 .dash-memory-play { pointer-events: auto; height: 44px; padding: 0 20px; border-radius: var(--radius-full); display: inline-flex; align-items: center; gap: 8px; }
-
-/* Just added */
-.dash-added-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 0; border: none; background: none; cursor: pointer; border-radius: 12px; }
-.dash-added-grid > img, .dash-added-more { width: 100%; height: 92px; object-fit: cover; border-radius: 10px; display: block; background: var(--bg-surface-elevated); }
-.dash-added-more { display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-size: 22px; font-weight: 900; color: var(--text-primary); }
-.dash-ring circle { fill: none; stroke-width: 4; }
-.dash-ring-track { stroke: var(--glass-pill-bg); }
-.dash-ring-fill { stroke: var(--accent-fill); stroke-linecap: round; }
-[data-theme="light"] .dash-ring-fill { stroke: var(--accent-ink); }
 
 /* Brought back: before and after, the range input on top does the dragging and the arrow keys. */
 .dash-compare { position: relative; height: 220px; border-radius: 14px; overflow: hidden; background: var(--bg-surface-elevated); }

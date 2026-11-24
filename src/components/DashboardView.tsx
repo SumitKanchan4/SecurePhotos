@@ -8,7 +8,7 @@
  * pages with a way back.
  */
 import React, { useCallback, useEffect, useState } from "react";
-import { ChevronRight, HardDrive, RefreshCw, Sparkles } from "lucide-react";
+import { ChevronRight, HardDrive, ImageDown, RefreshCw, Sparkles } from "lucide-react";
 import type { DashboardOverview, DuplicateSummaryResponse, PhotoItem, VideoSummary } from "../types";
 import type { NavTab } from "../store/useAppStore";
 import { apiFetch, getThumbnailUrl } from "../services/api";
@@ -16,9 +16,9 @@ import { useAppStore } from "../store/useAppStore";
 import { DuplicatesView } from "./DuplicatesView";
 import { WhatToKeepView } from "./WhatToKeepView";
 import { VideoOptimizerView } from "./VideoOptimizerView";
-import { greeting, librarySentence, oldOriginalsNote, savedPill, spaceCard, storageLine, worthDoing } from "./dashboard/dashFormat";
+import { greeting, justAddedLine, librarySentence, oldOriginalsNote, savedPill, spaceCard, storageLine, worthDoing } from "./dashboard/dashFormat";
 import type { Highlights, OldOriginalsCleanup, SpaceSummary, WorthJob } from "./dashboard/dashFormat";
-import { BroughtBackTile, JustAddedTile, OnThisDayTile, PeopleTile, WorthDoing, YearTile } from "./dashboard/DashTiles";
+import { BroughtBackTile, OnThisDayTile, PeopleTile, WorthDoing, YearTile } from "./dashboard/DashTiles";
 
 export type DashboardPage = "overview" | "duplicates" | "videos" | "keep";
 
@@ -149,6 +149,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const counts = overview?.media_counts;
   const parts = counts ? librarySentence(counts) : [];
   const storage = storageLine(overview?.app_storage?.total_bytes || 0, overview?.drive_storage);
+  const added = justAddedLine(highlights?.just_added ?? null);
   const space = spaceCard(spaceSummary);
   const pill = savedPill(spaceSummary);
   const now = new Date();
@@ -224,6 +225,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               ))}
             </div>
           )}
+          {added && (
+            <p className="dash-storage-line dash-added-line">
+              <ImageDown size={16} aria-hidden="true" />
+              <span>{added.text}</span>
+              {added.preparing && (
+                <button type="button" className="dash-link" onClick={() => store().setActiveTab("activity")}>
+                  Activity <ChevronRight size={14} aria-hidden="true" />
+                </button>
+              )}
+            </p>
+          )}
           {storage && (
             <p className={`dash-storage-line${storage.low ? " is-low" : ""}`}>
               <HardDrive size={16} aria-hidden="true" />
@@ -243,13 +255,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <section className="dash-tiles" aria-label="At a glance">
           {highlights.on_this_day && (
             <OnThisDayTile memory={highlights.on_this_day} now={now} onPlay={onPlayStory} onOpenPhoto={onOpenPhoto} />
-          )}
-          {highlights.just_added && (
-            <JustAddedTile
-              added={highlights.just_added}
-              onOpenPhotos={() => onNavigate("photos")}
-              onOpenActivity={() => store().setActiveTab("activity")}
-            />
           )}
           <BroughtBackTile back={highlights.brought_back} onOpenPhoto={onOpenPhoto} onImport={onImport} />
           <PeopleTile

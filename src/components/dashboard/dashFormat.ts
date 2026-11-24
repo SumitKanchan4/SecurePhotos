@@ -209,13 +209,17 @@ export function onThisDayText(m: NonNullable<Highlights["on_this_day"]>, now: Da
   return { title: `This week, ${ago}`, line: `${plural(m.count, "photo")} from ${MONTH_NAMES[now.getMonth()]} ${m.year}` };
 }
 
-/** Just added: "48 photos and 2 videos" and "12 still being prepared". */
-export function justAddedText(j: NonNullable<Highlights["just_added"]>): { title: string; preparing: string | null } {
+/** The line under the newest photos (owner, 2026-11-24; replaces the Just added card, which
+ *  repeated the photos above it): "48 photos and 2 videos added today · 12 still being prepared".
+ *  Null when nothing was added today. */
+export function justAddedLine(j: Highlights["just_added"]): { text: string; preparing: boolean } | null {
+  if (!j) return null;
   const parts = [j.photos ? plural(j.photos, "photo") : "", j.videos ? plural(j.videos, "video") : ""].filter(Boolean);
-  return {
-    title: parts.join(" and ") || "Nothing new",
-    preparing: j.preparing > 0 ? `${j.preparing.toLocaleString()} still being prepared` : null,
-  };
+  if (!parts.length) return null;
+  const added = `${parts.join(" and ")} added today`;
+  return j.preparing > 0
+    ? { text: `${added} · ${j.preparing.toLocaleString()} still being prepared`, preparing: true }
+    : { text: added, preparing: false };
 }
 
 const KIND_TEXT: Record<string, string> = {
