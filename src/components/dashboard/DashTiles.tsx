@@ -9,7 +9,6 @@ import { getApiUrl, getThumbnailUrl } from "../../services/api";
 import {
   broughtBackText,
   formatSize,
-  justAddedText,
   monthBars,
   onThisDayText,
   plural,
@@ -52,46 +51,6 @@ export const OnThisDayTile: React.FC<{
           </button>
         )}
       </div>
-    </article>
-  );
-};
-
-export const JustAddedTile: React.FC<{
-  added: NonNullable<Highlights["just_added"]>;
-  onOpenPhotos: () => void;
-  onOpenActivity: () => void;
-}> = ({ added, onOpenPhotos, onOpenActivity }) => {
-  const { title, preparing } = justAddedText(added);
-  const total = added.photos + added.videos;
-  const shown = added.photo_ids.slice(0, 3);
-  const more = total - shown.length;
-  const ready = total > 0 ? (total - added.preparing) / total : 1;
-  return (
-    <article className="dash-tile dash-card" aria-labelledby="dash-added-title">
-      <div className="dash-tile-head">
-        <h2 id="dash-added-title">Just added</h2>
-        <span className="dash-muted">Last 24 hours</span>
-      </div>
-      <button type="button" className="dash-added-grid" onClick={onOpenPhotos} aria-label={`${title}, open Photos`}>
-        {shown.map((id) => (
-          <Thumb key={id} id={id} />
-        ))}
-        {more > 0 && <span className="dash-added-more">+{more.toLocaleString()}</span>}
-      </button>
-      <p className="dash-tile-title">{title}</p>
-      {preparing && (
-        <div className="dash-tile-foot">
-          <svg width="22" height="22" viewBox="0 0 36 36" aria-hidden="true" className="dash-ring">
-            <circle cx="18" cy="18" r="14" className="dash-ring-track" />
-            <circle cx="18" cy="18" r="14" className="dash-ring-fill" strokeDasharray={`${Math.round(ready * 88)} 88`} transform="rotate(-90 18 18)" />
-          </svg>
-          <span className="dash-muted">{preparing}</span>
-          <span className="dash-spacer" />
-          <button type="button" className="dash-link" onClick={onOpenActivity}>
-            Activity <ChevronRight size={14} aria-hidden="true" />
-          </button>
-        </div>
-      )}
     </article>
   );
 };

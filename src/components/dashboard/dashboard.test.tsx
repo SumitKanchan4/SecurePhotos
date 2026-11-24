@@ -152,8 +152,11 @@ describe("DashboardView", () => {
     expect(within(tiles).getByRole("heading", { name: "This week, 3 years ago" })).toBeInTheDocument();
     fireEvent.click(within(tiles).getByRole("button", { name: "Play as a story" }));
     expect(onPlayStory).toHaveBeenCalledWith(42);
-    expect(within(tiles).getByText("48 photos and 2 videos")).toBeInTheDocument();
-    expect(within(tiles).getByText("12 still being prepared")).toBeInTheDocument();
+    // Just added is one line under the newest photos, not a card (owner, 2026-11-24).
+    expect(within(tiles).queryByRole("heading", { name: "Just added" })).not.toBeInTheDocument();
+    expect(within(hero).getByText("48 photos and 2 videos added today · 12 still being prepared")).toBeInTheDocument();
+    fireEvent.click(within(hero).getByRole("button", { name: "Activity" }));
+    expect(useAppStore.getState().activeTab).toBe("activity");
     expect(within(tiles).getByText("Faded colours brought back · Colour added")).toBeInTheDocument();
     expect(within(tiles).getByRole("slider", { name: "Compare before and after" })).toBeInTheDocument();
     expect(within(tiles).getByText("5 new faces waiting for a name")).toBeInTheDocument();
@@ -391,12 +394,13 @@ describe("dashboard tile words (T32)", () => {
   });
 
   it("words the tiles", async () => {
-    const { onThisDayText, justAddedText, broughtBackText, monthBars, worthDoing, savedPill } = await import("./dashFormat");
+    const { onThisDayText, justAddedLine, broughtBackText, monthBars, worthDoing, savedPill } = await import("./dashFormat");
     expect(onThisDayText({ year: 2025, years_ago: 1, count: 1, photo_ids: [1], story_id: null }, new Date(2026, 10, 22))).toEqual({
       title: "This week, 1 year ago",
       line: "1 photo from November 2025",
     });
-    expect(justAddedText({ photos: 0, videos: 1, preparing: 0, photo_ids: [] })).toEqual({ title: "1 video", preparing: null });
+    expect(justAddedLine({ photos: 0, videos: 1, preparing: 0, photo_ids: [] })).toEqual({ text: "1 video added today", preparing: false });
+    expect(justAddedLine(null)).toBeNull();
     expect(broughtBackText(["scratches", "unknown"])).toBe("Scratches removed");
     expect(broughtBackText([])).toBe("Brought back");
     const { bars, total, busiest } = monthBars(2026, [0, 10, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0], new Date(2026, 1, 3));
