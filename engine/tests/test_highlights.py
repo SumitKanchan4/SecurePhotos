@@ -60,10 +60,13 @@ async def test_on_this_day_needs_two_photos(conn):
     assert await hl.on_this_day(conn, NOW) is None
 
 
-async def test_just_added_counts_the_last_day_only(conn):
+async def test_just_added_counts_today_only(conn):
     a = await add(conn)  # created now
     await add(conn, mime_type="video/mp4", filename="v.mp4")
     await add(conn, created_at="2026-01-01 00:00:00")
+    # A minute before local midnight was yesterday, even if it is less than 24 hours ago.
+    cur = await conn.execute("SELECT datetime('now', 'localtime', 'start of day', 'utc', '-1 minute');")
+    await add(conn, created_at=(await cur.fetchone())[0])
     await add(conn, is_encrypted=1)
     await add(conn, derived_from_id=a, ai_kind="colour")  # improved copy: not an import
     got = await hl.just_added(conn)
