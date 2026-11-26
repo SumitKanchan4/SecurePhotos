@@ -27,6 +27,7 @@ made is in its commit and pull request.
 - Photo size: Auto (default) / 2K / 4K / 8K; Auto gives photos of 6 MP and up 8K and smaller ones 4K. Video size: Auto (default, = HD) / as recorded / HD / 2K / 4K; videos are resized, not AI-enlarged, and never go above 4K (2026-11-21).
 - Library enhancement is a resize plus sharpen on a CPU; the 8K print-ready copy uses Real-ESRGAN. AI enhancement for the library and video is T31 part 2 (2026-11-21).
 - Graphics card (T31 part 1, 2026-11-24): the engine uses `onnxruntime-windowsml` (the DirectML-only package stops at 1.24.4 and can't load the scratch-repair model). The card is used per model only where a speed test on that computer found it at least 1.3× faster; the processor always works and is the fallback for any failure. New computers are tested in step 2 of the new-computer question; the card can be turned off per computer.
+- AI enlarging of small photos (T31b, owner 2026-11-26): kept as a switch in Settings › Photos, off by default. Compared on the owner's old prints: crisper edges, but texture and faces look smoothed. Videos stay on the resize (T35, later).
 - Photos still being prepared show their steps' icons taking turns and a ring bottom-left; tags show once done (2026-11-19).
 
 ## People
