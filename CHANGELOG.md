@@ -7,6 +7,9 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 ### Photos
 - New setting, off by default: **Enlarge small photos with AI**. On computers whose graphics card is fast enough, small photos such as WhatsApp pictures are enlarged with AI instead of the usual resize. Settings, under Photos & AI.
 
+### Privacy
+- The AI runtime's usage events (sent to Microsoft through Windows' diagnostic data, never your photos) are now switched off. SECURITY.md explains what remains.
+
 ### Fixes
 - Messages about the graphics card now point to Settings, under Storage, where your computers are listed (they named a "Computers" section that doesn't exist).
 

@@ -228,3 +228,15 @@ def test_the_test_finds_bundled_models_without_downloading(monkeypatch, tmp_path
     monkeypatch.setattr(ai_models, "download_verified", lambda *a, **k: pytest.fail("the test must never download"))
     assert hardware_check._model_file("realesr") == str(tmp_path / spec["file"])
     assert hardware_check._model_file("yunet") is None  # Not here: measured when first used.
+
+
+def test_the_runtimes_usage_events_are_switched_off_before_any_model_opens(monkeypatch):
+    import onnxruntime
+
+    switched = []
+    monkeypatch.setattr(ai_device, "_quiet", False)
+    monkeypatch.setattr(onnxruntime, "disable_telemetry_events", lambda: switched.append(True), raising=False)
+    monkeypatch.setattr(onnxruntime, "InferenceSession", lambda *a, **k: "cpu-session")
+    ai_device.open_session("lama.onnx", "lama", lambda: None)
+    ai_device.open_session("gfpgan.onnx", "gfpgan", lambda: None)
+    assert switched == [True]  # Once per process.
