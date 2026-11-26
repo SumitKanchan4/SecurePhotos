@@ -127,6 +127,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         asyncio.create_task(sweep_unused_files())
 
+    # No usage events from the AI runtime (owner, 2026-11-26; see ai_device.quiet_runtime).
+    from engine.services import ai_device
+
+    ai_device.quiet_runtime()
+
     # H10: plug in "Add colour" and "Fix faded colours" (the worker runs them; tests use fakes).
     from engine.services import old_photo_processors
     old_photo_processors.register()
