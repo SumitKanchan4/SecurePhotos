@@ -10,7 +10,6 @@ Status: **Next** (to do now), **Owner decision**, **Release blocker**, **Later**
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| T31b | Enlarge small photos with AI on a fast graphics card | Owner to compare (2026-11-24) | Built off by default (PR #80). The owner compares resize vs AI on his photos, then decides whether it becomes the default for new imports. |
 | T35 | AI enlarging for videos | Later idea (owner, 2026-11-24) | About 10–30 minutes per minute of video even on built-in graphics; only practical with a separate graphics card, which we can't test yet. Videos keep the resize to HD/2K/4K. |
 
 ## Found during the release review (2026-11-20)
