@@ -9,6 +9,7 @@ made is in its commit and pull request.
 - Every computer the drive is plugged into is listed in the library with one of three choices: always does the background work, asks each time, or only views (heavy work waits for another computer). The first time, the app asks; Settings → Storage changes it or forgets the computer (2026-11-21).
 - CPU only: every AI model must run well on an ordinary CPU; a graphics card is an optional speed-up (2026-11-15).
 - Everything works offline; downloads are only the update check and the old-photo models (2026-11-15).
+- ONNX Runtime's usage events are switched off at engine start (owner, 2026-11-26). DirectML has no switch; it follows Windows' diagnostic data settings, as SECURITY.md says.
 - The library is always the `data` folder next to the app; the app offers no way to open a library elsewhere. A backup is restored by copying its `data` folder back (2026-11-21).
 - The repository is public (2026-11-21). The old-photo models are in the `models-v1` release, which must never become "latest" (the updater reads the latest release).
 - Updates are signed with a new key made 2026-11-22 (the first key was lost). The owner keeps the private key and its password; they are only in the GitHub secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, never in the repository. A public release stops if the installer isn't signed or `latest.json` is missing. People on 0.2.0 run the next installer by hand once.

@@ -273,6 +273,28 @@ def used_gpu() -> List[str]:
 
 # ── Sessions ────────────────────────────────────────────────────────────────
 
+_quiet = False
+
+
+def quiet_runtime() -> None:
+    """Turns off ONNX Runtime's usage events (owner, 2026-11-26).
+
+    Official Windows builds of ONNX Runtime log usage events through Windows' diagnostic data
+    (never photos); SecurePhotos sends nothing about its users, so they are switched off before
+    any model opens. DirectML has no such switch; its events follow Windows' own diagnostic
+    settings. Called at engine start and, once, before the first session in any other process.
+    """
+    global _quiet
+    if _quiet:
+        return
+    try:
+        import onnxruntime as ort
+
+        ort.disable_telemetry_events()
+        _quiet = True
+    except Exception as err:  # An older runtime without the switch: nothing to turn off.
+        logger.info("ONNX Runtime usage events couldn't be switched off: %s", err)
+
 
 def _gpu_options():
     import onnxruntime as ort
@@ -297,6 +319,7 @@ def open_session(path, key: str, cpu_options: Callable[[], Any]):
     processor. A model that can't open on the card goes to the processor from now on."""
     import onnxruntime as ort
 
+    quiet_runtime()
     if _should_measure(key):
         # A model that wasn't here at the test (downloaded later): measured now, once.
         decided = measure(key, str(path), cpu_options)
@@ -371,6 +394,7 @@ def measure(key: str, path: str, cpu_options: Callable[[], Any]) -> Dict[str, An
     """One model on the processor and on the card; the decision for it."""
     import onnxruntime as ort
 
+    quiet_runtime()
     size, repeat = TEST_SIZE.get(key, 256), TEST_REPEAT.get(key, 1)
     cpu = ort.InferenceSession(path, cpu_options(), providers=["CPUExecutionProvider"])
     feed = _inputs(cpu, size)

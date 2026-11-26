@@ -14,6 +14,7 @@ Security fixes are made for the latest version. Please update to it before repor
 ## How your data is protected
 
 - **It stays on your computer.** There is no tracking, no analytics and no remote server. The app goes online only to check for a newer version and, if the installer couldn't, to download the old-photo models. Nothing about you or your library is sent.
+- **The AI parts send nothing either.** SecurePhotos switches off the usage events of ONNX Runtime, the Microsoft component that runs its AI models. DirectML, the Microsoft component that lets those models use a graphics card, has no such switch: like Windows itself, it follows your Windows diagnostic data settings (Settings › Privacy & security › Diagnostics & feedback). It never sees your photos.
 - **The vault is encrypted.** Photos and documents in your Private Vault are encrypted with AES-256-GCM, each file with its own key, in a format that detects any tampering or a cut-off file. The key is made from your password with Argon2id and a random salt.
 - **Vault photos are opened in memory.** When you view a vault photo it is decrypted in memory. No unencrypted copy is written to disk. The vault key is never saved to disk either; [the architecture notes](docs/architecture.md) explain what is and isn't protected while the app is running.
 - **Updates are signed.** The app installs an update only if its signature matches the key built into the app, so a changed or fake installer is refused.
