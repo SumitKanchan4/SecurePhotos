@@ -8,7 +8,7 @@ Security fixes are made for the latest version. Please update to it before repor
 
 | Version | Supported |
 | --- | --- |
-| 0.3.x | Yes |
+| 1.x | Yes |
 | Older | No |
 
 ## How your data is protected

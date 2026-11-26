@@ -4,14 +4,23 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 
 ## Unreleased
 
-### Photos
+## [1.0.0] - 2026-11-26
+
+SecurePhotos 1.0 is ready for everyday use. It keeps your photos, videos and documents in a private library on your own drive, improves them on your own computer, and never sends them anywhere. From here on, fixes come as 1.0.x and new features as 1.x.
+
+### What SecurePhotos does
+- **Your library on your drive.** Install it on an external drive and open it on any Windows computer, with nothing to install there. You choose which computers may improve your photos.
+- **Better photos.** Every photo is made sharper and saved in a lighter format. Old prints can get colour, their faded colours back, clearer faces and fewer scratches, always next to the original. Not happy with a result? Try again.
+- **People, documents and stories.** Name a face once and find that person everywhere. Receipts and papers are kept apart and their words can be searched. Stories come with music.
+- **Private Vault.** Sensitive photos and documents stay encrypted behind your password, with an Emergency Card if you forget it.
+- **Dashboard.** This week in earlier years, an old photo brought back, the people you photograph most, your year month by month, and what is worth tidying.
+- **Faster with a graphics card.** When the computer has one, SecurePhotos uses it wherever it is faster, with nothing to install.
+- **Updates itself.** New versions are signed and installed from inside the app.
+
+### Changes since 0.3.2
 - New setting, off by default: **Enlarge small photos with AI**. On computers whose graphics card is fast enough, small photos such as WhatsApp pictures are enlarged with AI instead of the usual resize. Settings, under Photos & AI.
-
-### Privacy
-- The AI runtime's usage events (sent to Microsoft through Windows' diagnostic data, never your photos) are now switched off. SECURITY.md explains what remains.
-
-### Fixes
-- Messages about the graphics card now point to Settings, under Storage, where your computers are listed (they named a "Computers" section that doesn't exist).
+- **Privacy:** the AI runtime's usage events (sent to Microsoft through Windows' diagnostic data, never your photos) are now switched off. SECURITY.md explains what remains.
+- **Fix:** messages about the graphics card now point to Settings, under Storage, where your computers are listed (they named a "Computers" section that doesn't exist).
 
 ## [0.3.2] - 2026-11-24
 
