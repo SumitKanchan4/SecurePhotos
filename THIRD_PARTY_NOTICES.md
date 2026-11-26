@@ -12,6 +12,20 @@ Only permissively licensed models are used. Models whose licences restrict comme
 
 The full licence texts for YuNet, SFace and Real-ESRGAN are reproduced below (copied from the upstream folders linked above; neither OpenCV Zoo folder has a NOTICE file).
 
+## Software shipped with the engine and installer
+
+| Component | Used for | Licence | Source |
+|---|---|---|---|
+| ONNX Runtime (`onnxruntime-windowsml` package) | Runs the AI models on the processor or the graphics card | MIT | [microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) |
+| DirectML (`DirectML.dll`, included in that package) | Lets the AI models use any DirectX 12 graphics card | Microsoft Software License Terms for DirectX Machine Learning, which allow it to be redistributed with applications that use it | [DirectML](https://aka.ms/DirectML); the terms ship with the [Microsoft.AI.DirectML](https://www.nuget.org/packages/Microsoft.AI.DirectML) package |
+| Tauri NSIS installer template (`src-tauri/nsis/installer.nsi`, changed to say what stays when SecurePhotos is removed) | The installer and uninstaller | MIT or Apache License 2.0 | [tauri-apps/tauri](https://github.com/tauri-apps/tauri) |
+
+ONNX Runtime's own licence and third-party notices are installed with it, in `engine/_internal/onnxruntime/` (`LICENSE` and `ThirdPartyNotices.txt`).
+
+## Songs
+
+The three songs that come with the app (Between the Frames, Sunday on the Veranda, Where We Once Stood, in `engine/assets/music/`) are by Sumit Kanchan and are shared under the app's own [MIT License](LICENSE).
+
 ## Fonts
 
 The app's fonts are bundled with it (no download at runtime) through the Fontsource packages. All three are licensed under the [SIL Open Font License 1.1](https://openfontlicense.org/open-font-license-official-text/).

@@ -33,6 +33,8 @@ graph TB
             StoriesR["Stories, collages, videos"]
             TrashR["Trash"]
             SearchR["Search (FTS5)"]
+            DashR["Dashboard (highlights)"]
+            PcR["Computers and graphics card"]
         end
         FastAPIApp --> AuthMiddleware
         AuthMiddleware --> Domain_Routers

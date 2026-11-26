@@ -26,7 +26,7 @@ The screenshots use free sample photos, none of them personal; see [the credits]
 ### Your library, on your drive
 SecurePhotos is made to live on an external drive. Install it there, and the app and everything it keeps sit together on the drive: your photos, the vault, thumbnails and the app's own data. Plug the drive into another Windows computer, open SecurePhotos from the drive and carry on where you left off. Nothing needs to be installed on that computer first.
 
-The first time you use a computer, SecurePhotos asks whether it should improve your photos there too, or only let you view them. Settings, under Storage, lists every computer your drive has been plugged into, so you can change your mind at any time.
+The first time you use a computer, SecurePhotos asks whether it should improve your photos there too, or only let you view them. If it should, it takes half a minute to get to know the computer and uses its graphics card wherever that is faster. Settings, under Storage, lists every computer your drive has been plugged into, so you can change your mind at any time.
 
 ### Bringing photos in
 Choose files or a folder, or drop them on the window. SecurePhotos copies them into your library and leaves your originals where they are. If you prefer, it can remove each original once its copy has been checked. Photos you already have are skipped.
@@ -42,7 +42,7 @@ After an import, each new photo is prepared in the background. You can use your 
 A small ring on each photo shows its progress. Videos are prepared after the photos.
 
 ### Old photos
-SecurePhotos can add colour to black-and-white prints, bring back faded colours, sharpen blurry faces and remove scratches and spots. It always keeps the original next to the improved copy, so you can compare them and choose which to keep. You decide in Settings whether this happens only when you ask or automatically.
+SecurePhotos can add colour to black-and-white prints, bring back faded colours, sharpen blurry faces and remove scratches and spots. It always keeps the original next to the improved copy, so you can compare them and choose which to keep. Not happy with a result? **Try again** makes it again from the original with other settings, such as the other colour style, and lets you keep whichever you prefer. You decide in Settings whether improving happens only when you ask or automatically.
 
 ### People
 Name a face once and SecurePhotos finds that person across your library. You can mark close family and friends, merge groups that turn out to be the same person, and remove anything that was wrongly taken for a face.
@@ -68,7 +68,7 @@ The Dashboard shows what's in your library: photos from this week in earlier yea
 3. Click **Import** and choose your photos, or drop a folder on the window.
 4. Browse your photos, name the faces in **People**, and move anything private into the **Private Vault**.
 
-SecurePhotos runs on 64-bit Windows 10 and 11. It works on an ordinary computer; a graphics card is not needed.
+SecurePhotos runs on 64-bit Windows 10 and 11. It works on an ordinary computer; a graphics card is not needed, but when there is one (NVIDIA, AMD or Intel), SecurePhotos uses it wherever it makes photo fixes faster.
 
 ## Keyboard shortcuts
 

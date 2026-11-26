@@ -78,7 +78,7 @@ export const HardwareCheck: React.FC<{
     return (
       <div className="hw-check">
         <h2 className="hw-title">Getting to know this computer</h2>
-        <p className="hw-text">This computer couldn't be checked just now. Photos are improved on the processor; you can test again in Settings, under Computers.</p>
+        <p className="hw-text">This computer couldn't be checked just now. Photos are improved on the processor; you can test again in Settings, under Storage.</p>
         <div className="hw-foot">
           <span className="hw-spacer" />
           <button type="button" className="dash-btn dash-btn-primary" onClick={() => onClose(false)}>
@@ -141,7 +141,7 @@ export const HardwareCheck: React.FC<{
         </ul>
         <div className="hw-foot">
           <span className="hw-hint">
-            {hw.gpu ? "You can turn the graphics card off or test again in Settings, under Computers." : "If this computer gets a new graphics driver, SecurePhotos tests again by itself."}
+            {hw.gpu ? "You can turn the graphics card off or test again in Settings, under Storage." : "If this computer gets a new graphics driver, SecurePhotos tests again by itself."}
           </span>
           <button type="button" className="dash-btn dash-btn-primary" onClick={() => onClose(hw.test.state === "done")} autoFocus>
             Done
@@ -186,7 +186,7 @@ export const HardwareCheck: React.FC<{
         </li>
       </ul>
       <div className="hw-foot">
-        <span className="hw-hint">Skipping is fine: photos are improved on the processor, and you can test later in Settings, under Computers.</span>
+        <span className="hw-hint">Skipping is fine: photos are improved on the processor, and you can test later in Settings, under Storage.</span>
         <button type="button" className="dash-btn" onClick={() => void skip()}>
           Skip for now
         </button>

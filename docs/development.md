@@ -18,7 +18,7 @@ SecurePhotos has three parts that run on the user's computer:
 ┌─────────────────────────────┐   ┌─────────────────────────────────┐
 │ App (React 19, TypeScript)  │   │ Photo engine (Python 3.12)      │
 │  Screens, photo grid,       │   │  FastAPI, SQLite (WAL, FTS5),   │
-│  viewer; state in Zustand   │   │  import, AI on the CPU (ONNX),  │
+│  viewer; state in Zustand   │   │  import, AI (ONNX, CPU or GPU), │
 │                             │   │  vault encryption, workers      │
 └─────────────────────────────┘   └─────────────────────────────────┘
 ```
@@ -26,7 +26,7 @@ SecurePhotos has three parts that run on the user's computer:
 - **Desktop shell:** Tauri 2 with the Windows WebView2 runtime. It owns the window, native dialogs and the engine's lifetime.
 - **App:** React 19, TypeScript, Vite, Zustand and Lucide icons. The photo grid does its own windowing, so only the tiles near the screen exist.
 - **Photo engine:** Python 3.12 with FastAPI, Uvicorn and SQLite through `aiosqlite`. It reads and writes the library, runs the AI models and does all background work.
-- **AI:** ONNX Runtime. Everything is designed to run on an ordinary CPU; DirectML is used for face recognition when it's available. The models are YuNet (finding faces, MIT), SFace (recognising faces, Apache-2.0), Real-ESRGAN (BSD-3-Clause), and for old photos DDColor, GFPGAN, LaMa and the "Bringing Old Photos Back to Life" scratch detector. Text is read with the OCR built into Windows. Licences are in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
+- **AI:** ONNX Runtime, from the `onnxruntime-windowsml` package: the processor path plus DirectML, which runs the models on any DirectX 12 graphics card with nothing to install (Windows only). Everything is designed to run well on an ordinary processor; `engine/services/ai_device.py` uses the graphics card, per model, only where a speed test on that computer found it faster ([architecture.md](architecture.md), section 3.10). The models are YuNet (finding faces, MIT), SFace (recognising faces, Apache-2.0), Real-ESRGAN (BSD-3-Clause), and for old photos DDColor, GFPGAN, LaMa and the "Bringing Old Photos Back to Life" scratch detector. Text is read with the OCR built into Windows. Licences are in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 - **Encryption:** AES-256-GCM in chunks, keys from Argon2id, and random numbers from the operating system (the `getrandom` crate in the shell).
 
 [architecture.md](architecture.md) goes deeper into each part.
@@ -48,6 +48,8 @@ python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r engine/requirements-dev.txt
 npm install
 ```
+
+The AI runtime's files are loaded by a running engine, and Windows won't replace loaded files: close the app (and any engine started by the scripts) before installing a new `engine/requirements-dev.txt`, for example with `uv pip sync --python .venv/Scripts/python.exe engine/requirements-dev.txt`.
 
 ## Running it
 
@@ -96,7 +98,10 @@ The app is meant to be installed on an external drive, with the library in `data
 - **The window's browser profile** (WebView2's storage and cache) is kept in `data\webview`, not in the user's AppData folder ([library.rs](../src-tauri/src/library.rs)).
 - **Updates** install into the folder the app runs from (`/D=` passed to the installer by the updater), so an update on any computer replaces the copy on the drive.
 - **The engine is installed unpacked** in `<app>\engine\`, so it starts straight away and never unpacks itself into the computer's temp folder (a single-file build left about 230 MB there at every start).
-- **No runtime to install.** The shell is built with the Visual C++ runtime linked in (`src-tauri/.cargo/config.toml`), and the engine program carries its own copy, so the app starts on a computer that never had it.
+- **No runtime to install.** The shell is built with the Visual C++ runtime linked in (`src-tauri/.cargo/config.toml`), and the engine program carries its own copy, so the app starts on a computer that never had it. The same goes for the graphics card: the engine carries its own `DirectML.dll`.
+- **The uninstaller** comes from our copy of Tauri's NSIS template, [src-tauri/nsis/installer.nsi](../src-tauri/nsis/installer.nsi) (from tauri-cli 2.11.4), changed only to replace the "Delete the application data" checkbox with a note on what stays. When `@tauri-apps/cli` is updated, take the new version's template and repeat the two changes marked "SecurePhotos".
+- **Signed updates.** The build signs the installer with the key in the GitHub secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (the owner keeps it; never in the repository). [scripts/ci/updater_manifest.py](../scripts/ci/updater_manifest.py) writes `latest.json`, which the app's updater reads from the latest release, and stops a release whose installer isn't signed. The public key is in `src-tauri/tauri.conf.json`.
+- **The songs that come with the app** are in `engine/assets/music/` and travel inside the engine (the engine build collects the engine package's files).
 
 1. **Fetch and check the bundled models:**
    ```powershell
@@ -126,8 +131,10 @@ To preview or apply a version number locally:
 
 ```powershell
 python scripts/release_version.py detect --bump patch
-python scripts/release_version.py sync --version 0.2.0
+python scripts/release_version.py sync --version 0.3.2 --current-version 0.3.1
 ```
+
+**After a public release**, bring the repository in line in a small pull request: the pipeline stamps the build with the new version but doesn't commit it. Run `sync` with `--current-version` (without it the script reads the old version from the newest tag, which after a release is already the new one, and changes nothing), and move the changelog's Unreleased notes under `## [<version>] - <date>`.
 
 ## Where things are
 
