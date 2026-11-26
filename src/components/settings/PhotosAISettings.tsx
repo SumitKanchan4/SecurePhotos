@@ -112,7 +112,7 @@ export const PhotosAISettings: React.FC<PhotosAISettingsProps> = ({ settings, up
         </SettingRow>
         <SettingRow
           title="Enlarge small photos with AI"
-          description="On computers whose graphics card is fast enough (see Settings, under Computers), small photos such as WhatsApp pictures are enlarged with AI for crisper detail. Other computers keep the usual resize. For new imports."
+          description="On computers whose graphics card is fast enough (see Settings, under Storage), small photos such as WhatsApp pictures are enlarged with AI for crisper detail. Other computers keep the usual resize. For new imports."
         >
           <ToggleSwitch
             checked={Boolean(settings.photo_enlarge_ai)}
