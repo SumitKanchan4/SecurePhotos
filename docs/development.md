@@ -161,7 +161,7 @@ SecurePhotos/
 
 ## Conventions
 
-- Work on a branch and merge to `master` through a pull request ([CONTRIBUTING.md](../CONTRIBUTING.md)).
+- Work on a branch and merge to `master` through a pull request ([CONTRIBUTING.md](../CONTRIBUTING.md)). `master` is protected (pull request and a passing Quality Gate required, no force-pushes) and pull requests are squash-merged, one commit per change.
 - Python: Google-style docstrings on public functions. Slow work (images, files, AI) runs off the engine's request loop with `asyncio.to_thread`.
 - TypeScript: no `any`; pure logic goes in `utils` or a `*Format.ts` file with its own tests.
 - Paths in the database are stored relative to the library folder (`to_db_path`, `resolve_stored_path`), so a library can move with its drive.
