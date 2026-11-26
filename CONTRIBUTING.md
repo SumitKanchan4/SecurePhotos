@@ -42,6 +42,7 @@ The script starts the photo engine and the app together. The [developer guide](d
   - `chore/short-name` for documentation, dependencies or upkeep.
 - Write commit messages that say what changed, for example `fix: stop story music overlapping`.
 - Push your branch and open a pull request against `master`.
+- `master` is protected: it changes only through a pull request whose checks (the Quality Gate) pass. Each pull request is **squash-merged** into one commit on `master`, titled with the pull request's title, so give it a clear one (`fix: stop story music overlapping`). The branch is deleted after merging.
 
 ## Before you open a pull request
 
