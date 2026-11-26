@@ -4,6 +4,9 @@ This file lists the changes in each version of SecurePhotos. The format follows 
 
 ## Unreleased
 
+### Photos
+- New setting, off by default: **Enlarge small photos with AI**. On computers whose graphics card is fast enough, small photos such as WhatsApp pictures are enlarged with AI instead of the usual resize. Settings, under Photos.
+
 ## [0.3.2] - 2026-11-24
 
 ### Faster on computers with a graphics card

@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Tuple, Union
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageFilter, ImageOps
 
 from engine.services.media_paths import unique_path
 from engine.services.super_resolution_service import enhance_pixels
@@ -96,11 +96,51 @@ class EnhancedPhoto:
     mime_type: str = "image/avif"
 
 
+# T31b (owner, 2026-11-24): small photos can be enlarged with AI (Real-ESRGAN) instead of the
+# resize + sharpen, on computers whose graphics card the speed test found fast for it. Off by
+# default (Settings → Photos) until the owner has compared both. Only for small photos: the model
+# takes at most 1920 px, so a larger photo would lose detail on the way in and keeps more with the
+# resize. WhatsApp-size photos (1600–2048 px) qualify; Auto brings them to 4K (about 1.9x).
+AI_ENLARGE_MAX_SOURCE = 2048
+AI_ENLARGE_MIN_SCALE = 1.5
+
+
+def ai_enlarge_ready() -> bool:
+    """True when this computer runs the enlarging model on its graphics card."""
+    from engine.services import ai_device
+
+    return ai_device.device_for("realesr") == ai_device.GPU
+
+
+def _enlarge_with_ai(img: Image.Image, target_long_edge: int) -> "Image.Image | None":
+    """Real-ESRGAN 4x, then brought to the exact size; None if it can't (the resize is used)."""
+    from engine.services import ai_device
+    from engine.services.neural_sr_service import neural_upscale
+
+    try:
+        big = neural_upscale(img)
+    except Exception as err:
+        logger.warning("AI enlarging failed; using the resize: %s", str(err)[:200])
+        ai_device.mark_cpu(["realesr"], "stopped working on the graphics card")
+        return None
+    # The exact size the resize would give (from the original, so rounding never differs by a pixel).
+    ratio = target_long_edge / max(img.size)
+    size = (max(1, round(img.width * ratio)), max(1, round(img.height * ratio)))
+    if big.size == size:
+        return big
+    scale = max(size) / max(big.size)
+    resized = big.resize(size, Image.Resampling.LANCZOS)
+    # Brought down from 4x it is already crisp; a very small photo still grows a little more.
+    return resized.filter(ImageFilter.UnsharpMask(radius=0.8, percent=60, threshold=2)) if scale > 1 else resized
+
+
 def _has_alpha(img: Image.Image) -> bool:
     return img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
 
 
-def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int, target_long_edge: int = AUTO) -> Tuple[bytes, int, int]:
+def render_enhanced_avif(
+    source: Union[Path, bytes], avif_quality: int, target_long_edge: int = AUTO, ai_enlarge: bool = False
+) -> Tuple[bytes, int, int]:
     """Enhances an image entirely in memory and returns it encoded as AVIF.
 
     The camera details (EXIF: date, GPS, camera) and colour profile are kept.
@@ -112,6 +152,9 @@ def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int, target_l
         source: Image file path, or the image file's bytes (e.g. a decrypted vault photo).
         avif_quality: AVIF quality from :func:`slider_to_avif_quality`.
         target_long_edge: Photo size from :func:`photo_size_to_long_edge` (``AUTO``: by the photo's own size).
+        ai_enlarge: Settings → Photos, "Enlarge small photos with AI" (T31b): used only when the
+            photo is small (``AI_ENLARGE_MAX_SOURCE``), grows at least ``AI_ENLARGE_MIN_SCALE`` and the
+            graphics card runs the model.
 
     Returns:
         (AVIF bytes, width, height).
@@ -131,7 +174,12 @@ def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int, target_l
 
     if target_long_edge == AUTO:
         target_long_edge = auto_long_edge(*upright.size)
-    enhanced = enhance_pixels(upright, target_long_edge)
+    enhanced = None
+    small = max(upright.size) <= AI_ENLARGE_MAX_SOURCE and target_long_edge >= AI_ENLARGE_MIN_SCALE * max(upright.size)
+    if ai_enlarge and not alpha and small and ai_enlarge_ready():
+        enhanced = _enlarge_with_ai(upright, target_long_edge)
+    if enhanced is None:
+        enhanced = enhance_pixels(upright, target_long_edge)
 
     save_kwargs = {"quality": avif_quality}
     if len(exif):
@@ -152,7 +200,7 @@ def render_enhanced_avif(source: Union[Path, bytes], avif_quality: int, target_l
     return data, enhanced.size[0], enhanced.size[1]
 
 
-def enhance_to_avif(source: Path, avif_quality: int, target_long_edge: int = AUTO) -> EnhancedPhoto:
+def enhance_to_avif(source: Path, avif_quality: int, target_long_edge: int = AUTO, ai_enlarge: bool = False) -> EnhancedPhoto:
     """Enhances one library photo and writes it as AVIF next to the source.
 
     See :func:`render_enhanced_avif` for what is kept and changed. The file is
@@ -173,7 +221,7 @@ def enhance_to_avif(source: Path, avif_quality: int, target_long_edge: int = AUT
     dest = source if source.suffix.lower() == ".avif" else unique_path(source.with_suffix(".avif"))
     temp = dest.parent / f".{dest.name}.opt.tmp"
     try:
-        data, width, height = render_enhanced_avif(source, avif_quality, target_long_edge)
+        data, width, height = render_enhanced_avif(source, avif_quality, target_long_edge, ai_enlarge)
         with open(temp, "wb") as fh:
             fh.write(data)
             fh.flush()
